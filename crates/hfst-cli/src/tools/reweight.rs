@@ -1,30 +1,17 @@
 //! Faithful 1:1 port of tools/src/hfst-reweight.cc — the transducer reweighting
-//! command-line tool. Drives the hfst-cli foundation (globals, getopt,
-//! commandline, program-options, tool-metadata, inc fragments).
+//! command-line tool.
 //!
 //! This is a unary tool (it #includes inc/globals-common.h and
-//! inc/globals-unary.h and reads a single input stream).
-//!
-//! Idiomatic option handling: the tool's state lives in [`CommonOptions`] (the
-//! shared `-v/-q/-o/-i/…` fields) and a tool-local [`Options`] — both built by
-//! `parse_options` and threaded into the processing functions. There are no
-//! `static mut` globals and no `unsafe`.
+//! inc/globals-unary.h and reads a single input stream). Option handling is
+//! clap 4 derive through [`crate::cli`].
 
+use crate::cli::{self, CommonArgs, ToolArgs, ToolResult, UnaryIo};
 use crate::globals::CommonOptions;
 use crate::hfst_commandline::{
-    error, extend_options_from_env, hfst_error, hfst_error_at_line, hfst_set_program_name,
-    hfst_strtoweight, hfst_warning, is_input_stream_in_ol_format, verbose_print,
-};
-use crate::hfst_getopt::{self as getopt, Getopt};
-use crate::hfst_program_options::{
-    hfst_getopt_common_long, hfst_getopt_unary_long, print_common_program_options,
-    print_common_unary_program_options, print_common_unary_program_parameter_instructions,
+    error, hfst_error, hfst_error_at_line, hfst_set_program_name, hfst_strtoweight, hfst_warning,
+    is_input_stream_in_ol_format, verbose_print,
 };
 use crate::hfst_tool_metadata::{hfst_get_name, hfst_set_formula_unary, hfst_set_name_unary};
-use crate::inc::{
-    CaseResult, check_common_params, check_unary_params, handle_common_case, handle_error_case,
-    handle_unary_case,
-};
 use hfst::hfst_basic_transducer::HfstBasicTransducer;
 use hfst::hfst_data_types::ImplementationType;
 use hfst::hfst_input_stream::HfstInputStream;
@@ -39,13 +26,203 @@ fn id(w: f32) -> f32 {
     w
 }
 
-/// hfst-reweight's own options (the former tool-specific `static mut`s).
+/// hfst-reweight's command line.
+//
+// Every weight-valued option carries allow_hyphen_values so a negative
+// AVAL/BVAL/LVAL/UVAL is its argument rather than an unknown option, and so
+// is '-S -' — the C's getopt handed the literal dash straight to `symbol`.
+// [spec:hfst:def:hfst-reweight.parse-options-fn]
+// [spec:hfst:sem:hfst-reweight.parse-options-fn]
+// [spec:hfst:req:cli.arg-parse]
+// [spec:hfst:req:cli.help]
+#[derive(clap::Parser)]
+#[command(about = "Reweight transducer weights simply")]
+struct Args {
+    #[command(flatten)]
+    common: CommonArgs,
+    #[command(flatten)]
+    io: UnaryIo,
+
+    /// Add AVAL to matching weights
+    #[arg(
+        short = 'a',
+        long = "addition",
+        value_name = "AVAL",
+        allow_hyphen_values = true
+    )]
+    addition: Option<String>,
+
+    /// Multiply matching weights by BVAL
+    #[arg(
+        short = 'b',
+        long = "multiplier",
+        value_name = "BVAL",
+        allow_hyphen_values = true
+    )]
+    multiplier: Option<String>,
+
+    /// Operate matching weights by FNAME
+    #[arg(short = 'F', long = "function", value_name = "FNAME")]
+    function: Option<String>,
+
+    /// Match weights greater than LVAL
+    #[arg(
+        short = 'l',
+        long = "lower-bound",
+        value_name = "LVAL",
+        allow_hyphen_values = true
+    )]
+    lower_bound: Option<String>,
+
+    /// Match weights less than UVAL
+    #[arg(
+        short = 'u',
+        long = "upper-bound",
+        value_name = "UVAL",
+        allow_hyphen_values = true
+    )]
+    upper_bound: Option<String>,
+
+    /// Match arcs with input symbol ISYM
+    #[arg(
+        short = 'I',
+        long = "input-symbol",
+        value_name = "ISYM",
+        allow_hyphen_values = true
+    )]
+    input_symbol: Option<String>,
+
+    /// Match arcs with output symbol OSYM
+    #[arg(
+        short = 'O',
+        long = "output-symbol",
+        value_name = "OSYM",
+        allow_hyphen_values = true
+    )]
+    output_symbol: Option<String>,
+
+    /// Match arcs with input or output symbol SYM or both
+    #[arg(
+        short = 'S',
+        long = "symbol",
+        value_name = "SYM",
+        allow_hyphen_values = true
+    )]
+    symbol: Option<String>,
+
+    /// Match end states only, no arcs
+    #[arg(short = 'e', long = "end-states-only")]
+    end_states_only: bool,
+
+    /// Match arcs only, no end states
+    #[arg(short = 'A', long = "arcs-only")]
+    arcs_only: bool,
+
+    /// Read reweighting rules from TFILE. (The C long table spells this
+    /// '--tsv' though its help text advertises '--tsv-file'; the accepted
+    /// spelling is kept.)
+    #[arg(short = 'T', long = "tsv", value_name = "TFILE")]
+    tsv: Option<String>,
+}
+
+impl Args {
+    /// Case 'F': the <cmath> function names the C's else-if chain accepted;
+    /// anything else is fatal inside the getopt loop.
+    // [spec:hfst:def:hfst-reweight.func-fn]
+    // [spec:hfst:sem:hfst-reweight.func-fn]
+    fn func(&self, common: &CommonOptions) -> fn(f32) -> f32 {
+        let Some(name) = self.function.as_deref() else {
+            return id;
+        };
+        match name {
+            "cos" => f32::cos,
+            "sin" => f32::sin,
+            "tan" => f32::tan,
+            "acos" => f32::acos,
+            "asin" => f32::asin,
+            "atan" => f32::atan,
+            "cosh" => f32::cosh,
+            "sinh" => f32::sinh,
+            "tanh" => f32::tanh,
+            "exp" => f32::exp,
+            "log" => f32::ln,
+            "log10" => f32::log10,
+            "sqrt" => f32::sqrt,
+            "floor" => f32::floor,
+            "ceil" => f32::ceil,
+            _ => {
+                hfst_error(
+                    common,
+                    1,
+                    0,
+                    &format!("Cannot parse {} as function name", name),
+                );
+                id
+            }
+        }
+    }
+
+    fn weight(&self, common: &CommonOptions, given: &Option<String>, default: f32) -> f32 {
+        match given {
+            Some(w) => hfst_strtoweight(common, w),
+            None => default,
+        }
+    }
+
+    fn resolve(&self, common: &CommonOptions) -> Options {
+        Options {
+            addition: self.weight(common, &self.addition, 0.0),
+            multiplier: self.weight(common, &self.multiplier, 1.0),
+            // The C left funcname NULL until after the parameter checks, then
+            // defaulted it to "id" — the name the -v trace prints.
+            funcname: Some(self.function.clone().unwrap_or_else(|| "id".to_string())),
+            func: self.func(common),
+            upper_bound: self.weight(common, &self.upper_bound, f32::MAX),
+            lower_bound: self.weight(common, &self.lower_bound, 0.0),
+            input_symbol: self.input_symbol.clone(),
+            output_symbol: self.output_symbol.clone(),
+            symbol: self.symbol.clone(),
+            ends_only: self.end_states_only,
+            arcs_only: self.arcs_only,
+            tsv_file_name: self.tsv.clone(),
+            tsv_file: None,
+        }
+    }
+}
+
+impl ToolArgs for Args {
+    fn common(&self) -> &CommonArgs {
+        &self.common
+    }
+
+    fn apply_io(&self, opts: &mut CommonOptions) {
+        self.io.apply(opts);
+    }
+
+    fn validate(&self, opts: &CommonOptions) -> ToolResult {
+        // Everything the C did inside the getopt loop (the strtod parses and
+        // the function-name lookup), then the exclusion test it ran right
+        // after the loop and before the parameter checks.
+        self.resolve(opts);
+        if self.arcs_only && self.end_states_only {
+            hfst_error(
+                opts,
+                1,
+                0,
+                "Options '--arcs-only' and '--end-states-only' cannot be used \
+at the same time",
+            );
+            return Err(1);
+        }
+        Ok(())
+    }
+}
+
+/// hfst-reweight's resolved tool state (the former tool-specific `static mut`s).
 struct Options {
     addition: f32,
     multiplier: f32,
     funcname: Option<String>,
-    // [spec:hfst:def:hfst-reweight.func-fn]
-    // [spec:hfst:sem:hfst-reweight.func-fn]
     func: fn(f32) -> f32,
     upper_bound: f32,
     lower_bound: f32,
@@ -56,255 +233,6 @@ struct Options {
     arcs_only: bool,
     tsv_file_name: Option<String>,
     tsv_file: Option<std::fs::File>,
-}
-
-impl Default for Options {
-    fn default() -> Options {
-        Options {
-            addition: 0.0,
-            multiplier: 1.0,
-            funcname: None,
-            func: id,
-            upper_bound: f32::MAX,
-            lower_bound: 0.0,
-            input_symbol: None,
-            output_symbol: None,
-            symbol: None,
-            ends_only: false,
-            arcs_only: false,
-            tsv_file_name: None,
-            tsv_file: None,
-        }
-    }
-}
-
-// [spec:hfst:req:cli.help]
-fn print_usage(common: &CommonOptions) {
-    let mut msg = common.message_writer();
-    // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
-    // Usage line
-    let _ = write!(
-        msg,
-        "Usage: {} [OPTIONS...] [INFILE]\nReweight transducer weights simply\n\n",
-        common.program_name
-    );
-    print_common_program_options(&mut *msg);
-    print_common_unary_program_options(&mut *msg);
-    let _ = write!(
-        msg,
-        "Reweighting options:\n\
-  -a, --addition=AVAL        add AVAL to matching weights\n\
-  -b, --multiplier=BVAL      multiply matching weights by BVAL\n\
-  -F, --function=FNAME       operate matching weights by FNAME\n\
-  -l, --lower-bound=LVAL     match weights greater than LVAL\n\
-  -u, --upper-bound=UVAL     match weights less than UVAL\n\
-  -I, --input-symbol=ISYM    match arcs with input symbol ISYM\n\
-  -O, --output-symbol=OSYM   match arcs with output symbol OSYM\n\
-  -S, --symbol=SYM           match arcs with input or output symbol SYM or both\n\
-  -e, --end-states-only      match end states only, no arcs\n\
-  -A, --arcs-only            match arcs only, no end states\n\
-  -T, --tsv-file=TFILE       read reweighting rules from TFILE\n\
-\n"
-    );
-    let _ = writeln!(msg);
-    print_common_unary_program_parameter_instructions(&mut *msg);
-    let _ = write!(
-        msg,
-        "If AVAL, BVAL or FNAME are omitted, they default to neutral \
-elements of addition, multiplication or identity function.\n\
-If LVAL or UVAL are omitted, they default to minimum and maximum \
-values of the weight structure.\n\
-If ISYM, OSYM or SYM are omitted, they default to a value that \
-matches all arcs.\nOnly one ISYM, OSYM and SYM can be given.\n\n\
-Float values are parsed with strtod(3) and integers strtoul(3).\n\
-The functions allowed for FNAME are <cmath> float functions with \
-parameter count of 1 and a matching return value:\n\
-abs, acos, asin, ... sqrt, tan, tanh\n\n\
-The precedence of operands follows the formula \
-BVAL * FNAME(w) + AVAL.\n\
-The formula is applied iff:\n\
-((LVAL <= w) && (w <= UVAL)),\n\
-where w is weight of arc, and \n\
-(ISYM == i) && (OSYM == o) && ((SYM == i) || (SYM == o)) ^^ \n\
-(end state && -e).\n\n\
-TFILE should contain lines with tab-separated pairs of SYM and \
-AVAL or BVAL. AVAL values must be preceded by a + character, \
-BVAL should be given as plain digits. \
-Comment lines starting with # and empty lines are ignored.\n\n\
-Weights are by default modified for all arcs and end states,\n\
-unless option --end-states-only or --arcs-only is used.\n"
-    );
-    let _ = writeln!(msg);
-}
-
-// [spec:hfst:def:hfst-reweight.parse-options-fn]
-// [spec:hfst:sem:hfst-reweight.parse-options-fn]
-// [spec:hfst:req:cli.arg-parse]
-//
-// Parse argv into the shared + tool options; `Err(code)` is an exit code the
-// caller should return (the former EXIT_CONTINUE sentinel is now `Ok`).
-fn parse_options(
-    mut common: CommonOptions,
-    args: &mut Vec<String>,
-) -> Result<(CommonOptions, Options), i32> {
-    let mut options = Options::default();
-    let mut opt = Getopt::new();
-    extend_options_from_env(args);
-    loop {
-        let mut long_options: Vec<getopt::GetOpt> = Vec::new();
-        long_options.extend(hfst_getopt_common_long());
-        long_options.extend(hfst_getopt_unary_long());
-        // add tool-specific options here
-        let tool_opts: [(&'static str, i32, i32); 11] = [
-            ("addition", getopt::REQUIRED_ARGUMENT, 'a' as i32),
-            ("multiplier", getopt::REQUIRED_ARGUMENT, 'b' as i32),
-            ("function", getopt::REQUIRED_ARGUMENT, 'F' as i32),
-            ("lower-bound", getopt::REQUIRED_ARGUMENT, 'l' as i32),
-            ("upper-bound", getopt::REQUIRED_ARGUMENT, 'u' as i32),
-            ("input-symbol", getopt::REQUIRED_ARGUMENT, 'I' as i32),
-            ("output-symbol", getopt::REQUIRED_ARGUMENT, 'O' as i32),
-            ("symbol", getopt::REQUIRED_ARGUMENT, 'S' as i32),
-            ("end-states-only", getopt::NO_ARGUMENT, 'e' as i32),
-            ("arcs-only", getopt::NO_ARGUMENT, 'A' as i32),
-            ("tsv", getopt::REQUIRED_ARGUMENT, 'T' as i32),
-        ];
-        for (name, has_arg, val) in tool_opts {
-            long_options.push(getopt::GetOpt { name, has_arg, val });
-        }
-        let c = opt.getopt_long(args, &long_options);
-        if -1 == c {
-            break;
-        }
-
-        // The C switch chains the #include'd case groups in order: common
-        // cases, then unary cases, then the tool's own, then the terminal
-        // error arm.
-        match handle_common_case(&mut common, &opt, c, print_usage) {
-            CaseResult::Return(code) => return Err(code),
-            CaseResult::Break => continue,
-            CaseResult::NotHandled => {}
-        }
-        match handle_unary_case(&mut common, &opt, c) {
-            CaseResult::Return(code) => return Err(code),
-            CaseResult::Break => continue,
-            CaseResult::NotHandled => {}
-        }
-        // tool-specific cases
-        match c as u8 as char {
-            'a' => {
-                options.addition = hfst_strtoweight(&common, &opt.optarg());
-                continue;
-            }
-            'b' => {
-                options.multiplier = hfst_strtoweight(&common, &opt.optarg());
-                continue;
-            }
-            'F' => {
-                let name = opt.optarg();
-                options.funcname = Some(name.clone());
-                match name.as_str() {
-                    "cos" => options.func = f32::cos,
-                    "sin" => options.func = f32::sin,
-                    "tan" => options.func = f32::tan,
-                    "acos" => options.func = f32::acos,
-                    "asin" => options.func = f32::asin,
-                    "atan" => options.func = f32::atan,
-                    "cosh" => options.func = f32::cosh,
-                    "sinh" => options.func = f32::sinh,
-                    "tanh" => options.func = f32::tanh,
-                    "exp" => options.func = f32::exp,
-                    "log" => options.func = f32::ln,
-                    "log10" => options.func = f32::log10,
-                    "sqrt" => options.func = f32::sqrt,
-                    "floor" => options.func = f32::floor,
-                    "ceil" => options.func = f32::ceil,
-                    _ => {
-                        hfst_error(
-                            &common,
-                            1,
-                            0,
-                            &format!("Cannot parse {} as function name", name),
-                        );
-                        return Err(1);
-                    }
-                }
-                continue;
-            }
-            'l' => {
-                options.lower_bound = hfst_strtoweight(&common, &opt.optarg());
-                continue;
-            }
-            'u' => {
-                options.upper_bound = hfst_strtoweight(&common, &opt.optarg());
-                continue;
-            }
-            'I' => {
-                options.input_symbol = Some(opt.optarg());
-                continue;
-            }
-            'O' => {
-                options.output_symbol = Some(opt.optarg());
-                continue;
-            }
-            'S' => {
-                options.symbol = Some(opt.optarg());
-                continue;
-            }
-            'e' => {
-                options.ends_only = true;
-                continue;
-            }
-            'A' => {
-                options.arcs_only = true;
-                continue;
-            }
-            'T' => {
-                options.tsv_file_name = Some(opt.optarg());
-                continue;
-            }
-            _ => {}
-        }
-        return Err(handle_error_case(&common, &opt, c));
-    }
-
-    if options.arcs_only && options.ends_only {
-        hfst_error(
-            &common,
-            1,
-            0,
-            "Options '--arcs-only' and '--end-states-only' cannot be used \
-at the same time",
-        );
-        return Err(1);
-    }
-
-    check_common_params(&mut common);
-    check_unary_params(&mut common, &opt, args);
-    if options.funcname.is_none() {
-        options.funcname = Some("id".to_string());
-    }
-    if options.upper_bound < options.lower_bound {
-        hfst_warning(
-            &common,
-            0,
-            0,
-            &format!(
-                "Lower bound {} exceeds upper bound {} so reweight will \
-never apply",
-                options.lower_bound, options.upper_bound
-            ),
-        );
-    }
-    if let Some(name) = options.tsv_file_name.clone() {
-        match std::fs::File::open(&name) {
-            Ok(f) => options.tsv_file = Some(f),
-            Err(_) => {
-                error(&common, 1, 0, &format!("Could not open '{}'", name));
-                return Err(1);
-            }
-        }
-    }
-    Ok((common, options))
 }
 
 // [spec:hfst:def:hfst-reweight.reweight-fn]
@@ -527,14 +455,39 @@ fn process_stream(
 
 // [spec:hfst:def:hfst-reweight.main-fn]
 // [spec:hfst:sem:hfst-reweight.main-fn]
-pub fn run(mut args: Vec<String>) -> i32 {
+pub fn run(args: Vec<String>) -> i32 {
+    cli::exit_code(execute(args))
+}
+
+fn execute(args: Vec<String>) -> ToolResult {
     let argv0 = args.first().cloned().unwrap_or_default();
 
     let common = hfst_set_program_name(&argv0, "0.1", "HfstReweight");
-    let (common, mut options) = match parse_options(common, &mut args) {
-        Ok(v) => v,
-        Err(code) => return code,
-    };
+    let (common, args) = cli::parse::<Args>(common, args)?;
+    let mut options = args.resolve(&common);
+
+    // The bound-order warning and the TSV open ran after the parameter checks.
+    if options.upper_bound < options.lower_bound {
+        hfst_warning(
+            &common,
+            0,
+            0,
+            &format!(
+                "Lower bound {} exceeds upper bound {} so reweight will \
+never apply",
+                options.lower_bound, options.upper_bound
+            ),
+        );
+    }
+    if let Some(name) = options.tsv_file_name.clone() {
+        match std::fs::File::open(&name) {
+            Ok(f) => options.tsv_file = Some(f),
+            Err(_) => {
+                error(&common, 1, 0, &format!("Could not open '{}'", name));
+                return Err(1);
+            }
+        }
+    }
 
     // close buffers, we use streams
     let input_opened = common.input_filename != "<stdin>";
@@ -585,7 +538,7 @@ pub fn run(mut args: Vec<String>) -> i32 {
         Ok(s) => s,
         Err(e) => {
             hfst_error(&common, 1, 0, &format!("{e}"));
-            return 1;
+            return Err(1);
         }
     };
 
@@ -598,13 +551,18 @@ pub fn run(mut args: Vec<String>) -> i32 {
         Ok(s) => s,
         Err(e) => {
             hfst_error(&common, 1, 0, &format!("{e}"));
-            return 1;
+            return Err(1);
         }
     };
 
     if is_input_stream_in_ol_format(&instream, "hfst-reweight") {
-        return 1;
+        return Err(1);
     }
 
-    process_stream(&common, &mut options, &mut instream, &mut outstream)
+    cli::from_code(process_stream(
+        &common,
+        &mut options,
+        &mut instream,
+        &mut outstream,
+    ))
 }

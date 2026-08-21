@@ -1,149 +1,98 @@
 //! Faithful 1:1 port of tools/src/hfst-summarize.cc — the transducer
-//! information / properties command-line tool. Drives the hfst-cli foundation
-//! (globals, getopt, commandline, program-options, inc fragments).
+//! information / properties command-line tool. Option handling is clap 4
+//! derive through [`crate::cli`].
 
+use crate::cli::{self, CommonArgs, ToolArgs, ToolResult, UnaryIo};
 use crate::globals::CommonOptions;
-use crate::hfst_commandline::{
-    error, extend_options_from_env, hfst_set_program_name, parse_u64, verbose_print,
-};
-use crate::hfst_getopt::{self as getopt, Getopt};
-use crate::hfst_program_options::{
-    hfst_getopt_common_long, hfst_getopt_unary_long, print_common_program_options,
-    print_common_unary_program_options, print_common_unary_program_parameter_instructions,
-};
-use crate::inc::{
-    CaseResult, check_common_params, check_unary_params, handle_common_case, handle_error_case,
-    handle_unary_case,
-};
+use crate::hfst_commandline::{error, hfst_set_program_name, parse_u64, verbose_print};
 use hfst::hfst_basic_transducer::{HfstBasicTransducer, SummaryStats};
 use hfst::hfst_data_types::ImplementationType;
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_symbol_defs::StringSet;
 use std::io::Write;
 
-/// hfst-summarize's own options (the former tool-specific `static mut`s).
-struct Options {
-    print_symbol_pair_statistics: bool,
-    symbol_pair_threshold: i32,
-}
-
-impl Default for Options {
-    fn default() -> Options {
-        Options {
-            print_symbol_pair_statistics: false,
-            symbol_pair_threshold: -1,
-        }
-    }
-}
-
-// [spec:hfst:req:cli.help]
-fn print_usage(common: &CommonOptions) {
-    // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
-    let mut msg = common.message_writer();
-    let _ = write!(
-        msg,
-        "Usage: {} [OPTIONS...] [INFILE]\nCalculate the properties of a transducer\n\n",
-        common.program_name
-    );
-    print_common_program_options(&mut *msg);
-    print_common_unary_program_options(&mut *msg);
-    // (tool-specific options and short descriptions)
-    let _ = writeln!(msg, "Summarize options:");
-    let _ = writeln!(
-        msg,
-        "  -S, --print-symbol-pair-statistics=N  Print info about symbol pairs that occur",
-    );
-    let _ = writeln!(
-        msg,
-        "                                        at most N times (default is infinity)",
-    );
-    let _ = writeln!(msg);
-    print_common_unary_program_parameter_instructions(&mut *msg);
-    let _ = writeln!(msg);
-    let _ = write!(
-        msg,
-        "The parameter --verbose gives more extensive information on\nthe properties of a transducer.\n",
-    );
-    let _ = writeln!(msg);
-}
-
+/// hfst-summarize's command line.
 // [spec:hfst:def:hfst-summarize.parse-options-fn]
 // [spec:hfst:sem:hfst-summarize.parse-options-fn]
 // [spec:hfst:req:cli.arg-parse]
-//
-// Parse argv into the shared + tool options; `Err(code)` is an exit code the
-// caller should return (the former EXIT_CONTINUE sentinel is now `Ok`).
-fn parse_options(
-    mut common: CommonOptions,
-    args: &mut Vec<String>,
-) -> Result<(CommonOptions, Options), i32> {
-    let mut options = Options::default();
-    let mut opt = Getopt::new();
-    extend_options_from_env(args);
-    loop {
-        let mut long_options: Vec<getopt::GetOpt> = Vec::new();
-        long_options.extend(hfst_getopt_common_long());
-        long_options.extend(hfst_getopt_unary_long());
-        // add tool-specific options here
-        long_options.push(getopt::GetOpt {
-            name: "print-symbol-pair-statistics",
-            has_arg: getopt::OPTIONAL_ARGUMENT,
-            val: 'S' as i32,
-        });
-        let c = opt.getopt_long(args, &long_options);
-        if -1 == c {
-            break;
-        }
+// [spec:hfst:req:cli.help]
+#[derive(clap::Parser)]
+#[command(about = "Calculate the properties of a transducer")]
+struct Args {
+    #[command(flatten)]
+    common: CommonArgs,
+    #[command(flatten)]
+    io: UnaryIo,
 
-        // The C switch chains the #include'd case groups in order: common
-        // cases, then unary cases, then the tool's own, then the terminal
-        // error arm.
-        match handle_common_case(&mut common, &opt, c, print_usage) {
-            CaseResult::Return(code) => return Err(code),
-            CaseResult::Break => continue,
-            CaseResult::NotHandled => {}
+    /// Print info about symbol pairs that occur at most N times (default is
+    /// infinity)
+    #[arg(
+        short = 'S',
+        long = "print-symbol-pair-statistics",
+        value_name = "N",
+        num_args = 0..=1,
+        require_equals = true,
+        allow_hyphen_values = true
+    )]
+    print_symbol_pair_statistics: Option<Option<String>>,
+}
+
+impl Args {
+    /// Case 'S'. The C read an OPTIONAL_ARGUMENT, so the flag alone means "no
+    /// threshold" (-1, which the unsigned comparison in the report turns into
+    /// "every pair"); a supplied N is parsed with strtoul. The leading '=' the
+    /// C's getopt left on an attached value is stripped the same way, so
+    /// '-S=5' and '-S5' both read 5.
+    fn symbol_pair_threshold(&self, common: &CommonOptions) -> i32 {
+        let Some(Some(value)) = self.print_symbol_pair_statistics.as_ref() else {
+            return -1;
+        };
+        let value = value.strip_prefix('=').unwrap_or(value);
+        let threshold = parse_u64(common, value, 10) as i32;
+        if threshold < 0 {
+            error(
+                common,
+                1,
+                0,
+                &format!(
+                    "{} is not a valid argument for option --print-symbol-pair-statistics\n",
+                    threshold as u32
+                ),
+            );
         }
-        match handle_unary_case(&mut common, &opt, c) {
-            CaseResult::Return(code) => return Err(code),
-            CaseResult::Break => continue,
-            CaseResult::NotHandled => {}
+        if threshold == 0 {
+            error(
+                common,
+                1,
+                0,
+                "0 is not a valid argument for option --print-symbol-pair-statistics\n",
+            );
         }
-        // add tool-specific cases here
-        if c == 'S' as i32 {
-            options.print_symbol_pair_statistics = true;
-            if let Some(mut optarg) = opt.optarg_opt() {
-                if let Some(rest) = optarg.strip_prefix('=') {
-                    optarg = rest.to_string();
-                }
-                options.symbol_pair_threshold = parse_u64(&common, &optarg, 10) as i32;
-                if options.symbol_pair_threshold < 0 {
-                    error(
-                        &common,
-                        1,
-                        0,
-                        &format!(
-                            "{} is not a valid argument for option --print-symbol-pair-statistics\n",
-                            options.symbol_pair_threshold as u32
-                        ),
-                    );
-                }
-                if options.symbol_pair_threshold == 0 {
-                    error(
-                        &common,
-                        1,
-                        0,
-                        "0 is not a valid argument for option --print-symbol-pair-statistics\n",
-                    );
-                }
-            }
-            continue;
-        }
-        return Err(handle_error_case(&common, &opt, c));
+        threshold
+    }
+}
+
+impl ToolArgs for Args {
+    fn common(&self) -> &CommonArgs {
+        &self.common
     }
 
-    check_common_params(&mut common);
-    check_unary_params(&mut common, &opt, args);
-    Ok((common, options))
+    fn apply_io(&self, opts: &mut CommonOptions) {
+        self.io.apply(opts);
+    }
+
+    fn validate(&self, opts: &CommonOptions) -> ToolResult {
+        // The threshold rejections happened inside the C getopt loop, before
+        // the parameter checks; run them here for the same ordering.
+        self.symbol_pair_threshold(opts);
+        Ok(())
+    }
+}
+
+/// The two tool-local fields the report body reads, resolved once.
+struct Options {
+    print_symbol_pair_statistics: bool,
+    symbol_pair_threshold: i32,
 }
 
 // [spec:hfst:def:hfst-summarize.process-stream-fn]
@@ -487,13 +436,18 @@ fn process_stream(
 
 // [spec:hfst:def:hfst-summarize.main-fn]
 // [spec:hfst:sem:hfst-summarize.main-fn]
-pub fn run(mut args: Vec<String>) -> i32 {
+pub fn run(args: Vec<String>) -> i32 {
+    cli::exit_code(execute(args))
+}
+
+fn execute(args: Vec<String>) -> ToolResult {
     let argv0 = args.first().cloned().unwrap_or_default();
 
     let common = hfst_set_program_name(&argv0, "0.1", "HfstSummarize");
-    let (common, options) = match parse_options(common, &mut args) {
-        Ok(v) => v,
-        Err(code) => return code,
+    let (common, args) = cli::parse::<Args>(common, args)?;
+    let options = Options {
+        print_symbol_pair_statistics: args.print_symbol_pair_statistics.is_some(),
+        symbol_pair_threshold: args.symbol_pair_threshold(&common),
     };
     // close buffers, we use streams
     let input_opened = common.input_filename != "<stdin>";
@@ -517,10 +471,10 @@ pub fn run(mut args: Vec<String>) -> i32 {
         Ok(s) => s,
         Err(e) => {
             error(&common, 1, 0, &format!("{e}"));
-            return 1;
+            return Err(1);
         }
     };
     let retval = process_stream(&common, &options, &mut instream);
     let _ = retval;
-    0
+    Ok(())
 }

@@ -8,29 +8,13 @@
 
 pub mod guess {
     //! Faithful 1:1 port of tools/src/hfst-guess.cc — the tool for compiling/using
-    //! a guesser (and generator) to guess analyses/paradigms of unknown words.
-    //! Drives the hfst-cli foundation (getopt, commandline, program-options,
-    //! tool-metadata, inc fragments) and the now-available library helper
-    //! hfst::generate_model_forms.
-    //!
-    //! Idiomatic option handling: the tool's state lives in [`CommonOptions`] (the
-    //! shared `-v/-q/-o/-i/…` fields) and a tool-local [`Options`] — both built by
-    //! `parse_options` and threaded into the processing functions. There are no
-    //! `static mut` globals and no `unsafe`.
+    //! a guesser (and generator) to guess analyses/paradigms of unknown words,
+    //! driving the library helper hfst::generate_model_forms. Option handling is
+    //! clap 4 derive through [`crate::cli`].
 
+    use crate::cli::{self, CommonArgs, ToolArgs, ToolResult, UnaryIo};
     use crate::globals::CommonOptions;
-    use crate::hfst_commandline::{
-        error, extend_options_from_env, hfst_set_program_name, verbose_print,
-    };
-    use crate::hfst_getopt::{self as getopt, Getopt};
-    use crate::hfst_program_options::{
-        hfst_getopt_common_long, hfst_getopt_unary_long, print_common_program_options,
-        print_common_unary_program_options,
-    };
-    use crate::inc::{
-        CaseResult, check_common_params, check_unary_params, handle_common_case, handle_error_case,
-        handle_unary_case,
-    };
+    use crate::hfst_commandline::{error, hfst_set_program_name, verbose_print};
     use hfst::generate_model_forms::{
         StringVectorVector, compile_generator_from_guesser, get_alphabet_string_tokenizer,
         get_guesses, get_paradigms, is_guesser, read_model_forms,
@@ -40,25 +24,153 @@ pub mod guess {
     use hfst::hfst_transducer::HfstTransducer;
     use std::io::{BufRead, Write};
 
-    /// hfst-guess's own options (the former tool-specific `static mut`s).
+    /// hfst-guess's command line.
+    // [spec:hfst:def:hfst-guess.parse-options-fn]
+    // [spec:hfst:sem:hfst-guess.parse-options-fn]
+    // [spec:hfst:req:cli.arg-parse]
+    // [spec:hfst:req:cli.help]
+    #[derive(clap::Parser)]
+    #[command(
+        about = "Use a guesser (and generator) to guess analyses or inflectional paradigms of unknown words"
+    )]
+    struct Args {
+        #[command(flatten)]
+        common: CommonArgs,
+        #[command(flatten)]
+        io: UnaryIo,
+
+        /// Inflectional information for generated model forms is read from
+        /// this file
+        #[arg(
+            short = 'f',
+            long = "model-form-filename",
+            value_name = "FILE",
+            allow_hyphen_values = true
+        )]
+        model_form_filename: Option<String>,
+
+        /// Maximal number of analysis per word form (5 by default)
+        #[arg(
+            short = 'n',
+            long = "max-number-of-guesses",
+            value_name = "N",
+            allow_hyphen_values = true
+        )]
+        max_number_of_guesses: Option<String>,
+
+        /// Maximal number of generated model forms per guess (2 by default)
+        #[arg(
+            short = 'm',
+            long = "max-number-of-forms",
+            value_name = "N",
+            allow_hyphen_values = true
+        )]
+        max_number_of_forms: Option<String>,
+
+        /// Generate only forms whose weight is better than the weight of the
+        /// best form plus this threshold (50 by default)
+        #[arg(
+            short = 'g',
+            long = "generate-threshold",
+            value_name = "THRESHOLD",
+            allow_hyphen_values = true
+        )]
+        generate_threshold: Option<String>,
+    }
+
+    impl Args {
+        /// Case 'g': an istringstream float extraction, fatal on a negative
+        /// (or unreadable, which yields -1) threshold.
+        fn threshold(&self, common: &CommonOptions) -> f32 {
+            let Some(text) = self.generate_threshold.as_deref() else {
+                return 50.0;
+            };
+            let value = get_float(text);
+            if value < 0.0 {
+                error(
+                    common,
+                    1,
+                    0,
+                    &format!(
+                        "Invalid generate threshold {}. Give a positive float.",
+                        text
+                    ),
+                );
+            }
+            value
+        }
+
+        /// Cases 'n' and 'm': an istringstream size_t extraction, fatal when
+        /// no digits could be read.
+        fn count(
+            &self,
+            common: &CommonOptions,
+            given: &Option<String>,
+            default: usize,
+            what: &str,
+        ) -> usize {
+            let Some(text) = given.as_deref() else {
+                return default;
+            };
+            match parse_size(text) {
+                Ok(value) => value,
+                Err(_) => {
+                    error(
+                        common,
+                        1,
+                        0,
+                        &format!("Invalid {} {}. Give a positive int.", what, text),
+                    );
+                    default
+                }
+            }
+        }
+
+        fn resolve(&self, common: &CommonOptions) -> Options {
+            Options {
+                generate_model_forms: self.model_form_filename.is_some(),
+                model_form_filename: self.model_form_filename.clone().unwrap_or_default(),
+                max_number_of_guesses: self.count(
+                    common,
+                    &self.max_number_of_guesses,
+                    5,
+                    "maximal number of guesses",
+                ),
+                max_number_of_forms: self.count(
+                    common,
+                    &self.max_number_of_forms,
+                    2,
+                    "maximal number of generated forms",
+                ),
+                generate_threshold: self.threshold(common),
+            }
+        }
+    }
+
+    impl ToolArgs for Args {
+        fn common(&self) -> &CommonArgs {
+            &self.common
+        }
+
+        fn apply_io(&self, opts: &mut CommonOptions) {
+            self.io.apply(opts);
+        }
+
+        fn validate(&self, opts: &CommonOptions) -> ToolResult {
+            // Every rejection happened inside the C getopt loop, before the
+            // parameter checks.
+            self.resolve(opts);
+            Ok(())
+        }
+    }
+
+    /// hfst-guess's resolved tool state (the former tool-specific `static mut`s).
     struct Options {
         generate_model_forms: bool,
         model_form_filename: String,
         max_number_of_guesses: usize,
         max_number_of_forms: usize,
         generate_threshold: f32,
-    }
-
-    impl Default for Options {
-        fn default() -> Options {
-            Options {
-                generate_model_forms: false,
-                model_form_filename: String::new(),
-                max_number_of_guesses: 5,
-                max_number_of_forms: 2,
-                generate_threshold: 50.0,
-            }
-        }
     }
 
     // [spec:hfst:def:hfst-guess.get-size-t-fn]
@@ -96,182 +208,6 @@ pub mod guess {
         -1.0
     }
 
-    // [spec:hfst:req:cli.help]
-    fn print_usage(common: &CommonOptions) {
-        // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
-        let mut msg = common.message_writer();
-        let _ = write!(
-            msg,
-            "Usage: {} [OPTIONS...] [INFILE]\n\
-         Use a guesser (and generator) to guess analyses or inflectional\n\
-         paradigms of unknown words.\n\
-         \n",
-            common.program_name
-        );
-
-        print_common_program_options(&mut *msg);
-        print_common_unary_program_options(&mut *msg);
-        let _ = write!(
-            msg,
-            "Guesser options:\n\
-         \u{0020} -f, --model-form-filename       Inflectional information for\n\
-         \u{0020}                                 generated model forms is read\n\
-         \u{0020}                                 from this file.\n\
-         \u{0020} -n, --max-number-of-guesses     Maximal number of analysis\n\
-         \u{0020}                                 per word form (5 by default).\n\
-         \u{0020} -m  --max-number-of-forms       Maximal number of generated model\n\
-         \u{0020}                                 forms per guess (2 by default).\n\
-         \u{0020} -g  --generate-threshold        Generate only forms whose weight\n\
-         \u{0020}                                 is better than the weight of the\n\
-         \u{0020}                                 of the best form plus this threshold.\n\
-         \u{0020}                                 (50 by default)."
-        );
-        let _ = writeln!(msg);
-        let _ = write!(
-            msg,
-            "The guesser and generator should be constructed using the tool\n\
-         hfst-guessify, which can compile a guesser and generator from a\n\
-         morphological analyzer. hfst-guessify packages the guesser and\n\
-         generator in the same fst-file.\n"
-        );
-        let _ = writeln!(msg);
-        let _ = write!(
-            msg,
-            "If option -f is used, but a generator has not been compiled\n\
-         with the guesser, a generator will be compiled, which will\n\
-         increase load time.\n"
-        );
-        let _ = writeln!(msg);
-        let _ = writeln!(msg);
-        let _ = writeln!(
-            msg,
-            "If OUTFILE or INFILE is missing or -, standard streams will be used."
-        );
-        let _ = writeln!(msg);
-    }
-
-    // [spec:hfst:def:hfst-guess.parse-options-fn]
-    // [spec:hfst:sem:hfst-guess.parse-options-fn]
-    // [spec:hfst:req:cli.arg-parse]
-    //
-    // Parse argv into the shared + tool options; `Err(code)` is an exit code the
-    // caller should return (the former EXIT_CONTINUE sentinel is now `Ok`).
-    fn parse_options(
-        mut common: CommonOptions,
-        args: &mut Vec<String>,
-    ) -> Result<(CommonOptions, Options), i32> {
-        let mut options = Options::default();
-        let mut opt = Getopt::new();
-        extend_options_from_env(args);
-        loop {
-            let mut long_options: Vec<getopt::GetOpt> = Vec::new();
-            long_options.extend(hfst_getopt_common_long());
-            long_options.extend(hfst_getopt_unary_long());
-            // add tool-specific options here
-            long_options.push(getopt::GetOpt {
-                name: "generate-threshold",
-                has_arg: getopt::REQUIRED_ARGUMENT,
-                val: 'g' as i32,
-            });
-            long_options.push(getopt::GetOpt {
-                name: "model-form-filename",
-                has_arg: getopt::REQUIRED_ARGUMENT,
-                val: 'f' as i32,
-            });
-            long_options.push(getopt::GetOpt {
-                name: "max-number-of-guesses",
-                has_arg: getopt::REQUIRED_ARGUMENT,
-                val: 'n' as i32,
-            });
-            long_options.push(getopt::GetOpt {
-                name: "max-number-of-forms",
-                has_arg: getopt::REQUIRED_ARGUMENT,
-                val: 'm' as i32,
-            });
-            let c = opt.getopt_long(args, &long_options);
-            if -1 == c {
-                break;
-            }
-
-            // The C switch chains the #include'd case groups in order: common
-            // cases, then unary cases, then the tool's own, then the terminal
-            // error arm.
-            match handle_common_case(&mut common, &opt, c, print_usage) {
-                CaseResult::Return(code) => return Err(code),
-                CaseResult::Break => continue,
-                CaseResult::NotHandled => {}
-            }
-            match handle_unary_case(&mut common, &opt, c) {
-                CaseResult::Return(code) => return Err(code),
-                CaseResult::Break => continue,
-                CaseResult::NotHandled => {}
-            }
-            // add tool-specific cases here
-            match c as u8 as char {
-                'f' => {
-                    options.generate_model_forms = true;
-                    options.model_form_filename = opt.optarg();
-                    continue;
-                }
-                'g' => {
-                    options.generate_threshold = get_float(&opt.optarg());
-                    if options.generate_threshold < 0.0 {
-                        error(
-                            &common,
-                            1,
-                            0,
-                            &format!(
-                                "Invalid generate threshold {}. Give a positive float.",
-                                opt.optarg()
-                            ),
-                        );
-                    }
-                    continue;
-                }
-                'n' => {
-                    match parse_size(&opt.optarg()) {
-                        Ok(v) => options.max_number_of_guesses = v,
-                        Err(_msg) => {
-                            error(
-                                &common,
-                                1,
-                                0,
-                                &format!(
-                                    "Invalid maximal number of guesses {}. Give a positive int.",
-                                    opt.optarg()
-                                ),
-                            );
-                        }
-                    }
-                    continue;
-                }
-                'm' => {
-                    match parse_size(&opt.optarg()) {
-                        Ok(v) => options.max_number_of_forms = v,
-                        Err(_msg) => {
-                            error(
-                                &common,
-                                1,
-                                0,
-                                &format!(
-                                    "Invalid maximal number of generated forms {}. Give a positive int.",
-                                    opt.optarg()
-                                ),
-                            );
-                        }
-                    }
-                    continue;
-                }
-                _ => {}
-            }
-            return Err(handle_error_case(&common, &opt, c));
-        }
-
-        check_common_params(&mut common);
-        check_unary_params(&mut common, &opt, args);
-        Ok((common, options))
-    }
-
     // 'std::ostream << StringVector' concatenates the symbols with no separator
     // (generate_model_forms.cc 'operator<<').
     fn string_vector_to_string(v: &StringVector) -> String {
@@ -280,14 +216,16 @@ pub mod guess {
 
     // [spec:hfst:def:hfst-guess.main-fn]
     // [spec:hfst:sem:hfst-guess.main-fn]
-    pub fn run(mut args: Vec<String>) -> i32 {
+    pub fn run(args: Vec<String>) -> i32 {
+        cli::exit_code(execute(args))
+    }
+
+    fn execute(args: Vec<String>) -> ToolResult {
         let argv0 = args.first().cloned().unwrap_or_default();
 
         let common = hfst_set_program_name(&argv0, "0.3", "HfstGuess");
-        let (common, options) = match parse_options(common, &mut args) {
-            Ok(v) => v,
-            Err(code) => return code,
-        };
+        let (common, args) = cli::parse::<Args>(common, args)?;
+        let options = args.resolve(&common);
 
         // close buffers, we use streams
         let input_opened = common.input_filename != "<stdin>";
@@ -313,7 +251,7 @@ pub mod guess {
             Ok(s) => s,
             Err(e) => {
                 error(&common, 1, 0, &format!("{e}"));
-                return 1;
+                return Err(1);
             }
         };
 
@@ -324,7 +262,7 @@ pub mod guess {
             Ok(w) => w,
             Err(e) => {
                 eprintln!("hfst-guess: cannot open output: {e}");
-                return 1;
+                return Err(1);
             }
         };
 
@@ -340,7 +278,7 @@ pub mod guess {
                 Ok(t) => t,
                 Err(e) => {
                     error(&common, 1, 0, &format!("{e}"));
-                    return 1;
+                    return Err(1);
                 }
             };
 
@@ -354,7 +292,7 @@ pub mod guess {
                     common.input_filename
                 ),
             );
-            return 1;
+            return Err(1);
         }
 
         let mut generator: Option<HfstTransducer<hfst::transducer::Transducer>> = None;
@@ -373,7 +311,7 @@ pub mod guess {
                     Ok(g) => g,
                     Err(e) => {
                         error(&common, 1, 0, &format!("{e}"));
-                        return 1;
+                        return Err(1);
                     }
                 });
             } else {
@@ -381,7 +319,7 @@ pub mod guess {
                     Ok(g) => g,
                     Err(e) => {
                         error(&common, 1, 0, &format!("{e}"));
-                        return 1;
+                        return Err(1);
                     }
                 });
             }
@@ -391,7 +329,7 @@ pub mod guess {
             Ok(t) => t,
             Err(e) => {
                 error(&common, 1, 0, &format!("{e}"));
-                return 1;
+                return Err(1);
             }
         };
 
@@ -410,7 +348,7 @@ pub mod guess {
                 Ok(mf) => model_forms = mf,
                 Err(e) => {
                     eprintln!("{e}");
-                    return 1;
+                    return Err(1);
                 }
             }
         }
@@ -432,7 +370,7 @@ pub mod guess {
                 Ok(g) => g,
                 Err(e) => {
                     error(&common, 1, 0, &format!("{e}"));
-                    return 1;
+                    return Err(1);
                 }
             };
 
@@ -452,7 +390,7 @@ pub mod guess {
                     Ok(p) => p,
                     Err(e) => {
                         error(&common, 1, 0, &format!("{e}"));
-                        return 1;
+                        return Err(1);
                     }
                 };
 
@@ -478,35 +416,25 @@ pub mod guess {
         drop(guesser);
         drop(generator);
 
-        0
+        Ok(())
     }
 }
 
 pub mod pmatch {
     //! Faithful 1:1 port of tools/src/hfst-pmatch.cc — the pmatch utility for
-    //! continuous matching/lookup on text streams. Drives the hfst-cli foundation
-    //! (globals, getopt, commandline, program-options, inc fragments) and the
-    //! hfst optimized-lookup PmatchContainer.
+    //! continuous matching/lookup on text streams, driving the hfst
+    //! optimized-lookup PmatchContainer. Option handling is clap 4 derive
+    //! through [`crate::cli`].
     //!
     //! This is a unary tool (#includes inc/globals-common.h + inc/globals-unary.h),
     //! but it does not use the usual unary HfstInputStream/HfstOutputStream pipeline:
     //! it reads its single positional argument as the transducer archive filename,
     //! opens it as a plain binary stream, builds a hfst_ol::PmatchContainer from it,
     //! and then matches the lines of stdin against it, printing to stdout.
-    //!
-    //! Idiomatic option handling: the tool's state lives in [`CommonOptions`] (the
-    //! shared `-v/-q/-o/-i/…` fields) and a tool-local [`Options`] — both built by
-    //! `parse_options` and threaded into the processing functions. There are no
-    //! `static mut` globals and no `unsafe`.
 
+    use crate::cli::{self, CommonArgs, ToolArgs, ToolResult};
     use crate::globals::CommonOptions;
-    use crate::hfst_commandline::{extend_options_from_env, hfst_set_program_name};
-    use crate::hfst_getopt::{self as getopt, Getopt};
-    use crate::hfst_program_options::{
-        hfst_getopt_common_long, hfst_getopt_unary_long, print_common_program_options,
-        print_common_unary_program_options,
-    };
-    use crate::inc::{CaseResult, handle_common_case, handle_error_case, handle_unary_case};
+    use crate::hfst_commandline::hfst_set_program_name;
     use hfst::pmatch::{PmatchContainer, print_locate_matches};
     use hfst::transducer::{INFINITE_WEIGHT, IStream, Weight};
     use std::io::{BufRead, Write};
@@ -522,7 +450,235 @@ pub mod pmatch {
         NotDefined = 2,
     }
 
-    /// hfst-pmatch's own options (the former tool-specific `static mut`s).
+    /// hfst-pmatch's command line.
+    //
+    // This tool chains the common and unary CASES but never includes
+    // check-params-common.h or check-params-unary.h — it resolves the single
+    // TRANSDUCER operand itself, with its own diagnostics — so the IO group
+    // is declared here rather than flattened in.
+    // [spec:hfst:def:hfst-pmatch.parse-options-fn]
+    // [spec:hfst:sem:hfst-pmatch.parse-options-fn]
+    // [spec:hfst:req:cli.arg-parse]
+    // [spec:hfst:req:cli.help]
+    #[derive(clap::Parser)]
+    #[command(about = "perform matching/lookup on text streams")]
+    struct Args {
+        #[command(flatten)]
+        common: CommonArgs,
+
+        /// Read the pmatch archive from INFILE
+        #[arg(
+            short = 'i',
+            long = "input",
+            value_name = "INFILE",
+            allow_hyphen_values = true
+        )]
+        input: Option<String>,
+
+        /// Newline as input separator (default is blank line)
+        #[arg(short = 'n', long = "newline")]
+        newline: bool,
+
+        /// Only print tagged parts in output
+        #[arg(short = 'x', long = "extract-patterns")]
+        extract_patterns: bool,
+
+        /// Only print locations of matches
+        #[arg(short = 'l', long = "locate")]
+        locate: bool,
+
+        /// In locate mode, include weights of the matches
+        #[arg(short = 'w', long = "print-weights")]
+        print_weights: bool,
+
+        /// Print the total number of matches when done
+        #[arg(short = 'c', long = "count-patterns")]
+        count_patterns: bool,
+
+        /// Replace matches with opening tags
+        #[arg(short = 'z', long = "delete-patterns")]
+        delete_patterns: bool,
+
+        /// Don't tag matched patterns
+        #[arg(short = 'm', long = "no-mark-patterns")]
+        no_mark_patterns: bool,
+
+        /// Upper limit to context length allowed
+        #[arg(
+            short = 'b',
+            long = "max-context",
+            value_name = "N",
+            allow_hyphen_values = true
+        )]
+        max_context: Option<String>,
+
+        /// Upper limit for recursion
+        #[arg(
+            short = 'r',
+            long = "max-recursion",
+            value_name = "N",
+            allow_hyphen_values = true
+        )]
+        max_recursion: Option<String>,
+
+        /// Upper limit for allowed weight
+        #[arg(
+            short = 'W',
+            long = "weight-cutoff",
+            value_name = "W",
+            allow_hyphen_values = true
+        )]
+        weight_cutoff: Option<String>,
+
+        /// Limit search after having used S seconds per input
+        #[arg(
+            short = 't',
+            long = "time-cutoff",
+            value_name = "S",
+            allow_hyphen_values = true
+        )]
+        time_cutoff: Option<String>,
+
+        /// Produce profiling data
+        #[arg(short = 'p', long = "profile")]
+        profile: bool,
+
+        /// Pmatch archive; a - operand reads the standard input
+        #[arg(value_name = "TRANSDUCER", num_args = 0..)]
+        infiles: Vec<String>,
+
+        /// True when '-t' was written after '-W', i.e. when it is the '-t'
+        /// value that survives in `time_cutoff`.
+        #[arg(skip)]
+        time_after_weight: bool,
+    }
+
+    impl Args {
+        /// The C's 'strtod(optarg)' equivalents: a value that does not parse
+        /// reads as 0, and only a NEGATIVE one is rejected.
+        fn number<T: std::str::FromStr + Default + PartialOrd>(
+            given: &Option<String>,
+            default: T,
+            what: &str,
+        ) -> Result<T, i32> {
+            let Some(text) = given.as_deref() else {
+                return Ok(default);
+            };
+            let value: T = text.trim().parse::<T>().unwrap_or_default();
+            if value < T::default() {
+                eprintln!("Invalid argument for --{}", what);
+                return Err(1);
+            }
+            Ok(value)
+        }
+
+        /// The single TRANSDUCER operand, resolved the way this tool's own
+        /// post-loop block did rather than through check-params-unary.h.
+        fn input_filename(&self) -> Result<String, i32> {
+            match (self.input.as_deref(), self.infiles.len()) {
+                (_, n) if n > 1 => {
+                    eprintln!("More than one input file given");
+                    Err(1)
+                }
+                (Some(_), 1) => {
+                    eprintln!("More than one input file given");
+                    Err(1)
+                }
+                (None, 1) => {
+                    let name = &self.infiles[0];
+                    Ok(if name == "-" {
+                        "<stdin>".to_string()
+                    } else {
+                        name.clone()
+                    })
+                }
+                (Some(name), _) => Ok(if name == "-" {
+                    "<stdin>".to_string()
+                } else {
+                    name.to_string()
+                }),
+                (None, _) => {
+                    eprintln!("No input file given");
+                    Err(1)
+                }
+            }
+        }
+
+        fn resolve(&self) -> Result<Options, i32> {
+            let weight_cutoff: f64 =
+                Self::number(&self.weight_cutoff, INFINITE_WEIGHT as f64, "weight-cutoff")?;
+            // bug-for-bug: the C's 'case W' has no 'break', so it falls
+            // through into 'case t' and writes the time cutoff from the SAME
+            // argument. Whichever of the two was written last therefore
+            // decides the time cutoff.
+            let mut time_cutoff = Self::number(&self.time_cutoff, 0.0f64, "time-cutoff")?;
+            if self.weight_cutoff.is_some() {
+                let from_weight = Self::number(&self.weight_cutoff, 0.0f64, "time-cutoff")?;
+                if self.time_cutoff.is_none() || !self.time_after_weight {
+                    time_cutoff = from_weight;
+                }
+            }
+            Ok(Options {
+                blankline_separated: !self.newline,
+                count_patterns: VarVal::from_flag(self.count_patterns),
+                delete_patterns: VarVal::from_flag(self.delete_patterns),
+                extract_patterns: VarVal::from_flag(self.extract_patterns),
+                locate_mode: VarVal::from_flag(self.locate),
+                print_weights: VarVal::from_flag(self.print_weights),
+                // '-m' is the only case that sets a variable to 'off'.
+                mark_patterns: if self.no_mark_patterns {
+                    VarVal::Off
+                } else {
+                    VarVal::NotDefined
+                },
+                max_recursion: Self::number(&self.max_recursion, -1i32, "max-recursion")?,
+                max_context: Self::number(&self.max_context, -1i32, "max-context")?,
+                time_cutoff,
+                weight_cutoff: weight_cutoff as Weight,
+                profile: self.profile,
+            })
+        }
+    }
+
+    impl VarVal {
+        fn from_flag(given: bool) -> VarVal {
+            if given {
+                VarVal::On
+            } else {
+                VarVal::NotDefined
+            }
+        }
+    }
+
+    impl ToolArgs for Args {
+        fn common(&self) -> &CommonArgs {
+            &self.common
+        }
+
+        fn apply_io(&self, _opts: &mut CommonOptions) {}
+
+        fn applies_check_common_params(&self) -> bool {
+            false
+        }
+
+        fn absorb_matches(&mut self, matches: &clap::ArgMatches) {
+            self.time_after_weight = match (
+                matches.index_of("time_cutoff"),
+                matches.index_of("weight_cutoff"),
+            ) {
+                (Some(time), Some(weight)) => time > weight,
+                _ => false,
+            };
+        }
+
+        fn validate(&self, _opts: &CommonOptions) -> ToolResult {
+            self.resolve()?;
+            self.input_filename()?;
+            Ok(())
+        }
+    }
+
+    /// hfst-pmatch's resolved tool state (the former tool-specific `static mut`s).
     struct Options {
         blankline_separated: bool,
         count_patterns: VarVal,
@@ -538,61 +694,11 @@ pub mod pmatch {
         profile: bool,
     }
 
-    impl Default for Options {
-        fn default() -> Options {
-            Options {
-                blankline_separated: true,
-                count_patterns: VarVal::NotDefined,
-                delete_patterns: VarVal::NotDefined,
-                extract_patterns: VarVal::NotDefined,
-                locate_mode: VarVal::NotDefined,
-                print_weights: VarVal::NotDefined,
-                mark_patterns: VarVal::NotDefined,
-                max_recursion: -1,
-                max_context: -1,
-                time_cutoff: 0.0,
-                weight_cutoff: INFINITE_WEIGHT,
-                profile: false,
-            }
-        }
-    }
-
     // The libreadline_getline helper is compiled only under HAVE_READLINE, which is
     // not defined in this build; its non-readline-library equivalent is reached via
     // hfst_getline in process_input below, so the function body is not reproduced.
     // [spec:hfst:def:hfst-pmatch.libreadline-getline-fn]
     // [spec:hfst:sem:hfst-pmatch.libreadline-getline-fn]
-
-    // [spec:hfst:req:cli.help]
-    fn print_usage(common: &CommonOptions) {
-        // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
-        let mut msg = common.message_writer();
-        let _ = write!(
-            msg,
-            "Usage: {} [OPTIONS...] TRANSDUCER\nperform matching/lookup on text streams\n\n",
-            common.program_name
-        );
-        print_common_program_options(&mut *msg);
-        print_common_unary_program_options(&mut *msg);
-        let _ = write!(
-            msg,
-            "Pmatch options:\n\
-         \x20 -n  --newline           Newline as input separator (default is blank line)\n\
-         \x20 -x  --extract-patterns  Only print tagged parts in output\n\
-         \x20 -l  --locate            Only print locations of matches\n\
-         \x20 -w  --print-weights     In locate mode, include weights of the matches\n\
-         \x20 -c  --count-patterns    Print the total number of matches when done\n\
-         \x20     --delete-patterns   Replace matches with opening tags\n\
-         \x20     --no-mark-patterns  Don't tag matched patterns\n\
-         \x20     --max-context       Upper limit to context length allowed\n\
-         \x20     --max-recursion     Upper limit for recursion\n\
-         \x20     --weight-cutoff=W   Upper limit for allowed weight\n\
-         \x20 -t, --time-cutoff=S     Limit search after having used S seconds per input\n\
-         \x20 -p  --profile           Produce profiling data\n"
-        );
-        let _ = write!(msg, "Use standard streams for input and output.\n\n");
-        let _ = writeln!(msg);
-    }
 
     // [spec:hfst:def:hfst-pmatch.match-and-print-fn]
     // [spec:hfst:sem:hfst-pmatch.match-and-print-fn]
@@ -679,157 +785,27 @@ pub mod pmatch {
         0
     }
 
-    // [spec:hfst:def:hfst-pmatch.parse-options-fn]
-    // [spec:hfst:sem:hfst-pmatch.parse-options-fn]
-    // [spec:hfst:req:cli.arg-parse]
-    //
-    // Parse argv into the shared + tool options; `Err(code)` is an exit code the
-    // caller should return (the former EXIT_CONTINUE sentinel is now `Ok`).
-    fn parse_options(
-        mut common: CommonOptions,
-        args: &mut Vec<String>,
-    ) -> Result<(CommonOptions, Options), i32> {
-        let mut options = Options::default();
-        let mut opt = Getopt::new();
-        extend_options_from_env(args);
-        // use of this function requires options are settable on global scope
-        loop {
-            let mut long_options: Vec<getopt::GetOpt> = Vec::new();
-            long_options.extend(hfst_getopt_common_long());
-            long_options.extend(hfst_getopt_unary_long());
-            // add tool-specific options here
-            let names: &[(&'static str, i32, i32)] = &[
-                ("newline", 0, b'n' as i32),
-                ("extract-patterns", 0, b'x' as i32),
-                ("locate", 0, b'l' as i32),
-                ("print-weights", 0, b'w' as i32),
-                ("count-patterns", 0, b'c' as i32),
-                ("delete-patterns", 0, b'z' as i32),
-                ("no-mark-patterns", 0, b'm' as i32),
-                ("max-context", 1, b'b' as i32),
-                ("max-recursion", 1, b'r' as i32),
-                ("weight-cutoff", 1, b'W' as i32),
-                ("time-cutoff", 1, b't' as i32),
-                ("profile", 0, b'p' as i32),
-            ];
-            for (name, has_arg, val) in names.iter() {
-                long_options.push(getopt::GetOpt {
-                    name,
-                    has_arg: *has_arg,
-                    val: *val,
-                });
-            }
-            let c = opt.getopt_long(args, &long_options);
-            if -1 == c {
-                break;
-            }
-
-            match handle_common_case(&mut common, &opt, c, print_usage) {
-                CaseResult::Return(code) => return Err(code),
-                CaseResult::Break => continue,
-                CaseResult::NotHandled => {}
-            }
-            match handle_unary_case(&mut common, &opt, c) {
-                CaseResult::Return(code) => return Err(code),
-                CaseResult::Break => continue,
-                CaseResult::NotHandled => {}
-            }
-            if c == b'n' as i32 {
-                options.blankline_separated = false;
-            } else if c == b'x' as i32 {
-                options.extract_patterns = VarVal::On;
-            } else if c == b'l' as i32 {
-                options.locate_mode = VarVal::On;
-            } else if c == b'w' as i32 {
-                options.print_weights = VarVal::On;
-            } else if c == b'c' as i32 {
-                options.count_patterns = VarVal::On;
-            } else if c == b'z' as i32 {
-                options.delete_patterns = VarVal::On;
-            } else if c == b'm' as i32 {
-                options.mark_patterns = VarVal::Off;
-            } else if c == b'b' as i32 {
-                options.max_context = opt.optarg().trim().parse::<i32>().unwrap_or(0);
-                if options.max_context < 0 {
-                    eprintln!("Invalid argument for --max-context");
-                    return Err(1);
-                }
-            } else if c == b'r' as i32 {
-                options.max_recursion = opt.optarg().trim().parse::<i32>().unwrap_or(0);
-                if options.max_recursion < 0 {
-                    eprintln!("Invalid argument for --max-recursion");
-                    return Err(1);
-                }
-            } else if c == b'W' as i32 {
-                options.weight_cutoff = opt.optarg().trim().parse::<f64>().unwrap_or(0.0) as Weight;
-                if options.weight_cutoff < 0.0 {
-                    eprintln!("Invalid argument for --weight-cutoff");
-                    return Err(1);
-                }
-                // NOTE: bug-for-bug — the C 'case W' has no 'break', so it
-                // falls through into 'case t' (time-cutoff) below.
-                options.time_cutoff = opt.optarg().trim().parse::<f64>().unwrap_or(0.0);
-                if options.time_cutoff < 0.0 {
-                    eprintln!("Invalid argument for --time-cutoff");
-                    return Err(1);
-                }
-            } else if c == b't' as i32 {
-                options.time_cutoff = opt.optarg().trim().parse::<f64>().unwrap_or(0.0);
-                if options.time_cutoff < 0.0 {
-                    eprintln!("Invalid argument for --time-cutoff");
-                    return Err(1);
-                }
-            } else if c == b'p' as i32 {
-                options.profile = true;
-            } else {
-                return Err(handle_error_case(&common, &opt, c));
-            }
-        }
-        // no more options, we should now be at the input filename
-        if (opt.optind + 1) < args.len() {
-            eprintln!("More than one input file given");
-            Err(1)
-        } else if (opt.optind + 1) == args.len() {
-            if !common.input_filename.is_empty() {
-                eprintln!("More than one input file given");
-                Err(1)
-            } else {
-                common.input_filename = args[opt.optind].clone();
-                // C: inputfile = hfst_fopen(inputfilename, "r"); if it resolves to
-                // stdin ("-"), reset the name to "<stdin>". The actual archive is
-                // (re)opened in run, so only the "-" detection is kept.
-                if common.input_filename == "-" {
-                    common.input_filename = "<stdin>".to_string();
-                }
-                Ok((common, options))
-            }
-        } else if common.input_filename.is_empty() {
-            eprintln!("No input file given");
-            Err(1)
-        } else {
-            Ok((common, options))
-        }
-    }
-
     // [spec:hfst:def:hfst-pmatch.main-fn]
     // [spec:hfst:sem:hfst-pmatch.main-fn]
-    pub fn run(mut args: Vec<String>) -> i32 {
+    pub fn run(args: Vec<String>) -> i32 {
+        cli::exit_code(execute(args))
+    }
+
+    fn execute(args: Vec<String>) -> ToolResult {
         let argv0 = args.first().cloned().unwrap_or_default();
 
         let common = hfst_set_program_name(&argv0, "0.1", "HfstPmatch");
-        let (common, options) = match parse_options(common, &mut args) {
-            Ok(v) => v,
-            Err(code) => return code,
-        };
+        let (common, args) = cli::parse::<Args>(common, args)?;
+        let options = args.resolve()?;
+        let inputfilename = args.input_filename()?;
         // HAVE_READLINE: rl_bind_key('\t', rl_insert) to disable tab completion;
         // compiled out in this build.
 
-        let inputfilename = &common.input_filename;
-        let mut file = match std::fs::File::open(inputfilename) {
+        let mut file = match std::fs::File::open(&inputfilename) {
             Ok(f) => f,
             Err(_) => {
                 eprintln!("Could not open file {}", inputfilename);
-                return 1;
+                return Err(1);
             }
         };
         // The C wraps the container construction + processing in try/catch on
@@ -842,7 +818,7 @@ pub mod pmatch {
             Ok(v) => v,
             Err(e) => {
                 eprintln!("hfst-pmatch: {e}");
-                return 1;
+                return Err(1);
             }
         };
         container.set_verbose(common.verbose);
@@ -874,21 +850,21 @@ pub mod pmatch {
             Ok(w) => w,
             Err(e) => {
                 eprintln!("hfst-pmatch: cannot open output: {e}");
-                return 1;
+                return Err(1);
             }
         };
         let rv = process_input(&options, &mut container, &mut *out);
         let _ = out.flush();
-        rv
+        cli::from_code(rv)
     }
 }
 
 pub mod tokenize {
     //! Faithful 1:1 port of tools/src/hfst-tokenize.cc — a replacement for
     //! hfst-proc using pmatch: perform matching/lookup/tokenization on text
-    //! streams. Drives the hfst-cli foundation (globals, getopt, commandline,
-    //! program-options, inc fragments) and the hfst optimized-lookup pmatch
-    //! tokenizer ('hfst::pmatch_tokenize', 'hfst::pmatch', 'hfst::pmatch_compiler').
+    //! streams, driving the hfst optimized-lookup pmatch tokenizer
+    //! ('hfst::pmatch_tokenize', 'hfst::pmatch', 'hfst::pmatch_compiler').
+    //! Option handling is clap 4 derive through [`crate::cli`].
     //!
     //! This is a unary tool (#includes inc/globals-common.h + inc/globals-unary.h),
     //! but like hfst-pmatch it does not use the usual unary
@@ -900,11 +876,9 @@ pub mod tokenize {
     //! input-segmentation drivers) lives in 'hfst::pmatch_tokenize'; this binary
     //! keeps only option parsing and stream opening.
 
+    use crate::cli::{self, CommonArgs, ToolArgs, ToolResult};
     use crate::globals::CommonOptions;
-    use crate::hfst_commandline::{extend_options_from_env, hfst_set_program_name, verbose_print};
-    use crate::hfst_getopt::{self as getopt, Getopt};
-    use crate::hfst_program_options::{hfst_getopt_common_long, print_common_program_options};
-    use crate::inc::{CaseResult, handle_common_case, handle_error_case};
+    use crate::hfst_commandline::{hfst_set_program_name, verbose_print};
     use hfst::hfst_data_types::ImplementationType;
     use hfst::hfst_input_stream::HfstInputStream;
     use hfst::hfst_transducer::HfstTransducer;
@@ -913,11 +887,342 @@ pub mod tokenize {
         OutputFormat, TokenizeInputSettings, TokenizeSettings, make_naive_tokenizer,
         process_input_stream,
     };
-    use std::io::Write;
 
     const DEFAULT_FORMAT: ImplementationType = ImplementationType::TROPICAL_OPENFST_TYPE;
 
-    /// hfst-tokenize's own options (the former tool-specific `static mut`s).
+    /// hfst-tokenize's command line.
+    //
+    // This tool chains only the common CASES — not the unary table — so '-i'
+    // is free to be its own switch, and it resolves the single RULESET
+    // operand itself, never including check-params-common.h.
+    //
+    // The C++ long table maps '--space-separated' to 'd' and only its
+    // short-option string "nkawWmub:t:l:zixcSgCfL" makes '-i' work, so
+    // upstream's long spelling silently means --debug. Here both spellings
+    // select the space-separated format and '-d' keeps meaning --debug
+    // (see tests/cli_option_wiring.rs).
+    // [spec:hfst:def:hfst-tokenize.parse-options-fn]
+    // [spec:hfst:sem:hfst-tokenize.parse-options-fn]
+    // [spec:hfst:req:cli.arg-parse]
+    // [spec:hfst:req:cli.help]
+    #[derive(clap::Parser)]
+    #[command(about = "perform matching/lookup on text streams")]
+    struct Args {
+        #[command(flatten)]
+        common: CommonArgs,
+
+        /// Newline as input separator (default is blank line)
+        #[arg(short = 'n', long = "newline")]
+        newline: bool,
+
+        /// Retain newlines as separators in the output
+        #[arg(short = 'k', long = "keep-newline")]
+        keep_newline: bool,
+
+        /// Print nonmatching text
+        #[arg(short = 'a', long = "print-all")]
+        print_all: bool,
+
+        /// Print weights (overrides earlier -W option)
+        #[arg(short = 'w', long = "print-weights")]
+        print_weights: bool,
+
+        /// Don't print weights (default; overrides earlier -w, or -w implied
+        /// by -g, options)
+        #[arg(short = 'W', long = "no-weights")]
+        no_weights: bool,
+
+        /// Tokenize multicharacter symbols (by default only one grapheme is
+        /// tokenized at a time regardless of what is present in the alphabet)
+        #[arg(short = 'm', long = "tokenize-multichar")]
+        tokenize_multichar: bool,
+
+        /// Output only analyses whose weight is within B from best result
+        #[arg(
+            short = 'b',
+            long = "beam",
+            value_name = "B",
+            allow_hyphen_values = true
+        )]
+        beam: Option<String>,
+
+        /// Limit search after having used S seconds per input
+        #[arg(
+            short = 't',
+            long = "time-cutoff",
+            value_name = "S",
+            allow_hyphen_values = true
+        )]
+        time_cutoff: Option<String>,
+
+        /// Output no more than N best weight classes (where analyses with
+        /// equal weight constitute a class
+        #[arg(
+            short = 'l',
+            long = "weight-classes",
+            value_name = "N",
+            allow_hyphen_values = true
+        )]
+        weight_classes: Option<String>,
+
+        /// Remove duplicate analyses (the default)
+        #[arg(short = 'u', long = "unique")]
+        unique: bool,
+
+        /// Keep duplicate analyses, as upstream does. (PORT ADDITION:
+        /// uniqueness is the default here, so the opt-out is the option
+        /// upstream has no counterpart for. Long-only, since a short letter
+        /// would be one upstream could later claim.)
+        #[arg(long = "duplicates")]
+        duplicates: bool,
+
+        /// Segmenting / tokenization mode (default)
+        #[arg(short = 'z', long = "segment")]
+        segment: bool,
+
+        /// Tokenization with one sentence per line, space-separated tokens
+        #[arg(short = 'i', long = "space-separated")]
+        space_separated: bool,
+
+        /// Xerox output
+        #[arg(short = 'x', long = "xerox")]
+        xerox: bool,
+
+        /// Constraint Grammar output
+        #[arg(short = 'c', long = "cg")]
+        cg: bool,
+
+        /// Ignore contents of unescaped [] (cf. apertium-destxt); flush on NUL
+        #[arg(short = 'S', long = "superblanks")]
+        superblanks: bool,
+
+        /// CG format used in Giella infrastructure (implies -w and -l2,
+        /// treats @PMATCH_INPUT_MARK@ as subreading separator, expects tags
+        /// to be Multichar_symbols, flush on NUL)
+        #[arg(short = 'g', long = "giella-cg", alias = "gtd")]
+        giella_cg: bool,
+
+        /// CoNLL-U format
+        #[arg(short = 'C', long = "conllu")]
+        conllu: bool,
+
+        /// FinnPos output
+        #[arg(short = 'f', long = "finnpos")]
+        finnpos: bool,
+
+        /// VISL input and output (implies -W, handles <s> as blocks and
+        /// <STYLE> inline)
+        #[arg(short = 'L', long = "visl")]
+        visl: bool,
+
+        /// Ruleset archive file
+        #[arg(value_name = "RULESET", num_args = 0..)]
+        infiles: Vec<String>,
+
+        /// The tool-specific option occurrences in command-line order. The C
+        /// loop's arms overwrite shared settings ('-w'/'-W'/'-g'/'-L' all
+        /// write print_weights; every format switch writes output_format), so
+        /// the LAST writer wins and a derive struct alone cannot say which
+        /// that was; `absorb_matches` rebuilds the order from the match
+        /// indices and `resolve` replays it.
+        #[arg(skip)]
+        events: Vec<Event>,
+    }
+
+    /// One iteration of the C option loop, in occurrence order: the common
+    /// verbosity writes (which `continue` past the loop-tail verbose check)
+    /// and every tool-specific arm (which reach it).
+    #[derive(Clone, Copy, PartialEq, Eq)]
+    enum Event {
+        /// '-v' (true) / '-q' / '-s' (false) flipping the shared verbose flag.
+        Verbose(bool),
+        Newline,
+        KeepNewline,
+        PrintAll,
+        PrintWeights,
+        NoWeights,
+        TokenizeMultichar,
+        Beam,
+        TimeCutoff,
+        WeightClasses,
+        Unique,
+        Duplicates,
+        Segment,
+        SpaceSeparated,
+        Xerox,
+        Cg,
+        Superblanks,
+        GiellaCg,
+        Conllu,
+        Finnpos,
+        Visl,
+    }
+
+    impl Args {
+        /// Replay the C getopt loop over the ordered occurrences: each arm's
+        /// writes, then the loop-tail 'if (verbose) settings.verbose = true'
+        /// that ran after every TOOL-specific arm (the common cases hit
+        /// 'continue' first).
+        fn resolve(&self) -> Result<Options, i32> {
+            let mut options = Options::default();
+            let mut verbose = false;
+            for event in &self.events {
+                match event {
+                    Event::Verbose(on) => {
+                        verbose = *on;
+                        continue;
+                    }
+                    Event::KeepNewline => {
+                        options.keep_newlines = true;
+                        options.blankline_separated = false;
+                    }
+                    Event::Newline => options.blankline_separated = false,
+                    Event::PrintAll => options.settings.print_all = true,
+                    Event::PrintWeights => options.settings.print_weights = true,
+                    Event::NoWeights => options.settings.print_weights = false,
+                    Event::TokenizeMultichar => options.settings.tokenize_multichar = true,
+                    Event::TimeCutoff => {
+                        let text = self.time_cutoff.as_deref().unwrap_or_default();
+                        options.settings.time_cutoff = text.trim().parse::<f64>().unwrap_or(0.0);
+                        if options.settings.time_cutoff < 0.0 {
+                            eprintln!("Invalid argument for --time-cutoff");
+                            return Err(1);
+                        }
+                    }
+                    Event::Unique => options.settings.dedupe = true,
+                    Event::Duplicates => options.settings.dedupe = false,
+                    Event::Beam => {
+                        let text = self.beam.as_deref().unwrap_or_default();
+                        options.settings.beam = text.trim().parse::<f64>().unwrap_or(0.0) as f32;
+                        if options.settings.beam < 0.0 {
+                            eprintln!("Invalid argument for --beam");
+                            return Err(1);
+                        }
+                    }
+                    Event::WeightClasses => {
+                        let text = self.weight_classes.as_deref().unwrap_or_default();
+                        options.settings.max_weight_classes =
+                            text.trim().parse::<i32>().unwrap_or(0);
+                        if options.settings.max_weight_classes < 1 {
+                            eprintln!("Invalid or no argument --weight-classes count");
+                            return Err(1);
+                        }
+                    }
+                    Event::Segment => options.settings.output_format = OutputFormat::tokenize,
+                    Event::SpaceSeparated => {
+                        options.settings.output_format = OutputFormat::space_separated;
+                    }
+                    Event::Xerox => options.settings.output_format = OutputFormat::xerox,
+                    Event::Cg => options.settings.output_format = OutputFormat::cg,
+                    Event::Conllu => options.settings.output_format = OutputFormat::conllu,
+                    Event::Superblanks => options.superblanks = true,
+                    Event::GiellaCg => {
+                        options.settings.output_format = OutputFormat::giellacg;
+                        options.settings.print_weights = true;
+                        options.settings.print_all = true;
+                        options.settings.dedupe = true;
+                        options.settings.hack_uncompose = true;
+                        options.settings.verbose = false;
+                        if options.settings.max_weight_classes == i32::MAX {
+                            options.settings.max_weight_classes = 2;
+                        }
+                    }
+                    Event::Visl => {
+                        options.settings.output_format = OutputFormat::visl;
+                        options.settings.print_weights = false;
+                        options.settings.print_all = true;
+                        options.settings.dedupe = true;
+                        options.settings.verbose = false;
+                    }
+                    Event::Finnpos => options.settings.output_format = OutputFormat::finnpos,
+                }
+
+                if verbose {
+                    options.settings.verbose = true;
+                }
+            }
+            Ok(options)
+        }
+
+        /// The single RULESET operand, resolved the way this tool's own
+        /// post-loop block did rather than through check-params-common.h.
+        /// (No '-' mapping: the C handed the operand straight to fopen.)
+        fn tokenizer_filename(&self) -> Result<String, i32> {
+            match self.infiles.len() {
+                1 => Ok(self.infiles[0].clone()),
+                0 => {
+                    eprintln!("No input file given");
+                    Err(1)
+                }
+                _ => {
+                    eprintln!("More than one input file given");
+                    Err(1)
+                }
+            }
+        }
+    }
+
+    impl ToolArgs for Args {
+        fn common(&self) -> &CommonArgs {
+            &self.common
+        }
+
+        fn apply_io(&self, _opts: &mut CommonOptions) {}
+
+        fn applies_check_common_params(&self) -> bool {
+            false
+        }
+
+        fn absorb_matches(&mut self, matches: &clap::ArgMatches) {
+            let ids: &[(&str, Event)] = &[
+                ("verbose", Event::Verbose(true)),
+                ("quiet", Event::Verbose(false)),
+                ("silent", Event::Verbose(false)),
+                ("newline", Event::Newline),
+                ("keep_newline", Event::KeepNewline),
+                ("print_all", Event::PrintAll),
+                ("print_weights", Event::PrintWeights),
+                ("no_weights", Event::NoWeights),
+                ("tokenize_multichar", Event::TokenizeMultichar),
+                ("beam", Event::Beam),
+                ("time_cutoff", Event::TimeCutoff),
+                ("weight_classes", Event::WeightClasses),
+                ("unique", Event::Unique),
+                ("duplicates", Event::Duplicates),
+                ("segment", Event::Segment),
+                ("space_separated", Event::SpaceSeparated),
+                ("xerox", Event::Xerox),
+                ("cg", Event::Cg),
+                ("superblanks", Event::Superblanks),
+                ("giella_cg", Event::GiellaCg),
+                ("conllu", Event::Conllu),
+                ("finnpos", Event::Finnpos),
+                ("visl", Event::Visl),
+            ];
+            // A flag never written still holds its "false" default, and clap
+            // gives that default an index too — only a CommandLine value
+            // source is an occurrence.
+            let mut ordered: Vec<(usize, Event)> = ids
+                .iter()
+                .filter(|(id, _)| {
+                    matches.value_source(id) == Some(clap::parser::ValueSource::CommandLine)
+                })
+                .filter_map(|(id, event)| matches.index_of(id).map(|i| (i, *event)))
+                .collect();
+            ordered.sort_by_key(|(i, _)| *i);
+            self.events = ordered.into_iter().map(|(_, event)| event).collect();
+        }
+
+        fn validate(&self, _opts: &CommonOptions) -> ToolResult {
+            // The value rejections happened inside the C loop and the operand
+            // diagnostics right after it.
+            self.resolve()?;
+            self.tokenizer_filename()?;
+            Ok(())
+        }
+    }
+
+    /// hfst-tokenize's resolved tool state (the former tool-specific `static mut`s).
     struct Options {
         /// Input is apertium-style superblanks (overrides blankline_separated).
         superblanks: bool,
@@ -941,199 +1246,6 @@ pub mod tokenize {
         }
     }
 
-    // [spec:hfst:req:cli.help]
-    fn print_usage(common: &CommonOptions) {
-        let mut msg = common.message_writer();
-        // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
-        let _ = write!(
-            msg,
-            "Usage: {} [--segment | --xerox | --cg | --giella-cg] [OPTIONS...] RULESET\nperform matching/lookup on text streams\n\n",
-            common.program_name
-        );
-        print_common_program_options(&mut *msg);
-        let _ = write!(
-            msg,
-            "  -n, --newline            Newline as input separator (default is blank line)\n\
-         \x20 -a, --print-all          Print nonmatching text\n\
-         \x20 -w, --print-weight       Print weights (overrides earlier -W option)\n\
-         \x20 -W, --no-weights         Don't print weights (default; overrides earlier -w, or -w implied by -g, options)\n\
-         \x20 -m, --tokenize-multichar Tokenize multicharacter symbols\n\
-         \x20                          (by default only one grapheme is tokenized at a time\n\
-         \x20                          regardless of what is present in the alphabet)\n\
-         \x20 -b, --beam=B             Output only analyses whose weight is within B from best result\n\
-         \x20 -tS, --time-cutoff=S     Limit search after having used S seconds per input\n\
-         \x20 -lN, --weight-classes=N  Output no more than N best weight classes\n\
-         \x20                          (where analyses with equal weight constitute a class\n\
-         \x20 -u, --unique             Remove duplicate analyses (the default)\n\
-         \x20     --duplicates         Keep duplicate analyses, as upstream does\n\
-         \x20 -z, --segment            Segmenting / tokenization mode (default)\n\
-         \x20 -i, --space-separated    Tokenization with one sentence per line, space-separated tokens\n\
-         \x20 -x, --xerox              Xerox output\n\
-         \x20 -c, --cg                 Constraint Grammar output\n\
-         \x20 -S, --superblanks        Ignore contents of unescaped [] (cf. apertium-destxt); flush on NUL\n\
-         \x20 -g, --giella-cg          CG format used in Giella infrastructure (implies -w and -l2,\n\
-         \x20                          treats @PMATCH_INPUT_MARK@ as subreading separator,\n\
-         \x20                          expects tags to be Multichar_symbols, flush on NUL)\n\
-         \x20 -C  --conllu             CoNLL-U format\n\
-         \x20 -f, --finnpos            FinnPos output\n\
-         \x20 -L, --visl               VISL input and output (implies -W, handles <s> as blocks and <STYLE> inline)\n",
-        );
-        let _ = write!(
-            msg,
-            "Use standard streams for input and output (for now).\n\n"
-        );
-        let _ = writeln!(msg);
-    }
-
-    // [spec:hfst:def:hfst-tokenize.parse-options-fn]
-    // [spec:hfst:sem:hfst-tokenize.parse-options-fn]
-    // [spec:hfst:req:cli.arg-parse]
-    fn parse_options(
-        mut common: CommonOptions,
-        args: &mut Vec<String>,
-    ) -> Result<(CommonOptions, Options), i32> {
-        let mut options = Options::default();
-        let mut opt = Getopt::new();
-        extend_options_from_env(args);
-        loop {
-            let mut long_options: Vec<getopt::GetOpt> = Vec::new();
-            long_options.extend(hfst_getopt_common_long());
-            // tool-specific options
-            let names: &[(&str, i32, i32)] = &[
-                ("newline", getopt::NO_ARGUMENT, b'n' as i32),
-                ("keep-newline", getopt::NO_ARGUMENT, b'k' as i32),
-                ("print-all", getopt::NO_ARGUMENT, b'a' as i32),
-                ("print-weights", getopt::NO_ARGUMENT, b'w' as i32),
-                ("no-weights", getopt::NO_ARGUMENT, b'W' as i32),
-                ("tokenize-multichar", getopt::NO_ARGUMENT, b'm' as i32),
-                ("beam", getopt::REQUIRED_ARGUMENT, b'b' as i32),
-                ("time-cutoff", getopt::REQUIRED_ARGUMENT, b't' as i32),
-                ("weight-classes", getopt::REQUIRED_ARGUMENT, b'l' as i32),
-                ("unique", getopt::NO_ARGUMENT, b'u' as i32),
-                // PORT ADDITION: uniqueness is the default here, so the opt-out is
-                // the option upstream has no counterpart for. Long-only, since a
-                // short letter would be one upstream could later claim.
-                ("duplicates", getopt::NO_ARGUMENT, 0x100 + b'u' as i32),
-                ("segment", getopt::NO_ARGUMENT, b'z' as i32),
-                // C++ declares this long option as 'd' and only ever reaches the
-                // space-separated case through the 'i' in its short-option string
-                // "nkawWmub:t:l:zixcSgCfL", so upstream --space-separated silently
-                // means --debug. This getopt carries no short string — `val` is the
-                // sole channel for both spellings — so 'd' would lose the option to
-                // the common --debug case and leave -i unknown. 'i' serves both;
-                // --debug keeps 'd' via the common table.
-                ("space-separated", getopt::NO_ARGUMENT, b'i' as i32),
-                ("xerox", getopt::NO_ARGUMENT, b'x' as i32),
-                ("cg", getopt::NO_ARGUMENT, b'c' as i32),
-                ("superblanks", getopt::NO_ARGUMENT, b'S' as i32),
-                ("giella-cg", getopt::NO_ARGUMENT, b'g' as i32),
-                ("gtd", getopt::NO_ARGUMENT, b'g' as i32),
-                ("conllu", getopt::NO_ARGUMENT, b'C' as i32),
-                ("finnpos", getopt::NO_ARGUMENT, b'f' as i32),
-                ("visl", getopt::NO_ARGUMENT, b'L' as i32),
-            ];
-            for &(name, has_arg, val) in names {
-                long_options.push(getopt::GetOpt { name, has_arg, val });
-            }
-            let c = opt.getopt_long(args, &long_options);
-            if -1 == c {
-                break;
-            }
-
-            match handle_common_case(&mut common, &opt, c, print_usage) {
-                CaseResult::Return(code) => return Err(code),
-                CaseResult::Break => continue,
-                CaseResult::NotHandled => {}
-            }
-            if c == b'k' as i32 {
-                options.keep_newlines = true;
-                options.blankline_separated = false;
-            } else if c == b'n' as i32 {
-                options.blankline_separated = false;
-            } else if c == b'a' as i32 {
-                options.settings.print_all = true;
-            } else if c == b'w' as i32 {
-                options.settings.print_weights = true;
-            } else if c == b'W' as i32 {
-                options.settings.print_weights = false;
-            } else if c == b'm' as i32 {
-                options.settings.tokenize_multichar = true;
-            } else if c == b't' as i32 {
-                options.settings.time_cutoff = opt.optarg().trim().parse::<f64>().unwrap_or(0.0);
-                if options.settings.time_cutoff < 0.0 {
-                    eprintln!("Invalid argument for --time-cutoff");
-                    return Err(1);
-                }
-            } else if c == b'u' as i32 {
-                options.settings.dedupe = true;
-            } else if c == 0x100 + b'u' as i32 {
-                options.settings.dedupe = false;
-            } else if c == b'b' as i32 {
-                options.settings.beam = opt.optarg().trim().parse::<f64>().unwrap_or(0.0) as f32;
-                if options.settings.beam < 0.0 {
-                    eprintln!("Invalid argument for --beam");
-                    return Err(1);
-                }
-            } else if c == b'l' as i32 {
-                options.settings.max_weight_classes =
-                    opt.optarg().trim().parse::<i32>().unwrap_or(0);
-                if options.settings.max_weight_classes < 1 {
-                    eprintln!("Invalid or no argument --weight-classes count");
-                    return Err(1);
-                }
-            } else if c == b'z' as i32 {
-                options.settings.output_format = OutputFormat::tokenize;
-            } else if c == b'i' as i32 {
-                options.settings.output_format = OutputFormat::space_separated;
-            } else if c == b'x' as i32 {
-                options.settings.output_format = OutputFormat::xerox;
-            } else if c == b'c' as i32 {
-                options.settings.output_format = OutputFormat::cg;
-            } else if c == b'C' as i32 {
-                options.settings.output_format = OutputFormat::conllu;
-            } else if c == b'S' as i32 {
-                options.superblanks = true;
-            } else if c == b'g' as i32 {
-                options.settings.output_format = OutputFormat::giellacg;
-                options.settings.print_weights = true;
-                options.settings.print_all = true;
-                options.settings.dedupe = true;
-                options.settings.hack_uncompose = true;
-                options.settings.verbose = false;
-                if options.settings.max_weight_classes == i32::MAX {
-                    options.settings.max_weight_classes = 2;
-                }
-            } else if c == b'L' as i32 {
-                options.settings.output_format = OutputFormat::visl;
-                options.settings.print_weights = false;
-                options.settings.print_all = true;
-                options.settings.dedupe = true;
-                options.settings.verbose = false;
-            } else if c == b'f' as i32 {
-                options.settings.output_format = OutputFormat::finnpos;
-            } else {
-                return Err(handle_error_case(&common, &opt, c));
-            }
-
-            if common.verbose {
-                options.settings.verbose = true;
-            }
-        }
-
-        // no more options, we should now be at the input filename
-        let argc = args.len();
-        if (opt.optind + 1) < argc {
-            eprintln!("More than one input file given");
-            Err(1)
-        } else if (opt.optind + 1) == argc {
-            options.tokenizer_filename = args[opt.optind].clone();
-            Ok((common, options))
-        } else {
-            eprintln!("No input file given");
-            Err(1)
-        }
-    }
-
     // [spec:hfst:def:hfst-tokenize.first-transducer-is-called-top-fn]
     // [spec:hfst:sem:hfst-tokenize.first-transducer-is-called-top-fn]
     // (Defined in the C++ source but never called there; kept for fidelity.)
@@ -1146,14 +1258,17 @@ pub mod tokenize {
 
     // [spec:hfst:def:hfst-tokenize.main-fn]
     // [spec:hfst:sem:hfst-tokenize.main-fn]
-    pub fn run(mut args: Vec<String>) -> i32 {
+    pub fn run(args: Vec<String>) -> i32 {
+        cli::exit_code(execute(args))
+    }
+
+    fn execute(args: Vec<String>) -> ToolResult {
         let argv0 = args.first().cloned().unwrap_or_default();
 
         let common = hfst_set_program_name(&argv0, "0.1", "HfstTokenize");
-        let (common, options) = match parse_options(common, &mut args) {
-            Ok(v) => v,
-            Err(code) => return code,
-        };
+        let (common, args) = cli::parse::<Args>(common, args)?;
+        let mut options = args.resolve()?;
+        options.tokenizer_filename = args.tokenizer_filename()?;
 
         let tokenizer_filename = options.tokenizer_filename.clone();
         verbose_print(
@@ -1167,7 +1282,7 @@ pub mod tokenize {
             Ok(f) => f,
             Err(_) => {
                 eprintln!("Could not open file {}", tokenizer_filename);
-                return 1;
+                return Err(1);
             }
         };
         // The C wraps the rest in try/catch on HfstException (and a nested catch
@@ -1186,7 +1301,7 @@ pub mod tokenize {
                 Ok(h) => h,
                 Err(e) => {
                     eprintln!("hfst-tokenize: {e}");
-                    return 1;
+                    return Err(1);
                 }
             }
         };
@@ -1199,7 +1314,7 @@ pub mod tokenize {
             Ok(r) => r,
             Err(e) => {
                 eprintln!("hfst-tokenize: cannot open input: {e}");
-                return 1;
+                return Err(1);
             }
         };
         // The tool-level input-mode switches, handed to the library driver.
@@ -1216,7 +1331,7 @@ pub mod tokenize {
                 Ok(s) => s,
                 Err(e) => {
                     eprintln!("hfst-tokenize: {e}");
-                    return 1;
+                    return Err(1);
                 }
             };
             // C++ built the naive tokenizer's helper transducers in
@@ -1228,14 +1343,14 @@ pub mod tokenize {
                     Ok(t) => t,
                     Err(e) => {
                         eprintln!("hfst-tokenize: {e}");
-                        return 1;
+                        return Err(1);
                     }
                 };
             let mut container = match make_naive_tokenizer(&mut dictionary) {
                 Ok(c) => c,
                 Err(e) => {
                     eprintln!("hfst-tokenize: {e}");
-                    return 1;
+                    return Err(1);
                 }
             };
             container.set_verbose(common.verbose);
@@ -1249,14 +1364,14 @@ pub mod tokenize {
                 !container.has_multichar_input_symbols()
             };
             container.set_single_codepoint_tokenization(single_codepoint);
-            process_input_stream(
+            cli::from_code(process_input_stream(
                 &mut container,
                 &mut *input,
                 &mut stdout,
                 &mut *msg,
                 &options.settings,
                 &input_settings,
-            )
+            ))
         } else {
             verbose_print(
                 &common,
@@ -1267,7 +1382,7 @@ pub mod tokenize {
                 Ok(c) => c,
                 Err(e) => {
                     eprintln!("hfst-tokenize: {e}");
-                    return 1;
+                    return Err(1);
                 }
             };
             container.set_verbose(common.verbose);
@@ -1281,14 +1396,14 @@ pub mod tokenize {
                 !container.has_multichar_input_symbols()
             };
             container.set_single_codepoint_tokenization(single_codepoint);
-            process_input_stream(
+            cli::from_code(process_input_stream(
                 &mut container,
                 &mut *input,
                 &mut stdout,
                 &mut *msg,
                 &options.settings,
                 &input_settings,
-            )
+            ))
         }
     }
 }

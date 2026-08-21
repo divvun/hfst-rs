@@ -8,46 +8,90 @@
 
 pub mod guessify {
     //! Faithful 1:1 port of tools/src/hfst-guessify.cc — the tool for compiling a
-    //! guesser and model form generator from a morphological analyzer. Drives the
-    //! hfst-cli foundation (globals, getopt, commandline, program-options,
-    //! tool-metadata, inc fragments) and the ported hfst::guessify_fst library.
+    //! guesser and model form generator from a morphological analyzer, driving
+    //! the ported hfst::guessify_fst library. Option handling is clap 4 derive
+    //! through [`crate::cli`].
 
+    use crate::cli::{self, CommonArgs, ToolArgs, ToolResult, UnaryIo};
     use crate::globals::CommonOptions;
-    use crate::hfst_commandline::{
-        error, extend_options_from_env, hfst_set_program_name, verbose_print,
-    };
-    use crate::hfst_getopt::{self as getopt, Getopt};
-    use crate::hfst_program_options::{
-        hfst_getopt_common_long, hfst_getopt_unary_long, print_common_program_options,
-        print_common_unary_program_options,
-    };
-    use crate::inc::{
-        CaseResult, check_common_params, check_unary_params, handle_common_case, handle_error_case,
-        handle_unary_case,
-    };
-    use hfst::guessify_fst::{CATEGORY_SYMBOL_PREFIX, guessify_analyzer, store_guesser};
+    use crate::hfst_commandline::{error, hfst_set_program_name, verbose_print};
+    use hfst::guessify_fst::{guessify_analyzer, store_guesser};
     use hfst::hfst_data_types::ImplementationType;
     use hfst::hfst_input_stream::HfstInputStream;
     use hfst::hfst_output_stream::HfstOutputStream;
     use hfst::hfst_transducer::HfstTransducer;
-    use std::io::Write;
 
-    /// hfst-guessify's own options (the former tool-specific `static mut`s).
+    /// hfst-guessify's command line.
+    // [spec:hfst:def:hfst-guessify.parse-options-fn]
+    // [spec:hfst:sem:hfst-guessify.parse-options-fn]
+    // [spec:hfst:req:cli.arg-parse]
+    // [spec:hfst:req:cli.help]
+    #[derive(clap::Parser)]
+    #[command(about = "Compile a morphological analyzer into a guesser and generator")]
+    struct Args {
+        #[command(flatten)]
+        common: CommonArgs,
+        #[command(flatten)]
+        io: UnaryIo,
+
+        /// Give penalty for skipping one symbol of input (1.0 by default)
+        #[arg(
+            short = 'p',
+            long = "default-penalty",
+            value_name = "PENALTY",
+            allow_hyphen_values = true
+        )]
+        default_penalty: Option<String>,
+
+        /// When compiling the guesser, do not compile a model form generator
+        #[arg(short = 'G', long = "do-not-compile-generator")]
+        do_not_compile_generator: bool,
+    }
+
+    impl Args {
+        /// Case 'p': an istringstream float extraction, fatal when it fails or
+        /// yields a negative penalty.
+        fn default_penalty(&self, common: &CommonOptions) -> f32 {
+            let Some(text) = self.default_penalty.as_deref() else {
+                return 1.0;
+            };
+            let penalty = get_float(text);
+            if penalty < 0.0 {
+                error(
+                    common,
+                    1,
+                    0,
+                    &format!("Invalid default penalty {}. Give a positive float.", text),
+                );
+            }
+            penalty
+        }
+    }
+
+    impl ToolArgs for Args {
+        fn common(&self) -> &CommonArgs {
+            &self.common
+        }
+
+        fn apply_io(&self, opts: &mut CommonOptions) {
+            self.io.apply(opts);
+        }
+
+        fn validate(&self, opts: &CommonOptions) -> ToolResult {
+            // The rejection happened inside the C getopt loop, before the
+            // parameter checks.
+            self.default_penalty(opts);
+            Ok(())
+        }
+    }
+
+    /// hfst-guessify's resolved tool state (the former tool-specific `static mut`s).
     struct Options {
         /// '-G, --do-not-compile-generator': compile a model form generator
         /// alongside the guesser (true by default; -G clears it).
         compile_generator: bool,
         /// '-p, --default-penalty': penalty for skipping one symbol of input.
         default_penalty: f32,
-    }
-
-    impl Default for Options {
-        fn default() -> Options {
-            Options {
-                compile_generator: true,
-                default_penalty: 1.0,
-            }
-        }
     }
 
     // [spec:hfst:def:hfst-guessify.get-float-fn]
@@ -69,116 +113,6 @@ pub mod guessify {
             }
         }
         best.unwrap_or(-1.0)
-    }
-
-    // [spec:hfst:req:cli.help]
-    fn print_usage(common: &CommonOptions) {
-        // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
-        let mut msg = common.message_writer();
-        let _ = write!(
-            msg,
-            "Usage: {} [OPTIONS...] [INFILE]\nCompile a morphological analyzer into a guesser and generator.\n\n",
-            common.program_name
-        );
-        print_common_program_options(&mut *msg);
-        print_common_unary_program_options(&mut *msg);
-        let _ = write!(
-            msg,
-            "Guesser options:\n  -p, --default-penalty           Give penalty for skipping one\n                                  symbol of input (1.0 by default).\n  -G, --do-not-compile-generator  When compiling the guesser, do\n                                  not compile a model form\n                                  generator.\n"
-        );
-        let _ = writeln!(msg);
-        let _ = write!(
-            msg,
-            "All analyses in the morphological analyzer should have the form:\nw o r d f o r m POS {0}CLASS] X Y Z ...\nwhere POS is the part-of-speech tag, {0}CLASS]\nis an inflectional category marker and X, Y and Z are inflectional\nmarkers. The form of the inflectional category marker is fixed.\nCLASS can be any string, which doesn't contain \"]\".\n",
-            CATEGORY_SYMBOL_PREFIX
-        );
-        let _ = writeln!(msg);
-        let _ = write!(
-            msg,
-            "Using the option -d will reduce the size of the guesser file by\napproximately half, but may substantially increase the load time of\nthe guesser when generating model forms. If you only need to guess\nanalyses of unknown word forms, -d has no effect on load time.\n"
-        );
-        let _ = writeln!(msg);
-        let _ = writeln!(
-            msg,
-            "If OUTFILE or INFILE is missing or -, standard streams will be used."
-        );
-        let _ = writeln!(msg);
-    }
-
-    // [spec:hfst:def:hfst-guessify.parse-options-fn]
-    // [spec:hfst:sem:hfst-guessify.parse-options-fn]
-    // [spec:hfst:req:cli.arg-parse]
-    //
-    // Parse argv into the shared + tool options; `Err(code)` is an exit code the
-    // caller should return (the former EXIT_CONTINUE sentinel is now `Ok`).
-    fn parse_options(
-        mut common: CommonOptions,
-        args: &mut Vec<String>,
-    ) -> Result<(CommonOptions, Options), i32> {
-        let mut options = Options::default();
-        let mut opt = Getopt::new();
-        extend_options_from_env(args);
-        loop {
-            let mut long_options: Vec<getopt::GetOpt> = Vec::new();
-            long_options.extend(hfst_getopt_common_long());
-            long_options.extend(hfst_getopt_unary_long());
-            // add tool-specific options here
-            long_options.push(getopt::GetOpt {
-                name: "default-penalty",
-                has_arg: getopt::REQUIRED_ARGUMENT,
-                val: 'p' as i32,
-            });
-            long_options.push(getopt::GetOpt {
-                name: "do-not-compile-generator",
-                has_arg: getopt::NO_ARGUMENT,
-                val: 'G' as i32,
-            });
-            let c = opt.getopt_long(args, &long_options);
-            if -1 == c {
-                break;
-            }
-
-            // The C switch chains the #include'd case groups in order: common
-            // cases, then unary cases, then the tool's own ('G'/'p'), then the
-            // terminal error arm.
-            match handle_common_case(&mut common, &opt, c, print_usage) {
-                CaseResult::Return(code) => return Err(code),
-                CaseResult::Break => continue,
-                CaseResult::NotHandled => {}
-            }
-            match handle_unary_case(&mut common, &opt, c) {
-                CaseResult::Return(code) => return Err(code),
-                CaseResult::Break => continue,
-                CaseResult::NotHandled => {}
-            }
-            match c {
-                x if x == 'G' as i32 => {
-                    options.compile_generator = false;
-                    continue;
-                }
-                x if x == 'p' as i32 => {
-                    let optarg = opt.optarg();
-                    options.default_penalty = get_float(&optarg);
-
-                    if options.default_penalty < 0.0 {
-                        error(
-                            &common,
-                            1,
-                            0,
-                            &format!("Invalid default penalty {}. Give a positive float.", optarg),
-                        );
-                    }
-
-                    continue;
-                }
-                _ => {}
-            }
-            return Err(handle_error_case(&common, &opt, c));
-        }
-
-        check_common_params(&mut common);
-        check_unary_params(&mut common, &opt, args);
-        Ok((common, options))
     }
 
     // [spec:hfst:def:hfst-guessify.process-stream-fn]
@@ -249,13 +183,18 @@ pub mod guessify {
 
     // [spec:hfst:def:hfst-guessify.main-fn]
     // [spec:hfst:sem:hfst-guessify.main-fn]
-    pub fn run(mut args: Vec<String>) -> i32 {
+    pub fn run(args: Vec<String>) -> i32 {
+        cli::exit_code(execute(args))
+    }
+
+    fn execute(args: Vec<String>) -> ToolResult {
         let argv0 = args.first().cloned().unwrap_or_default();
 
         let common = hfst_set_program_name(&argv0, "0.3", "HfstGuessify");
-        let (common, options) = match parse_options(common, &mut args) {
-            Ok(v) => v,
-            Err(code) => return code,
+        let (common, args) = cli::parse::<Args>(common, args)?;
+        let options = Options {
+            compile_generator: !args.do_not_compile_generator,
+            default_penalty: args.default_penalty(&common),
         };
 
         // close buffers, we use streams
@@ -282,7 +221,7 @@ pub mod guessify {
             Ok(s) => s,
             Err(e) => {
                 error(&common, 1, 0, &format!("{e}"));
-                return 1;
+                return Err(1);
             }
         };
 
@@ -303,11 +242,16 @@ pub mod guessify {
             Ok(s) => s,
             Err(e) => {
                 error(&common, 1, 0, &format!("{e}"));
-                return 1;
+                return Err(1);
             }
         };
 
-        process_stream(&common, &options, &mut instream, &mut outstream)
+        cli::from_code(process_stream(
+            &common,
+            &options,
+            &mut instream,
+            &mut outstream,
+        ))
     }
 }
 
@@ -317,27 +261,64 @@ pub mod pmatch2fst {
     //! (globals, getopt, commandline, program-options) plus the hfst pmatch
     //! compiler and the OL conversion functions.
 
+    use crate::cli::{self, CommonArgs, ToolArgs, ToolResult, UnaryIo};
     use crate::globals::CommonOptions;
-    use crate::hfst_commandline::{extend_options_from_env, hfst_set_program_name, verbose_print};
-    use crate::hfst_getopt::{self as getopt, Getopt};
-    use crate::hfst_program_options::{
-        hfst_getopt_common_long, hfst_getopt_unary_long, print_common_program_options,
-        print_common_unary_program_options,
-    };
-    use crate::inc::{
-        CaseResult, check_common_params, check_unary_params, handle_common_case, handle_error_case,
-        handle_unary_case,
-    };
+    use crate::hfst_commandline::{hfst_set_program_name, verbose_print};
     use hfst::hfst_data_types::ImplementationType;
     use hfst::hfst_output_stream::HfstOutputStream;
     use hfst::hfst_transducer::HfstTransducer;
     use hfst::pmatch_compiler::PmatchCompiler;
-    use std::io::{Read, Write};
+    use std::io::Read;
 
-    /// hfst-pmatch2fst's own options (the former tool-specific `static mut`s).
+    /// hfst-pmatch2fst's command line.
+    //
+    // '--flatten'/'--cosine-distances' carried the getopt `val`s '1'/'2', and
+    // this port's getopt derived its shorts from `val` alone, so '-1'/'-2'
+    // have always been accepted spellings of them. Declared here so they
+    // still are.
+    // [spec:hfst:req:cli.arg-parse]
+    // [spec:hfst:req:cli.help]
+    #[derive(clap::Parser)]
+    #[command(about = "Compile regular expressions into transducer(s)\n (Experimental version)")]
+    struct Args {
+        #[command(flatten)]
+        common: CommonArgs,
+        #[command(flatten)]
+        io: UnaryIo,
+
+        /// Map EPS as zero
+        #[arg(
+            short = 'e',
+            long = "epsilon",
+            value_name = "EPS",
+            allow_hyphen_values = true
+        )]
+        epsilon: Option<String>,
+
+        /// Compile in all RTNs
+        #[arg(short = '1', long = "flatten")]
+        flatten: bool,
+
+        /// When compiling Like() operations, include cosine distance info
+        #[arg(short = '2', long = "cosine-distances")]
+        cosine_distances: bool,
+    }
+
+    impl ToolArgs for Args {
+        fn common(&self) -> &CommonArgs {
+            &self.common
+        }
+
+        fn apply_io(&self, opts: &mut CommonOptions) {
+            self.io.apply(opts);
+        }
+    }
+
+    /// hfst-pmatch2fst's resolved tool state (the former tool-specific `static mut`s).
     #[derive(Default)]
     struct Options {
         /// C: `static char *epsilonname = NULL;` ('-e, --epsilon').
+        #[allow(dead_code)]
         epsilonname: Option<String>,
         /// C: `static bool flatten = false;` ('--flatten').
         flatten: bool,
@@ -347,108 +328,6 @@ pub mod pmatch2fst {
 
     // C: the compilation format, chosen at compile time from the available
     // back-ends. The Rust crate links the tropical OpenFST back-end.
-
-    // [spec:hfst:req:cli.help]
-    fn print_usage(common: &CommonOptions) {
-        let mut msg = common.message_writer();
-        // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
-        let _ = write!(
-            msg,
-            "Usage: {} [OPTIONS...] [INFILE]\nCompile regular expressions into transducer(s)\n (Experimental version)\n",
-            common.program_name
-        );
-        print_common_program_options(&mut *msg);
-        print_common_unary_program_options(&mut *msg);
-        let _ = write!(
-            msg,
-            "String and format options:\n  -e, --epsilon=EPS         Map EPS as zero\n      --flatten             Compile in all RTNs\n      --cosine-distances    When compiling Like() operations, include cosine distance info\n"
-        );
-        let _ = writeln!(msg);
-
-        let _ = write!(
-            msg,
-            "If OUTFILE or INFILE is missing or -, standard streams will be used.\nIf EPS is not defined, the default representation of 0 is used\nWeights are currently not implemented.\n\n"
-        );
-
-        let _ = write!(
-            msg,
-            "Examples:\n  echo \"Define TOP  UppercaseAlpha Alpha* LC({{professor}}) EndTag(ProfName);\" | {} \n  create matcher that tags \"professor Chomsky\" as \"professor <ProfName>Chomsky</ProfName>\"\n\n",
-            common.program_name
-        );
-        let _ = writeln!(msg);
-    }
-
-    // [spec:hfst:req:cli.arg-parse]
-    //
-    // Parse argv into the shared + tool options; `Err(code)` is an exit code the
-    // caller should return (the former EXIT_CONTINUE sentinel is now `Ok`).
-    fn parse_options(
-        mut common: CommonOptions,
-        args: &mut Vec<String>,
-    ) -> Result<(CommonOptions, Options), i32> {
-        let mut options = Options::default();
-        let mut opt = Getopt::new();
-        extend_options_from_env(args);
-        loop {
-            let mut long_options: Vec<getopt::GetOpt> = Vec::new();
-            long_options.extend(hfst_getopt_common_long());
-            long_options.extend(hfst_getopt_unary_long());
-            // add tool-specific options here
-            long_options.push(getopt::GetOpt {
-                name: "epsilon",
-                has_arg: getopt::REQUIRED_ARGUMENT,
-                val: 'e' as i32,
-            });
-            long_options.push(getopt::GetOpt {
-                name: "flatten",
-                has_arg: getopt::NO_ARGUMENT,
-                val: '1' as i32,
-            });
-            long_options.push(getopt::GetOpt {
-                name: "cosine-distances",
-                has_arg: getopt::NO_ARGUMENT,
-                val: '2' as i32,
-            });
-            let c = opt.getopt_long(args, &long_options);
-            if -1 == c {
-                break;
-            }
-
-            // The C switch chains the #include'd case groups in order: common
-            // cases, then unary cases, then the tool's own, then the terminal
-            // error arm.
-            match handle_common_case(&mut common, &opt, c, print_usage) {
-                CaseResult::Return(code) => return Err(code),
-                CaseResult::Break => continue,
-                CaseResult::NotHandled => {}
-            }
-            match handle_unary_case(&mut common, &opt, c) {
-                CaseResult::Return(code) => return Err(code),
-                CaseResult::Break => continue,
-                CaseResult::NotHandled => {}
-            }
-            match c as u8 as char {
-                'e' => {
-                    options.epsilonname = opt.optarg_opt();
-                    continue;
-                }
-                '1' => {
-                    options.flatten = true;
-                    continue;
-                }
-                '2' => {
-                    options.include_cosine_distances = true;
-                    continue;
-                }
-                _ => {}
-            }
-            return Err(handle_error_case(&common, &opt, c));
-        }
-
-        check_common_params(&mut common);
-        check_unary_params(&mut common, &opt, args);
-        Ok((common, options))
-    }
 
     // [spec:hfst:def:hfst-pmatch2fst.get-current-dir-name-fn]
     // [spec:hfst:sem:hfst-pmatch2fst.get-current-dir-name-fn]
@@ -549,13 +428,19 @@ pub mod pmatch2fst {
 
     // [spec:hfst:def:hfst-pmatch2fst.main-fn]
     // [spec:hfst:sem:hfst-pmatch2fst.main-fn]
-    pub fn run(mut args: Vec<String>) -> i32 {
+    pub fn run(args: Vec<String>) -> i32 {
+        cli::exit_code(execute(args))
+    }
+
+    fn execute(args: Vec<String>) -> ToolResult {
         let argv0 = args.first().cloned().unwrap_or_default();
 
         let common = hfst_set_program_name(&argv0, "0.1", "Pmatch2Fst");
-        let (common, options) = match parse_options(common, &mut args) {
-            Ok(v) => v,
-            Err(code) => return code,
+        let (common, args) = cli::parse::<Args>(common, args)?;
+        let options = Options {
+            epsilonname: args.epsilon.clone(),
+            flatten: args.flatten,
+            include_cosine_distances: args.cosine_distances,
         };
         // close buffers, we use streams
         let output_opened = common.output_filename != "<stdout>";
@@ -579,18 +464,18 @@ pub mod pmatch2fst {
             Ok(s) => s,
             Err(e) => {
                 eprintln!("hfst-pmatch2fst: cannot open output: {e}");
-                return 1;
+                return Err(1);
             }
         };
         let mut input = match common.input_reader() {
             Ok(r) => r,
             Err(e) => {
                 eprintln!("hfst-pmatch2fst: cannot open input: {e}");
-                return 1;
+                return Err(1);
             }
         };
         process_stream(&common, &options, &mut outstream, &mut *input);
-        0
+        Ok(())
     }
 }
 
@@ -600,8 +485,18 @@ pub mod twolc {
     //! option parser libhfst/src/parsers/commandline_src/CommandLine.{h,cc}.
     //! Drives the hfst TwolcCompiler (which replaces the three htwolcpre
     //! Flex/Bison preprocessor passes with the nfst-twolc parser + AST walk).
+    //!
+    //! Option handling is clap 4 derive through [`crate::cli`], but this tool
+    //! shares none of the common option layer: `CommandLine` declared its OWN
+    //! table, so its '-d' takes an argument (a debug file, not --debug), it has
+    //! a '-u/--usage' nothing else has, no '--colour', and '-h'/'-V' print its
+    //! own texts to stderr after parsing rather than exiting inside it. The
+    //! collision question — which wins when a tool re-declares a common short —
+    //! never arises here: nothing prepends the common table to this one, so
+    //! every letter means what `CommandLine` says it means.
 
-    use crate::hfst_getopt::{self as getopt, Getopt};
+    use crate::cli::{self, CommonArgs, ErrorStyle, ToolArgs, ToolResult};
+    use crate::globals::CommonOptions;
     use hfst::hfst_data_types::ImplementationType;
     use hfst::hfst_output_stream::HfstOutputStream;
     use hfst::twolc::TwolcCompiler;
@@ -610,6 +505,160 @@ pub mod twolc {
     // The 'PROGRAM_NAME' macro of the C++ CommandLine ("hfst-twolc"): the name
     // baked into the usage/version texts, independent of argv[0].
     const PROGRAM_NAME: &str = "hfst-twolc";
+
+    /// hfst-twolc's command line, i.e. the C++ `CommandLine`'s option table.
+    ///
+    /// clap's own '--help' is switched off: '-h' only records the request here
+    /// and `execute` prints `print_help` afterwards, which is what lets
+    /// '-f bogus -h' fail on the format instead of printing help.
+    // [spec:hfst:def:command-line.command-line.parse-options-fn]
+    // [spec:hfst:sem:command-line.command-line.parse-options-fn]
+    // [spec:hfst:req:cli.arg-parse]
+    // [spec:hfst:req:cli.help]
+    #[derive(clap::Parser)]
+    #[command(
+        about = "Read a twolc grammar, compile it and store it",
+        disable_help_flag = true
+    )]
+    struct Args {
+        /// Never populated: this tool's switch does not chain
+        /// getopt-cases-common.h.
+        #[arg(skip)]
+        common: CommonArgs,
+
+        /// Print help message
+        #[arg(short = 'h', long = "help")]
+        help: bool,
+
+        /// Print version info
+        #[arg(short = 'V', long = "version")]
+        version: bool,
+
+        /// Print usage
+        #[arg(short = 'u', long = "usage")]
+        usage: bool,
+
+        /// Print verbosely while processing
+        #[arg(short = 'v', long = "verbose")]
+        verbose: bool,
+
+        /// Do not print output
+        #[arg(short = 'q', long = "quiet")]
+        quiet: bool,
+
+        /// Alias of --quiet
+        #[arg(short = 's', long = "silent")]
+        silent: bool,
+
+        /// Read input transducer from INFILE
+        #[arg(
+            short = 'i',
+            long = "input",
+            value_name = "INFILE",
+            allow_hyphen_values = true
+        )]
+        input: Option<String>,
+
+        /// Write output transducer to OUTFILE
+        #[arg(
+            short = 'o',
+            long = "output",
+            value_name = "OUTFILE",
+            allow_hyphen_values = true
+        )]
+        output: Option<String>,
+
+        /// Resolve left-arrow conflicts. (The C table names this
+        /// '--resolve-left'; the help text and the Giella build macros say
+        /// '--resolve'. Both are accepted.)
+        #[arg(short = 'R', long = "resolve", alias = "resolve-left")]
+        resolve: bool,
+
+        /// Don't resolve right-arrow conflicts
+        #[arg(short = 'D', long = "dont-resolve-right")]
+        dont_resolve_right: bool,
+
+        /// Read the grammar from DEBUGFILE instead. (The C table spells this
+        /// '--debug_file', with an underscore; the accepted spelling is kept.)
+        #[arg(short = 'd', long = "debug_file", value_name = "DEBUGFILE")]
+        debug_file: Option<String>,
+
+        /// Store result in format FORMAT: openfst-tropical, foma or sfst
+        #[arg(short = 'f', long = "format", value_name = "FORMAT")]
+        format: Option<String>,
+
+        /// Input rule file; missing reads the standard input
+        #[arg(value_name = "INFILE", num_args = 0..)]
+        infiles: Vec<String>,
+    }
+
+    impl Args {
+        /// Case 'f'. The two leading standalone 'if's are preserved
+        /// bug-for-bug from the C: "tropical-weight" and "tropical" set the
+        /// format but still fall into the else-if chain's terminal error arm,
+        /// so both are rejected.
+        fn format(&self) -> Result<ImplementationType, i32> {
+            let Some(name) = self.format.as_deref() else {
+                return Ok(ImplementationType::TROPICAL_OPENFST_TYPE);
+            };
+            match name {
+                "tropical-openfst" | "openfst-tropical" | "openfst" | "weighted" | "weight" => {
+                    Ok(ImplementationType::TROPICAL_OPENFST_TYPE)
+                }
+                "sfst" => Ok(ImplementationType::SFST_TYPE),
+                "foma" | "unweighted" => Ok(ImplementationType::FOMA_TYPE),
+                other => {
+                    eprintln!(
+                        "Unknown format \"{}\".Try running with option -h or --help.",
+                        other
+                    );
+                    Err(1)
+                }
+            }
+        }
+
+        /// The post-loop operand resolution: at most one rule file, from '-i'
+        /// or the single free argument.
+        fn input_file(&self) -> Result<Option<String>, i32> {
+            match (&self.input, self.infiles.len()) {
+                (Some(_), n) if n > 0 => {
+                    eprintln!("no more than one input rule file may be given");
+                    Err(1)
+                }
+                (Some(name), _) => Ok(Some(name.clone())),
+                (None, 1) => Ok(Some(self.infiles[0].clone())),
+                (None, 0) => Ok(None),
+                (None, _) => {
+                    eprintln!("no more than one input rule file may be given");
+                    Err(1)
+                }
+            }
+        }
+    }
+
+    impl ToolArgs for Args {
+        fn common(&self) -> &CommonArgs {
+            &self.common
+        }
+
+        fn apply_io(&self, _opts: &mut CommonOptions) {}
+
+        fn applies_common_options(&self) -> bool {
+            false
+        }
+
+        fn error_style() -> ErrorStyle {
+            ErrorStyle::Twolc
+        }
+
+        fn validate(&self, _opts: &CommonOptions) -> ToolResult {
+            // The format check ran inside the C's loop and the operand check
+            // right after it — both before main got to print help.
+            self.format()?;
+            self.input_file()?;
+            Ok(())
+        }
+    }
 
     /// The parsed command line, mirroring the C++ 'class CommandLine' data
     /// members (input_file/output_file stream handles excluded — streams are
@@ -707,202 +756,33 @@ pub mod twolc {
             );
         }
 
-        // [spec:hfst:def:command-line.command-line.parse-options-fn]
-        // [spec:hfst:sem:command-line.command-line.parse-options-fn]
-        //
-        // The C++ error paths call 'exit(1)' directly; here they return
-        // Err(1) and 'run' propagates the exit code.
-        // The two leading standalone 'if's for "tropical-weight"/"tropical" set
-        // `form` and then fall into the terminal error arm (bug-for-bug from the C,
-        // see the -f handler below), so those writes are intentionally never read.
-        #[allow(unused_assignments)]
-        fn parse_options(&mut self, args: &mut Vec<String>) -> Result<(), i32> {
-            let mut resolve_left = false;
-            let mut resolve_right = true;
-            let mut verbose = false;
-            let mut silent = false;
-            let mut outfilename: Option<String> = None;
-            let mut output_named = false;
-            let mut input_named = false;
-            let mut is_debug = false;
-            let mut infilename: Option<String> = None;
-            let mut debug_file_name: Option<String> = None;
-            let mut form = ImplementationType::TROPICAL_OPENFST_TYPE;
-
-            // The getopt parser state (was the file-scope static-mut globals) lives
-            // in this owned value and is threaded through the loop.
-            let mut opt = Getopt::new();
-            loop {
-                // The C long-option table names '--resolve-left' where the help
-                // text (and the Giella build macros) say '--resolve'; both names
-                // are accepted here, mapping to the same 'R'.
-                let long_options: [(&'static str, i32, i32); 13] = [
-                    ("help", getopt::NO_ARGUMENT, 'h' as i32),
-                    ("version", getopt::NO_ARGUMENT, 'V' as i32),
-                    ("verbose", getopt::NO_ARGUMENT, 'v' as i32),
-                    ("quiet", getopt::NO_ARGUMENT, 'q' as i32),
-                    ("silent", getopt::NO_ARGUMENT, 's' as i32),
-                    ("usage", getopt::NO_ARGUMENT, 'u' as i32),
-                    ("input", getopt::REQUIRED_ARGUMENT, 'i' as i32),
-                    ("output", getopt::REQUIRED_ARGUMENT, 'o' as i32),
-                    ("resolve", getopt::NO_ARGUMENT, 'R' as i32),
-                    ("resolve-left", getopt::NO_ARGUMENT, 'R' as i32),
-                    ("dont-resolve-right", getopt::NO_ARGUMENT, 'D' as i32),
-                    ("debug_file", getopt::REQUIRED_ARGUMENT, 'd' as i32),
-                    ("format", getopt::REQUIRED_ARGUMENT, 'f' as i32),
-                ];
-                let table: Vec<getopt::GetOpt> = long_options
-                    .iter()
-                    .map(|&(name, has_arg, val)| getopt::GetOpt { name, has_arg, val })
-                    .collect();
-                let c = opt.getopt_long(args, &table);
-                if -1 == c {
-                    break;
-                }
-
-                match c as u8 as char {
-                    'h' => {
-                        self.help = true;
-                    }
-                    'V' => {
-                        self.version = true;
-                    }
-                    'u' => {
-                        self.usage = true;
-                    }
-                    'v' => {
-                        verbose = true;
-                    }
-                    'q' => {
-                        silent = true;
-                    }
-                    's' => {
-                        silent = true;
-                    }
-                    'R' => {
-                        resolve_left = true;
-                    }
-                    'D' => {
-                        resolve_right = false;
-                    }
-                    'i' => {
-                        input_named = true;
-                        infilename = Some(opt.optarg());
-                    }
-                    'd' => {
-                        is_debug = true;
-                        debug_file_name = Some(opt.optarg());
-                    }
-                    'o' => {
-                        output_named = true;
-                        outfilename = Some(opt.optarg());
-                    }
-                    'f' => {
-                        let optarg = opt.optarg();
-                        // The two leading standalone 'if's are preserved
-                        // bug-for-bug from the C: "tropical-weight" and
-                        // "tropical" set the format but still fall into the
-                        // else-if chain's terminal error arm.
-                        if optarg == "tropical-weight" {
-                            form = ImplementationType::TROPICAL_OPENFST_TYPE;
-                        }
-                        if optarg == "tropical" {
-                            form = ImplementationType::TROPICAL_OPENFST_TYPE;
-                        }
-                        if optarg == "tropical-openfst"
-                            || optarg == "openfst-tropical"
-                            || optarg == "openfst"
-                            || optarg == "weighted"
-                            || optarg == "weight"
-                        {
-                            form = ImplementationType::TROPICAL_OPENFST_TYPE;
-                        } else if optarg == "sfst" {
-                            form = ImplementationType::SFST_TYPE;
-                        } else if optarg == "foma" || optarg == "unweighted" {
-                            form = ImplementationType::FOMA_TYPE;
-                        } else {
-                            eprintln!(
-                                "Unknown format \"{}\".Try running with option -h or --help.",
-                                optarg
-                            );
-                            return Err(1);
-                        }
-                    }
-                    ':' => {
-                        let optopt = opt.optopt;
-                        eprintln!(
-                            "Missing argument for -{}. Try using --help.",
-                            optopt as u8 as char
-                        );
-                        return Err(1);
-                    }
-                    _ => {
-                        let optopt = opt.optopt;
-                        eprintln!(
-                            "Unknown commandline option: -{}. Try using --help.",
-                            optopt as u8 as char
-                        );
-                        return Err(1);
-                    }
-                }
-            }
-
-            let optind = opt.optind;
-            if !input_named {
-                if (args.len() - optind) == 1 {
-                    input_named = true;
-                    infilename = Some(args[optind].clone());
-                } else if (args.len() - optind) > 1 {
-                    eprintln!("no more than one input rule file may be given");
-                    return Err(1);
-                }
-            } else if (args.len() - optind) > 0 {
-                eprintln!("no more than one input rule file may be given");
-                return Err(1);
-            }
-
-            self.be_verbose = verbose;
-            self.be_quiet = silent;
-            self.has_input_file = input_named;
-            self.has_output_file = output_named;
-            self.resolve_left_conflicts = resolve_left;
-            self.resolve_right_conflicts = resolve_right;
-            if self.has_input_file {
-                self.input_file_name = infilename.unwrap_or_default();
-            }
-            if self.has_output_file {
-                self.output_file_name = outfilename.unwrap_or_default();
-            }
-            self.format = form;
-
-            if is_debug {
-                self.has_debug_file = true;
-                self.has_input_file = true;
-                self.input_file_name = debug_file_name.unwrap_or_default();
-            }
-
-            Ok(())
-        }
-
         // [spec:hfst:def:command-line.command-line.command-line-fn]
         // [spec:hfst:sem:command-line.command-line.command-line-fn]
-        fn new(args: &mut Vec<String>) -> Result<Self, i32> {
+        //
+        // The C++ ctor ran the getopt loop; here clap has already run and the
+        // parsed Args are folded into the same data members.
+        fn from_args(args: &Args) -> Result<Self, i32> {
+            let input_file_name = args.input_file()?;
             let mut cl = CommandLine {
-                be_verbose: false,
-                be_quiet: false,
-                has_input_file: false,
-                input_file_name: String::new(),
-                has_output_file: false,
-                output_file_name: String::new(),
-                resolve_left_conflicts: false,
-                resolve_right_conflicts: true,
-                help: false,
-                version: false,
-                usage: false,
+                be_verbose: args.verbose,
+                be_quiet: args.quiet || args.silent,
+                has_input_file: input_file_name.is_some(),
+                input_file_name: input_file_name.unwrap_or_default(),
+                has_output_file: args.output.is_some(),
+                output_file_name: args.output.clone().unwrap_or_default(),
+                resolve_left_conflicts: args.resolve,
+                resolve_right_conflicts: !args.dont_resolve_right,
+                help: args.help,
+                version: args.version,
+                usage: args.usage,
                 has_debug_file: false,
-                format: ImplementationType::TROPICAL_OPENFST_TYPE,
+                format: args.format()?,
             };
-            cl.parse_options(args)?;
+            if let Some(name) = &args.debug_file {
+                cl.has_debug_file = true;
+                cl.has_input_file = true;
+                cl.input_file_name = name.clone();
+            }
             Ok(cl)
         }
 
@@ -936,21 +816,19 @@ pub mod twolc {
     }
 
     pub fn run(args: Vec<String>) -> i32 {
-        real_main(args)
+        cli::exit_code(execute(args))
     }
 
-    fn real_main(mut args: Vec<String>) -> i32 {
+    fn execute(args: Vec<String>) -> ToolResult {
         // The C++ driver linked the library's warning/error streams to stderr;
         // here that is the shared tracing subscriber the other tools install via
         // hfst_set_program_name (the library's info!/error! diagnostics would
         // otherwise be dropped).
         let argv0 = args.first().cloned().unwrap_or_default();
-        crate::hfst_commandline::hfst_set_program_name(&argv0, "0", "HfstTwolc");
+        let common = crate::hfst_commandline::hfst_set_program_name(&argv0, "0", "HfstTwolc");
 
-        let command_line = match CommandLine::new(&mut args) {
-            Ok(cl) => cl,
-            Err(code) => return code,
-        };
+        let (_common, args) = cli::parse::<Args>(common, args)?;
+        let command_line = CommandLine::from_args(&args)?;
 
         if command_line.help || command_line.version {
             if command_line.version {
@@ -959,11 +837,11 @@ pub mod twolc {
             if command_line.help {
                 command_line.print_help();
             }
-            return 0;
+            return Ok(());
         }
         if command_line.usage {
             command_line.print_usage();
-            return 0;
+            return Ok(());
         }
         if !command_line.be_quiet {
             if !command_line.has_input_file {
@@ -981,10 +859,7 @@ pub mod twolc {
             eprintln!("Verbose mode.");
         }
 
-        let input = match command_line.read_input() {
-            Ok(s) => s,
-            Err(code) => return code,
-        };
+        let input = command_line.read_input()?;
 
         // Test that the output file is okay (the C++ opened it up front before
         // running the preprocessor passes).
@@ -1004,7 +879,7 @@ pub mod twolc {
                     command_line.output_file_name
                 );
                 print!("__HFST_TWOLC_DIE");
-                return 1;
+                return Err(1);
             }
         };
 
@@ -1048,16 +923,16 @@ pub mod twolc {
             Some(()) => {}
             None => {
                 // A pass failing made the C++ driver exit(1).
-                return 1;
+                return Err(1);
             }
         }
         if command_line.has_output_file {
             if let Err(e) = out.flush() {
                 eprintln!("This is an hfst interface bug:\n{}", e);
-                return 1;
+                return Err(1);
             }
             out.close();
         }
-        0
+        Ok(())
     }
 }

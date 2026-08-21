@@ -1,35 +1,23 @@
 //! Faithful 1:1 port of tools/src/hfst-strings2fst.cc — the string compiling
-//! command-line tool. Drives the hfst-cli foundation (globals, getopt,
-//! commandline, program-options, tool-metadata, inc fragments).
+//! command-line tool.
 //!
-//! Compiles string pairs and pair-strings into transducer(s).
-//!
-//! Idiomatic option handling: the tool's state lives in [`CommonOptions`] (the
-//! shared `-v/-q/-o/-i/…` fields) and a tool-local [`Options`] — both built by
-//! `parse_options` and threaded into the processing functions. There are no
-//! `static mut` globals and no `unsafe`.
+//! Compiles string pairs and pair-strings into transducer(s). Option handling
+//! is clap 4 derive through [`crate::cli`].
 
+use crate::cli::{self, CommonArgs, ToolArgs, ToolResult, UnaryIo};
 use crate::globals::CommonOptions;
 use crate::hfst_commandline::{
-    error, error_at_line, extend_options_from_env, hfst_error, hfst_error_at_line,
-    hfst_parse_format_name, hfst_set_program_name, hfst_strtoweight, hfst_warning_at_line,
-    redirect_converting, verbose_print,
-};
-use crate::hfst_getopt::{self as getopt, Getopt};
-use crate::hfst_program_options::{
-    hfst_getopt_common_long, hfst_getopt_unary_long, print_common_program_options,
+    error, error_at_line, hfst_error, hfst_error_at_line, hfst_parse_format_name,
+    hfst_set_program_name, hfst_strtoweight, hfst_warning_at_line, redirect_converting,
+    verbose_print,
 };
 use crate::hfst_tool_metadata::hfst_set_name;
-use crate::inc::{
-    CaseResult, check_common_params, check_unary_params, handle_common_case, handle_error_case,
-    handle_unary_case,
-};
 use hfst::hfst_basic_transducer::HfstBasicTransducer;
 use hfst::hfst_data_types::{ImplementationType, Symbol};
 use hfst::hfst_output_stream::HfstOutputStream;
 use hfst::hfst_strings2_fst_tokenizer::{HfstStrings2FstTokenizer, StringPairVector};
 use hfst::hfst_transducer::HfstTransducer;
-use std::io::{BufRead, Write};
+use std::io::BufRead;
 
 // ---------------------------------------------------------------------------
 // Tool-global state. C: file-scope static variables.
@@ -68,23 +56,121 @@ struct Options {
     output_format: ImplementationType,
 }
 
-impl Default for Options {
-    fn default() -> Options {
-        Options {
-            epsilonname: None,
-            has_spaces: false,
-            disjunct_strings: false,
-            pairstrings: false,
-            multichar_symbol_filename: None,
-            multichar_symbols: Vec::new(),
-            sum_of_weights: 0.0,
-            normalize_weights: false,
-            logarithmic_weights_e: false,
-            logarithmic_weights_10: false,
-            warn_negative_weights: true,
-            warnings_are_errors: false,
-            output_format: ImplementationType::UNSPECIFIED_TYPE,
+/// hfst-strings2fst's command line.
+//
+// '--norm'/'--log'/'--log10' carried the getopt `val`s '2'/'3'/'4', and this
+// port's getopt derived its shorts from `val` alone, so '-2'/'-3'/'-4' have
+// always been accepted spellings of them. Declared here so they still are.
+// [spec:hfst:def:hfst-strings2fst.parse-options-fn]
+// [spec:hfst:sem:hfst-strings2fst.parse-options-fn]
+// [spec:hfst:req:cli.arg-parse]
+// [spec:hfst:req:cli.help]
+#[derive(clap::Parser)]
+#[command(about = "Compile string pairs and pair-strings into transducer(s)")]
+struct Args {
+    #[command(flatten)]
+    common: CommonArgs,
+    #[command(flatten)]
+    io: UnaryIo,
+
+    /// Write result in FMT format: foma, openfst-tropical, sfst,
+    /// optimized-lookup-weighted, optimized-lookup-unweighted
+    #[arg(short = 'f', long = "format", value_name = "FMT")]
+    format: Option<String>,
+
+    /// Disjunct all strings instead of transforming each string into a
+    /// separate transducer
+    #[arg(short = 'j', long = "disjunct-strings")]
+    disjunct_strings: bool,
+
+    /// Divide each weight by sum of all weights (with option -j)
+    #[arg(short = '2', long = "norm")]
+    norm: bool,
+
+    /// Take negative natural logarithm of each weight
+    #[arg(short = '3', long = "log")]
+    log: bool,
+
+    /// Take negative 10-based logarithm of each weight
+    #[arg(short = '4', long = "log10")]
+    log10: bool,
+
+    /// Input is in pairstring format
+    #[arg(short = 'p', long = "pairstrings")]
+    pairstrings: bool,
+
+    /// Input has spaces between symbols/symbol pairs
+    #[arg(short = 'S', long = "has-spaces")]
+    has_spaces: bool,
+
+    /// Interpret string EPS as epsilon (default @0@)
+    #[arg(
+        short = 'e',
+        long = "epsilon",
+        value_name = "EPS",
+        allow_hyphen_values = true
+    )]
+    epsilon: Option<String>,
+
+    /// Strings that must be tokenized as one symbol, one per line of FILE
+    #[arg(short = 'm', long = "multichar-symbols", value_name = "FILE")]
+    multichar_symbols: Option<String>,
+
+    /// Warning switch: error, no-error, negative-weights, no-negative-weights.
+    /// (The C long table spells this '--Wstuff'; the accepted spelling is
+    /// kept.)
+    #[arg(short = 'W', long = "Wstuff", value_name = "SWITCH")]
+    warning: Option<String>,
+}
+
+impl Args {
+    /// Case 'f': hfst_parse_format_name, itself fatal on an unknown name.
+    fn output_format(&self, common: &CommonOptions) -> ImplementationType {
+        match self.format.as_deref() {
+            Some(name) => hfst_parse_format_name(common, name),
+            None => ImplementationType::UNSPECIFIED_TYPE,
         }
+    }
+
+    /// Case 'W': the four -W switches, fatal on anything else.
+    fn warning_switches(&self, common: &CommonOptions) -> (bool, bool) {
+        let mut warn_negative_weights = true;
+        let mut warnings_are_errors = false;
+        if let Some(switch) = self.warning.as_deref() {
+            match switch {
+                "error" => warnings_are_errors = true,
+                "no-error" => warnings_are_errors = false,
+                "negative-weights" => warn_negative_weights = true,
+                "no-negative-weights" => warn_negative_weights = false,
+                other => {
+                    hfst_error(
+                        common,
+                        1,
+                        0,
+                        &format!("unrecognised warning option -W{}", other),
+                    );
+                }
+            }
+        }
+        (warn_negative_weights, warnings_are_errors)
+    }
+}
+
+impl ToolArgs for Args {
+    fn common(&self) -> &CommonArgs {
+        &self.common
+    }
+
+    fn apply_io(&self, opts: &mut CommonOptions) {
+        self.io.apply(opts);
+    }
+
+    fn validate(&self, opts: &CommonOptions) -> ToolResult {
+        // Both rejections happened inside the C getopt loop, before the
+        // parameter checks.
+        self.output_format(opts);
+        self.warning_switches(opts);
+        Ok(())
     }
 }
 
@@ -133,206 +219,6 @@ fn take_negative_logarithm_10(common: &CommonOptions, weight: f32) -> f32 {
 
 fn last_os_error_code() -> i32 {
     std::io::Error::last_os_error().raw_os_error().unwrap_or(0)
-}
-
-// [spec:hfst:req:cli.help]
-fn print_usage(common: &CommonOptions) {
-    let mut msg = common.message_writer();
-    // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
-    let program_name = &common.program_name;
-    let _ = write!(
-        msg,
-        "Usage: {} [OPTIONS...] [INFILE]\nCompile string pairs and pair-strings into transducer(s)\n\n",
-        program_name
-    );
-    print_common_program_options(&mut *msg);
-    let _ = write!(
-        msg,
-        "Input/Output options:\n  -i, --input=INFILE     Read input strings from INFILE\n  -o, --output=OUTFILE   Write output transducer to OUTFILE\n",
-    );
-    let _ = write!(
-        msg,
-        "String and format options:\n  -f, --format=FMT          Write result in FMT format\n  -j, --disjunct-strings    Disjunct all strings instead of transforming\n                            each string into a separate transducer\n      --norm                Divide each weight by sum of all weights\n                            (with option -j)\n      --log                 Take negative natural logarithm of each weight\n      --log10               Take negative 10-based logarithm of each weight\n  -p, --pairstrings         Input is in pairstring format\n  -S, --has-spaces          Input has spaces between symbols/symbol pairs\n  -e, --epsilon=EPS         Interpret string EPS as epsilon.\n  -m, --multichar-symbols=FILE   Strings that must be tokenized as one symbol.\n",
-    );
-    let _ = writeln!(msg);
-
-    let _ = write!(
-        msg,
-        "If OUTFILE or INFILE is missing or -, standard streams will be used.\nFMT can be {{ foma, openfst-tropical, sfst, \noptimized-lookup-weighted, optimized-lookup-unweighted }}.\nIf EPS is not defined, the default representation of @0@ is used.\nOption --norm precedes option --log.\nThe FILE of option -m lists all multichar-symbols, each symbol\non its own line.\nBackslash '\\' may be used to escape ':', tab and itself. For any\nother symbol x '\\x' means x literally, i.e. is the same as 'x'.\nThe weight of a string can be given after the string separated\nby a tabulator. The weight cannot be zero.\n\n",
-    );
-
-    let _ = write!(
-        msg,
-        "Examples:\n  echo \"cat:dog\" | {}            create cat:dog fst\n  echo \"c:da:ot:g\" | {} -p       same as pairstring\n  echo \"c:d a:o t:g\" | {} -p -S  same as pairstring with spaces\n  echo \"c a t:d o g\" | {} -S     same with spaces\n\n",
-        program_name, program_name, program_name, program_name
-    );
-    let _ = writeln!(msg);
-}
-
-// [spec:hfst:def:hfst-strings2fst.parse-options-fn]
-// [spec:hfst:sem:hfst-strings2fst.parse-options-fn]
-// [spec:hfst:req:cli.arg-parse]
-//
-// Parse argv into the shared + tool options; `Err(code)` is an exit code the
-// caller should return (the former EXIT_CONTINUE sentinel is now `Ok`).
-fn parse_options(
-    mut common: CommonOptions,
-    args: &mut Vec<String>,
-) -> Result<(CommonOptions, Options), i32> {
-    let mut options = Options::default();
-    let mut opt = Getopt::new();
-    extend_options_from_env(args);
-    loop {
-        let mut long_options: Vec<getopt::GetOpt> = Vec::new();
-        long_options.extend(hfst_getopt_common_long());
-        long_options.extend(hfst_getopt_unary_long());
-        // add tool-specific options here
-        long_options.push(getopt::GetOpt {
-            name: "disjunct-strings",
-            has_arg: getopt::NO_ARGUMENT,
-            val: 'j' as i32,
-        });
-        long_options.push(getopt::GetOpt {
-            name: "epsilon",
-            has_arg: getopt::REQUIRED_ARGUMENT,
-            val: 'e' as i32,
-        });
-        long_options.push(getopt::GetOpt {
-            name: "norm",
-            has_arg: getopt::NO_ARGUMENT,
-            val: '2' as i32,
-        });
-        long_options.push(getopt::GetOpt {
-            name: "log",
-            has_arg: getopt::NO_ARGUMENT,
-            val: '3' as i32,
-        });
-        long_options.push(getopt::GetOpt {
-            name: "log10",
-            has_arg: getopt::NO_ARGUMENT,
-            val: '4' as i32,
-        });
-        long_options.push(getopt::GetOpt {
-            name: "pairstrings",
-            has_arg: getopt::NO_ARGUMENT,
-            val: 'p' as i32,
-        });
-        long_options.push(getopt::GetOpt {
-            name: "has-spaces",
-            has_arg: getopt::NO_ARGUMENT,
-            val: 'S' as i32,
-        });
-        long_options.push(getopt::GetOpt {
-            name: "multichar-symbols",
-            has_arg: getopt::REQUIRED_ARGUMENT,
-            val: 'm' as i32,
-        });
-        long_options.push(getopt::GetOpt {
-            name: "format",
-            has_arg: getopt::REQUIRED_ARGUMENT,
-            val: 'f' as i32,
-        });
-        long_options.push(getopt::GetOpt {
-            name: "Wstuff",
-            has_arg: getopt::REQUIRED_ARGUMENT,
-            val: 'W' as i32,
-        });
-        let c = opt.getopt_long(args, &long_options);
-        if -1 == c {
-            break;
-        }
-
-        // The C switch chains the #include'd case groups in order: common
-        // cases, then unary cases, then the tool's own, then the terminal
-        // error arm.
-        match handle_common_case(&mut common, &opt, c, print_usage) {
-            CaseResult::Return(code) => return Err(code),
-            CaseResult::Break => continue,
-            CaseResult::NotHandled => {}
-        }
-        match handle_unary_case(&mut common, &opt, c) {
-            CaseResult::Return(code) => return Err(code),
-            CaseResult::Break => continue,
-            CaseResult::NotHandled => {}
-        }
-        // tool-specific cases
-        let cc = c as u8 as char;
-        match cc {
-            'e' => {
-                options.epsilonname = Some(opt.optarg());
-                continue;
-            }
-            '2' => {
-                options.normalize_weights = true;
-                continue;
-            }
-            '3' => {
-                options.logarithmic_weights_e = true;
-                continue;
-            }
-            '4' => {
-                options.logarithmic_weights_10 = true;
-                continue;
-            }
-            'j' => {
-                options.disjunct_strings = true;
-                continue;
-            }
-            'S' => {
-                options.has_spaces = true;
-                continue;
-            }
-            'p' => {
-                options.pairstrings = true;
-                continue;
-            }
-            'm' => {
-                options.multichar_symbol_filename = Some(opt.optarg());
-                continue;
-            }
-            'f' => {
-                options.output_format = hfst_parse_format_name(&common, &opt.optarg());
-                continue;
-            }
-            'W' => {
-                let optarg = opt.optarg();
-                if optarg == "error" {
-                    options.warnings_are_errors = true;
-                } else if optarg == "no-error" {
-                    options.warnings_are_errors = false;
-                } else if optarg == "negative-weights" {
-                    options.warn_negative_weights = true;
-                } else if optarg == "no-negative-weights" {
-                    options.warn_negative_weights = false;
-                } else {
-                    hfst_error(
-                        &common,
-                        1,
-                        0,
-                        &format!("unrecognised warning option -W{}", optarg),
-                    );
-                    return Err(1);
-                }
-                continue;
-            }
-            _ => {}
-        }
-        return Err(handle_error_case(&common, &opt, c));
-    }
-
-    check_common_params(&mut common);
-    check_unary_params(&mut common, &opt, args);
-    if options.output_format == ImplementationType::UNSPECIFIED_TYPE {
-        verbose_print(
-            &common,
-            "Output format not specified, defaulting to openfst tropical\n",
-        );
-        options.output_format = ImplementationType::TROPICAL_OPENFST_TYPE;
-    }
-    if options.epsilonname.is_none() {
-        options.epsilonname = Some("@0@".to_string());
-    }
-    Ok((common, options))
 }
 
 // [spec:hfst:def:hfst-strings2fst.process-stream-fn]
@@ -570,14 +456,43 @@ fn process_stream_typed<B: hfst::backend::AlgebraBackend>(
 
 // [spec:hfst:def:hfst-strings2fst.main-fn]
 // [spec:hfst:sem:hfst-strings2fst.main-fn]
-pub fn run(mut args: Vec<String>) -> i32 {
+pub fn run(args: Vec<String>) -> i32 {
+    cli::exit_code(execute(args))
+}
+
+fn execute(args: Vec<String>) -> ToolResult {
     let argv0 = args.first().cloned().unwrap_or_default();
 
     let common = hfst_set_program_name(&argv0, "0.1", "Strings2Fst");
-    let (common, mut options) = match parse_options(common, &mut args) {
-        Ok(v) => v,
-        Err(code) => return code,
+    let (common, args) = cli::parse::<Args>(common, args)?;
+
+    let (warn_negative_weights, warnings_are_errors) = args.warning_switches(&common);
+    let mut options = Options {
+        epsilonname: args.epsilon.clone(),
+        has_spaces: args.has_spaces,
+        disjunct_strings: args.disjunct_strings,
+        pairstrings: args.pairstrings,
+        multichar_symbol_filename: args.multichar_symbols.clone(),
+        multichar_symbols: Vec::new(),
+        sum_of_weights: 0.0,
+        normalize_weights: args.norm,
+        logarithmic_weights_e: args.log,
+        logarithmic_weights_10: args.log10,
+        warn_negative_weights,
+        warnings_are_errors,
+        output_format: args.output_format(&common),
     };
+    // The two defaults the C applied after the parameter checks.
+    if options.output_format == ImplementationType::UNSPECIFIED_TYPE {
+        verbose_print(
+            &common,
+            "Output format not specified, defaulting to openfst tropical\n",
+        );
+        options.output_format = ImplementationType::TROPICAL_OPENFST_TYPE;
+    }
+    if options.epsilonname.is_none() {
+        options.epsilonname = Some("@0@".to_string());
+    }
 
     if let Some(fname) = options.multichar_symbol_filename.clone() {
         verbose_print(
@@ -626,16 +541,16 @@ pub fn run(mut args: Vec<String>) -> i32 {
         Ok(s) => s,
         Err(e) => {
             error(&common, 1, 0, &format!("{e}"));
-            return 1;
+            return Err(1);
         }
     };
     let mut input = match common.input_reader() {
         Ok(r) => r,
         Err(e) => {
             eprintln!("hfst-strings2fst: cannot open input: {e}");
-            return 1;
+            return Err(1);
         }
     };
     process_stream(&common, &mut options, &mut outstream, &mut *input);
-    0
+    Ok(())
 }

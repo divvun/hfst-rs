@@ -434,6 +434,34 @@ pub trait ToolArgs: clap::Parser {
     fn applies_common_options(&self) -> bool {
         true
     }
+
+    /// Whether check-params-common.h ran after the loop. Normally the same
+    /// answer as [`ToolArgs::applies_common_options`], but hfst-format,
+    /// hfst-pmatch and hfst-tokenize chain the common CASES and then resolve
+    /// their operand themselves, never including check-params-common.h — so
+    /// an unnamed '-o' leaves message_out at stdout for them, where every
+    /// other tool would have moved it to stderr.
+    fn applies_check_common_params(&self) -> bool {
+        self.applies_common_options()
+    }
+
+    /// How a parse failure is reported. Every tool built on the shared getopt
+    /// fragments used getopt-cases-error.h; hfst-twolc's bespoke CommandLine
+    /// parser had its own two messages and no short-help hint.
+    fn error_style() -> ErrorStyle {
+        ErrorStyle::Hfst
+    }
+}
+
+/// Which of the two argument-error dialects a tool speaks.
+// [spec:hfst:req:cli.arg-parse]
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum ErrorStyle {
+    /// getopt-cases-error.h: the short-help hint, then "prog: Unknown option
+    /// `-x'." on the message stream, exit 1.
+    Hfst,
+    /// CommandLine::parse_options: a bare line on stderr, exit 1.
+    Twolc,
 }
 
 /// Parse a tool's argv into its derive struct and the shared
@@ -448,18 +476,18 @@ pub fn parse<T: ToolArgs>(
 ) -> Result<(CommonOptions, T), i32> {
     let mut cmd = T::command().bin_name(common.program_name.clone());
     let argv = normalize_argv(&cmd, argv);
+    let style = T::error_style();
     let matches = match cmd.try_get_matches_from_mut(argv) {
         Ok(m) => m,
-        Err(e) => return Err(report_clap_error(&common, &cmd, e)),
+        Err(e) => return Err(report_clap_error(&common, &cmd, e, style)),
     };
     let mut args = match T::from_arg_matches(&matches) {
         Ok(a) => a,
-        Err(e) => return Err(report_clap_error(&common, &cmd, e)),
+        Err(e) => return Err(report_clap_error(&common, &cmd, e, style)),
     };
     args.absorb_matches(&matches);
 
-    let shares_common = args.applies_common_options();
-    if shares_common {
+    if args.applies_common_options() {
         args.common().apply(&mut common);
     }
     if args.common().version {
@@ -467,7 +495,7 @@ pub fn parse<T: ToolArgs>(
         return Err(EXIT_SUCCESS);
     }
     args.validate(&common)?;
-    if shares_common {
+    if args.applies_check_common_params() {
         check_common_params(&mut common);
     }
     args.apply_io(&mut common);
@@ -489,6 +517,9 @@ pub fn normalize_argv(cmd: &clap::Command, argv: Vec<String>) -> Vec<String> {
     let mut longs: HashSet<&str> = HashSet::new();
     // Shorts whose value is optional, with the long name to rewrite through.
     let mut optional_shorts: Vec<(char, Option<&str>)> = Vec::new();
+    // Shorts that take a value at all: clap already glues an attached value to
+    // a required-argument short, so scanning a cluster must stop at one.
+    let mut valued_shorts: HashSet<char> = HashSet::new();
     for arg in cmd.get_arguments() {
         if let Some(long) = arg.get_long() {
             longs.insert(long);
@@ -496,12 +527,16 @@ pub fn normalize_argv(cmd: &clap::Command, argv: Vec<String>) -> Vec<String> {
         for alias in arg.get_all_aliases().into_iter().flatten() {
             longs.insert(alias);
         }
-        if let Some(short) = arg.get_short()
-            && arg
+        if let Some(short) = arg.get_short() {
+            if arg.get_action().takes_values() {
+                valued_shorts.insert(short);
+            }
+            if arg
                 .get_num_args()
                 .is_some_and(|n| n.min_values() == 0 && n.max_values() >= 1)
-        {
-            optional_shorts.push((short, arg.get_long()));
+            {
+                optional_shorts.push((short, arg.get_long()));
+            }
         }
     }
 
@@ -533,21 +568,114 @@ pub fn normalize_argv(cmd: &clap::Command, argv: Vec<String>) -> Vec<String> {
             out.push(format!("-{}", token));
             continue;
         }
-        // '-pboth' for an optional-argument short: clap needs the '=' spelled.
-        let mut chars = body.chars();
-        let first = chars.next().unwrap_or('\0');
-        let rest = chars.as_str();
-        if !rest.is_empty()
-            && !rest.starts_with('=')
-            && let Some((_, long)) = optional_shorts.iter().find(|(c, _)| *c == first)
-        {
-            match long {
-                Some(long) => out.push(format!("--{}={}", long, rest)),
-                None => out.push(format!("-{}={}", first, rest)),
+        // '-pboth' / '-vS5' for an optional-argument short: clap needs the '='
+        // spelled. Scan the cluster to find it, since getopt would have taken
+        // the flags ahead of it apart first, and stop at anything clap already
+        // handles (a value-taking short) or cannot resolve (an unknown one).
+        let mut rewritten = false;
+        for (offset, letter) in body.char_indices() {
+            if let Some((_, long)) = optional_shorts.iter().find(|(c, _)| *c == letter) {
+                let rest = &body[offset + letter.len_utf8()..];
+                if rest.is_empty() || rest.starts_with('=') {
+                    break;
+                }
+                if offset > 0 {
+                    out.push(format!("-{}", &body[..offset]));
+                }
+                match long {
+                    Some(long) => out.push(format!("--{}={}", long, rest)),
+                    None => out.push(format!("-{}={}", letter, rest)),
+                }
+                rewritten = true;
+                break;
+            }
+            // Anything that takes a value, or that the command never declared,
+            // ends the scan: clap resolves the first and reports the second.
+            if valued_shorts.contains(&letter)
+                || !cmd.get_arguments().any(|a| a.get_short() == Some(letter))
+            {
+                break;
+            }
+        }
+        if !rewritten {
+            out.push(token);
+        }
+    }
+    out
+}
+
+/// Drop the option tokens a command does not declare, the way a getopt switch
+/// whose terminal arm is `default: break;` silently did.
+///
+/// Only hfst-format is written that way — it must keep answering about the
+/// file it was pointed at however the caller decorated the command line — so
+/// this is deliberately NOT part of [`parse`]: everywhere else an unknown
+/// option is fatal.
+///
+/// The C's getopt kept scanning a partially-unknown short cluster, so `-vZq`
+/// yields 'v' and 'q' with 'Z' discarded; the same letter-by-letter walk is
+/// done here. A separate-word value of a dropped long option is left behind as
+/// an operand, which is also what getopt did with it.
+///
+/// Run [`normalize_argv`] first: a single-dash long ('-quiet') must already
+/// have grown its second dash, or the cluster walk would take it apart.
+// [spec:hfst:req:cli.arg-parse]
+pub fn drop_unknown_options(cmd: &clap::Command, argv: Vec<String>) -> Vec<String> {
+    let mut longs: HashSet<&str> = HashSet::new();
+    let mut shorts: Vec<(char, bool)> = Vec::new(); // (letter, takes a value)
+    for arg in cmd.get_arguments() {
+        if let Some(long) = arg.get_long() {
+            longs.insert(long);
+        }
+        for alias in arg.get_all_aliases().into_iter().flatten() {
+            longs.insert(alias);
+        }
+        if let Some(short) = arg.get_short() {
+            shorts.push((short, arg.get_action().takes_values()));
+        }
+    }
+
+    let mut out: Vec<String> = Vec::with_capacity(argv.len());
+    let mut iter = argv.into_iter();
+    if let Some(program) = iter.next() {
+        out.push(program);
+    }
+    let mut past_end_of_options = false;
+    for token in iter {
+        if past_end_of_options || token == "-" || !token.starts_with('-') {
+            out.push(token);
+            continue;
+        }
+        if token == "--" {
+            past_end_of_options = true;
+            out.push(token);
+            continue;
+        }
+        if let Some(body) = token.strip_prefix("--") {
+            let name = body.split('=').next().unwrap_or(body);
+            if longs.contains(name) {
+                out.push(token);
             }
             continue;
         }
-        out.push(token);
+        // A short cluster: keep the letters the command knows, and let the
+        // first value-taking one swallow the rest of the token.
+        let mut kept = String::from("-");
+        let body = &token[1..];
+        for (i, letter) in body.char_indices() {
+            match shorts.iter().find(|(c, _)| *c == letter) {
+                Some((_, true)) => {
+                    kept.push(letter);
+                    kept.push_str(&body[i + letter.len_utf8()..]);
+                    break;
+                }
+                Some((_, false)) => kept.push(letter),
+                None => {}
+            }
+        }
+        if kept.len() > 1 {
+            out.push(kept);
+        }
     }
     out
 }
@@ -562,7 +690,12 @@ pub fn normalize_argv(cmd: &clap::Command, argv: Vec<String>) -> Vec<String> {
 /// default is 2).
 // [spec:hfst:req:cli.arg-parse]
 // [spec:hfst:req:cli.help]
-fn report_clap_error(common: &CommonOptions, cmd: &clap::Command, err: clap::Error) -> i32 {
+fn report_clap_error(
+    common: &CommonOptions,
+    cmd: &clap::Command,
+    err: clap::Error,
+    style: ErrorStyle,
+) -> i32 {
     use std::io::Write;
     // ErrorKind is non_exhaustive, so these are equality tests rather than a
     // match with a catch-all arm.
@@ -576,6 +709,10 @@ fn report_clap_error(common: &CommonOptions, cmd: &clap::Command, err: clap::Err
     if kind == ErrorKind::DisplayVersion {
         print_version(common);
         return EXIT_SUCCESS;
+    }
+    if style == ErrorStyle::Twolc {
+        eprintln!("{}", twolc_error_text(cmd, &err));
+        return EXIT_FAILURE;
     }
     print_short_help(common);
     // error() with a non-zero status exits, so the return below stands for the
@@ -615,6 +752,48 @@ fn hfst_error_text(cmd: &clap::Command, err: &clap::Error) -> String {
         };
     }
     first_line(err)
+}
+
+/// CommandLine::parse_options' two argument-error messages.
+///
+/// Its getopt loop named the offending option through `optopt`, which the C
+/// left at -2 for a long option — printed as a byte it becomes U+00FE, so
+/// `--bogus` reports "-þ". Preserved bug-for-bug: the token is available here
+/// either way, but the message the build scripts have always seen is the one
+/// with the mojibake in it.
+// [spec:hfst:def:command-line.command-line.parse-options-fn]
+// [spec:hfst:sem:command-line.command-line.parse-options-fn]
+fn twolc_error_text(cmd: &clap::Command, err: &clap::Error) -> String {
+    const LONG_OPTOPT: char = '\u{fe}';
+    let invalid = match err.get(ContextKind::InvalidArg) {
+        Some(ContextValue::String(s)) => Some(s.clone()),
+        Some(ContextValue::Strings(v)) => v.first().cloned(),
+        _ => None,
+    };
+    let named = |context: &str| -> char { option_letter(cmd, context).unwrap_or(LONG_OPTOPT) };
+    let kind = err.kind();
+    if kind == ErrorKind::InvalidValue
+        || kind == ErrorKind::TooFewValues
+        || kind == ErrorKind::WrongNumberOfValues
+    {
+        let letter = invalid.as_deref().map_or(LONG_OPTOPT, named);
+        return format!("Missing argument for -{}. Try using --help.", letter);
+    }
+    // The 'default' arm: an unknown option. A short one is named by its
+    // letter; a long one keeps the C's -2 optopt.
+    let letter = match invalid.as_deref() {
+        Some(token) => {
+            let name = token.split_whitespace().next().unwrap_or(token);
+            let stripped = name.trim_start_matches('-');
+            if name.starts_with("--") || stripped.chars().count() != 1 {
+                LONG_OPTOPT
+            } else {
+                stripped.chars().next().unwrap_or(LONG_OPTOPT)
+            }
+        }
+        None => LONG_OPTOPT,
+    };
+    format!("Unknown commandline option: -{}. Try using --help.", letter)
 }
 
 /// The short letter of the option a clap error names, e.g. "-o" for the

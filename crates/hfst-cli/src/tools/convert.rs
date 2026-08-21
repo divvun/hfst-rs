@@ -9,21 +9,14 @@
 
 pub mod expand_equivalences {
     //! Faithful 1:1 port of tools/src/hfst-expand-equivalences.cc — the transducer
-    //! label modification tool for equivalence classes. Drives the hfst-cli
-    //! foundation (globals, getopt, commandline, program-options, tool-metadata,
-    //! inc fragments).
+    //! label modification tool for equivalence classes. Option handling is clap 4
+    //! derive through [`crate::cli`].
 
+    use crate::cli::{self, CommonArgs, ToolArgs, ToolResult};
     use crate::globals::CommonOptions;
     use crate::hfst_commandline::{
-        error, error_at_line, extend_options_from_env, hfst_set_program_name,
-        is_input_stream_in_ol_format, verbose_print,
-    };
-    use crate::hfst_getopt::{self as getopt, Getopt};
-    use crate::hfst_program_options::{
-        hfst_getopt_common_long, hfst_getopt_unary_long, print_common_program_options,
-    };
-    use crate::inc::{
-        CaseResult, check_common_params, check_unary_params, handle_common_case, handle_error_case,
+        error, error_at_line, hfst_set_program_name, is_input_stream_in_ol_format,
+        print_short_help, verbose_print,
     };
     use hfst::expand_equivalences::{
         FsaLevel, TsvExtensionError, expand_equivalences, read_tsv_extensions,
@@ -32,7 +25,124 @@ pub mod expand_equivalences {
     use hfst::hfst_output_stream::HfstOutputStream;
     use std::io::Write;
 
-    /// hfst-expand-equivalences's own options (the former tool-specific `static mut`s).
+    /// hfst-expand-equivalences's command line.
+    //
+    // Its switch chains the COMMON cases only: the unary long options are in
+    // its table (the tool splices HFST_GETOPT_UNARY_LONG in) but '-i' reaches
+    // no case, so it falls through to the error arm — which is why '-i' is
+    // declared here and then rejected rather than left out of the parser.
+    // [spec:hfst:def:hfst-expand-equivalences.parse-options-fn]
+    // [spec:hfst:sem:hfst-expand-equivalences.parse-options-fn]
+    // [spec:hfst:req:cli.arg-parse]
+    // [spec:hfst:req:cli.help]
+    #[derive(clap::Parser)]
+    #[command(about = "Extend transducer arcs for equivalence classes")]
+    struct Args {
+        #[command(flatten)]
+        common: CommonArgs,
+
+        /// Convert single symbol ISYM to allow OSYM
+        #[arg(
+            short = 'f',
+            long = "from",
+            value_name = "ISYM",
+            allow_hyphen_values = true
+        )]
+        from: Option<String>,
+
+        /// Convert to OSYM
+        #[arg(
+            short = 't',
+            long = "to",
+            value_name = "OSYM",
+            allow_hyphen_values = true
+        )]
+        to: Option<String>,
+
+        /// Read extensions in acx format from ACXFILE
+        #[arg(short = 'a', long = "acx", value_name = "ACXFILE")]
+        acx: Option<String>,
+
+        /// Read extensions in tsv format from TSVFILE
+        #[arg(short = 'T', long = "tsv", value_name = "TSVFILE")]
+        tsv: Option<String>,
+
+        /// Perform extensions on LEVEL of fsa: upper/first/input/1,
+        /// lower/second/output/2, or both (default first)
+        #[arg(short = 'l', long = "level", value_name = "LEVEL")]
+        level: Option<String>,
+
+        /// Accepted by the option table but reaching no case, i.e. rejected
+        #[arg(
+            short = 'i',
+            long = "input",
+            value_name = "INFILE",
+            hide = true,
+            allow_hyphen_values = true
+        )]
+        input: Option<String>,
+
+        /// Input transducer file; missing or - reads the standard input
+        #[arg(value_name = "INFILE", num_args = 0..)]
+        infiles: Vec<String>,
+    }
+
+    impl Args {
+        /// Case 'l': the three LEVEL vocabularies, fatal on anything else.
+        fn level(&self, common: &CommonOptions) -> FsaLevel {
+            match self.level.as_deref() {
+                None => FsaLevel::First,
+                Some("first") | Some("upper") | Some("input") | Some("1") => FsaLevel::First,
+                Some("second") | Some("lower") | Some("output") | Some("2") => FsaLevel::Second,
+                Some("both") => FsaLevel::Both,
+                Some(_) => {
+                    error(
+                        common,
+                        1,
+                        0,
+                        "The option for level parameter must be one of:\n\
+                         upper, first, input; second, lower, output; both, \
+                         1 or 2.",
+                    );
+                    FsaLevel::First
+                }
+            }
+        }
+    }
+
+    impl ToolArgs for Args {
+        fn common(&self) -> &CommonArgs {
+            &self.common
+        }
+
+        fn apply_io(&self, opts: &mut CommonOptions) {
+            // check-params-unary.h with input_named never set, since '-i' has
+            // no case here.
+            match self.infiles.len() {
+                1 => {
+                    opts.input_filename = if self.infiles[0] == "-" {
+                        "<stdin>".to_string()
+                    } else {
+                        self.infiles[0].clone()
+                    }
+                }
+                0 => opts.input_filename = "<stdin>".to_string(),
+                _ => error(opts, 1, 0, "no more than one transducer file may be given"),
+            }
+        }
+
+        fn validate(&self, opts: &CommonOptions) -> ToolResult {
+            if self.input.is_some() {
+                print_short_help(opts);
+                error(opts, 1, 0, "invalid option -i");
+                return Err(1);
+            }
+            self.level(opts);
+            Ok(())
+        }
+    }
+
+    /// hfst-expand-equivalences's resolved tool state.
     ///
     /// C used NULL char* as "unset"; modelled here as `Option<String>`. The C++
     /// `ACX_FILE` was a `FILE*` opened by `hfst_fopen` and only ever tested for
@@ -49,163 +159,6 @@ pub mod expand_equivalences {
         // The TSV file is opened (as a std stream) and parsed in process_stream, so
         // no libc TSV handle is held here.
         level: FsaLevel,
-    }
-
-    impl Default for Options {
-        fn default() -> Options {
-            Options {
-                only_from_label: None,
-                only_to_label: None,
-                acx_file_name: None,
-                acx_file_opened: false,
-                tsv_file_name: None,
-                level: FsaLevel::First,
-            }
-        }
-    }
-
-    // [spec:hfst:req:cli.help]
-    fn print_usage(common: &CommonOptions) {
-        let mut msg = common.message_writer();
-        // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
-        let program_name = &common.program_name;
-        let _ = write!(
-            msg,
-            "Usage: {} [OPTIONS...] [INFILE]\nExtend transducer arcs for equivalence classes\n\n",
-            program_name
-        );
-        print_common_program_options(&mut *msg);
-        let _ = write!(
-            msg,
-            "Eqv. class extension options:\n\
-         \x20 -f, --from=ISYM     convert single symbol ISYM to allow OSYM\n\
-         \x20 -t, --to=OSYM       convert to OSYM\n\
-         \x20 -a, --acx=ACXFILE   read extensions in acx format from ACXFILE\n\
-         \x20 -T, --tsv=TSVFILE   read extensions in tsv format from TSVFILE\n\
-         \x20 -l, --level=LEVEL   perform extensions on LEVEL of fsa\n"
-        );
-        let _ = writeln!(msg);
-        let _ = write!(
-            msg,
-            "Either ACXFILE, TSVFILE or both ISYM and OSYM must be specified.\n\
-         LEVEL should be either {{upper, first, 1, input, surface}}, \
-         {{lower, second, 2, output, analysis}} or both.\n\
-         If LEVEL is omitted, default is first.\n"
-        );
-        let _ = write!(
-            msg,
-            "Examples:\n\
-         \x20 {} -o rox.hfst -a romanian.acx ro.hfst  extend romanian char\
-         equivalences\n\n",
-            program_name
-        );
-    }
-
-    // [spec:hfst:def:hfst-expand-equivalences.parse-options-fn]
-    // [spec:hfst:sem:hfst-expand-equivalences.parse-options-fn]
-    // [spec:hfst:req:cli.arg-parse]
-    //
-    // Parse argv into the shared + tool options; `Err(code)` is an exit code the
-    // caller should return (the former EXIT_CONTINUE sentinel is now `Ok`).
-    fn parse_options(
-        mut common: CommonOptions,
-        args: &mut Vec<String>,
-    ) -> Result<(CommonOptions, Options), i32> {
-        let mut options = Options::default();
-        let mut opt = Getopt::new();
-        extend_options_from_env(args);
-        loop {
-            let mut long_options: Vec<getopt::GetOpt> = Vec::new();
-            long_options.extend(hfst_getopt_common_long());
-            long_options.extend(hfst_getopt_unary_long());
-            // add tool-specific options here
-            long_options.push(getopt::GetOpt {
-                name: "from",
-                has_arg: 1, // required_argument
-                val: b'f' as i32,
-            });
-            long_options.push(getopt::GetOpt {
-                name: "to",
-                has_arg: 1,
-                val: b't' as i32,
-            });
-            long_options.push(getopt::GetOpt {
-                name: "acx",
-                has_arg: 1,
-                val: b'a' as i32,
-            });
-            long_options.push(getopt::GetOpt {
-                name: "tsv",
-                has_arg: 1,
-                val: b'T' as i32,
-            });
-            long_options.push(getopt::GetOpt {
-                name: "level",
-                has_arg: 1,
-                val: b'l' as i32,
-            });
-            let c = opt.getopt_long(args, &long_options);
-            if -1 == c {
-                break;
-            }
-
-            // The C switch chains the #include'd common cases, then the tool's
-            // own cases, then the terminal error arm.
-            match handle_common_case(&mut common, &opt, c, print_usage) {
-                CaseResult::Return(code) => return Err(code),
-                CaseResult::Break => continue,
-                CaseResult::NotHandled => {}
-            }
-            match c as u8 {
-                b'f' => {
-                    options.only_from_label = Some(opt.optarg());
-                    continue;
-                }
-                b't' => {
-                    options.only_to_label = Some(opt.optarg());
-                    continue;
-                }
-                b'a' => {
-                    options.acx_file_name = Some(opt.optarg());
-                    continue;
-                }
-                b'T' => {
-                    options.tsv_file_name = Some(opt.optarg());
-                    continue;
-                }
-                b'l' => {
-                    let optarg = opt.optarg();
-                    if optarg == "first" || optarg == "upper" || optarg == "input" || optarg == "1"
-                    {
-                        options.level = FsaLevel::First;
-                    } else if optarg == "second"
-                        || optarg == "lower"
-                        || optarg == "output"
-                        || optarg == "2"
-                    {
-                        options.level = FsaLevel::Second;
-                    } else if optarg == "both" {
-                        options.level = FsaLevel::Both;
-                    } else {
-                        error(
-                            &common,
-                            1,
-                            0,
-                            "The option for level parameter must be one of:\n\
-                         upper, first, input; second, lower, output; both, \
-                         1 or 2.",
-                        );
-                    }
-                    continue;
-                }
-                _ => {}
-            }
-            return Err(handle_error_case(&common, &opt, c));
-        }
-
-        check_common_params(&mut common);
-        check_unary_params(&mut common, &opt, args);
-        Ok((common, options))
     }
 
     // [spec:hfst:def:hfst-expand-equivalences.check-options-fn]
@@ -333,13 +286,22 @@ pub mod expand_equivalences {
 
     // [spec:hfst:def:hfst-expand-equivalences.main-fn]
     // [spec:hfst:sem:hfst-expand-equivalences.main-fn]
-    pub fn run(mut args: Vec<String>) -> i32 {
+    pub fn run(args: Vec<String>) -> i32 {
+        cli::exit_code(execute(args))
+    }
+
+    fn execute(args: Vec<String>) -> ToolResult {
         let argv0 = args.first().cloned().unwrap_or_default();
 
         let common = hfst_set_program_name(&argv0, "0.1", "HfstExpandEquivalences");
-        let (common, mut options) = match parse_options(common, &mut args) {
-            Ok(v) => v,
-            Err(code) => return code,
+        let (common, args) = cli::parse::<Args>(common, args)?;
+        let mut options = Options {
+            only_from_label: args.from.clone(),
+            only_to_label: args.to.clone(),
+            acx_file_name: args.acx.clone(),
+            acx_file_opened: false,
+            tsv_file_name: args.tsv.clone(),
+            level: args.level(&common),
         };
         check_options(&common, &mut options);
 
@@ -363,7 +325,7 @@ pub mod expand_equivalences {
             Ok(v) => v,
             Err(e) => {
                 error(&common, 1, 0, &format!("{e}"));
-                return 1;
+                return Err(1);
             }
         };
         // (the C wraps the ctor in try/catch on HfstException; the Rust ctor
@@ -379,18 +341,18 @@ pub mod expand_equivalences {
             Ok(v) => v,
             Err(e) => {
                 error(&common, 1, 0, &format!("{e}"));
-                return 1;
+                return Err(1);
             }
         };
 
         if is_input_stream_in_ol_format(&instream, "hfst-expand-equivalences") {
-            return 1;
+            return Err(1);
         }
 
         process_stream(&common, &options, &mut instream, &mut outstream);
         instream.close();
         outstream.close();
-        0
+        Ok(())
     }
 }
 
@@ -405,29 +367,102 @@ pub mod format {
     //! stream to report its type) and has no process_stream. main is therefore
     //! very thin and simply prints the type returned by parse_options.
 
+    use crate::cli::{self, CommonArgs, ToolArgs, ToolResult};
     use crate::globals::CommonOptions;
-    use crate::hfst_commandline::{
-        extend_options_from_env, hfst_set_program_name, hfst_strformat, verbose_print,
-    };
-    use crate::hfst_getopt::{self as getopt, Getopt};
-    use crate::hfst_program_options::{
-        hfst_getopt_common_long, hfst_getopt_unary_long, print_common_program_options,
-        print_common_unary_program_options, print_common_unary_program_parameter_instructions,
-    };
-    use crate::inc::{CaseResult, handle_common_case, handle_unary_case};
+    use crate::hfst_commandline::{hfst_set_program_name, hfst_strformat, verbose_print};
+    use clap::CommandFactory;
     use hfst::hfst_data_types::ImplementationType;
     use hfst::hfst_input_stream::HfstInputStream;
     use hfst::hfst_transducer::is_implementation_type_available;
     use std::io::Write;
 
-    /// hfst-format's own options (the former tool-specific `static mut`s).
-    #[derive(Default)]
-    struct Options {
-        /// '-l, --list-formats': list available transducer formats.
+    /// hfst-format's command line.
+    //
+    // Its switch chains the common and unary cases and then ends in a
+    // 'default: break;' rather than the shared error arm — an option it does
+    // not know is silently discarded so the tool still answers about the file
+    // it was pointed at. [`cli::drop_unknown_options`] is what reproduces
+    // that; [`cli::parse`] itself is always strict.
+    //
+    // '-i', '-1' and '-2' all write the one input filename, so the last of
+    // them on the line decides.
+    // [spec:hfst:def:hfst-format.parse-options-fn]
+    // [spec:hfst:sem:hfst-format.parse-options-fn]
+    // [spec:hfst:req:cli.arg-parse]
+    // [spec:hfst:req:cli.help]
+    #[derive(clap::Parser)]
+    #[command(about = "determine HFST transducer format")]
+    struct Args {
+        #[command(flatten)]
+        common: CommonArgs,
+
+        /// Read input transducer from INFILE
+        #[arg(
+            short = 'i',
+            long = "input",
+            value_name = "INFILE",
+            allow_hyphen_values = true,
+            overrides_with_all = ["input1", "input2"]
+        )]
+        input: Option<String>,
+
+        /// Alias of --input
+        #[arg(
+            short = '1',
+            long = "input1",
+            value_name = "INFILE",
+            allow_hyphen_values = true,
+            overrides_with_all = ["input", "input2"]
+        )]
+        input1: Option<String>,
+
+        /// Alias of --input
+        #[arg(
+            short = '2',
+            long = "input2",
+            value_name = "INFILE",
+            allow_hyphen_values = true,
+            overrides_with_all = ["input", "input1"]
+        )]
+        input2: Option<String>,
+
+        /// List available transducer formats and print them to standard output
+        #[arg(short = 'l', long = "list-formats")]
         list_formats: bool,
-        /// '-t, --test-format FMT': the format to test. C used a NULL char* as
-        /// "no format requested"; modelled as Option.
-        format_to_test: Option<String>,
+
+        /// Whether the format FMT is available, exits with 0 if it is, else
+        /// with 1
+        #[arg(short = 't', long = "test-format", value_name = "FMT")]
+        test_format: Option<String>,
+
+        /// Input transducer file; missing or - reads the standard input
+        #[arg(value_name = "INFILE", num_args = 0..)]
+        infiles: Vec<String>,
+    }
+
+    impl Args {
+        /// The one input filename the three spellings share.
+        fn input_filename(&self) -> String {
+            self.input
+                .clone()
+                .or_else(|| self.input1.clone())
+                .or_else(|| self.input2.clone())
+                .unwrap_or_default()
+        }
+    }
+
+    impl ToolArgs for Args {
+        fn common(&self) -> &CommonArgs {
+            &self.common
+        }
+
+        /// The operand is resolved against the requested format below, not by
+        /// check-params-unary.h, which this tool never included.
+        fn apply_io(&self, _opts: &mut CommonOptions) {}
+
+        fn applies_check_common_params(&self) -> bool {
+            false
+        }
     }
 
     // fprintf(stdout, ...): write to file descriptor 1.
@@ -442,117 +477,32 @@ pub mod format {
         let _ = std::io::stderr().flush();
     }
 
-    // [spec:hfst:req:cli.help]
-    fn print_usage(common: &CommonOptions) {
-        // c.f.
-        // http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
-        let mut msg = common.message_writer();
-        let _ = write!(
-            msg,
-            "Usage: {} [OPTIONS...] [INFILE]\ndetermine HFST transducer format\n\n",
-            common.program_name
-        );
-
-        print_common_program_options(&mut *msg);
-        print_common_unary_program_options(&mut *msg);
-        let _ = write!(
-            msg,
-            "Tool-specific options:\n  -l, --list-formats     List available transducer formats\n                         and print them to standard output\n"
-        );
-        let _ = write!(
-            msg,
-            "  -t, --test-format FMT  Whether the format FMT is available,\n                         exits with 0 if it is, else with 1\n"
-        );
-        let _ = writeln!(msg);
-        print_common_unary_program_parameter_instructions(&mut *msg);
-        let _ = writeln!(msg);
+    // [spec:hfst:def:hfst-format.main-fn]
+    // [spec:hfst:sem:hfst-format.main-fn]
+    pub fn run(args: Vec<String>) -> i32 {
+        cli::exit_code(execute(args))
     }
 
-    // [spec:hfst:def:hfst-format.parse-options-fn]
-    // [spec:hfst:sem:hfst-format.parse-options-fn]
-    // [spec:hfst:req:cli.arg-parse]
-    //
-    // This tool does the bulk of its work here (listing formats, testing a format,
-    // or opening the input stream to report its type) and returns the (updated)
-    // shared options plus the resolved transducer type; the terminal arms
-    // `std::process::exit` directly.
-    fn parse_options(
-        mut common: CommonOptions,
-        args: &mut Vec<String>,
-    ) -> (CommonOptions, ImplementationType) {
-        let mut options = Options::default();
-        let mut opt = Getopt::new();
-        extend_options_from_env(args);
-        loop {
-            let mut long_options: Vec<getopt::GetOpt> = Vec::new();
-            long_options.extend(hfst_getopt_common_long());
-            long_options.extend(hfst_getopt_unary_long());
-            long_options.push(getopt::GetOpt {
-                name: "input1",
-                has_arg: 1,
-                val: '1' as i32,
-            });
-            long_options.push(getopt::GetOpt {
-                name: "input2",
-                has_arg: 1,
-                val: '2' as i32,
-            });
-            long_options.push(getopt::GetOpt {
-                name: "list-formats",
-                has_arg: 0,
-                val: 'l' as i32,
-            });
-            long_options.push(getopt::GetOpt {
-                name: "test-format",
-                has_arg: 1,
-                val: 't' as i32,
-            });
-            let c = opt.getopt_long(args, &long_options);
-            if -1 == c {
-                break;
-            }
+    fn execute(args: Vec<String>) -> ToolResult {
+        let argv0 = args.first().cloned().unwrap_or_default();
 
-            // The C switch chains the #include'd case groups in order: common
-            // cases, then unary cases, then the tool's own cases, then the
-            // terminal default arm (which here is a no-op, NOT the error arm).
-            match handle_common_case(&mut common, &opt, c, print_usage) {
-                CaseResult::Return(code) => std::process::exit(code),
-                CaseResult::Break => continue,
-                CaseResult::NotHandled => {}
-            }
-            match handle_unary_case(&mut common, &opt, c) {
-                CaseResult::Return(code) => std::process::exit(code),
-                CaseResult::Break => continue,
-                CaseResult::NotHandled => {}
-            }
-            let ch = char::from_u32(c as u32);
-            match ch {
-                Some('1') => {
-                    common.input_filename = opt.optarg();
-                    continue;
-                }
-                Some('2') => {
-                    common.input_filename = opt.optarg();
-                    continue;
-                }
-                Some('l') => {
-                    options.list_formats = true;
-                    continue;
-                }
-                Some('t') => {
-                    options.format_to_test = Some(opt.optarg());
-                    continue;
-                }
-                _ => {
-                    // I suppose it's crucial for this tool to ignore other options.
-                    // Unlike most tools, the default arm here is a genuine no-op
-                    // (the C 'default: break;'), NOT the common error handler.
-                    continue;
-                }
-            }
-        }
+        let mut common = hfst_set_program_name(&argv0, "0.1", "HfstFormat");
+        common.verbose = true;
 
-        if let Some(fmt) = options.format_to_test.clone() {
+        // The 'default: break;' arm: an option this tool does not declare is
+        // dropped before the strict parse ever sees it. build() materializes
+        // the implicit '-h/--help' argument first — on an unbuilt Command it
+        // is invisible to get_arguments(), and the dropper would discard the
+        // very token that asks for help.
+        let mut cmd = Args::command();
+        cmd.build();
+        let args = cli::drop_unknown_options(&cmd, cli::normalize_argv(&cmd, args));
+        let (mut common, args) = cli::parse::<Args>(common, args)?;
+        common.input_filename = args.input_filename();
+
+        // Everything below ran after the C's getopt loop, still inside
+        // parse_options; the terminal arms exit outright.
+        if let Some(fmt) = args.test_format.as_deref() {
             if (fmt == "sfst" && is_implementation_type_available(ImplementationType::SFST_TYPE))
                 || (fmt == "openfst-tropical"
                     && is_implementation_type_available(ImplementationType::TROPICAL_OPENFST_TYPE))
@@ -565,12 +515,12 @@ pub mod format {
                 || (fmt == "thfst"
                     && is_implementation_type_available(ImplementationType::THFST_TYPE))
             {
-                std::process::exit(0);
+                return Ok(());
             }
-            std::process::exit(1);
+            return Err(1);
         }
 
-        if options.list_formats {
+        if args.list_formats {
             fput_stdout(" Backend                         Names recognized\n\n");
 
             if is_implementation_type_available(ImplementationType::SFST_TYPE) {
@@ -601,19 +551,16 @@ pub mod format {
                 fput_stdout(" THFST (divvunspell speller format)          thfst\n");
             }
 
-            std::process::exit(0);
+            return Ok(());
         }
-
-        // (void)inputfilename; (void)inputNamed;
 
         // The C wraps the stream opening in try/catch on HfstException; on a
         // non-transducer stream it prints an error and exit(1). The Rust ctor
         // currently panics rather than throwing, so the catch arm is mirrored
         // by catching the panic.
-        let optind = opt.optind;
-        let remaining = args.len() - optind;
+        let remaining = args.infiles.len();
         let free_arg = if remaining == 1 {
-            Some(args[optind].clone())
+            Some(args.infiles[0].clone())
         } else {
             None
         };
@@ -637,26 +584,17 @@ pub mod format {
             },
         ));
 
-        match result {
-            Ok(Ok((t, resolved))) => {
+        let ty = match result {
+            Ok(Ok((ty, resolved))) => {
                 common.input_filename = resolved;
-                (common, t)
+                ty
             }
             Ok(Err(_)) | Err(_) => {
                 fput_stderr("ERROR: The file/stream does not contain transducers.\n");
-                std::process::exit(1);
+                return Err(1);
             }
-        }
-    }
+        };
 
-    // [spec:hfst:def:hfst-format.main-fn]
-    // [spec:hfst:sem:hfst-format.main-fn]
-    pub fn run(mut args: Vec<String>) -> i32 {
-        let argv0 = args.first().cloned().unwrap_or_default();
-
-        let mut common = hfst_set_program_name(&argv0, "0.1", "HfstFormat");
-        common.verbose = true;
-        let (common, ty) = parse_options(common, &mut args);
         verbose_print(
             &common,
             &format!(
@@ -665,43 +603,226 @@ pub mod format {
                 hfst_strformat(ty)
             ),
         );
-        0
+        Ok(())
     }
 }
 
 pub mod fst2fst {
     //! Faithful 1:1 port of tools/src/hfst-fst2fst.cc — the format conversion
-    //! command-line tool. Drives the hfst-cli foundation (globals, getopt,
-    //! commandline, program-options, tool-metadata, inc fragments). A unary tool:
-    //! it reads one input stream and converts each transducer to another binary
-    //! implementation format.
-    //!
-    //! Idiomatic option handling: the tool's state lives in [`CommonOptions`] (the
-    //! shared `-v/-q/-o/-i/…` fields) and a tool-local [`Options`] — both built by
-    //! `parse_options` and threaded into the processing functions. There are no
-    //! `static mut` globals and no `unsafe`.
+    //! command-line tool. A unary tool: it reads one input stream and converts
+    //! each transducer to another binary implementation format. Option handling
+    //! is clap 4 derive through [`crate::cli`].
 
+    use crate::cli::{self, CommonArgs, ToolArgs, ToolResult, UnaryIo};
     use crate::globals::CommonOptions;
     use crate::hfst_commandline::{
-        convert_any_with_options, error, extend_options_from_env, hfst_parse_format_name,
-        hfst_set_program_name, hfst_strformat, verbose_print, warning,
-    };
-    use crate::hfst_getopt::{self as getopt, Getopt};
-    use crate::hfst_program_options::{
-        hfst_getopt_common_long, hfst_getopt_unary_long, print_common_program_options,
-        print_common_unary_program_options, print_common_unary_program_parameter_instructions,
+        convert_any_with_options, error, hfst_parse_format_name, hfst_set_program_name,
+        hfst_strformat, verbose_print, warning,
     };
     use crate::hfst_tool_metadata::{hfst_get_name, hfst_set_formula_unary, hfst_set_name_unary};
-    use crate::inc::{
-        CaseResult, check_common_params, check_unary_params, handle_common_case, handle_error_case,
-        handle_unary_case,
-    };
+    use clap::ArgAction;
     use hfst::hfst_data_types::ImplementationType;
     use hfst::hfst_input_stream::HfstInputStream;
     use hfst::hfst_output_stream::HfstOutputStream;
-    use std::io::Write;
 
-    /// hfst-fst2fst's own options (the former tool-specific `static mut`s).
+    /// One occurrence of an output-type option, in the order it was written.
+    ///
+    /// Seven different options write the single `output_type`, and which
+    /// diagnostic fires depends on which of them the C's getopt loop reached
+    /// first — '-x -t' is the xfsm refusal while '-t -F' is the
+    /// defined-several-times one. A derive struct cannot carry that, so the
+    /// occurrences are recovered from the match indices and replayed.
+    #[derive(Clone, Copy, PartialEq, Eq)]
+    enum TypeOpt {
+        /// '-f FMT', carrying its position among the --format values.
+        Format(usize),
+        Sfst,
+        Foma,
+        Xfsm,
+        Tropical,
+        OlUnweighted,
+        OlWeighted,
+    }
+
+    /// hfst-fst2fst's command line.
+    // [spec:hfst:def:hfst-fst2fst.parse-options-fn]
+    // [spec:hfst:sem:hfst-fst2fst.parse-options-fn]
+    // [spec:hfst:req:cli.arg-parse]
+    // [spec:hfst:req:cli.help]
+    #[derive(clap::Parser)]
+    #[command(about = "Convert transducers between binary formats")]
+    struct Args {
+        #[command(flatten)]
+        common: CommonArgs,
+        #[command(flatten)]
+        io: UnaryIo,
+
+        /// Write result in FMT format: foma, openfst-tropical, sfst, xfsm,
+        /// thfst, optimized-lookup-weighted, optimized-lookup-unweighted
+        #[arg(short = 'f', long = "format", value_name = "FMT", action = ArgAction::Append)]
+        format: Vec<String>,
+
+        /// Write result in implementation format, without any HFST wrappers
+        #[arg(short = 'b', long = "use-backend-format")]
+        use_backend_format: bool,
+
+        /// Write output in (HFST's) SFST implementation
+        #[arg(short = 'S', long = "sfst", action = ArgAction::Count)]
+        sfst: u8,
+
+        /// Write output in (HFST's) foma implementation
+        #[arg(short = 'F', long = "foma", action = ArgAction::Count)]
+        foma: u8,
+
+        /// Write output in native xfsm format
+        #[arg(short = 'x', long = "xfsm", action = ArgAction::Count)]
+        xfsm: u8,
+
+        /// Write output in (HFST's) tropical weight (OpenFST) implementation
+        #[arg(short = 't', long = "openfst-tropical", action = ArgAction::Count)]
+        openfst_tropical: u8,
+
+        /// Write output in the HFST optimized-lookup implementation
+        #[arg(short = 'O', long = "optimized-lookup-unweighted", action = ArgAction::Count)]
+        optimized_lookup_unweighted: u8,
+
+        /// Write output in optimized-lookup (weighted) implementation
+        #[arg(short = 'w', long = "optimized-lookup-weighted", action = ArgAction::Count)]
+        optimized_lookup_weighted: u8,
+
+        /// When converting to optimized-lookup, don't try hard to compress
+        #[arg(short = 'Q', long = "quick")]
+        quick: bool,
+
+        /// The output-type options in the order they were written.
+        #[arg(skip)]
+        type_order: Vec<TypeOpt>,
+    }
+
+    impl Args {
+        /// Replay the output-type options in command-line order, which is what
+        /// the C's getopt loop did, and answer with the resolved type.
+        // [spec:hfst:def:hfst-fst2fst.set-output-type-fn]
+        // [spec:hfst:sem:hfst-fst2fst.set-output-type-fn]
+        fn output_type(&self, common: &CommonOptions) -> ImplementationType {
+            let mut output_type = ImplementationType::UNSPECIFIED_TYPE;
+            fn set(
+                common: &CommonOptions,
+                output_type: &mut ImplementationType,
+                ty: ImplementationType,
+            ) {
+                if *output_type != ImplementationType::UNSPECIFIED_TYPE {
+                    error(common, 1, 0, "Output type defined several times.");
+                }
+                *output_type = ty;
+            }
+            for opt in &self.type_order {
+                match opt {
+                    TypeOpt::Format(nth) => {
+                        let name = self
+                            .format
+                            .get(*nth)
+                            .map(String::as_str)
+                            .unwrap_or_default();
+                        let ty = hfst_parse_format_name(common, name);
+                        set(common, &mut output_type, ty);
+                        // HAVE_XFSM is not defined in this build.
+                        if output_type == ImplementationType::XFSM_TYPE {
+                            error(common, 1, 0, "xfsm back-end is not available");
+                        }
+                    }
+                    TypeOpt::Sfst => set(common, &mut output_type, ImplementationType::SFST_TYPE),
+                    TypeOpt::Foma => set(common, &mut output_type, ImplementationType::FOMA_TYPE),
+                    // HAVE_XFSM is not defined in this build: '-x' never sets
+                    // the type, it only reports.
+                    TypeOpt::Xfsm => error(common, 1, 0, "xfsm back-end is not available"),
+                    TypeOpt::Tropical => set(
+                        common,
+                        &mut output_type,
+                        ImplementationType::TROPICAL_OPENFST_TYPE,
+                    ),
+                    TypeOpt::OlUnweighted => {
+                        set(common, &mut output_type, ImplementationType::HFST_OL_TYPE)
+                    }
+                    TypeOpt::OlWeighted => {
+                        set(common, &mut output_type, ImplementationType::HFST_OLW_TYPE)
+                    }
+                }
+            }
+            output_type
+        }
+    }
+
+    impl ToolArgs for Args {
+        fn common(&self) -> &CommonArgs {
+            &self.common
+        }
+
+        fn apply_io(&self, opts: &mut CommonOptions) {
+            self.io.apply(opts);
+        }
+
+        fn absorb_matches(&mut self, matches: &clap::ArgMatches) {
+            let mut order: Vec<(usize, TypeOpt)> = Vec::new();
+            for (nth, index) in matches
+                .indices_of("format")
+                .into_iter()
+                .flatten()
+                .enumerate()
+            {
+                order.push((index, TypeOpt::Format(nth)));
+            }
+            for (id, opt) in [
+                ("sfst", TypeOpt::Sfst),
+                ("foma", TypeOpt::Foma),
+                ("xfsm", TypeOpt::Xfsm),
+                ("openfst_tropical", TypeOpt::Tropical),
+                ("optimized_lookup_unweighted", TypeOpt::OlUnweighted),
+                ("optimized_lookup_weighted", TypeOpt::OlWeighted),
+            ] {
+                // A Count arg is always "present" with its zero default, so
+                // the count is what says whether it was written at all, and
+                // the default's index 0 is not a command-line position. A
+                // count keeps one index however often it was repeated, so the
+                // extra occurrences are pinned to the last position seen —
+                // enough, since the second of them is already fatal.
+                let count = matches.get_count(id) as usize;
+                let mut indices: Vec<usize> = matches
+                    .indices_of(id)
+                    .into_iter()
+                    .flatten()
+                    .filter(|index| *index > 0)
+                    .collect();
+                while indices.len() < count {
+                    let last = indices.last().copied().unwrap_or(0);
+                    indices.push(last);
+                }
+                for index in indices.into_iter().take(count) {
+                    order.push((index, opt));
+                }
+            }
+            order.sort_by_key(|(index, _)| *index);
+            self.type_order = order.into_iter().map(|(_, opt)| opt).collect();
+        }
+
+        fn validate(&self, opts: &CommonOptions) -> ToolResult {
+            // The type resolution ran inside the C getopt loop and the
+            // must-specify test right after it, both before the parameter
+            // checks.
+            if self.output_type(opts) == ImplementationType::UNSPECIFIED_TYPE {
+                error(
+                    opts,
+                    1,
+                    0,
+                    "You must specify an output type (one of -S, -F, -t, -x, -l, -O, or -w)",
+                );
+                return Err(1);
+            }
+            Ok(())
+        }
+    }
+
+    /// hfst-fst2fst's resolved tool state (the former tool-specific `static mut`s).
     struct Options {
         /// output implementation format ('-f/-S/-F/-t/-l/-O/-w').
         output_type: ImplementationType,
@@ -710,213 +831,6 @@ pub mod fst2fst {
         hfst_format: bool,
         /// '-Q/--quick': relax optimized-lookup table packing.
         options: String,
-    }
-
-    impl Default for Options {
-        fn default() -> Options {
-            Options {
-                output_type: ImplementationType::UNSPECIFIED_TYPE,
-                hfst_format: true,
-                options: String::new(),
-            }
-        }
-    }
-
-    // [spec:hfst:def:hfst-fst2fst.set-output-type-fn]
-    // [spec:hfst:sem:hfst-fst2fst.set-output-type-fn]
-    fn set_output_type(common: &CommonOptions, options: &mut Options, ty: ImplementationType) {
-        if options.output_type != ImplementationType::UNSPECIFIED_TYPE {
-            error(common, 1, 0, "Output type defined several times.");
-        }
-        options.output_type = ty;
-    }
-
-    // [spec:hfst:req:cli.help]
-    fn print_usage(common: &CommonOptions) {
-        // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
-        let mut msg = common.message_writer();
-        let _ = write!(
-            msg,
-            "Usage: {} [OPTIONS...] [INFILE]\nConvert transducers between binary formats\n\n",
-            common.program_name
-        );
-        print_common_program_options(&mut *msg);
-        print_common_unary_program_options(&mut *msg);
-        let _ = write!(
-            msg,
-            "Conversion options:\n\
-         \u{20}\u{20}-f, --format=FMT                  Write result in FMT format\n\
-         \u{20}\u{20}-b, --use-backend-format          Write result in implementation format, without any HFST wrappers\n\
-         \u{20}\u{20}-S, --sfst                        Write output in (HFST's) SFST implementation\n\
-         \u{20}\u{20}-F, --foma                        Write output in (HFST's) foma implementation\n\
-         \u{20}\u{20}-x, --xfsm                        Write output in native xfsm format\n\
-         \u{20}\u{20}-t, --openfst-tropical            Write output in (HFST's) tropical weight (OpenFST) implementation\n\
-         \u{20}\u{20}-O, --optimized-lookup-unweighted Write output in the HFST optimized-lookup implementation\n\
-         \u{20}\u{20}-w, --optimized-lookup-weighted   Write output in optimized-lookup (weighted) implementation\n\
-         \u{20}\u{20}-Q  --quick                       When converting to optimized-lookup, don't try hard to compress\n\
-         \u{20}\u{20}    --format=thfst                Write output as a divvunspell .thfst directory (use -f thfst -o OUT.thfst)\n"
-        );
-        let _ = writeln!(msg);
-        print_common_unary_program_parameter_instructions(&mut *msg);
-        let _ = write!(
-            msg,
-            "FMT must be name of a format usable by libhfst, i.e. one of the following:\n\
-         {{ foma, openfst-tropical, sfst, xfsm, thfst\n\
-         \u{20}\u{20}optimized-lookup-weighted, optimized-lookup-unweighted }}.\n\
-         Note that xfsm format is always written in native format without HFST wrappers,\n\
-         and thfst is a directory format written without HFST wrappers (use -o OUT.thfst).\n"
-        );
-        let _ = writeln!(msg);
-    }
-
-    // [spec:hfst:def:hfst-fst2fst.parse-options-fn]
-    // [spec:hfst:sem:hfst-fst2fst.parse-options-fn]
-    // [spec:hfst:req:cli.arg-parse]
-    //
-    // Parse argv into the shared + tool options; `Err(code)` is an exit code the
-    // caller should return (the former EXIT_CONTINUE sentinel is now `Ok`).
-    fn parse_options(
-        mut common: CommonOptions,
-        args: &mut Vec<String>,
-    ) -> Result<(CommonOptions, Options), i32> {
-        let mut options = Options::default();
-        let mut opt = Getopt::new();
-        extend_options_from_env(args);
-        loop {
-            let mut long_options: Vec<getopt::GetOpt> = Vec::new();
-            long_options.extend(hfst_getopt_common_long());
-            long_options.extend(hfst_getopt_unary_long());
-            // add tool-specific options here
-            long_options.push(getopt::GetOpt {
-                name: "use-backend-format",
-                has_arg: 0,
-                val: b'b' as i32,
-            });
-            long_options.push(getopt::GetOpt {
-                name: "format",
-                has_arg: 1,
-                val: b'f' as i32,
-            });
-            long_options.push(getopt::GetOpt {
-                name: "sfst",
-                has_arg: 0,
-                val: b'S' as i32,
-            });
-            long_options.push(getopt::GetOpt {
-                name: "foma",
-                has_arg: 0,
-                val: b'F' as i32,
-            });
-            long_options.push(getopt::GetOpt {
-                name: "xfsm",
-                has_arg: 0,
-                val: b'x' as i32,
-            });
-            long_options.push(getopt::GetOpt {
-                name: "openfst-tropical",
-                has_arg: 0,
-                val: b't' as i32,
-            });
-            long_options.push(getopt::GetOpt {
-                name: "optimized-lookup-unweighted",
-                has_arg: 0,
-                val: b'O' as i32,
-            });
-            long_options.push(getopt::GetOpt {
-                name: "optimized-lookup-weighted",
-                has_arg: 0,
-                val: b'w' as i32,
-            });
-            long_options.push(getopt::GetOpt {
-                name: "quick",
-                has_arg: 0,
-                val: b'Q' as i32,
-            });
-            // add tool-specific options here
-            let c = opt.getopt_long(args, &long_options);
-            if -1 == c {
-                break;
-            }
-
-            // The C switch chains the #include'd case groups in order: common
-            // cases, then unary cases, then the tool's own cases, then the
-            // terminal error arm.
-            match handle_common_case(&mut common, &opt, c, print_usage) {
-                CaseResult::Return(code) => return Err(code),
-                CaseResult::Break => continue,
-                CaseResult::NotHandled => {}
-            }
-            match handle_unary_case(&mut common, &opt, c) {
-                CaseResult::Return(code) => return Err(code),
-                CaseResult::Break => continue,
-                CaseResult::NotHandled => {}
-            }
-            // add tool-specific cases here
-            let ch = c as u8;
-            match ch {
-                b'f' => {
-                    let ty = hfst_parse_format_name(&common, &opt.optarg());
-                    set_output_type(&common, &mut options, ty);
-                    // HAVE_XFSM is not defined in this build: reject xfsm output.
-                    if options.output_type == ImplementationType::XFSM_TYPE {
-                        error(&common, 1, 0, "xfsm back-end is not available");
-                    }
-                    continue;
-                }
-                b'b' => {
-                    options.hfst_format = false;
-                    continue;
-                }
-                b'S' => {
-                    set_output_type(&common, &mut options, ImplementationType::SFST_TYPE);
-                    continue;
-                }
-                b'F' => {
-                    set_output_type(&common, &mut options, ImplementationType::FOMA_TYPE);
-                    continue;
-                }
-                b'x' => {
-                    // HAVE_XFSM is not defined in this build.
-                    error(&common, 1, 0, "xfsm back-end is not available");
-                    continue;
-                }
-                b't' => {
-                    set_output_type(
-                        &common,
-                        &mut options,
-                        ImplementationType::TROPICAL_OPENFST_TYPE,
-                    );
-                    continue;
-                }
-                b'O' => {
-                    set_output_type(&common, &mut options, ImplementationType::HFST_OL_TYPE);
-                    continue;
-                }
-                b'w' => {
-                    set_output_type(&common, &mut options, ImplementationType::HFST_OLW_TYPE);
-                    continue;
-                }
-                b'Q' => {
-                    options.options = "quick".to_string();
-                    continue;
-                }
-                _ => {}
-            }
-            return Err(handle_error_case(&common, &opt, c));
-        }
-
-        if options.output_type == ImplementationType::UNSPECIFIED_TYPE {
-            error(
-                &common,
-                1,
-                0,
-                "You must specify an output type (one of -S, -F, -t, -x, -l, -O, or -w)",
-            );
-        }
-
-        check_common_params(&mut common);
-        check_unary_params(&mut common, &opt, args);
-        Ok((common, options))
     }
 
     // [spec:hfst:def:hfst-fst2fst.process-stream-fn]
@@ -1005,13 +919,23 @@ pub mod fst2fst {
 
     // [spec:hfst:def:hfst-fst2fst.main-fn]
     // [spec:hfst:sem:hfst-fst2fst.main-fn]
-    pub fn run(mut args: Vec<String>) -> i32 {
+    pub fn run(args: Vec<String>) -> i32 {
+        cli::exit_code(execute(args))
+    }
+
+    fn execute(args: Vec<String>) -> ToolResult {
         let argv0 = args.first().cloned().unwrap_or_default();
 
         let common = hfst_set_program_name(&argv0, "0.1", "HfstFst2Fst");
-        let (common, options) = match parse_options(common, &mut args) {
-            Ok(v) => v,
-            Err(code) => return code,
+        let (common, args) = cli::parse::<Args>(common, args)?;
+        let options = Options {
+            output_type: args.output_type(&common),
+            hfst_format: !args.use_backend_format,
+            options: if args.quick {
+                "quick".to_string()
+            } else {
+                String::new()
+            },
         };
         // close buffers, we use streams
         let input_opened = common.input_filename != "<stdin>";
@@ -1051,7 +975,7 @@ pub mod fst2fst {
                 "Writing to standard output not supported for xfsm transducers,\n\
                  use 'hfst-fst2fst [--output|-o] OUTFILE' instead",
             );
-            return 1;
+            return Err(1);
         }
 
         // THFST is a directory format with no byte-stream encoding, so it can never
@@ -1066,7 +990,7 @@ pub mod fst2fst {
                 "Writing to standard output not supported for thfst transducers,\n\
                  use 'hfst-fst2fst [--output|-o] OUT.thfst' instead",
             );
-            return 1;
+            return Err(1);
         }
 
         // here starts the buffer handling part
@@ -1082,7 +1006,7 @@ pub mod fst2fst {
             Ok(v) => v,
             Err(e) => {
                 error(&common, 1, 0, &format!("{e}"));
-                return 1;
+                return Err(1);
             }
         };
 
@@ -1098,39 +1022,33 @@ pub mod fst2fst {
             Ok(v) => v,
             Err(e) => {
                 error(&common, 1, 0, &format!("{e}"));
-                return 1;
+                return Err(1);
             }
         };
 
-        process_stream(&common, &options, &mut instream, &mut outstream)
+        cli::from_code(process_stream(
+            &common,
+            &options,
+            &mut instream,
+            &mut outstream,
+        ))
     }
 }
 
 pub mod fst2txt {
     //! Faithful 1:1 port of tools/src/hfst-fst2txt.cc — the transducer array
     //! printing command-line tool. Prints a transducer in AT&T, dot, prolog or
-    //! pckimmo text format. Drives the hfst-cli foundation (globals, getopt,
-    //! commandline, program-options, inc fragments).
+    //! pckimmo text format. Option handling is clap 4 derive through
+    //! [`crate::cli`].
 
+    use crate::cli::{self, CommonArgs, ToolArgs, ToolResult, UnaryIo};
     use crate::globals::CommonOptions;
-    use crate::hfst_commandline::{
-        error, extend_options_from_env, hfst_set_program_name, verbose_print,
-    };
-    use crate::hfst_getopt::{self as getopt, Getopt};
-    use crate::hfst_program_options::{
-        hfst_getopt_common_long, hfst_getopt_unary_long, print_common_program_options,
-        print_common_unary_program_options,
-    };
-    use crate::inc::{
-        CaseResult, check_common_params, check_unary_params, handle_common_case, handle_error_case,
-        handle_unary_case,
-    };
+    use crate::hfst_commandline::{error, hfst_set_program_name, verbose_print};
     use hfst::hfst_data_types::ImplementationType;
     use hfst::hfst_input_stream::HfstInputStream;
     use hfst::hfst_print_dot::print_dot_file;
     use hfst::hfst_print_pckimmo::print_pckimmo;
     use hfst::hfst_transducer::HfstTransducer;
-    use std::io::Write;
 
     // [spec:hfst:def:hfst-fst2txt.fst-text-format]
     #[derive(Clone, Copy, PartialEq, Eq)]
@@ -1141,151 +1059,88 @@ pub mod fst2txt {
         Prolog,  // prolog format
     }
 
-    /// hfst-fst2txt's own options (the former tool-specific `static mut`s).
+    /// hfst-fst2txt's command line.
+    // [spec:hfst:def:hfst-fst2txt.parse-options-fn]
+    // [spec:hfst:sem:hfst-fst2txt.parse-options-fn]
+    // [spec:hfst:req:cli.arg-parse]
+    // [spec:hfst:req:cli.help]
+    #[derive(clap::Parser)]
+    #[command(about = "Print transducer in AT&T, dot, prolog or pckimmo format")]
+    struct Args {
+        #[command(flatten)]
+        common: CommonArgs,
+        #[command(flatten)]
+        io: UnaryIo,
+
+        /// If weights are printed in all cases
+        #[arg(short = 'w', long = "print-weights")]
+        print_weights: bool,
+
+        /// If weights are not printed in any case
+        #[arg(short = 'D', long = "do-not-print-weights")]
+        do_not_print_weights: bool,
+
+        /// Print symbol numbers instead of names
+        #[arg(short = 'n', long = "use-numbers")]
+        use_numbers: bool,
+
+        /// Print output in TFMT format: att, dot, prolog or pckimmo
+        /// [default: att]
+        #[arg(short = 'f', long = "format", value_name = "TFMT")]
+        format: Option<String>,
+    }
+
+    impl Args {
+        /// Case 'f': the four text-format vocabularies, fatal on anything else.
+        // [spec:hfst:def:hfst-fst2txt.fst-text-format]
+        fn text_format(&self, common: &CommonOptions) -> FstTextFormat {
+            let Some(name) = self.format.as_deref() else {
+                return FstTextFormat::Att;
+            };
+            match name {
+                "att" | "AT&T" | "openfst" | "OpenFst" => FstTextFormat::Att,
+                "dot" | "graphviz" | "GraphViz" => FstTextFormat::Dot,
+                "pckimmo" => FstTextFormat::Pckimmo,
+                "prolog" | "Prolog" => FstTextFormat::Prolog,
+                other => {
+                    error(
+                        common,
+                        1,
+                        0,
+                        &format!(
+                            "Cannot parse {} as text format; Use one of att, pckimmo, dot, prolog",
+                            other
+                        ),
+                    );
+                    FstTextFormat::Att
+                }
+            }
+        }
+    }
+
+    impl ToolArgs for Args {
+        fn common(&self) -> &CommonArgs {
+            &self.common
+        }
+
+        fn apply_io(&self, opts: &mut CommonOptions) {
+            self.io.apply(opts);
+        }
+
+        fn validate(&self, opts: &CommonOptions) -> ToolResult {
+            // The rejection happened inside the C getopt loop, before the
+            // parameter checks.
+            self.text_format(opts);
+            Ok(())
+        }
+    }
+
+    /// hfst-fst2txt's resolved tool state (the former tool-specific `static mut`s).
     struct Options {
         use_numbers: bool,
         print_weights: bool,
         do_not_print_weights: bool,
         format: FstTextFormat,
-    }
-
-    impl Default for Options {
-        fn default() -> Options {
-            Options {
-                use_numbers: false,
-                print_weights: false,
-                do_not_print_weights: false,
-                format: FstTextFormat::Att,
-            }
-        }
-    }
-
-    // [spec:hfst:req:cli.help]
-    fn print_usage(common: &CommonOptions) {
-        // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
-        let mut msg = common.message_writer();
-        let _ = write!(
-            msg,
-            "Usage: {} [OPTIONS...] [INFILE]\nPrint transducer in AT&T, dot, prolog or pckimmo format\n\n",
-            common.program_name
-        );
-        print_common_program_options(&mut *msg);
-        print_common_unary_program_options(&mut *msg);
-        let _ = write!(
-            msg,
-            "Text format options:\n  -w, --print-weights          If weights are printed in all cases\n  -D, --do-not-print-weights   If weights are not printed in any case\n  -f, --format=TFMT            Print output in TFMT format [default=att]\n"
-        );
-        let _ = writeln!(msg);
-        let _ = write!(
-            msg,
-            "If OUTFILE or INFILE is missing or -, standard streams will be used.\nUnless explicitly requested with option -w or -D, weights are printed\nif and only if the transducer is in weighted format.\nTFMT is one of {{att, dot, prolog, pckimmo}}.\n"
-        );
-        let _ = writeln!(msg);
-    }
-
-    // [spec:hfst:def:hfst-fst2txt.parse-options-fn]
-    // [spec:hfst:sem:hfst-fst2txt.parse-options-fn]
-    // [spec:hfst:req:cli.arg-parse]
-    fn parse_options(
-        mut common: CommonOptions,
-        args: &mut Vec<String>,
-    ) -> Result<(CommonOptions, Options), i32> {
-        let mut options = Options::default();
-        let mut opt = Getopt::new();
-        extend_options_from_env(args);
-        loop {
-            let mut long_options: Vec<getopt::GetOpt> = Vec::new();
-            long_options.extend(hfst_getopt_common_long());
-            long_options.extend(hfst_getopt_unary_long());
-            // add tool-specific options here
-            long_options.push(getopt::GetOpt {
-                name: "print-weights",
-                has_arg: 0, // no_argument
-                val: 'w' as i32,
-            });
-            long_options.push(getopt::GetOpt {
-                name: "do-not-print-weights",
-                has_arg: 0, // no_argument
-                val: 'D' as i32,
-            });
-            long_options.push(getopt::GetOpt {
-                name: "use-numbers",
-                has_arg: 0, // no_argument
-                val: 'n' as i32,
-            });
-            long_options.push(getopt::GetOpt {
-                name: "format",
-                has_arg: 1, // required_argument
-                val: 'f' as i32,
-            });
-            // add tool-specific options here
-            let c = opt.getopt_long(args, &long_options);
-            if -1 == c {
-                break;
-            }
-
-            // The C switch chains the #include'd case groups in order: common
-            // cases, then unary cases, then the tool's own, then the terminal
-            // error arm.
-            match handle_common_case(&mut common, &opt, c, print_usage) {
-                CaseResult::Return(code) => return Err(code),
-                CaseResult::Break => continue,
-                CaseResult::NotHandled => {}
-            }
-            match handle_unary_case(&mut common, &opt, c) {
-                CaseResult::Return(code) => return Err(code),
-                CaseResult::Break => continue,
-                CaseResult::NotHandled => {}
-            }
-            // add tool-specific cases here
-            match c {
-                x if x == 'w' as i32 => {
-                    options.print_weights = true;
-                    continue;
-                }
-                x if x == 'D' as i32 => {
-                    options.do_not_print_weights = true;
-                    continue;
-                }
-                x if x == 'n' as i32 => {
-                    options.use_numbers = true;
-                    continue;
-                }
-                x if x == 'f' as i32 => {
-                    let optarg = opt.optarg();
-                    if optarg == "att"
-                        || optarg == "AT&T"
-                        || optarg == "openfst"
-                        || optarg == "OpenFst"
-                    {
-                        options.format = FstTextFormat::Att;
-                    } else if optarg == "dot" || optarg == "graphviz" || optarg == "GraphViz" {
-                        options.format = FstTextFormat::Dot;
-                    } else if optarg == "pckimmo" {
-                        options.format = FstTextFormat::Pckimmo;
-                    } else if optarg == "prolog" || optarg == "Prolog" {
-                        options.format = FstTextFormat::Prolog;
-                    } else {
-                        error(
-                            &common,
-                            1,
-                            0,
-                            &format!(
-                                "Cannot parse {} as text format; Use one of att, pckimmo, dot, prolog",
-                                optarg
-                            ),
-                        );
-                    }
-                    continue;
-                }
-                _ => {}
-            }
-            return Err(handle_error_case(&common, &opt, c));
-        }
-
-        check_common_params(&mut common);
-        check_unary_params(&mut common, &opt, args);
-        Ok((common, options))
     }
 
     // [spec:hfst:def:hfst-fst2txt.process-stream-fn]
@@ -1442,13 +1297,20 @@ pub mod fst2txt {
 
     // [spec:hfst:def:hfst-fst2txt.main-fn]
     // [spec:hfst:sem:hfst-fst2txt.main-fn]
-    pub fn run(mut args: Vec<String>) -> i32 {
+    pub fn run(args: Vec<String>) -> i32 {
+        cli::exit_code(execute(args))
+    }
+
+    fn execute(args: Vec<String>) -> ToolResult {
         let argv0 = args.first().cloned().unwrap_or_default();
 
         let common = hfst_set_program_name(&argv0, "0.3", "HfstFst2Txt");
-        let (common, options) = match parse_options(common, &mut args) {
-            Ok(v) => v,
-            Err(code) => return code,
+        let (common, args) = cli::parse::<Args>(common, args)?;
+        let options = Options {
+            use_numbers: args.use_numbers,
+            print_weights: args.print_weights,
+            do_not_print_weights: args.do_not_print_weights,
+            format: args.text_format(&common),
         };
 
         // close buffers, we use streams
@@ -1473,7 +1335,7 @@ pub mod fst2txt {
             Ok(s) => s,
             Err(e) => {
                 error(&common, 1, 0, &format!("{e}"));
-                return 1;
+                return Err(1);
             }
         };
 
@@ -1485,7 +1347,7 @@ pub mod fst2txt {
                     0,
                     "Output format 'dot' not supported for xfsm transducers, use 'prolog'",
                 );
-                return 1;
+                return Err(1);
             }
             if options.format == FstTextFormat::Pckimmo {
                 error(
@@ -1494,7 +1356,7 @@ pub mod fst2txt {
                     0,
                     "Output format 'pckimmo' not supported for xfsm transducers, use 'prolog'",
                 );
-                return 1;
+                return Err(1);
             }
             if options.format == FstTextFormat::Att {
                 error(
@@ -1503,7 +1365,7 @@ pub mod fst2txt {
                     0,
                     "Output format 'att' not supported for xfsm transducers, use 'prolog'",
                 );
-                return 1;
+                return Err(1);
             }
             if options.use_numbers {
                 error(
@@ -1512,7 +1374,7 @@ pub mod fst2txt {
                     0,
                     "Option '--use-numbers' not supported for xfsm transducers",
                 );
-                return 1;
+                return Err(1);
             }
             if common.input_filename == "<stdin>" {
                 error(
@@ -1521,7 +1383,7 @@ pub mod fst2txt {
                     0,
                     "Reading from standard input not supported for xfsm transducers,\nuse 'hfst-fst2txt [--input|-i] INFILE' instead",
                 );
-                return 1;
+                return Err(1);
             }
             if common.output_filename == "<stdout>" {
                 error(
@@ -1530,7 +1392,7 @@ pub mod fst2txt {
                     0,
                     "Writing to standard output not supported for xfsm transducers,\nuse 'hfst-fst2txt [--output|-o] OUTFILE' instead",
                 );
-                return 1;
+                return Err(1);
             }
         }
 
@@ -1538,13 +1400,13 @@ pub mod fst2txt {
             Ok(w) => w,
             Err(e) => {
                 eprintln!("hfst-fst2txt: cannot open output: {e}");
-                return 1;
+                return Err(1);
             }
         };
         let retval = process_stream(&common, &options, &mut instream, &mut *out);
 
         // C: free(inputfilename); free(outfilename); (the foundation owns these
         // allocations; not freed here).
-        retval
+        cli::from_code(retval)
     }
 }
