@@ -50,7 +50,7 @@ hfst = { path = "crates/hfst", default-features = false }
 
 # weighted-FST backend (our rustfst fork). Missing algos
 # (difference/intersect/prune/equivalent/eps-normalize) get added here + upstreamed.
-rustfst = { git = "https://github.com/necessary-nu/rustfst", rev = "1ba83300b9963b80a2cdadfdb106dd5aeff576fa" }
+rustfst = { git = "https://github.com/necessary-nu/rustfst", rev = "15fd756b83201bd56df3937f9b7724ad7984976b" }
 
 # parser front-ends (sibling repo: text -> AST). The port owns AST -> transducer.
 # 0.2 carries htwolcpre1's marker renames for bare 0/#/.#. — required by the

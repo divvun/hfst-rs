@@ -189,18 +189,45 @@ where
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DeterminizeBoundedError {
     SubsetElements { limit: usize, attempted: usize },
+    Transitions { limit: usize, attempted: usize },
     Other(String),
 }
 
-// [fst::Determinize] with state and weighted-subset budgets — ofst := det(ifst),
-// but abort before either input-dependent structure can run away. A state count
-// alone is insufficient: one determinized state can contain a huge weighted
-// NFA subset. `None` leaves the corresponding dimension unbounded.
+impl std::fmt::Display for DeterminizeBoundedError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::SubsetElements { limit, attempted } => write!(
+                formatter,
+                "weighted-subset element budget of {limit} exceeded (attempted {attempted})"
+            ),
+            Self::Transitions { limit, attempted } => write!(
+                formatter,
+                "transition budget of {limit} exceeded (attempted {attempted})"
+            ),
+            Self::Other(message) => formatter.write_str(message),
+        }
+    }
+}
+
+/// The three independent dimensions a bounded determinization may abort on.
+/// `None` leaves the corresponding dimension unbounded.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct DeterminizeBudgets {
+    pub max_states: Option<usize>,
+    pub max_subset_elements: Option<usize>,
+    pub max_trs: Option<usize>,
+}
+
+// [fst::Determinize] with state, weighted-subset and transition budgets —
+// ofst := det(ifst), but abort before any input-dependent structure can run
+// away. No one dimension implies the others: one determinized state can hold a
+// huge weighted NFA subset, and a state count well inside its bound can still
+// carry a machine with orders of magnitude more transitions than the input.
+// [spec:hfst:req:determinize-envelope.transition-axis]
 pub fn DeterminizeBounded<W, F1, F2>(
     ifst: &F1,
     ofst: &mut F2,
-    max_states: Option<usize>,
-    max_subset_elements: Option<usize>,
+    budgets: DeterminizeBudgets,
 ) -> Result<(), DeterminizeBoundedError>
 where
     W: WeaklyDivisibleSemiring + WeightQuantize,
@@ -208,17 +235,28 @@ where
     F2: MutableFst<W> + AllocableFst<W>,
 {
     let config = rustfst::algorithms::determinize::DeterminizeConfig::default()
-        .with_max_states(max_states)
-        .with_max_subset_elements(max_subset_elements);
+        .with_max_states(budgets.max_states)
+        .with_max_subset_elements(budgets.max_subset_elements)
+        .with_max_trs(budgets.max_trs);
     *ofst = rustfst::algorithms::determinize::determinize_with_config(ifst, config).map_err(
         |error| {
-            error
-                .downcast_ref::<rustfst::algorithms::determinize::DeterminizeSubsetLimitExceeded>()
-                .map(|limit| DeterminizeBoundedError::SubsetElements {
+            if let Some(limit) = error
+                .downcast_ref::<rustfst::algorithms::determinize::DeterminizeSubsetLimitExceeded>(
+            ) {
+                return DeterminizeBoundedError::SubsetElements {
                     limit: limit.limit,
                     attempted: limit.attempted,
-                })
-                .unwrap_or_else(|| DeterminizeBoundedError::Other(error.to_string()))
+                };
+            }
+            if let Some(limit) =
+                error.downcast_ref::<rustfst::algorithms::lazy::ComputeTrLimitExceeded>()
+            {
+                return DeterminizeBoundedError::Transitions {
+                    limit: limit.limit,
+                    attempted: limit.attempted,
+                };
+            }
+            DeterminizeBoundedError::Other(error.to_string())
         },
     )?;
     propagate_symbols(ifst, ofst);

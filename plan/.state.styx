@@ -421,4 +421,13 @@ impl_evidence (
     ), covered_claims (
         {impl_name target-impl, rule virtual-flag-algebra.subtraction}
     )}
+    {id determinize-transition-budget, covered_rules (
+        determinize-envelope.bounded-strategies
+        determinize-envelope.relation-preserved
+        determinize-envelope.transition-axis
+    ), covered_claims (
+        {impl_name target-impl, rule determinize-envelope.bounded-strategies}
+        {impl_name target-impl, rule determinize-envelope.relation-preserved}
+        {impl_name target-impl, rule determinize-envelope.transition-axis}
+    )}
 )

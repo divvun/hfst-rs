@@ -6632,4 +6632,29 @@ children (
             }
         )
     }
+
+    {
+        id determinize-transition-budget
+        title "Bound determinization by transitions written, not just states and subsets — the axis that makes `hfst-regexp2fst -S -E` survive a lexicon-unioned-with-error-model regex (measured: 356,823-state/21.5M-arc union whose minimal deterministic form is ~1.5e9 arcs / 30.7 GB / 26 min / 39.8 GB RSS; upstream C++ 3.17.1 is worse). Also closes the gap that left the weight-encoding strategy — the last fallback, so every other overrun funnels into it — running unbounded."
+        kind @fix
+        implements {
+            target-impl ([spec:hfst:req:determinize-envelope.relation-preserved] [spec:hfst:req:determinize-envelope.bounded-strategies] [spec:hfst:req:determinize-envelope.transition-axis])
+        }
+        deps (weighted-determinize-fallback)
+        log (
+            {
+                at 2026-08-21T17:32:23.636296Z
+                author "brendan@necessary.nu"
+                kind @status
+                text "Todo → Doing (nplan start)"
+            }
+
+            {
+                at 2026-08-21T17:34:16.587889Z
+                author "brendan@necessary.nu"
+                kind @decision
+                text "Diagnosis, from instrumenting the reported regex step by step ([ words | empty | [ editdist ( final_strings ) ] ] with -S -E, words-new.hfst = 19 MB / 351,032 states): the union is NOT the problem. Loading, optionalize, concat, the inner group's optimize and BOTH disjuncts complete in 10.5 s at 1.9 GB and produce 356,823 states / 21,460,248 arcs. Every second after that is the outer [ ]'s optimize, i.e. minimize = determinize + Minimize. So the giant artifact is not xre's unknown/identity harmonization inflating the relation — harmonization here adds at most 12 missing symbols (digits, comma, apostrophe) and the tiny-words control expands by 10, nearly the same. It is the minimal DETERMINISTIC form of a perfectly ordinary union: the error-model branch is dense (5,790 states / 20,042,681 arcs = ~3,460 arcs/state) and live at every prefix, so every co-reachable lexicon state inherits that out-degree. 351k x ~3.4k is the observed ~1.5e9 arcs. Same relation, exponentially worse representation — so the fix is to stop insisting on determinism at that price, not to change the union.\n\nWhy the existing envelope missed it: determinize_adaptive bounded only the LABEL-ONLY strategy (max_states 256*input clamped to 2M, max_subset_elements 4M) and ran the weight-encoded strategy — the last fallback — completely unbounded. Every overrun of the bounded strategy funnelled into the unbounded one, which is why the no -E run died too (45 GB). And neither existing axis could see this shape anyway: measured with the state cap alone the run passed 20 GB RSS still inside compute_bounded, because the states stayed under 2M while the ARCS ran away. Memory follows transitions, not states.\n\nFix: a third budget axis counting transitions as compute_bounded writes them (rustfst fork 15fd756b, typed ComputeTrLimitExceeded so a caller can tell \"result too large\" from \"search did not converge\"), the weight-encoded strategy brought under the same envelope, and a transition overrun never retried under weight encoding — encoding only splits paths further, so it cannot shrink a result already judged too large. The transition bound is max(128 Mi, 4 x input transitions): a floor, not a ceiling, so an input that is already huge keeps its proportional output and nothing that was succeeding changes.\n\nMeasured, hfst-regexp2fst -S -E semantics driven from the library (the CLI crate does not build mid-refactor): reproducer 26 min / 39.8 GB RSS / 30.7 GB artifact -> 29.4 s / 6.44 GB RSS / 666 MB artifact (53x faster, 6.2x less memory, 46x smaller). The tiny-words control em-base.regex is SHA-256 byte-identical to the pre-fix artifact (83ce4e29de4e77789c394d1f2a683f93e65811487fbb72c66c5aabbbfce03100, 331,458,132 bytes). Upstream C++ HFST 3.17.1 on the same input was killed at 31 min / 48.7 GB, so this is a successor divergence, not a port regression."
+            }
+        )
+    }
 )
