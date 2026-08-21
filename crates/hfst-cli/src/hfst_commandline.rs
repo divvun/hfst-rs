@@ -26,12 +26,6 @@ use std::io::{IsTerminal, Write};
 // constants (header #defines / constexpr)
 // ---------------------------------------------------------------------------
 
-/// option "character" for colour
-pub const GETOPT_COLOUR: i32 = 27;
-
-/// successful return value for argument parsing routine
-pub const EXIT_CONTINUE: i32 = 42;
-
 pub const COLOUR_BOLD: &str = "\x1b[01m";
 pub const COLOUR_RED: &str = "\x1b[31m";
 pub const COLOUR_GREEN: &str = "\x1b[32m";
@@ -831,18 +825,11 @@ pub fn print_version(opts: &CommonOptions) {
 // [spec:hfst:req:cli.arg-parse]
 //
 // Append the space-separated tokens of $HFST_OPTIONS to the program arguments
-// (consecutive spaces collapse, as the C strtok loop did); getopt then permutes
-// them into place.
+// (consecutive spaces collapse, as the C strtok loop did); clap then permutes
+// them into place. Called exactly once per process, by the multiplexer binary
+// (src/bin/hfst.rs) before it dispatches — the tools' own parsers never reach
+// for the environment.
 pub fn extend_options_from_env(args: &mut Vec<String>) {
-    // The extension happens ONCE per process. The multiplexer binary does it
-    // centrally for every dispatch path, and the tools that still carry their
-    // own call from the getopt era would otherwise append the same tokens a
-    // second time; the guard makes those calls no-ops, and they disappear as
-    // each tool moves to crate::cli.
-    static EXTENDED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-    if EXTENDED.swap(true, std::sync::atomic::Ordering::SeqCst) {
-        return;
-    }
     if let Ok(hfstopts) = std::env::var("HFST_OPTIONS") {
         for t in hfstopts.split(' ').filter(|t| !t.is_empty()) {
             args.push(t.to_string());

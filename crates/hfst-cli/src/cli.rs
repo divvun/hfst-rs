@@ -1,7 +1,7 @@
 //! The clap-4 argument layer shared by every hfst tool.
 //!
-//! This replaces the hand-ported getopt loop (hfst-getopt + the inc/
-//! getopt-cases fragments) for the tools that have been migrated: a tool
+//! This replaced the hand-ported getopt loop (hfst-getopt + the inc/
+//! getopt-cases fragments, both deleted once the last tool migrated): a tool
 //! declares its whole command line as one clap derive struct, flattens
 //! [`CommonArgs`] plus an IO group ([`UnaryIo`] / [`BinaryIo`]) into it, and
 //! calls [`parse`] once. Help text is clap's, not the hand-written
@@ -76,7 +76,6 @@ use std::collections::HashSet;
 
 use crate::globals::{ColourTristate, CommonOptions};
 use crate::hfst_commandline::{error, print_short_help, print_version};
-use crate::inc::check_common_params;
 
 const EXIT_SUCCESS: i32 = 0;
 const EXIT_FAILURE: i32 = 1;
@@ -118,8 +117,15 @@ pub fn from_code(code: i32) -> ToolResult {
 /// BOTH the verbose and the silent flag, so whichever came last on the command
 /// line decided. clap reproduces that with mutual overrides_with rather than
 /// by inspecting match indices.
+///
+/// The doc comments below are the '--help' text: clap renders them where the
+/// C printed hfst-program-options.cc's fixed "Common options" block (whose
+/// "erros" typo this port does not reproduce — help is clap's, not
+/// byte-matched).
 // [spec:hfst:req:cli.common-options]
 // [spec:hfst:req:cli.arg-parse]
+// [spec:hfst:def:hfst-program-options.print-common-program-options-fn]
+// [spec:hfst:sem:hfst-program-options.print-common-program-options-fn]
 #[derive(clap::Args, Debug, Clone, Default)]
 pub struct CommonArgs {
     /// Print version info
@@ -205,7 +211,19 @@ impl CommonArgs {
 
 /// The one-input-stream IO group: '-i INFILE' plus the positional operand
 /// (tools/src/inc/getopt-cases-unary.h + check-params-unary.h).
+///
+/// The doc comments double as the '--help' text: clap renders them where the C
+/// printed hfst-program-options.cc's unary "Input/Output options" block and
+/// its parameter-instruction lines (the standard-streams / result-format
+/// notes now live on the INFILE operand's own help line; the unary-string
+/// printer upstream declared but never defined prints nothing here either).
 // [spec:hfst:req:cli.unary-options]
+// [spec:hfst:def:hfst-program-options.print-common-unary-program-options-fn]
+// [spec:hfst:sem:hfst-program-options.print-common-unary-program-options-fn]
+// [spec:hfst:def:hfst-program-options.print-common-unary-program-parameter-instructions-fn]
+// [spec:hfst:sem:hfst-program-options.print-common-unary-program-parameter-instructions-fn]
+// [spec:hfst:def:hfst-program-options.print-common-unary-string-program-options-fn]
+// [spec:hfst:sem:hfst-program-options.print-common-unary-string-program-options-fn]
 #[derive(clap::Args, Debug, Clone, Default)]
 pub struct UnaryIo {
     /// Read input transducer from INFILE
@@ -264,7 +282,16 @@ impl UnaryIo {
 /// the '1' option value — so the long spelling has always filled the FIRST
 /// slot while '-2' filled the second. Preserved bug-for-bug; only the help
 /// text stops advertising the two as the same option.
+///
+/// The doc comments double as the '--help' text: clap renders them where the C
+/// printed hfst-program-options.cc's binary "Input/Output options" block and
+/// its parameter-instruction lines (the standard-streams and pairwise-archive
+/// notes now live on the INFILE operand's help and each tool's after_help).
 // [spec:hfst:req:cli.binary-options]
+// [spec:hfst:def:hfst-program-options.print-common-binary-program-options-fn]
+// [spec:hfst:sem:hfst-program-options.print-common-binary-program-options-fn]
+// [spec:hfst:def:hfst-program-options.print-common-binary-program-parameter-instructions-fn]
+// [spec:hfst:sem:hfst-program-options.print-common-binary-program-parameter-instructions-fn]
 #[derive(clap::Args, Debug, Clone, Default)]
 pub struct BinaryIo {
     /// Read first input transducer from INFILE1
@@ -468,6 +495,19 @@ pub enum ErrorStyle {
     UsageDump,
 }
 
+/// Post-parse default for the common output stream (tools/src/inc/
+/// check-params-common.h): if '-o' was never given, point the output at
+/// stdout and the messages at stderr.
+// [spec:hfst:req:cli.common-options]
+fn check_common_params(opts: &mut CommonOptions) {
+    if !opts.output_named {
+        opts.output_filename = "<stdout>".to_string();
+        // Default data output is stdout, so messages go to stderr (the tool
+        // opens stdout on demand via output_writer()).
+        opts.message_to_stderr = true;
+    }
+}
+
 /// Parse a tool's argv into its derive struct and the shared
 /// [`CommonOptions`], reporting help / version / argument errors the way the
 /// HFST tools do.
@@ -516,7 +556,17 @@ pub fn parse<T: ToolArgs>(
 ///
 /// The long-name lookup runs first, so a single-dash token that ALSO reads as
 /// a cluster stays the long option, exactly as the old parser resolved it.
+///
+/// This pre-pass plus clap is the successor of the ported hfst-getopt.cc
+/// getopt_long fallback (deleted with the clap migration): clap natively
+/// covers the rest of that parser's contract — short clusters, attached
+/// required arguments, '--opt=val', permutation, '-'/'--' — and the option
+/// table the C spliced together from `struct option` rows is now the clap
+/// Command's own arg declarations, read back here through `get_arguments()`.
 // [spec:hfst:req:cli.arg-parse]
+// [spec:hfst:def:hfst-getopt.getopt-long-fn]
+// [spec:hfst:sem:hfst-getopt.getopt-long-fn]
+// [spec:hfst:def:hfst-getopt.option]
 pub fn normalize_argv(cmd: &clap::Command, argv: Vec<String>) -> Vec<String> {
     let mut longs: HashSet<&str> = HashSet::new();
     // Shorts whose value is optional, with the long name to rewrite through.

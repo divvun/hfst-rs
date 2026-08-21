@@ -3,97 +3,77 @@
 //!
 //!  * `hfst tokenize --space-separated` / `-i` reached no case at all, so it
 //!    enabled `--debug` and emitted the default segmenting format.
-//!  * an OPTIONAL_ARGUMENT option given without `=value` inherited the previous
-//!    option's `optarg`, so e.g. `--colour` read the input filename as its WHEN.
+//!  * an optional-argument option given without `=value` used to inherit the
+//!    previous option's argument (the getopt-era `optarg` leak), so e.g.
+//!    `--colour` read the input filename as its WHEN.
 //!  * `hfst optimized-lookup -q` / `-s` set only the verbosity field, which
 //!    nothing reads, dropping the weight display that is the flag's whole
 //!    observable effect.
+//!
+//! The getopt parser is gone; the unit tests below pin the same contract at
+//! the clap layer, on the real shared groups ([`CommonArgs`] + [`UnaryIo`]):
+//! a bare optional-argument option takes its default and never a neighbour's
+//! value, because its value must be attached with '='.
 
-use hfst_cli::hfst_commandline::GETOPT_COLOUR;
-use hfst_cli::hfst_getopt::{GetOpt, Getopt, NO_ARGUMENT, OPTIONAL_ARGUMENT, REQUIRED_ARGUMENT};
+use clap::Parser;
+use hfst_cli::cli::{CommonArgs, UnaryIo};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 // ---------------------------------------------------------------------------
-// optarg lifetime (hfst-getopt)
+// optional-argument values stay attached (the former optarg-leak lock)
 // ---------------------------------------------------------------------------
 
-fn long_options() -> Vec<GetOpt> {
-    vec![
-        GetOpt {
-            name: "input",
-            has_arg: REQUIRED_ARGUMENT,
-            val: b'i' as i32,
-        },
-        GetOpt {
-            name: "colour",
-            has_arg: OPTIONAL_ARGUMENT,
-            val: GETOPT_COLOUR,
-        },
-        GetOpt {
-            name: "verbose",
-            has_arg: NO_ARGUMENT,
-            val: b'v' as i32,
-        },
-    ]
+/// A minimal tool: exactly the shared option groups and nothing else.
+#[derive(clap::Parser)]
+struct Probe {
+    #[command(flatten)]
+    common: CommonArgs,
+    #[command(flatten)]
+    io: UnaryIo,
 }
 
-fn argv(words: &[&str]) -> Vec<String> {
-    words.iter().map(|w| (*w).to_string()).collect()
+fn probe(words: &[&str]) -> Probe {
+    Probe::try_parse_from(words).expect("the probe invocation must parse")
 }
 
+/// `--colour` with no `=WHEN` means "always" — it must not read the previous
+/// option's argument as its WHEN, which the getopt port once did.
 #[test]
-fn optional_argument_without_value_clears_optarg() {
-    let long = long_options();
-    let mut args = argv(&["prog", "-i", "x.hfst", "--colour"]);
-    let mut opt = Getopt::new();
-
-    assert_eq!(opt.getopt_long(&mut args, &long), b'i' as i32);
-    assert_eq!(opt.optarg_opt().as_deref(), Some("x.hfst"));
-
-    assert_eq!(opt.getopt_long(&mut args, &long), GETOPT_COLOUR);
+fn bare_colour_takes_default_not_previous_argument() {
+    let args = probe(&["prog", "-i", "x.hfst", "--colour"]);
+    assert_eq!(args.io.input.as_deref(), Some("x.hfst"));
     assert_eq!(
-        opt.optarg_opt(),
-        None,
+        args.common.colour.as_deref(),
+        Some("always"),
         "--colour with no =WHEN must not inherit -i's argument"
     );
+
+    // At the end of argv (nothing left to misread as its value) too.
+    let args = probe(&["prog", "--input=x.hfst", "--colour"]);
+    assert_eq!(args.io.input.as_deref(), Some("x.hfst"));
+    assert_eq!(args.common.colour.as_deref(), Some("always"));
 }
 
 #[test]
-fn optional_argument_with_inline_value_keeps_it() {
-    let long = long_options();
-    let mut args = argv(&["prog", "-i", "x.hfst", "--colour=never"]);
-    let mut opt = Getopt::new();
-
-    assert_eq!(opt.getopt_long(&mut args, &long), b'i' as i32);
-    assert_eq!(opt.getopt_long(&mut args, &long), GETOPT_COLOUR);
-    assert_eq!(opt.optarg_opt().as_deref(), Some("never"));
+fn colour_with_inline_value_keeps_it() {
+    let args = probe(&["prog", "-i", "x.hfst", "--colour=never"]);
+    assert_eq!(args.common.colour.as_deref(), Some("never"));
 }
 
+/// The value must be ATTACHED: a bare `--colour` ahead of an operand leaves
+/// the operand alone, exactly as getopt's OPTIONAL_ARGUMENT never reached out
+/// to the next argv word.
 #[test]
-fn no_argument_option_clears_optarg() {
-    let long = long_options();
-    let mut args = argv(&["prog", "-i", "x.hfst", "--verbose"]);
-    let mut opt = Getopt::new();
-
-    assert_eq!(opt.getopt_long(&mut args, &long), b'i' as i32);
-    assert_eq!(opt.getopt_long(&mut args, &long), b'v' as i32);
-    assert_eq!(opt.optarg_opt(), None);
-}
-
-/// A trailing OPTIONAL_ARGUMENT option (nothing left to misread as its value)
-/// must not carry the previous argument either.
-#[test]
-fn optional_argument_at_end_of_argv_clears_optarg() {
-    let long = long_options();
-    let mut args = argv(&["prog", "--input=x.hfst", "--colour"]);
-    let mut opt = Getopt::new();
-
-    assert_eq!(opt.getopt_long(&mut args, &long), b'i' as i32);
-    assert_eq!(opt.optarg_opt().as_deref(), Some("x.hfst"));
-    assert_eq!(opt.getopt_long(&mut args, &long), GETOPT_COLOUR);
-    assert_eq!(opt.optarg_opt(), None);
+fn bare_colour_never_swallows_the_next_word() {
+    let args = probe(&["prog", "--colour", "y.hfst"]);
+    assert_eq!(args.common.colour.as_deref(), Some("always"));
+    assert_eq!(
+        args.io.infiles,
+        vec!["y.hfst".to_string()],
+        "the word after a bare --colour is an operand, not its WHEN"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -147,7 +127,8 @@ fn pmatch_ruleset(dir: &Path) -> String {
 
 /// Both spellings of the space-separated format must select it. The C++ long
 /// table maps `--space-separated` to 'd' and only its short-option string makes
-/// `-i` work; this port has no short string, so both spellings ride on `val`.
+/// `-i` work; this port has no short string, so both spellings ride on the one
+/// clap arg.
 #[test]
 fn tokenize_space_separated_is_reachable() {
     let dir = scratch("tokenize");

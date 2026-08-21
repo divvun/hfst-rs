@@ -6621,12 +6621,20 @@ children (
                 id clap-migration
                 title "clap-derive migration: #[derive(Args)] per tool + flattened CommonArgs; help text is clap's format (operator, 2026-08-20 — print_usage deleted, substring tests move to doc comments, --help still exits 0); Result-based tools, thiserror error enum, single exit-code mapper (HFST error text, exit 1 not clap's 2); argv normalization shim (single-dash longs incl. tokenise -cg, attached optional-arg -p/-S); resolve grep/optimized-lookup/twolc duplicate shorts; delete hfst_getopt.rs+inc.rs+CaseResult+error()-exit sites; replace the 20 getopt unit tests with e2e equivalents; HFST_OPTIONS handled once in dispatch. Oracle: e2e suite + full lang-sma build byte/behavior check."
                 deps (spec-rewrite)
+                sealed true
                 log (
                     {
                         at 2026-08-20T16:27:54.001472Z
                         author "brendan@necessary.nu"
                         kind @status
                         text "Todo → Doing (nplan start)"
+                    }
+
+                    {
+                        at 2026-08-21T20:31:39.110378Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan complete)"
                     }
                 )
             }

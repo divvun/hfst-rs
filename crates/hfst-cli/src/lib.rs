@@ -6,13 +6,19 @@
 //! readline-gated interactive paths in otherwise-portable tools are '#if'd out
 //! the same way the SFST backend was in the library.
 //!
-//! The CLI fidelity decision is the same as the library's: an absolute 1:1
-//! bug-for-bug translation, getopt and all. The shared command-line
-//! infrastructure (hfst-getopt, hfst-commandline, hfst-program-options,
-//! hfst-tool-metadata, hfst-file-to-mem) is ported into the modules below; each
-//! tool lives as a module under src/tools/ exposing run(args) -> i32, and the
-//! single 'hfst' multiplexer binary (src/bin/hfst.rs) dispatches to them by
-//! invoked basename or subcommand.
+//! The CLI fidelity bar is behavioural, not textual: every tool declares its
+//! command line as a clap-4 derive struct (the shared groups and the argv
+//! pre-pass live in [`cli`]), and what is preserved bug-for-bug is the
+//! MEASURED surface the Giella builds and the C++ tools' users depend on —
+//! option spellings (clusters, attached values, single-dash longs, '--opt=val',
+//! permutation, '-'/'--'), operand resolution, data output, exit codes, and
+//! HFST's own argument-error shape. Help text is clap's, rendered from the
+//! derive structs' doc comments, not the C's hand-written print_usage blocks.
+//! The rest of the shared infrastructure (hfst-commandline,
+//! hfst-tool-metadata) remains a close port; each tool lives as a module under
+//! src/tools/ exposing run(args) -> i32, and the single 'hfst' multiplexer
+//! binary (src/bin/hfst.rs) dispatches to them by invoked basename or
+//! subcommand.
 
 // -----------------------------------------------------------------------------
 // The one-per-stream-read dispatch of [dec:hfst:monomorphic-backends] step 5:
@@ -148,22 +154,15 @@ impl hfst::substitute_driver::SubstituteReporter for CliVerboseReporter<'_> {
 }
 
 // The clap-4 argument layer: the shared derive groups, the argv pre-pass and
-// the error/exit-code mapping every migrated tool parses through. It replaces
-// hfst_getopt + the inc/ getopt-cases fragments tool by tool; both stay until
-// the last tool has moved across.
+// the error/exit-code mapping every tool parses through. The hand-ported
+// getopt fallback (hfst_getopt) and the inc/ getopt-cases fragments it
+// replaced are gone.
 pub mod cli;
 
 pub mod globals;
 pub mod hfst_commandline;
-pub mod hfst_getopt;
-pub mod hfst_program_options;
 pub mod hfst_tool_metadata;
 pub(crate) mod memory_limit;
-
-// The 'inc/' switch-case and post-parse-validation fragments that every tool
-// '#include's into its 'parse_options' (getopt-cases-*.h, check-params-*.h),
-// translated once into shared helpers the bin mains call.
-pub mod inc;
 
 // The shared main/<op>_streams scaffolding of the two-input-stream (BINARY)
 // tools, lifted out of the per-tool verbatim copies and parameterized by an

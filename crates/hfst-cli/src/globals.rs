@@ -3,10 +3,10 @@
 //!
 //! In C these fragments are '#include'd once per tool .cc as file-scope globals.
 //! The idiomatic Rust port has NO globals: the state lives in a [`CommonOptions`]
-//! value that each tool's `parse_options` builds and threads into its
-//! processing functions (the getopt parser state lives likewise in
-//! [`crate::hfst_getopt::Getopt`]). The "<stdin>"/"<stdout>" sentinels (or "-",
-//! or an unset name) select the standard streams.
+//! value that [`crate::cli::parse`] builds from the tool's clap derive struct
+//! and the tool threads into its processing functions. The
+//! "<stdin>"/"<stdout>" sentinels (or "-", or an unset name) select the
+//! standard streams.
 
 use std::io::{BufRead, BufReader, Write};
 
@@ -22,8 +22,8 @@ pub enum ColourTristate {
 
 /// The shared command-line state every tool carries: the common (`-v/-q/-o/…`),
 /// unary (`-i`) and binary (`-1/-2/-C`) option fields plus the resolved
-/// filenames and tool metadata. Built by `parse_options` (via the
-/// `crate::inc` case handlers) and threaded into the tool's processing
+/// filenames and tool metadata. Built by [`crate::cli::parse`] (the shared
+/// derive groups' `apply` folds) and threaded into the tool's processing
 /// functions — the idiomatic replacement for the former file-scope `static mut`
 /// globals.
 // [spec:hfst:req:cli.common-options]

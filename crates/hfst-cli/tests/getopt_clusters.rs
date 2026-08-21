@@ -1,258 +1,202 @@
-//! Clustered short options (`-wq` for `-w -q`). The parser decided an option
-//! was short only when the token held a single letter and never took a packed
-//! token apart, so every cluster the C tools accept — via the system
-//! `getopt_long` they link against — was rejected outright: `-wq` on
-//! hfst-optimized-lookup, `-qn 2` on hfst-fst2strings, and any Giella script
-//! or hand-typed invocation that packs its flags.
+//! The GNU short-option spellings the C tools accept — clusters (`-wq` for
+//! `-w -q`), attached arguments (`-n2`, `-Wall`), long names behind one dash
+//! (`-quiet`), `--opt=val`, option/operand permutation, a lone `-` operand and
+//! negative-looking argument values. The C tools got all of this from the
+//! system `getopt_long` they linked against, so every Giella script and
+//! hand-typed invocation depends on it.
 //!
-//! The expectations below were each read off the C++ 3.17.1 tools rather than
-//! from the GNU documentation.
+//! The ported getopt fallback is gone; the parser is clap 4 plus
+//! [`hfst_cli::cli::normalize_argv`], the pre-pass that rewrites the two
+//! spellings clap does not take (single-dash longs, attached optional-argument
+//! values). The unit tests below pin the pre-pass; the end-to-end tests pin
+//! the whole surface against the real binary, with expectations read off the
+//! C++ 3.17.1 tools rather than from the GNU documentation.
 
-use hfst_cli::hfst_getopt::{GetOpt, Getopt, NO_ARGUMENT, OPTIONAL_ARGUMENT, REQUIRED_ARGUMENT};
+use clap::{Arg, ArgAction, Command};
+use hfst_cli::cli::normalize_argv;
 use std::io::Write;
 use std::path::PathBuf;
-use std::process::{Command, Stdio};
+use std::process::{Command as Process, Stdio};
 
-/// hfst-optimized-lookup's table, whose C short string is `hVvqsewb:t:uxfn:p::`
-/// — no-argument, required-argument and optional-argument letters together.
-fn long_options() -> Vec<GetOpt> {
-    fn opt(name: &'static str, has_arg: i32, val: u8) -> GetOpt {
-        GetOpt {
-            name,
-            has_arg,
-            val: val as i32,
-        }
-    }
-    vec![
-        opt("help", NO_ARGUMENT, b'h'),
-        opt("verbose", NO_ARGUMENT, b'v'),
-        opt("quiet", NO_ARGUMENT, b'q'),
-        opt("show-weights", NO_ARGUMENT, b'w'),
-        opt("unique", NO_ARGUMENT, b'u'),
-        opt("beam", REQUIRED_ARGUMENT, b'b'),
-        opt("analyses", REQUIRED_ARGUMENT, b'n'),
-        opt("pipe-mode", OPTIONAL_ARGUMENT, b'p'),
-    ]
+/// A Command mirroring hfst-optimized-lookup's option surface (the C short
+/// string was `hVvqsewb:t:uxfn:p::`): no-argument, required-argument and
+/// optional-argument letters together, plus the positional operand.
+fn command() -> Command {
+    Command::new("prog")
+        .disable_help_flag(true)
+        .arg(
+            Arg::new("help")
+                .short('h')
+                .long("help")
+                .action(ArgAction::SetTrue),
+        )
+        .arg(
+            Arg::new("verbose")
+                .short('v')
+                .long("verbose")
+                .action(ArgAction::SetTrue),
+        )
+        .arg(
+            Arg::new("quiet")
+                .short('q')
+                .long("quiet")
+                .action(ArgAction::SetTrue),
+        )
+        .arg(
+            Arg::new("show-weights")
+                .short('w')
+                .long("show-weights")
+                .action(ArgAction::SetTrue),
+        )
+        .arg(
+            Arg::new("unique")
+                .short('u')
+                .long("unique")
+                .action(ArgAction::SetTrue),
+        )
+        .arg(
+            Arg::new("beam")
+                .short('b')
+                .long("beam")
+                .allow_hyphen_values(true),
+        )
+        .arg(
+            Arg::new("analyses")
+                .short('n')
+                .long("analyses")
+                .allow_hyphen_values(true),
+        )
+        .arg(
+            Arg::new("pipe-mode")
+                .short('p')
+                .long("pipe-mode")
+                .num_args(0..=1)
+                .require_equals(true)
+                .default_missing_value("both"),
+        )
+        .arg(Arg::new("infile").num_args(0..))
 }
 
-fn argv(words: &[&str]) -> Vec<String> {
+fn norm(words: &[&str]) -> Vec<String> {
+    let argv = words.iter().map(|w| (*w).to_string()).collect();
+    normalize_argv(&command(), argv)
+}
+
+fn same(words: &[&str]) -> Vec<String> {
     words.iter().map(|w| (*w).to_string()).collect()
 }
 
-/// Everything one getopt loop yields: each `(returned code, optarg)` in order,
-/// the permuted argv, and the `optind` left pointing at the first operand.
-type Parse = (Vec<(i32, Option<String>)>, Vec<String>, usize);
+// ---------------------------------------------------------------------------
+// the argv pre-pass: the two spellings clap needs help with
+// ---------------------------------------------------------------------------
 
-/// Drive the parser to exhaustion, collecting `(returned code, optarg)`.
-fn drive(words: &[&str]) -> Parse {
-    let long = long_options();
-    let mut args = argv(words);
-    let mut opt = Getopt::new();
-    let mut seen = Vec::new();
-    loop {
-        let c = opt.getopt_long(&mut args, &long);
-        if c == -1 {
-            break;
-        }
-        seen.push((c, opt.optarg_opt()));
-        // A tool exits on '?' / ':'; stop so a broken parser cannot spin here.
-        if c == b'?' as i32 && seen.len() > 8 {
-            break;
-        }
-    }
-    (seen, args, opt.optind)
-}
-
-fn codes(words: &[&str]) -> Vec<char> {
-    drive(words)
-        .0
-        .iter()
-        .map(|(c, _)| *c as u8 as char)
-        .collect()
-}
-
+/// A long option behind ONE dash grows its second dash, with an inline value
+/// riding along; the old parser resolved these by scanning the long table.
 #[test]
-fn clustered_no_argument_options_split_apart() {
-    assert_eq!(codes(&["prog", "-wq", "f.hfstol"]), ['w', 'q']);
-    assert_eq!(codes(&["prog", "-qw", "f.hfstol"]), ['q', 'w']);
-    assert_eq!(codes(&["prog", "-wqu", "f.hfstol"]), ['w', 'q', 'u']);
-    assert_eq!(codes(&["prog", "-uwq", "f.hfstol"]), ['u', 'w', 'q']);
-}
-
-/// `-wn2`: the first argument-taking letter swallows the rest of the token.
-#[test]
-fn required_argument_swallows_the_cluster_remainder() {
-    let (seen, _, _) = drive(&["prog", "-wn2", "f.hfstol"]);
+fn single_dash_long_names_grow_a_second_dash() {
     assert_eq!(
-        seen,
-        vec![(b'w' as i32, None), (b'n' as i32, Some("2".to_string())),]
+        norm(&["prog", "-quiet", "f.hfstol"]),
+        same(&["prog", "--quiet", "f.hfstol"])
     );
-}
-
-/// `-wnq`: the remainder is the argument even when it spells another option.
-/// The C++ tool answers "Invalid or no argument for analyses count" here.
-#[test]
-fn cluster_remainder_wins_over_later_letters() {
-    let (seen, _, _) = drive(&["prog", "-wnq", "f.hfstol"]);
     assert_eq!(
-        seen,
-        vec![(b'w' as i32, None), (b'n' as i32, Some("q".into()))]
+        norm(&["prog", "-show-weights"]),
+        same(&["prog", "--show-weights"])
     );
+    assert_eq!(norm(&["prog", "-beam=1.0"]), same(&["prog", "--beam=1.0"]));
 }
 
-/// `-wn 2`: nothing left in the token, so the next argv word is the argument.
-#[test]
-fn required_argument_reaches_the_next_word() {
-    let (seen, args, optind) = drive(&["prog", "-wn", "2", "f.hfstol"]);
-    assert_eq!(
-        seen,
-        vec![(b'w' as i32, None), (b'n' as i32, Some("2".into()))]
-    );
-    assert_eq!(args[optind], "f.hfstol", "the operand must survive");
-}
-
-/// A negative-looking word is still an argument: `-wb -1.0` gives the beam
-/// "-1.0", which the C++ tool then rejects as out of range rather than as a
-/// stray option.
-#[test]
-fn negative_looking_arguments_are_taken_verbatim() {
-    let (seen, _, _) = drive(&["prog", "-wb", "-1.0", "f.hfstol"]);
-    assert_eq!(
-        seen,
-        vec![(b'w' as i32, None), (b'b' as i32, Some("-1.0".into()))]
-    );
-}
-
-/// An optional argument has to be attached: bare `-p` inside a cluster must
-/// leave the operand that follows alone.
-#[test]
-fn optional_argument_never_eats_the_next_word() {
-    let (seen, args, optind) = drive(&["prog", "-wp", "f.hfstol"]);
-    assert_eq!(seen, vec![(b'w' as i32, None), (b'p' as i32, None)]);
-    assert_eq!(args[optind], "f.hfstol");
-}
-
-#[test]
-fn optional_argument_takes_an_attached_value() {
-    let (seen, _, _) = drive(&["prog", "-wpboth", "f.hfstol"]);
-    assert_eq!(
-        seen,
-        vec![(b'w' as i32, None), (b'p' as i32, Some("both".into()))]
-    );
-}
-
-/// The C++ tools answer `-wZq` with "invalid option -- Z", naming the letter
-/// and not the token. Scanning then resumes after it, as glibc does.
-#[test]
-fn an_unknown_letter_is_named_by_itself() {
-    let long = long_options();
-    let mut args = argv(&["prog", "-wZq", "f.hfstol"]);
-    let mut opt = Getopt::new();
-
-    assert_eq!(opt.getopt_long(&mut args, &long), b'w' as i32);
-    assert_eq!(opt.getopt_long(&mut args, &long), b'?' as i32);
-    assert_eq!(opt.optopt, b'Z' as i32, "the offending letter, not -2");
-    assert_eq!(opt.getopt_long(&mut args, &long), b'q' as i32);
-}
-
-#[test]
-fn an_unknown_first_letter_is_named_too() {
-    let long = long_options();
-    let mut args = argv(&["prog", "-Zwq", "f.hfstol"]);
-    let mut opt = Getopt::new();
-
-    assert_eq!(opt.getopt_long(&mut args, &long), b'?' as i32);
-    assert_eq!(opt.optopt, b'Z' as i32);
-}
-
-/// The cluster's tail is not an argv element, so the end-of-argv test must not
-/// reach it first: `prog -wq` has to yield both letters.
-#[test]
-fn a_trailing_cluster_is_scanned_to_the_end() {
-    assert_eq!(codes(&["prog", "-wq"]), ['w', 'q']);
-    assert_eq!(codes(&["prog", "f.hfstol", "-wq"]), ['w', 'q']);
-}
-
-/// `-wn` with nothing after it is the missing-argument return, exactly as a
-/// lone `-n` at the end of argv already was.
-#[test]
-fn a_cluster_can_end_in_a_missing_argument() {
-    let long = long_options();
-    let mut args = argv(&["prog", "-wn"]);
-    let mut opt = Getopt::new();
-
-    assert_eq!(opt.getopt_long(&mut args, &long), b'w' as i32);
-    assert_eq!(opt.getopt_long(&mut args, &long), b':' as i32);
-    assert_eq!(opt.optopt, b'n' as i32);
-}
-
-/// `-Wall`-style attached arguments predate this change and must be untouched;
-/// GNU keeps an '=' verbatim in an attached argument.
-#[test]
-fn attached_arguments_are_unchanged() {
-    let (seen, _, _) = drive(&["prog", "-n2", "f.hfstol"]);
-    assert_eq!(seen, vec![(b'n' as i32, Some("2".into()))]);
-
-    let (seen, _, _) = drive(&["prog", "-b1.0", "f.hfstol"]);
-    assert_eq!(seen, vec![(b'b' as i32, Some("1.0".into()))]);
-
-    let (seen, _, _) = drive(&["prog", "-pa=b", "f.hfstol"]);
-    assert_eq!(seen, vec![(b'p' as i32, Some("a=b".into()))]);
-}
-
-/// This port accepts a long name behind one dash, and that lookup runs first,
-/// so a name that also reads as a cluster is still the long option.
+/// The long-name lookup runs first, so a single-dash token that ALSO reads as
+/// a cluster stays the long option: `-pipe-mode` must not be taken apart as
+/// `-p` with the attached value "ipe-mode".
 #[test]
 fn long_names_outrank_the_cluster_scan() {
-    let (seen, _, _) = drive(&["prog", "-quiet", "f.hfstol"]);
-    assert_eq!(seen, vec![(b'q' as i32, None)]);
-
-    let (seen, _, _) = drive(&["prog", "--beam=1.0", "f.hfstol"]);
-    assert_eq!(seen, vec![(b'b' as i32, Some("1.0".into()))]);
+    assert_eq!(
+        norm(&["prog", "-pipe-mode=input"]),
+        same(&["prog", "--pipe-mode=input"])
+    );
+    assert_eq!(norm(&["prog", "-quiet"]), same(&["prog", "--quiet"]));
 }
 
-/// Two dashes is a long option or nothing — never a cluster.
+/// An optional-argument short with its value attached (`-pboth`) gets the '='
+/// clap requires, through the long name; flags clustered ahead of it are split
+/// off first, as getopt would have taken them apart.
 #[test]
-fn a_double_dashed_token_is_never_a_cluster() {
-    let long = long_options();
-    let mut args = argv(&["prog", "--wq", "f.hfstol"]);
-    let mut opt = Getopt::new();
-
-    assert_eq!(opt.getopt_long(&mut args, &long), b'?' as i32);
-    assert_eq!(opt.optopt, -2, "an unknown long option stays anonymous");
+fn attached_optional_values_grow_an_equals() {
+    assert_eq!(
+        norm(&["prog", "-pboth", "f.hfstol"]),
+        same(&["prog", "--pipe-mode=both", "f.hfstol"])
+    );
+    assert_eq!(
+        norm(&["prog", "-wpboth"]),
+        same(&["prog", "-w", "--pipe-mode=both"])
+    );
+    // GNU keeps an '=' verbatim inside an attached argument.
+    assert_eq!(
+        norm(&["prog", "-wpa=b"]),
+        same(&["prog", "-w", "--pipe-mode=a=b"])
+    );
 }
 
-/// The specials the tools depend on: `--` ends option parsing and a lone `-`
-/// is an operand (stdin), neither of which is a one-letter cluster.
+/// A bare optional-argument short must stay bare — getopt's OPTIONAL_ARGUMENT
+/// never reached out to the next argv word, and neither may the rewrite.
 #[test]
-fn end_of_options_and_lone_dash_still_hold() {
-    let (seen, args, optind) = drive(&["prog", "-wq", "--", "-not-an-option"]);
-    assert_eq!(seen.len(), 2);
-    assert_eq!(args[optind], "-not-an-option");
-
-    let (seen, args, optind) = drive(&["prog", "-wq", "-"]);
-    assert_eq!(seen.len(), 2);
-    assert_eq!(args[optind], "-", "a lone dash is the stdin operand");
+fn bare_optional_shorts_are_untouched() {
+    assert_eq!(
+        norm(&["prog", "-p", "f.hfstol"]),
+        same(&["prog", "-p", "f.hfstol"])
+    );
+    assert_eq!(
+        norm(&["prog", "-wp", "f.hfstol"]),
+        same(&["prog", "-wp", "f.hfstol"])
+    );
 }
 
-/// Operands still permute to the tail with `optind` on the first of them.
+/// Everything clap already handles passes through byte-identical: clusters,
+/// attached required arguments, `--opt=val`, operands and a lone `-`.
 #[test]
-fn operands_still_permute_behind_the_options() {
-    let (seen, args, optind) = drive(&["prog", "one", "-wn", "2", "two"]);
-    assert_eq!(seen.len(), 2);
-    assert_eq!(&args[optind..], ["one", "two"]);
+fn clap_native_spellings_pass_through() {
+    for words in [
+        &["prog", "-wq", "f.hfstol"][..],
+        &["prog", "-n2", "f.hfstol"],
+        &["prog", "-wn2", "f.hfstol"],
+        &["prog", "-b1.0"],
+        &["prog", "--pipe-mode=both"],
+        &["prog", "f.hfstol", "-"],
+    ] {
+        assert_eq!(norm(words), same(words), "{words:?} must not be rewritten");
+    }
+}
+
+/// `--` ends option parsing: nothing after it is rewritten, however much it
+/// looks like an option.
+#[test]
+fn end_of_options_stops_the_rewrite() {
+    assert_eq!(
+        norm(&["prog", "-quiet", "--", "-quiet", "-pboth"]),
+        same(&["prog", "--quiet", "--", "-quiet", "-pboth"])
+    );
+}
+
+/// A letter the command never declared ends the cluster scan, so the token
+/// reaches clap verbatim and clap reports the unknown option itself.
+#[test]
+fn unknown_letters_stop_the_cluster_scan() {
+    assert_eq!(norm(&["prog", "-Zpboth"]), same(&["prog", "-Zpboth"]));
+    // A required-argument letter also stops it: the rest of the token is that
+    // option's value ('-wn2'), which clap glues on natively.
+    assert_eq!(norm(&["prog", "-nboth"]), same(&["prog", "-nboth"]));
 }
 
 // ---------------------------------------------------------------------------
 // end-to-end: the real binary, against the spellings the C++ tools accept
 // ---------------------------------------------------------------------------
 
-fn run(args: &[&str], stdin: &[u8]) -> (bool, String) {
-    let mut child = Command::new(env!("CARGO_BIN_EXE_hfst"))
+fn run_full(args: &[&str], stdin: &[u8]) -> (bool, String, String) {
+    let mut child = Process::new(env!("CARGO_BIN_EXE_hfst"))
         .args(args)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::null())
+        .stderr(Stdio::piped())
         .spawn()
         .expect("spawn hfst");
     child
@@ -265,7 +209,13 @@ fn run(args: &[&str], stdin: &[u8]) -> (bool, String) {
     (
         out.status.success(),
         String::from_utf8_lossy(&out.stdout).into_owned(),
+        String::from_utf8_lossy(&out.stderr).into_owned(),
     )
+}
+
+fn run(args: &[&str], stdin: &[u8]) -> (bool, String) {
+    let (ok, stdout, _) = run_full(args, stdin);
+    (ok, stdout)
 }
 
 fn fixture(name: &str) -> String {
@@ -275,7 +225,7 @@ fn fixture(name: &str) -> String {
     path.to_str().expect("utf-8 path").to_string()
 }
 
-/// The reported defect. `-wq` is byte-for-byte what the C++ tool prints for
+/// The original defect. `-wq` is byte-for-byte what the C++ tool prints for
 /// the same transducer, which is also what `-w -q` prints here.
 #[test]
 fn optimized_lookup_accepts_clustered_flags() {
@@ -321,8 +271,8 @@ fn clustered_argument_options_agree_when_separated() {
     }
 }
 
-/// The other reported spelling, on a second tool — the fix is in the shared
-/// parser, so no tool needs its own repair.
+/// The other originally-reported spelling, on a second tool — the behaviour
+/// lives in the shared layer, so no tool needs its own repair.
 #[test]
 fn fst2strings_accepts_clustered_flags() {
     let table = fixture("lookup.hfstol");
@@ -346,4 +296,62 @@ fn an_unknown_letter_still_fails_the_run() {
     let table = fixture("lookup.hfstol");
     let (ok, _) = run(&["optimized-lookup", "-wZq", &table], b"cat\n");
     assert!(!ok, "-wZq must fail on the unknown Z");
+}
+
+/// `--opt=val` and the separate-word spelling are one invocation.
+#[test]
+fn long_options_take_an_equals_value() {
+    let table = fixture("lookup.hfstol");
+    let input = b"cat\n" as &[u8];
+
+    let (ok, expected) = run(&["optimized-lookup", "-w", "-b", "1.0", &table], input);
+    assert!(ok, "the separate-word spelling must work");
+
+    let (ok, out) = run(&["optimized-lookup", "-w", "--beam=1.0", &table], input);
+    assert!(ok, "hfst optimized-lookup --beam=1.0 exited non-zero");
+    assert_eq!(out, expected, "--beam=1.0 must equal -b 1.0");
+}
+
+/// Options and operands permute freely: flags after the operand parse the
+/// same as flags before it (getopt shuffled operands to the tail; clap
+/// interleaves natively).
+#[test]
+fn operands_permute_with_the_options() {
+    let table = fixture("lookup.hfstol");
+    let input = b"cat\n" as &[u8];
+
+    let (ok, expected) = run(&["optimized-lookup", "-wq", &table], input);
+    assert!(ok, "the options-first spelling must work");
+
+    let (ok, out) = run(&["optimized-lookup", &table, "-wq"], input);
+    assert!(ok, "hfst optimized-lookup FILE -wq exited non-zero");
+    assert_eq!(out, expected, "trailing flags must parse like leading ones");
+}
+
+/// A lone `-` is an operand naming the standard input, not an option.
+#[test]
+fn a_lone_dash_reads_the_standard_input() {
+    let table = fixture("lookup.hfstol");
+    let bytes = std::fs::read(&table).expect("read the fixture");
+
+    let (ok, expected) = run(&["fst2strings", "-q", "-n", "2", &table], b"");
+    assert!(ok, "the named-file spelling must work");
+
+    let (ok, out) = run(&["fst2strings", "-q", "-n", "2", "-"], &bytes);
+    assert!(ok, "hfst fst2strings - exited non-zero");
+    assert_eq!(out, expected, "the - operand must read the same transducer");
+}
+
+/// A negative-looking word is still an argument: `-wb -1.0` gives the beam
+/// "-1.0", which the tool then rejects as out of range — NOT as a stray
+/// option. The diagnostic proves the value was consumed by `-b`.
+#[test]
+fn negative_looking_arguments_are_taken_verbatim() {
+    let table = fixture("lookup.hfstol");
+    let (ok, _, stderr) = run_full(&["optimized-lookup", "-wb", "-1.0", &table], b"cat\n");
+    assert!(!ok, "a negative beam must be rejected");
+    assert!(
+        stderr.contains("Invalid argument for --beam"),
+        "-1.0 must reach the beam validator, not the option parser: {stderr:?}"
+    );
 }

@@ -10,11 +10,14 @@
 //!    minus the 'hfst-' prefix. The tool argv is rebuilt as
 //!    ["hfst <sub>", ARGS...] so program-name-derived message prefixes render
 //!    as "hfst <sub>"; the remaining args pass through UNTOUCHED to the tool's
-//!    own getopt parser (including -h/--help, which the tool handles itself).
+//!    own clap parser (including -h/--help, which the tool handles itself).
 //!
-//! clap provides only the outer interface: 'hfst --help' (the subcommand
-//! listing), 'hfst --version', and the error/suggestion path for unknown
-//! subcommands. It never parses a tool's own flags.
+//! The OUTER clap Command here provides only the umbrella interface: 'hfst
+//! --help' (the subcommand listing), 'hfst --version', and the
+//! error/suggestion path for unknown subcommands. It never parses a tool's
+//! own flags — each tool's module owns its clap derive struct and parses its
+//! forwarded argv itself (through hfst_cli::cli, with its argv pre-pass and
+//! HFST-shaped error reporting).
 
 use clap::{Arg, ArgAction, Command};
 use hfst_cli::hfst_commandline::{VERSION_COPYRIGHT_BLOCK, extend_options_from_env, version_line};
@@ -192,7 +195,7 @@ fn build_cli() -> Command {
                     .allow_hyphen_values(true)
                     .trailing_var_arg(true)
                     .action(ArgAction::Append)
-                    .help("Arguments passed through untouched to the tool's own getopt parser"),
+                    .help("Arguments passed through untouched to the tool's own parser"),
             ),
         );
     }
@@ -236,8 +239,8 @@ fn run_main() {
     // Unknown basename: fall through to the subcommand interface.
 
     // Subcommand dispatch: argv[1] = tool name minus "hfst-". The tool's args
-    // are forwarded raw (clap never sees them), so the old getopt flags pass
-    // through untouched.
+    // are forwarded raw (the outer clap never sees them); the tool's own
+    // parser gets them untouched.
     if let Some(sub) = argv.get(1) {
         // Handled before clap: clap renders --version as "{name} {version}",
         // which would prefix a bare "hfst" onto a line that already names the
