@@ -6687,4 +6687,34 @@ children (
             }
         )
     }
+
+    {
+        id ol-lookup-unknown-identity
+        title "OL lookup: drop the internal node-visit ceiling that made unknown/identity enumeration representation-dependent and lost minimum-weight analyses"
+        kind @fix
+        implements {
+            target-impl (
+                [spec:hfst:req:ol-lookup-enumeration.no-internal-work-cap]
+                [spec:hfst:req:ol-lookup-enumeration.representation-independence]
+                [spec:hfst:req:ol-lookup-enumeration.out-of-alphabet-input]
+                [spec:hfst:req:ol-lookup-enumeration.meta-arc-output]
+                [spec:hfst:sem:ol-lookup-enumeration.meta-arc-restriction]
+            )
+        }
+        log (
+            {
+                at 2026-08-21T21:05:08.782862Z
+                author "brendan@necessary.nu"
+                kind @note
+                text "Root cause: MAX_NODE_VISITS (1,000,000), a whole-lookup node-visit ceiling added alongside the epsilon-cycle trap in 2f321cb for hfst/hfst#293 + #476, on the premise that \"no legitimate lookup reaches it\". A Giella speller error model reaches it in the first few percent of the walk. Probe: `Vahäpihä` (both `ä` outside the model alphabet, so the walk runs on identity/unknown arcs) against one relation held two ways — a 13 MB nondeterministic union (cmp-olw.hfst) and its 251 MB determinized build (exp-olw.hfst), proven equal by round-tripping both back to openfst-tropical and enumerating with the general engine (969,166 entries, identical). Before: cmp gave 5,385 distinct outputs, exp gave 189,840, and exp reported Vanhäpihä at weight 90.0 against a true minimum of 31.0 — the ceiling truncates mid-DFS, so WHERE it truncates follows table order, and the cheapest analysis was simply never reached. C++ 3.17.1 answers 958,376 / 31.0 on both. After removing the ceiling: 958,376 / 31.0 on both files, and the whole min-weight map is byte-identical to the C++ oracle's on both. Termination on cyclic machines is unaffected — it rests on the DFS-path-scoped epsilon/flag cycle trap from the same commit, which is the actual structural fix for #293/#476 and discards no analysis, plus MAX_RECURSION_DEPTH and the caller's own max_lookups / time_cutoff. Unknown/identity semantics themselves were already faithful (identity and unknown arcs both attempted for an out-of-alphabet symbol; a meta output instantiated from the input tape) and are now pinned by spec rules and tests rather than left implicit."
+            }
+
+            {
+                at 2026-08-21T21:05:13.059882Z
+                author "brendan@necessary.nu"
+                kind @status
+                text "Todo → Doing (nplan start)"
+            }
+        )
+    }
 )

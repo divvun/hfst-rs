@@ -160,22 +160,16 @@ pub const TRANSITION_TARGET_TABLE_START: TransitionTableIndex = 2147483648u32;
 pub const MAX_IO_LEN: u32 = 10000;
 pub const MAX_RECURSION_DEPTH: u32 = 5000;
 
-// Hard ceiling on the TOTAL number of `get_analyses` node visits per lookup.
-//
-// `recursion_depth_left` (MAX_RECURSION_DEPTH) bounds the DEPTH of a single
-// path — it is restored on backtrack — so on an epsilon cycle the C++ engine
-// (and this 1:1 port) still recurses 5000 levels deep, producing 5000 junk
-// analyses whose weights climb to ~4999 before the depth cap finally trips
-// (hfst/hfst#293's "huge weights before printing infinities") and holding all
-// of that in memory / running the machine flat out even when `--time-cutoff`
-// has bypassed the infinite-ambiguity guard (hfst/hfst#476's "memory hole /
-// time-cutoff ineffective"). This counter, by contrast, is NEVER restored on
-// backtrack, so it bounds total WORK regardless of cycle shape and terminates
-// deterministically on any pathological FST without depending on wall-clock or
-// on the infinite-ambiguity pre-check. The ceiling is high enough that no
-// legitimate lookup reaches it (a well-formed acyclic path visits far fewer
-// nodes than this) but low enough that a runaway cycle stops promptly.
-pub const MAX_NODE_VISITS: u64 = 1_000_000;
+// Termination of `get_analyses` rests on the DFS-path-scoped epsilon/flag cycle
+// trap (see `TraversalStates`) plus `MAX_RECURSION_DEPTH`, never on a global cap
+// over total node visits. A whole-lookup work ceiling MUST NOT be reintroduced:
+// it silently truncates enumeration mid-traversal, and because DFS visits arcs
+// in table order, WHERE it truncates depends on how the same relation happens to
+// be laid out. Two representations of one relation then answer differently, and
+// a minimum-weight analysis reachable only past the ceiling is lost outright.
+// Enumeration limits belong to the caller — `max_lookups` (a result count) and
+// `max_time` (a wall-clock cutoff) — both of which the caller opts into and can
+// therefore reason about (hfst/hfst#293, hfst/hfst#476).
 
 // [spec:hfst:def:transducer.hfst-ol.indexes-transition-table-fn]
 // [spec:hfst:sem:transducer.hfst-ol.indexes-transition-table-fn]
@@ -2444,11 +2438,6 @@ pub struct Transducer<T: TransducerTablesInterface = WeightedTables> {
 
     max_lookups: isize,
     recursion_depth_left: u32,
-    // Global node-visit budget for one lookup (hfst/hfst#293, hfst/hfst#476).
-    // Unlike `recursion_depth_left` this is decremented on every `get_analyses`
-    // entry and NEVER restored on backtrack, so it caps total traversal work on
-    // pathological cyclic FSTs regardless of path depth or wall-clock.
-    visits_left: u64,
     max_time: f64,
     start_clock: Option<Instant>,
 }
@@ -2607,7 +2596,6 @@ impl<T: TransducerTablesInterface> Transducer<T> {
             traversal_states: TraversalStates::new(),
             max_lookups: -1,
             recursion_depth_left: MAX_RECURSION_DEPTH,
-            visits_left: MAX_NODE_VISITS,
             max_time: 0.0,
             start_clock: None,
         }
@@ -2667,7 +2655,6 @@ impl<T: TransducerTablesInterface> Transducer<T> {
             traversal_states: TraversalStates::new(),
             max_lookups: -1,
             recursion_depth_left: MAX_RECURSION_DEPTH,
-            visits_left: MAX_NODE_VISITS,
             max_time: 0.0,
             start_clock: None,
         };
@@ -2700,7 +2687,6 @@ impl<T: TransducerTablesInterface> Transducer<T> {
             traversal_states: TraversalStates::new(),
             max_lookups: -1,
             recursion_depth_left: MAX_RECURSION_DEPTH,
-            visits_left: MAX_NODE_VISITS,
             max_time: 0.0,
             start_clock: None,
         }
@@ -2733,7 +2719,6 @@ impl<T: TransducerTablesInterface> Transducer<T> {
             traversal_states: TraversalStates::new(),
             max_lookups: -1,
             recursion_depth_left: MAX_RECURSION_DEPTH,
-            visits_left: MAX_NODE_VISITS,
             max_time: 0.0,
             start_clock: None,
         }
@@ -3421,7 +3406,6 @@ impl<T: TransducerTablesInterface> Transducer<T> {
     // [spec:hfst:sem:transducer.hfst-ol.transducer.lookup-fd-fn]
     pub fn lookup_fd_cstr(&mut self, s: &str, limit: isize, time_cutoff: f64) -> HfstOneLevelPaths {
         self.max_lookups = limit;
-        self.visits_left = MAX_NODE_VISITS;
         self.max_time = 0.0;
         if time_cutoff > 0.0 {
             self.max_time = time_cutoff;
@@ -3457,7 +3441,6 @@ impl<T: TransducerTablesInterface> Transducer<T> {
         time_cutoff: f64,
     ) -> HfstTwoLevelPaths {
         self.max_lookups = limit;
-        self.visits_left = MAX_NODE_VISITS;
         self.max_time = 0.0;
         if time_cutoff > 0.0 {
             self.max_time = time_cutoff;
@@ -3572,6 +3555,8 @@ impl<T: TransducerTablesInterface> Transducer<T> {
 
     // [spec:hfst:def:transducer.hfst-ol.transducer.find-transitions-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transducer.find-transitions-fn]
+    // [spec:hfst:req:ol-lookup-enumeration.meta-arc-output]
+    // [spec:hfst:sem:ol-lookup-enumeration.meta-arc-restriction]
     fn find_transitions(
         &mut self,
         input: SymbolNumber,
@@ -3627,20 +3612,11 @@ impl<T: TransducerTablesInterface> Transducer<T> {
 
     // [spec:hfst:def:transducer.hfst-ol.transducer.get-analyses-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transducer.get-analyses-fn]
+    // [spec:hfst:req:ol-lookup-enumeration.no-internal-work-cap]
+    // [spec:hfst:req:ol-lookup-enumeration.representation-independence]
+    // [spec:hfst:req:ol-lookup-enumeration.out-of-alphabet-input]
     fn get_analyses(&mut self, input_pos: u32, output_pos: u32, mut i: TransitionTableIndex) {
         let mut found_transition = false;
-
-        // Global work budget (hfst/hfst#293, hfst/hfst#476): count every node
-        // visit and stop once the budget is spent. `recursion_depth_left` only
-        // caps a single path's depth (it is restored on backtrack), so on an
-        // epsilon cycle it would otherwise let the traversal run 5000 levels
-        // deep — piling up junk analyses with runaway weights and holding them
-        // in memory — before terminating. Decrementing here, with no restore on
-        // the return paths below, bounds total traversal work on any FST.
-        if self.visits_left == 0 {
-            return;
-        }
-        self.visits_left -= 1;
 
         if self.recursion_depth_left == 0 {
             return;

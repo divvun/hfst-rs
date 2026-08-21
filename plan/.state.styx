@@ -431,4 +431,17 @@ impl_evidence (
         {impl_name target-impl, rule determinize-envelope.relation-preserved}
         {impl_name target-impl, rule determinize-envelope.transition-axis}
     )}
+    {id ol-lookup-unknown-identity, covered_rules (
+        ol-lookup-enumeration.meta-arc-output
+        ol-lookup-enumeration.meta-arc-restriction
+        ol-lookup-enumeration.no-internal-work-cap
+        ol-lookup-enumeration.out-of-alphabet-input
+        ol-lookup-enumeration.representation-independence
+    ), covered_claims (
+        {impl_name target-impl, rule ol-lookup-enumeration.meta-arc-output}
+        {impl_name target-impl, rule ol-lookup-enumeration.meta-arc-restriction}
+        {impl_name target-impl, rule ol-lookup-enumeration.no-internal-work-cap}
+        {impl_name target-impl, rule ol-lookup-enumeration.out-of-alphabet-input}
+        {impl_name target-impl, rule ol-lookup-enumeration.representation-independence}
+    )}
 )
