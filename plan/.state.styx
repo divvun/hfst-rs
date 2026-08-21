@@ -1,9 +1,17 @@
 schema_version 7
 
-last_sync_at 2026-08-18T12:59:07.706994Z
+last_sync_at 2026-08-21T21:18:14.374864Z
 
 rule_versions (
+    {id determinize-envelope.bounded-strategies, version 0}
+    {id determinize-envelope.relation-preserved, version 0}
+    {id determinize-envelope.transition-axis, version 0}
     {id foma-transducer.hfst.implementations.foma-transducer.resource-controlled-compose, version 0}
+    {id ol-lookup-enumeration.meta-arc-output, version 0}
+    {id ol-lookup-enumeration.meta-arc-restriction, version 0}
+    {id ol-lookup-enumeration.no-internal-work-cap, version 0}
+    {id ol-lookup-enumeration.out-of-alphabet-input, version 0}
+    {id ol-lookup-enumeration.representation-independence, version 0}
     {id virtual-flag-algebra.backend-core, version 0}
     {id virtual-flag-algebra.frontend-compose, version 0}
     {id virtual-flag-algebra.intersection, version 0}
@@ -15,14 +23,19 @@ rule_versions (
 
 derived_priorities (
     {id c-names, priority 0, derived_at 2026-07-11T20:19:58.119495Z}
+    {id clap-migration, priority 3, derived_at 2026-08-21T21:18:14.374864Z}
     {id cli-alias-shadowing, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
+    {id cli-residual-fixes, priority 0, derived_at 2026-08-21T21:18:14.374864Z}
     {id clippy-deny-gate, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
     {id compose-facade-nativize, priority 3, derived_at 2026-08-18T11:19:03.814367Z}
+    {id compose-intersect-product-memory, priority 2, derived_at 2026-08-21T21:18:14.374864Z}
     {id conversion-churn, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
     {id determinize-intermediate, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
+    {id determinize-transition-budget, priority 2, derived_at 2026-08-21T21:18:14.374864Z}
     {id diag-parse-error-spans, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
     {id divvun-hfst-branding, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
     {id drop-dead-commandline-def, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
+    {id family-files, priority 1, derived_at 2026-08-21T21:18:14.374864Z}
     {id flag-complement.audit, priority 1, derived_at 2026-07-11T20:19:58.119495Z}
     {id flag-complement.fix, priority 0, derived_at 2026-07-11T20:19:58.119495Z}
     {id flag-encode-diverge, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
@@ -42,6 +55,7 @@ derived_priorities (
     {id fork-property-propagation, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
     {id function-key-normalise, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
     {id giella-tools, priority 0, derived_at 2026-07-11T20:19:58.119495Z}
+    {id hfst-info-compat-version, priority 0, derived_at 2026-08-21T21:18:14.374864Z}
     {id hfst-write-rename, priority 0, derived_at 2026-07-11T20:19:58.119495Z}
     {id idiom-clippy-clean, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
     {id idiom-islands, priority 0, derived_at 2026-07-11T20:19:58.119495Z}
@@ -67,6 +81,9 @@ derived_priorities (
     {id idiom9.parsers, priority 1, derived_at 2026-07-11T20:19:58.119495Z}
     {id idiom9.sentinels, priority 2, derived_at 2026-07-11T20:19:58.119495Z}
     {id idiom9.signatures, priority 1, derived_at 2026-07-11T20:19:58.119495Z}
+    {id lexc-diagnostic-accuracy, priority 1, derived_at 2026-08-21T21:18:14.374864Z}
+    {id lexc-morphotax-memory, priority 1, derived_at 2026-08-21T21:18:14.374864Z}
+    {id librarify2, priority 2, derived_at 2026-08-21T21:18:14.374864Z}
     {id minimize-consume-input, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
     {id mono.backend-traits, priority 0, derived_at 2026-07-11T20:19:58.119495Z}
     {id mono.cli, priority 3, derived_at 2026-07-11T20:19:58.119495Z}
@@ -77,11 +94,14 @@ derived_priorities (
     {id native-alphabet-ops, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
     {id nfst-0-2-publish, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
     {id nfst-patch-restore, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
+    {id ol-lookup-unknown-identity, priority 0, derived_at 2026-08-21T21:18:14.374864Z}
     {id olw-direct-conversion, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
     {id olw-flat-groups, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
     {id perf-ol-epsilon-guard, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
+    {id performance-language-gates, priority 0, derived_at 2026-08-21T21:18:14.374864Z}
     {id plan-node-kinds, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
     {id pmatch-encode-weights, priority 1, derived_at 2026-08-18T11:19:03.814367Z}
+    {id pmatch-epsilon-guard-performance, priority 1, derived_at 2026-08-21T21:18:14.374864Z}
     {id rustfst-determinize-table, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
     {id rustfst-lazy-demutex, priority 1, derived_at 2026-08-18T11:19:03.814367Z}
     {id rustfst-lazy-direct-materialize, priority 2, derived_at 2026-08-18T11:19:03.814367Z}
@@ -91,6 +111,7 @@ derived_priorities (
     {id rustfst-trsvec-csr, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
     {id sme-validation-fixes, priority 0, derived_at 2026-07-11T20:19:58.119495Z}
     {id smolstr, priority 0, derived_at 2026-07-11T20:19:58.119495Z}
+    {id spec-rewrite, priority 3, derived_at 2026-08-21T21:18:14.374864Z}
     {id strtoweight-strtod-semantics, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
     {id thfst.bhfst, priority 3, derived_at 2026-07-11T20:19:58.119495Z}
     {id thfst.io, priority 3, derived_at 2026-07-11T20:19:58.119495Z}
@@ -105,13 +126,17 @@ derived_priorities (
     {id twolc-name-sigma-cosmetic, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
     {id twolc-paircolon-context-divergence, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
     {id twolc-sigma-numbering-permutation, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
+    {id unary-driver, priority 0, derived_at 2026-08-21T21:18:14.374864Z}
+    {id upstream-bugs.t3.rs2-3, priority 0, derived_at 2026-08-21T21:18:14.374864Z}
     {id version-line-provenance, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
+    {id weighted-determinize-fallback, priority 1, derived_at 2026-08-21T21:18:14.374864Z}
     {id xfst-copyright-owner-plain, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
     {id xfst-flag-encode-nativize, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
     {id xfst-function-arg-substitution, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
     {id xfst-print-defined-body, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
     {id xfst-prototype-adjacency, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
     {id xre-function-as-network-error, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
+    {id xre-intermediate-optimization, priority 1, derived_at 2026-08-21T21:18:14.374864Z}
 )
 
 assertions (
@@ -379,12 +404,44 @@ assertions (
 )
 
 impl_evidence (
+    {id determinize-transition-budget, covered_rules (
+        determinize-envelope.bounded-strategies
+        determinize-envelope.relation-preserved
+        determinize-envelope.transition-axis
+    ), covered_claims (
+        {impl_name target-impl, rule determinize-envelope.bounded-strategies}
+        {impl_name target-impl, rule determinize-envelope.relation-preserved}
+        {impl_name target-impl, rule determinize-envelope.transition-axis}
+    ), rule_versions_seen (
+        {id determinize-envelope.bounded-strategies, version 0}
+        {id determinize-envelope.relation-preserved, version 0}
+        {id determinize-envelope.transition-axis, version 0}
+    )}
     {id foma-compose-resource-integration, covered_rules (
         foma-transducer.hfst.implementations.foma-transducer.resource-controlled-compose
     ), covered_claims (
         {impl_name target-impl, rule foma-transducer.hfst.implementations.foma-transducer.resource-controlled-compose}
     ), rule_versions_seen (
         {id foma-transducer.hfst.implementations.foma-transducer.resource-controlled-compose, version 0}
+    )}
+    {id ol-lookup-unknown-identity, covered_rules (
+        ol-lookup-enumeration.meta-arc-output
+        ol-lookup-enumeration.meta-arc-restriction
+        ol-lookup-enumeration.no-internal-work-cap
+        ol-lookup-enumeration.out-of-alphabet-input
+        ol-lookup-enumeration.representation-independence
+    ), covered_claims (
+        {impl_name target-impl, rule ol-lookup-enumeration.meta-arc-output}
+        {impl_name target-impl, rule ol-lookup-enumeration.meta-arc-restriction}
+        {impl_name target-impl, rule ol-lookup-enumeration.no-internal-work-cap}
+        {impl_name target-impl, rule ol-lookup-enumeration.out-of-alphabet-input}
+        {impl_name target-impl, rule ol-lookup-enumeration.representation-independence}
+    ), rule_versions_seen (
+        {id ol-lookup-enumeration.meta-arc-output, version 0}
+        {id ol-lookup-enumeration.meta-arc-restriction, version 0}
+        {id ol-lookup-enumeration.no-internal-work-cap, version 0}
+        {id ol-lookup-enumeration.out-of-alphabet-input, version 0}
+        {id ol-lookup-enumeration.representation-independence, version 0}
     )}
     {id virtual-flag-core, covered_rules (
         virtual-flag-algebra.backend-core
@@ -421,27 +478,7 @@ impl_evidence (
         virtual-flag-algebra.subtraction
     ), covered_claims (
         {impl_name target-impl, rule virtual-flag-algebra.subtraction}
-    )}
-    {id determinize-transition-budget, covered_rules (
-        determinize-envelope.bounded-strategies
-        determinize-envelope.relation-preserved
-        determinize-envelope.transition-axis
-    ), covered_claims (
-        {impl_name target-impl, rule determinize-envelope.bounded-strategies}
-        {impl_name target-impl, rule determinize-envelope.relation-preserved}
-        {impl_name target-impl, rule determinize-envelope.transition-axis}
-    )}
-    {id ol-lookup-unknown-identity, covered_rules (
-        ol-lookup-enumeration.meta-arc-output
-        ol-lookup-enumeration.meta-arc-restriction
-        ol-lookup-enumeration.no-internal-work-cap
-        ol-lookup-enumeration.out-of-alphabet-input
-        ol-lookup-enumeration.representation-independence
-    ), covered_claims (
-        {impl_name target-impl, rule ol-lookup-enumeration.meta-arc-output}
-        {impl_name target-impl, rule ol-lookup-enumeration.meta-arc-restriction}
-        {impl_name target-impl, rule ol-lookup-enumeration.no-internal-work-cap}
-        {impl_name target-impl, rule ol-lookup-enumeration.out-of-alphabet-input}
-        {impl_name target-impl, rule ol-lookup-enumeration.representation-independence}
+    ), rule_versions_seen (
+        {id virtual-flag-algebra.subtraction, version 0}
     )}
 )
