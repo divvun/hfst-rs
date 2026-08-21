@@ -402,7 +402,7 @@ assertions (
     {id clap-migration, kind @complete, author "brendan@necessary.nu", at 2026-08-21T20:31:39.110378Z}
     {id cli-residual-fixes, kind @complete, author "brendan@necessary.nu", at 2026-08-21T20:53:38.377963Z}
     {id upstream-bugs.t3.rs3-centre, kind @complete, author "brendan@necessary.nu", at 2026-08-21T22:55:55.310677Z}
-    {id test-health.census-scanner, kind @doing, author "brendan@necessary.nu", at 2026-08-21T23:06:59.695513Z}
+    {id test-health.census-scanner, kind @complete, author "brendan@necessary.nu", at 2026-08-21T23:07:30.829777Z}
 )
 
 impl_evidence (

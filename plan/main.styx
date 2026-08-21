@@ -6744,12 +6744,20 @@ children (
         id test-health.census-scanner
         title "Failing-test health: the trivial-body census mis-attributed one-line empty bodies to the next method, and had drifted behind the CLI's clap migration"
         kind @test
+        sealed true
         log (
             {
                 at 2026-08-21T23:06:59.695513Z
                 author "brendan@necessary.nu"
                 kind @status
                 text "Todo → Doing (nplan start)"
+            }
+
+            {
+                at 2026-08-21T23:07:30.829777Z
+                author "brendan@necessary.nu"
+                kind @status
+                text "Doing → Done (nplan complete)"
             }
         )
     }
