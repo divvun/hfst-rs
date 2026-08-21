@@ -3337,12 +3337,20 @@ children (
                         id upstream-bugs.t3.rs3-centre
                         title "divvun/hfst-rs#3 (second report): a twolc rule centre written as a bare symbol, and the `?` wildcard centre side that fix reached"
                         kind @fix
+                        sealed true
                         log (
                             {
                                 at 2026-08-21T22:52:06.351437Z
                                 author "brendan@necessary.nu"
                                 kind @status
                                 text "Todo → Doing (nplan start)"
+                            }
+
+                            {
+                                at 2026-08-21T22:55:55.310677Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Doing → Done (nplan complete)"
                             }
                         )
                     }
