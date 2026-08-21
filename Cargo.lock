@@ -1512,14 +1512,12 @@ dependencies = [
 [[package]]
 name = "nfst-syntax"
 version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "edc43cb7a0df0723017947e6fe7056c8ede64a471d5f4ca9ddd89c1bc5f71e8b"
+source = "git+https://github.com/necessary-nu/nfst?rev=5b14ec53c424384ce89362634669627c7e46437a#5b14ec53c424384ce89362634669627c7e46437a"
 
 [[package]]
 name = "nfst-twolc"
-version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c1174b2647c76ee0aff93ca05df95678486471a3f44ed20a28d0e15d57546431"
+version = "0.4.0"
+source = "git+https://github.com/necessary-nu/nfst?rev=5b14ec53c424384ce89362634669627c7e46437a#5b14ec53c424384ce89362634669627c7e46437a"
 dependencies = [
  "nfst-syntax",
  "nfst-xre",
@@ -1539,8 +1537,7 @@ dependencies = [
 [[package]]
 name = "nfst-xre"
 version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ab813335fcf4d3faaf8808fce69b39ba127ed037b257ee38554f7c69462fcdae"
+source = "git+https://github.com/necessary-nu/nfst?rev=5b14ec53c424384ce89362634669627c7e46437a#5b14ec53c424384ce89362634669627c7e46437a"
 dependencies = [
  "ariadne",
  "chumsky",

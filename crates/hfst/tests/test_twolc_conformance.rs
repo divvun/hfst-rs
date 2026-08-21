@@ -248,6 +248,83 @@ Rules
     }
 }
 
+// A bare symbol is also a legal RULE CENTRE, meaning the same identity pair.
+// Upstream's PAIR production covers the centre as well as context regexes, so
+// omorfi's generated recasing grammar writes `%{hyph%?%} <= _ ;`. The parser
+// used to demand a `:` there and rejected the file. Reported via
+// divvun/hfst-rs#3 (omorfi, second report).
+
+#[test]
+fn bare_symbol_rule_centre_is_the_identity_pair() {
+    let _g = serialized();
+    let alphabet_and =
+        |centre: &str| format!("Alphabet a b %{{hyph%?%}} ;\nRules\n\"R1\"\n{centre} <= a _ b ;\n");
+    let bare = compile(&alphabet_and("%{hyph%?%}"))
+        .expect("a bare symbol must be a legal rule centre (divvun/hfst-rs#3)");
+    let explicit = compile(&alphabet_and("%{hyph%?%}:%{hyph%?%}"))
+        .expect("the written-out identity pair compiles");
+    assert!(
+        bare.compare_default(&explicit)
+            .expect("comparing two compiled rule transducers"),
+        "the bare centre must compile to the same rule as the written-out pair"
+    );
+}
+
+#[test]
+fn wildcard_rule_centre_side_expands_over_the_alphabet() {
+    let _g = serialized();
+    // Upstream's `CENTER_SYMBOL: QUESTION_MARK` makes `?` a legal centre side,
+    // resolved against the declared vocabulary by `Alphabet::is_pair`: `X:?`
+    // needs X declared as an input symbol, `?:Y` needs Y as an output symbol.
+    // `a:` is `a:?` and `:b` is `?:b`, so the elided spellings mean the same.
+    for centre in ["a:?", "a:", "?:b", ":b", "?:?", ":"] {
+        let src = format!("Alphabet a:b a b ;\nRules\n\"R1\"\n{centre} <= a _ b ;\n");
+        assert!(
+            compile(&src).is_some(),
+            "the wildcard centre {centre:?} must compile"
+        );
+    }
+}
+
+#[test]
+fn elided_and_written_out_wildcard_centres_agree() {
+    let _g = serialized();
+    let compile_centre = |centre: &str| {
+        compile(&format!(
+            "Alphabet a:b a b ;\nRules\n\"R1\"\n{centre} <= a _ b ;\n"
+        ))
+        .unwrap_or_else(|| panic!("centre {centre:?} must compile"))
+    };
+    for (elided, written) in [("a:", "a:?"), (":b", "?:b"), (":", "?:?")] {
+        assert!(
+            compile_centre(elided)
+                .compare_default(&compile_centre(written))
+                .expect("comparing two compiled rule transducers"),
+            "the elided centre {elided:?} must mean the same as {written:?}"
+        );
+    }
+}
+
+#[test]
+fn escaped_question_mark_centre_is_a_literal() {
+    let _g = serialized();
+    // `%?` is the literal question-mark symbol, `?` is the wildcard. Upstream's
+    // pre1 lexer keeps them apart (a bare `?` becomes the `__HFST_TWOLC_?`
+    // marker, an escaped one stays an ordinary symbol), so a `%?` centre is
+    // subject to the usual declaration check.
+    let declared = compile("Alphabet %?:a %? a ;\nRules\n\"R1\"\n%?:a <= _ ;\n")
+        .expect("a declared literal `?` symbol compiles");
+    assert!(
+        alphabet(&declared).iter().any(|s| s == "?"),
+        "the literal `?` symbol must reach the compiled alphabet, got {:?}",
+        alphabet(&declared)
+    );
+    assert!(
+        compile("Alphabet a b ;\nRules\n\"R1\"\n%?:a <= _ ;\n").is_none(),
+        "an undeclared literal `?` must still fail (hfst#334), not pass as the wildcard"
+    );
+}
+
 #[test]
 fn bare_symbol_identity_pair_still_checks_declaration() {
     let _g = serialized();

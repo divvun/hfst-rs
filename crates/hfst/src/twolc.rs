@@ -59,9 +59,9 @@ use std::collections::{BTreeMap, BTreeSet};
 // for the closed rule sum below (the former 'Box<dyn RuleT>').
 #[allow(unused_imports)]
 use nfst_twolc::{
-    AlphabetPair, RuleCenter, RuleContext, RuleOp, SetDefinition, Spanned, TwolcDefinition,
-    TwolcFile, TwolcRegex, TwolcRule as AstTwolcRule, VarMatcher, VariableAssignment,
-    VariableBlock,
+    AlphabetPair, CenterSide, RuleCenter, RuleContext, RuleOp, SetDefinition, Spanned,
+    TwolcDefinition, TwolcFile, TwolcRegex, TwolcRule as AstTwolcRule, VarMatcher,
+    VariableAssignment, VariableBlock,
 };
 #[allow(unused_imports)]
 use nfst_xre::{BinaryOp, UnaryOp};
@@ -3358,8 +3358,19 @@ impl<B: AlgebraBackend> TwolcCompiler<B> {
                 match &rule.value.center {
                     RuleCenter::Pair(ps) => {
                         for p in ps {
-                            let upper = substitute_symbol(&p.upper, &vvm);
-                            let lower = substitute_symbol(&p.lower, &vvm);
+                            // A wildcard side ('a:', ':b', 'a:?') names no
+                            // symbol to complete the Alphabet with: it stands
+                            // for whatever the Alphabet already declares. Skip
+                            // it, as the C++ token scan skipped pairs with an
+                            // internal '__HFST_TWOLC_?' side, and as the regex
+                            // walk below skips a 'TwolcRegex::Any' operand.
+                            let (CenterSide::Symbol(u), CenterSide::Symbol(l)) =
+                                (&p.upper, &p.lower)
+                            else {
+                                continue;
+                            };
+                            let upper = substitute_symbol(u, &vvm);
+                            let lower = substitute_symbol(l, &vvm);
                             self.insert_grammar_pair(
                                 upper,
                                 lower,
@@ -3728,11 +3739,19 @@ impl<B: AlgebraBackend> TwolcCompiler<B> {
     ) -> crate::error::Result<CenterEval<B>> {
         Ok(match center {
             RuleCenter::Pair(pairs) => {
+                // A wildcard side ('a:', ':b', 'a:?') becomes the internal
+                // 'Any' marker, which ['new_pair'] expands over the declared
+                // alphabet — upstream's 'CENTER_SYMBOL: QUESTION_MARK' rewrite
+                // to '__HFST_TWOLC_?' ('htwolcpre3-parser.yy'). A named side is
+                // an ordinary symbol, so an escaped '%?' stays the literal
+                // one-character symbol '?' and is NOT the wildcard.
+                let side = |s: &CenterSide| match s {
+                    CenterSide::Any => Symbol::new_static(TWOLC_UNKNOWN),
+                    CenterSide::Symbol(sym) => substitute_symbol(sym, vvm),
+                };
                 let mut spv: SymbolPairVector = Vec::new();
                 for p in pairs {
-                    let upper = substitute_symbol(&p.upper, vvm);
-                    let lower = substitute_symbol(&p.lower, vvm);
-                    spv.push((upper, lower));
+                    spv.push((side(&p.upper), side(&p.lower)));
                 }
                 CenterEval::Pairs(spv)
             }
