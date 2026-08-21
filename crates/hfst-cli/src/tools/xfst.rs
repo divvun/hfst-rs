@@ -1,23 +1,21 @@
 //! Faithful 1:1 port of tools/src/parsers/hfst-xfst.cc — the command-line
 //! program for compiling XFST scripts or executing XFST commands
-//! interactively. Drives the hfst-cli foundation (globals, getopt,
-//! commandline, program-options) plus the hfst XfstCompiler. The readline
-//! branch (HAVE_READLINE) is not compiled in this port, so input always goes
-//! through the plain line-reading interactive branch.
+//! interactively, driving the hfst XfstCompiler. The readline branch
+//! (HAVE_READLINE) is not compiled in this port, so input always goes through
+//! the plain line-reading interactive branch.
 //!
-//! Idiomatic option handling: the tool's state lives in [`CommonOptions`] (the
-//! shared `-v/-q/…` fields) and a tool-local [`Options`] — both built by
-//! `parse_options` and threaded into the processing functions. There are no
-//! `static mut` globals and no `unsafe`.
+//! Option handling is clap 4 derive through [`crate::cli`], but the shared
+//! [`crate::cli::CommonArgs`] group is NOT flattened in: the C++ copies the
+//! common getopt cases inline "with exceptions" — there is no '-o' case at
+//! all, and '--colour=auto' maps to COLOUR_NEVER — so the common options are
+//! re-declared here with those exceptions preserved bug-for-bug.
 
+use crate::cli::{self, CommonArgs, ToolArgs, ToolResult};
 use crate::globals::{ColourTristate, CommonOptions};
 use crate::hfst_commandline::{
-    GETOPT_COLOUR, error, extend_options_from_env, hfst_error, hfst_parse_format_name,
-    hfst_set_program_name, print_version, verbose_print,
+    error, hfst_error, hfst_parse_format_name, hfst_set_program_name, parse_format_name_quiet,
+    print_version, verbose_print,
 };
-use crate::hfst_getopt::{self as getopt, Getopt};
-use crate::hfst_program_options::{hfst_getopt_common_long, print_common_program_options};
-use crate::inc::handle_error_case;
 use hfst::hfst_data_types::ImplementationType;
 use hfst::xfst_compiler::XfstCompiler;
 use std::io::{BufRead, Read, Write};
@@ -36,6 +34,12 @@ struct Options {
     pipe_output: bool, // this has no effect on non-windows platforms
     restricted_mode: bool,
     // HAVE_READLINE is not defined in this port.
+    #[allow(
+        dead_code,
+        reason = "the C's '-r' arm writes it and only the HAVE_READLINE branch \
+                  (not compiled in this port) would read it; kept so the option \
+                  surface still records the request"
+    )]
     use_readline: bool,
     print_weight: bool,
 }
@@ -57,110 +61,181 @@ impl Default for Options {
     }
 }
 
-fn print_usage(common: &CommonOptions) {
-    let mut msg = common.message_writer();
-    // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
-    // Usage line
-    let _ = write!(
-        msg,
-        "Usage: {} [OPTIONS...]\n\
-         Compile XFST scripts or execute XFST commands interactively\n\
-         \n",
-        common.program_name
-    );
+/// hfst-xfst's command line.
+///
+/// The 'k' arm of the C switch (set pipe_output) is unreachable: no long-table
+/// entry carries the value 'k', so '-k' has always reported an unknown option.
+/// It is therefore not declared here either.
+// [spec:hfst:req:cli.arg-parse]
+// [spec:hfst:req:cli.help]
+#[derive(clap::Parser)]
+#[command(
+    about = "Compile XFST scripts or execute XFST commands interactively",
+    after_help = "Option --execute can be invoked many times.
+If FMT is not given, OpenFst's tropical format will be used.
+The possible values for FMT are { foma, openfst-tropical, sfst }.
+Readline library, if enabled when configuring, is used for input by default.
+Input files are always treated as UTF-8.
 
-    print_common_program_options(&mut *msg);
-    let _ = writeln!(msg);
-    let _ = writeln!(msg, "Xfst-specific options:");
-    let _ = write!(
-        msg,
-        "\x20 -e, --execute=CMD          Execute command CMD on startup\n\
-         \x20 -E, --execute-and-quit=CMD Execute command CMD, and quit\n\
-         \x20 -f, --format=FMT           Write result using FMT as backend format\n\
-         \x20 -F, --scriptfile=FILE      Read commands from FILE, and quit\n\
-         \x20 -l, --startupfile=FILE     Read commands from FILE on startup\n\
-         \x20 -p, --pipe-mode[=STREAM]   Control input and output streams\n\
-         \x20 -r, --no-readline          Do not use readline library for input\n\
-         \x20 -w, --print-weight         Print weights for each operation\n\
-         \x20 -R, --restricted-mode      Allow read and write operations only in current\n\
-         \x20                            directory, do not allow system calls\n\
-         \n\
-         Option --execute can be invoked many times.\n\
-         If FMT is not given, OpenFst's tropical format will be used.\n\
-         The possible values for FMT are {{ foma, openfst-tropical, sfst }}.\n\
-         Readline library, if enabled when configuring, is used for input by default.\n\
-         Input files are always treated as UTF-8.\n\
-         \n\
-         STREAM can be {{ input, output, both }}. If not given, defaults to {{both}}.\n\
-         If input file is not specified with -F, input is read interactively line by\n\
-         line from the user. If you redirect input from a file, use --pipe-mode=input.\n\
-         --pipe-mode=output is ignored on non-windows platforms.\n"
-    );
-    let _ = writeln!(msg);
+STREAM can be { input, output, both }. If not given, defaults to {both}.
+If input file is not specified with -F, input is read interactively line by
+line from the user. If you redirect input from a file, use --pipe-mode=input.
+--pipe-mode=output is ignored on non-windows platforms."
+)]
+struct Args {
+    /// Never populated: this tool's switch copies the common cases inline
+    /// "with exceptions" instead of chaining getopt-cases-common.h.
+    #[arg(skip)]
+    common: CommonArgs,
+
+    /// Print version info
+    #[arg(short = 'V', long = "version")]
+    version: bool,
+
+    /// Print verbosely while processing
+    #[arg(short = 'v', long = "verbose", overrides_with_all = ["quiet", "silent"])]
+    verbose: bool,
+
+    /// Only print fatal errors and requested output
+    #[arg(short = 'q', long = "quiet", overrides_with_all = ["verbose", "silent"])]
+    quiet: bool,
+
+    /// Alias of --quiet
+    #[arg(short = 's', long = "silent", overrides_with_all = ["verbose", "quiet"])]
+    silent: bool,
+
+    /// Print debugging messages while processing
+    #[arg(short = 'd', long = "debug")]
+    debug: bool,
+
+    /// Print in colour WHEN: always, never, auto ('auto' maps to never,
+    /// preserved bug-for-bug from the C source)
+    #[arg(
+        long = "colour",
+        visible_alias = "color",
+        value_name = "WHEN",
+        num_args = 0..=1,
+        require_equals = true
+    )]
+    colour: Option<Option<String>>,
+
+    /// Execute command CMD on startup
+    #[arg(
+        short = 'e',
+        long = "execute",
+        value_name = "CMD",
+        action = clap::ArgAction::Append,
+        allow_hyphen_values = true
+    )]
+    execute: Vec<String>,
+
+    /// Execute command CMD, and quit
+    #[arg(
+        short = 'E',
+        long = "execute-and-quit",
+        value_name = "CMD",
+        allow_hyphen_values = true
+    )]
+    execute_and_quit: Option<String>,
+
+    /// Write result using FMT as backend format
+    #[arg(
+        short = 'f',
+        long = "format",
+        value_name = "FMT",
+        allow_hyphen_values = true
+    )]
+    format: Option<String>,
+
+    /// Read commands from FILE, and quit
+    #[arg(
+        short = 'F',
+        long = "scriptfile",
+        value_name = "FILE",
+        allow_hyphen_values = true
+    )]
+    scriptfile: Option<String>,
+
+    /// Read commands from FILE on startup
+    #[arg(
+        short = 'l',
+        long = "startupfile",
+        value_name = "FILE",
+        allow_hyphen_values = true
+    )]
+    startupfile: Option<String>,
+
+    /// Control input and output streams
+    #[arg(
+        short = 'p',
+        long = "pipe-mode",
+        value_name = "STREAM",
+        num_args = 0..=1,
+        require_equals = true,
+        default_missing_value = "both",
+        action = clap::ArgAction::Append
+    )]
+    pipe_mode: Vec<String>,
+
+    /// Do not use readline library for input
+    #[arg(short = 'r', long = "no-readline")]
+    no_readline: bool,
+
+    /// Print weights for each operation
+    #[arg(short = 'w', long = "print-weight")]
+    print_weight: bool,
+
+    /// Allow read and write operations only in current directory, do not
+    /// allow system calls
+    #[arg(short = 'R', long = "restricted-mode")]
+    restricted_mode: bool,
 }
 
-//
-// The C++ copies the common getopt cases inline "with exceptions" (no '-o'
-// case; '--colour=auto' maps to COLOUR_NEVER) rather than #include'ing them,
-// so the cases are hand-written here too. `Err(code)` is an exit code the
-// caller should return (the former EXIT_CONTINUE sentinel is now `Ok`).
-fn parse_options(
-    mut common: CommonOptions,
-    args: &mut Vec<String>,
-) -> Result<(CommonOptions, Options), i32> {
-    let mut options = Options::default();
-    let mut opt = Getopt::new();
-    extend_options_from_env(args);
-    loop {
-        let mut long_options: Vec<getopt::GetOpt> = Vec::new();
-        long_options.extend(hfst_getopt_common_long());
-        // add tool-specific options here
-        let tool_opts: [(&'static str, i32, i32); 9] = [
-            ("format", getopt::REQUIRED_ARGUMENT, 'f' as i32),
-            ("scriptfile", getopt::REQUIRED_ARGUMENT, 'F' as i32),
-            ("execute", getopt::REQUIRED_ARGUMENT, 'e' as i32),
-            ("execute-and-quit", getopt::REQUIRED_ARGUMENT, 'E' as i32),
-            ("startupfile", getopt::REQUIRED_ARGUMENT, 'l' as i32),
-            ("pipe-mode", getopt::OPTIONAL_ARGUMENT, 'p' as i32),
-            ("no-readline", getopt::NO_ARGUMENT, 'r' as i32),
-            ("print-weight", getopt::NO_ARGUMENT, 'w' as i32),
-            ("restricted-mode", getopt::NO_ARGUMENT, 'R' as i32),
-        ];
-        for (name, has_arg, val) in tool_opts {
-            long_options.push(getopt::GetOpt { name, has_arg, val });
+impl Args {
+    /// The 'p' case's STREAM vocabulary, replayed per occurrence; unknown
+    /// values were fatal inside the C loop.
+    fn pipe_flags(&self, opts: &CommonOptions) -> Result<(bool, bool), i32> {
+        let mut pipe_input = false;
+        let mut pipe_output = false;
+        for stream in &self.pipe_mode {
+            match stream.as_str() {
+                "both" | "BOTH" => {
+                    pipe_input = true;
+                    pipe_output = true;
+                }
+                "input" | "INPUT" | "in" | "IN" => {
+                    pipe_input = true;
+                }
+                "output" | "OUTPUT" | "out" | "OUT" => {
+                    pipe_output = true;
+                }
+                other => {
+                    error(
+                        opts,
+                        EXIT_FAILURE,
+                        0,
+                        &format!("--pipe-mode argument {} unrecognised", other),
+                    );
+                    return Err(EXIT_FAILURE);
+                }
+            }
         }
-        let c = opt.getopt_long(args, &long_options);
-        if -1 == c {
-            break;
-        }
+        Ok((pipe_input, pipe_output))
+    }
 
-        // copied from "inc/getopt-cases-common.h" (with exceptions)
-        if c == 'd' as i32 {
-            common.debug = true;
-            continue;
-        } else if c == 'h' as i32 {
-            print_usage(&common);
-            return Err(EXIT_SUCCESS);
-        } else if c == 'V' as i32 {
-            print_version(&common);
-            return Err(EXIT_SUCCESS);
-        } else if c == 'v' as i32 {
-            common.verbose = true;
-            common.silent = false;
-            continue;
-        } else if c == 'q' as i32 || c == 's' as i32 {
-            common.verbose = false;
-            common.silent = true;
-            continue;
-        } else if c == GETOPT_COLOUR {
-            match opt.optarg_opt().as_deref() {
-                None | Some("always") => common.colour = ColourTristate::COLOUR_ALWAYS,
-                // "auto" mapping to COLOUR_NEVER is preserved bug-for-bug
-                // from the C source.
-                Some("never") | Some("auto") => common.colour = ColourTristate::COLOUR_NEVER,
-                Some(other) => {
+    /// The hand-copied colour case: bare '--colour' and 'always' select
+    /// ALWAYS; 'never' AND 'auto' select NEVER (the preserved bug); anything
+    /// else was fatal inside the C loop.
+    fn colour(&self, opts: &CommonOptions) -> Result<Option<ColourTristate>, i32> {
+        match &self.colour {
+            None => Ok(None),
+            Some(None) => Ok(Some(ColourTristate::COLOUR_ALWAYS)),
+            Some(Some(when)) => match when.as_str() {
+                "always" => Ok(Some(ColourTristate::COLOUR_ALWAYS)),
+                "never" | "auto" => Ok(Some(ColourTristate::COLOUR_NEVER)),
+                other => {
                     hfst_error(
-                        &common,
+                        opts,
                         EXIT_FAILURE,
                         0,
                         &format!(
@@ -168,89 +243,38 @@ fn parse_options(
                             other
                         ),
                     );
+                    Err(EXIT_FAILURE)
                 }
-            }
-            continue;
+            },
         }
-        match c as u8 as char {
-            'f' => {
-                options.output_format = hfst_parse_format_name(&common, &opt.optarg());
-                continue;
-            }
-            'F' => {
-                options.scriptfilename = Some(opt.optarg());
-                continue;
-            }
-            'e' => {
-                options.execute_commands.push(opt.optarg());
-                continue;
-            }
-            'E' => {
-                options.execute_command_and_quit = Some(opt.optarg());
-                continue;
-            }
-            'l' => {
-                options.startupfilename = Some(opt.optarg());
-                continue;
-            }
-            'p' => {
-                match opt.optarg_opt().as_deref() {
-                    None => {
-                        options.pipe_input = true;
-                        options.pipe_output = true;
-                    }
-                    Some("both") | Some("BOTH") => {
-                        options.pipe_input = true;
-                        options.pipe_output = true;
-                    }
-                    Some("input") | Some("INPUT") | Some("in") | Some("IN") => {
-                        options.pipe_input = true;
-                    }
-                    Some("output") | Some("OUTPUT") | Some("out") | Some("OUT") => {
-                        options.pipe_output = true;
-                    }
-                    Some(other) => {
-                        error(
-                            &common,
-                            EXIT_FAILURE,
-                            0,
-                            &format!("--pipe-mode argument {} unrecognised", other),
-                        );
-                    }
-                }
-                continue;
-            }
-            'r' => {
-                options.use_readline = false;
-                continue;
-            }
-            'w' => {
-                options.print_weight = true;
-                continue;
-            }
-            'R' => {
-                options.restricted_mode = true;
-                continue;
-            }
-            'k' => {
-                options.pipe_output = true;
-                continue;
-            }
-            _ => {}
-        }
-        return Err(handle_error_case(&common, &opt, c));
+    }
+}
+
+impl ToolArgs for Args {
+    fn common(&self) -> &CommonArgs {
+        &self.common
     }
 
-    if options.output_format == ImplementationType::UNSPECIFIED_TYPE {
-        options.output_format = ImplementationType::TROPICAL_OPENFST_TYPE;
-        verbose_print(
-            &common,
-            "Using default output format OpenFst \
-             with tropical weight class\n",
-        );
+    fn apply_io(&self, _opts: &mut CommonOptions) {}
+
+    fn applies_common_options(&self) -> bool {
+        false
     }
 
-    Ok((common, options))
+    fn validate(&self, opts: &CommonOptions) -> ToolResult {
+        // '-V' was answered inside the C loop; the vocabulary rejections
+        // (colour, pipe-mode) and the format parse also ran there.
+        if self.version {
+            print_version(opts);
+            return Err(EXIT_SUCCESS);
+        }
+        self.colour(opts)?;
+        self.pipe_flags(opts)?;
+        if let Some(name) = &self.format {
+            hfst_parse_format_name(opts, name);
+        }
+        Ok(())
+    }
 }
 
 //
@@ -311,14 +335,56 @@ fn expression_continues(expr: &mut String) -> bool {
     false
 }
 
-pub fn run(mut args: Vec<String>) -> i32 {
+pub fn run(args: Vec<String>) -> i32 {
+    cli::exit_code(execute(args))
+}
+
+fn execute(args: Vec<String>) -> ToolResult {
     let argv0 = args.first().cloned().unwrap_or_default();
 
     let common = hfst_set_program_name(&argv0, "0.1", "HfstXfst2Fst");
-    let (common, options) = match parse_options(common, &mut args) {
-        Ok(v) => v,
-        Err(code) => return code,
+    let (mut common, args) = cli::parse::<Args>(common, args)?;
+
+    // The hand-copied common cases ("inc/getopt-cases-common.h" with
+    // exceptions): verbosity is last-one-wins, colour has the auto->NEVER
+    // mapping, and there is no '-o' at all.
+    common.debug = args.debug;
+    if args.verbose {
+        common.verbose = true;
+        common.silent = false;
+    } else if args.quiet || args.silent {
+        common.verbose = false;
+        common.silent = true;
+    }
+    if let Some(colour) = args.colour(&common)? {
+        common.colour = colour;
+    }
+    let (pipe_input, pipe_output) = args.pipe_flags(&common)?;
+    let mut options = Options {
+        output_format: match &args.format {
+            // validate() already ran the loud parse; this pass is quiet so
+            // the ambiguous-name warning is not repeated.
+            Some(name) => parse_format_name_quiet(name),
+            None => ImplementationType::UNSPECIFIED_TYPE,
+        },
+        scriptfilename: args.scriptfile.clone(),
+        startupfilename: args.startupfile.clone(),
+        execute_commands: args.execute.clone(),
+        execute_command_and_quit: args.execute_and_quit.clone(),
+        pipe_input,
+        pipe_output,
+        restricted_mode: args.restricted_mode,
+        use_readline: false,
+        print_weight: args.print_weight,
     };
+    if options.output_format == ImplementationType::UNSPECIFIED_TYPE {
+        options.output_format = ImplementationType::TROPICAL_OPENFST_TYPE;
+        verbose_print(
+            &common,
+            "Using default output format OpenFst \
+             with tropical weight class\n",
+        );
+    }
 
     match options.output_format {
         ImplementationType::SFST_TYPE => {
@@ -349,7 +415,7 @@ pub fn run(mut args: Vec<String>) -> i32 {
                 0,
                 "Unknown format cannot be used as output\n",
             );
-            return EXIT_FAILURE;
+            return Err(EXIT_FAILURE);
         }
     }
 
@@ -360,7 +426,7 @@ pub fn run(mut args: Vec<String>) -> i32 {
             0,
             "--pipe-mode and --scriptfile cannot be used simultaneously\n",
         );
-        return EXIT_FAILURE;
+        return Err(EXIT_FAILURE);
     }
 
     if options.startupfilename.is_some() && options.scriptfilename.is_some() {
@@ -370,7 +436,7 @@ pub fn run(mut args: Vec<String>) -> i32 {
             0,
             "--startupfile and --scriptfile cannot be used simultaneously\n",
         );
-        return EXIT_FAILURE;
+        return Err(EXIT_FAILURE);
     }
 
     // Create XfstCompiler: the parsed --format is matched ONCE into the
@@ -380,7 +446,7 @@ pub fn run(mut args: Vec<String>) -> i32 {
     // (no convert-to-tropical), matching how the C++ session keeps a
     // transducer in its own format. (Mixing formats in ONE session is the
     // only thing this cannot express; even C++ rejects combining them.)
-    match options.output_format {
+    cli::from_code(match options.output_format {
         ImplementationType::TROPICAL_OPENFST_TYPE => {
             run_compiler::<hfst_openfst::StdVectorFst>(&common, &options)
         }
@@ -427,7 +493,7 @@ pub fn run(mut args: Vec<String>) -> i32 {
             );
             EXIT_FAILURE
         }
-    }
+    })
 }
 
 fn run_compiler<B: hfst::backend::AlgebraBackend + hfst::hfst_transducer::FromAnyTransducer>(

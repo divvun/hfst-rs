@@ -20,19 +20,11 @@
 //! [`LookupEngineOptions`] that select hfst-flookup's dialect of the engine.
 
 use crate::CliLookupReporter;
+use crate::cli::{self, CommonArgs, ToolArgs, ToolResult, UnaryIo};
 use crate::globals::CommonOptions;
 use crate::hfst_commandline::{
-    convert_any, extend_options_from_env, hfst_error, hfst_error_at_line, hfst_set_program_name,
-    hfst_strformat, hfst_warning, verbose_print,
-};
-use crate::hfst_getopt::{self as getopt, Getopt};
-use crate::hfst_program_options::{
-    hfst_getopt_common_long, hfst_getopt_unary_long, print_common_program_options,
-    print_common_unary_program_parameter_instructions,
-};
-use crate::inc::{
-    CaseResult, check_common_params, check_unary_params, handle_common_case, handle_error_case,
-    handle_unary_case,
+    convert_any, hfst_error, hfst_error_at_line, hfst_set_program_name, hfst_strformat,
+    hfst_warning, verbose_print,
 };
 use hfst::error::ErrorKind;
 use hfst::hfst_data_types::ImplementationType;
@@ -136,286 +128,384 @@ impl Options {
     }
 }
 
-// [spec:hfst:req:cli.help]
-fn print_usage(common: &CommonOptions) {
-    // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
-    let mut msg = common.message_writer();
-    let _ = write!(
-        msg,
-        "Usage: {} [OPTIONS...] [INFILE]\n\
-         Perform transducer lookup (apply). Lookup is done from right to left,\n\
-         in the same way as in flookup of foma and lookup of xfst.\n\
-         \n",
-        common.program_name
-    );
-
-    print_common_program_options(&mut *msg);
-    let _ = write!(
-        msg,
-        "Input/Output options:\n\
-         \x20 -i, --input=INFILE       Read input transducer from INFILE\n\
-         \x20 -o, --output=OUTFILE     Write output to OUTFILE\n\
-         \x20 -p, --pipe-mode[=STREAM] Control input and output streams\n"
-    );
-
-    let _ = write!(
-        msg,
-        "Lookup options:\n\
-         \x20 -R, --invert                     Do lookdown instead of lookup\n\
-         \x20 -I, --input-strings=SFILE        Read lookup strings from SFILE\n\
-         \x20 -O, --output-format=OFORMAT      Use OFORMAT printing results sets\n\
-         \x20 -e, --epsilon-format=EPS         Print epsilon as EPS\n\
-         \x20 -F, --input-format=IFORMAT       Use IFORMAT parsing input\n\
-         \x20 -x, --statistics                 Print statistics\n\
-         \x20 -X, --xfst=VARIABLE              Toggle xfst VARIABLE\n\
-         \x20 -c, --cycles=INT                 How many times to follow input epsilon cycles\n\
-         \x20 -b, --beam=B                     Output only analyses whose weight is within B from\n\
-         \x20                                  the best analysis\n\
-         \x20 -t, --time-cutoff=S              Limit search after having used S seconds per input\n\
-         \x20                                  (currently only works in optimized-lookup mode\n\
-         \x20 -P, --progress                   Show neat progress bar if possible\n\
-         \x20 -f, --force-ol                   Force lookup of optimized lookup transducers (slow)\n"
-    );
-    let _ = writeln!(msg);
-    print_common_unary_program_parameter_instructions(&mut *msg);
-    let _ = write!(
-        msg,
-        "OFORMAT is one of {{xerox,cg,apertium}}, xerox being default\n\
-         IFORMAT is one of {{text,spaced,apertium}}, default being text,\n\
-         unless OFORMAT is apertium\n\
-         VARIABLEs relevant to lookup are {{print-pairs,print-space,\n\
-         quote-special,show-flags,obey-flags}}\n\
-         Input epsilon cycles are followed by default INT=5 times.\n\
-         Epsilon is printed by default as an empty string.\n\
-         B must be a non-negative float.\n\
-         S must be a non-negative float. The default, 0.0, indicates no cutoff.\n\
-         If the input contains several transducers, a set containing\n\
-         results from all transducers is printed for each input string.\n"
-    );
-    let _ = writeln!(msg);
-
-    let _ = write!(
-        msg,
-        "STREAM can be {{ input, output, both }}. If not given, defaults to {{both}}.\n\
-         If input file is not specified with -I, input is read interactively line by\n\
-         line from the user. If you redirect input from a file, use --pipe-mode=input.\n\
-         --pipe-mode=output is ignored on non-windows platforms.\n"
-    );
-    let _ = writeln!(msg);
-
-    let _ = write!(
-        msg,
-        "Known bugs:\n\
-         \x20 * 'quote-special' quotes spaces that come from 'print-space'\n\
-         \x20 * optimized lookup transducers are unidirectional and only support lookdown,\n\
-         \x20   --force-ol forces inversion but is slow\n"
-    );
-
-    let _ = writeln!(msg);
-}
-
+/// hfst-flookup's command line.
 // [spec:hfst:def:hfst-flookup.parse-options-fn]
 // [spec:hfst:sem:hfst-flookup.parse-options-fn]
 // [spec:hfst:req:cli.arg-parse]
-//
-// Parse argv into the shared + tool options; `Err(code)` is an exit code the
-// caller should return (the former EXIT_CONTINUE sentinel is now `Ok`).
-fn parse_options(
-    mut common: CommonOptions,
-    args: &mut Vec<String>,
-) -> Result<(CommonOptions, Options), i32> {
-    let mut options = Options::default();
-    let mut opt = Getopt::new();
-    extend_options_from_env(args);
-    loop {
-        let mut long_options: Vec<getopt::GetOpt> = Vec::new();
-        long_options.extend(hfst_getopt_common_long());
-        long_options.extend(hfst_getopt_unary_long());
-        // add tool-specific options here
-        for (name, has_arg, val) in [
-            ("input-strings", 1, b'I'),
-            ("output-format", 1, b'O'),
-            ("input-format", 1, b'F'),
-            ("statistics", 0, b'x'),
-            ("cycles", 1, b'c'),
-            ("xfst", 1, b'X'),
-            ("epsilon-format", 1, b'e'),
-            ("epsilon-format2", 1, b'E'),
-            ("beam", 1, b'b'),
-            ("time-cutoff", 1, b't'),
-            ("pipe-mode", 2, b'p'),
-            ("progress", 0, b'P'),
-            ("invert", 0, b'R'),
-            ("force-ol", 0, b'f'),
+// [spec:hfst:req:cli.help]
+#[derive(clap::Parser)]
+#[command(
+    about = "Perform transducer lookup (apply). Lookup is done from right to left,\n\
+             in the same way as in flookup of foma and lookup of xfst.",
+    after_help = "OFORMAT is one of {xerox,cg,apertium}, xerox being default
+IFORMAT is one of {text,spaced,apertium}, default being text,
+unless OFORMAT is apertium
+VARIABLEs relevant to lookup are {print-pairs,print-space,
+quote-special,show-flags,obey-flags}
+Input epsilon cycles are followed by default INT=5 times.
+Epsilon is printed by default as an empty string.
+B must be a non-negative float.
+S must be a non-negative float. The default, 0.0, indicates no cutoff.
+If the input contains several transducers, a set containing
+results from all transducers is printed for each input string.
+
+STREAM can be { input, output, both }. If not given, defaults to {both}.
+If input file is not specified with -I, input is read interactively line by
+line from the user. If you redirect input from a file, use --pipe-mode=input.
+--pipe-mode=output is ignored on non-windows platforms.
+
+Known bugs:
+  * 'quote-special' quotes spaces that come from 'print-space'
+  * optimized lookup transducers are unidirectional and only support lookdown,
+    --force-ol forces inversion but is slow"
+)]
+struct Args {
+    #[command(flatten)]
+    common: CommonArgs,
+    #[command(flatten)]
+    io: UnaryIo,
+
+    /// Do lookdown instead of lookup
+    #[arg(short = 'R', long = "invert")]
+    invert: bool,
+
+    /// Read lookup strings from SFILE
+    #[arg(
+        short = 'I',
+        long = "input-strings",
+        value_name = "SFILE",
+        allow_hyphen_values = true
+    )]
+    input_strings: Option<String>,
+
+    /// Use OFORMAT printing results sets
+    #[arg(
+        short = 'O',
+        long = "output-format",
+        value_name = "OFORMAT",
+        allow_hyphen_values = true
+    )]
+    output_format: Option<String>,
+
+    /// Use IFORMAT parsing input
+    #[arg(
+        short = 'F',
+        long = "input-format",
+        value_name = "IFORMAT",
+        allow_hyphen_values = true
+    )]
+    input_format: Option<String>,
+
+    /// Print epsilon as EPS
+    #[arg(
+        short = 'e',
+        long = "epsilon-format",
+        value_name = "EPS",
+        allow_hyphen_values = true
+    )]
+    epsilon_format: Option<String>,
+
+    /// Alias of --epsilon-format
+    #[arg(
+        short = 'E',
+        long = "epsilon-format2",
+        value_name = "EPS",
+        allow_hyphen_values = true
+    )]
+    epsilon_format2: Option<String>,
+
+    /// Print statistics
+    #[arg(short = 'x', long = "statistics")]
+    statistics: bool,
+
+    /// Toggle xfst VARIABLE
+    #[arg(
+        short = 'X',
+        long = "xfst",
+        value_name = "VARIABLE",
+        action = clap::ArgAction::Append,
+        allow_hyphen_values = true
+    )]
+    xfst: Vec<String>,
+
+    /// How many times to follow input epsilon cycles
+    #[arg(
+        short = 'c',
+        long = "cycles",
+        value_name = "INT",
+        allow_hyphen_values = true
+    )]
+    cycles: Option<String>,
+
+    /// Output only analyses whose weight is within B from the best analysis
+    #[arg(
+        short = 'b',
+        long = "beam",
+        value_name = "B",
+        allow_hyphen_values = true
+    )]
+    beam: Option<String>,
+
+    /// Limit search after having used S seconds per input (currently only
+    /// works in optimized-lookup mode)
+    #[arg(
+        short = 't',
+        long = "time-cutoff",
+        value_name = "S",
+        allow_hyphen_values = true
+    )]
+    time_cutoff: Option<String>,
+
+    /// Control input and output streams
+    #[arg(
+        short = 'p',
+        long = "pipe-mode",
+        value_name = "STREAM",
+        num_args = 0..=1,
+        require_equals = true,
+        default_missing_value = "both",
+        action = clap::ArgAction::Append
+    )]
+    pipe_mode: Vec<String>,
+
+    /// Show neat progress bar if possible
+    #[arg(short = 'P', long = "progress")]
+    progress: bool,
+
+    /// Force lookup of optimized lookup transducers (slow)
+    #[arg(short = 'f', long = "force-ol")]
+    force_ol: bool,
+
+    /// The tool-specific option occurrences in command-line order: the C
+    /// loop's arms overwrite shared settings ('-O apertium' and '-F' both
+    /// write the input format; '-e'/'-E' both write the epsilon format; the
+    /// 'X' arm FALLS THROUGH into 'c' and overwrites the cycle cutoff), so
+    /// the LAST writer wins and the diagnostics fire in occurrence order.
+    #[arg(skip)]
+    events: Vec<Event>,
+}
+
+/// One checked iteration of the C option loop, in occurrence order.
+#[derive(Clone, Copy)]
+enum Event {
+    OutputFormat,
+    InputFormat,
+    EpsilonFormat,
+    EpsilonFormat2,
+    Beam,
+    TimeCutoff,
+    /// Index into the `xfst` occurrence vector.
+    Xfst(usize),
+    Cycles,
+    /// Index into the `pipe_mode` occurrence vector.
+    PipeMode(usize),
+}
+
+impl Args {
+    /// Replay the C option loop over the ordered occurrences. Every rejection
+    /// here is fatal (hfst_error with a nonzero status exits), so re-running
+    /// the replay after a successful validate prints nothing.
+    fn resolve(&self, common: &CommonOptions) -> Result<Options, i32> {
+        let mut options = Options {
+            invert: self.invert,
+            force_ol: self.force_ol,
+            print_statistics: self.statistics,
+            show_progress_bar: self.progress,
+            ..Options::default()
+        };
+        for event in &self.events {
+            match event {
+                Event::OutputFormat => {
+                    let optarg = self.output_format.as_deref().unwrap_or_default();
+                    if optarg == "xerox" {
+                        options.output_format = LookupOutputFormat::XeroxOutput;
+                    } else if optarg == "cg" {
+                        options.output_format = LookupOutputFormat::CgOutput;
+                    } else if optarg == "apertium" {
+                        options.output_format = LookupOutputFormat::ApertiumOutput;
+                        options.input_format = LookupInputFormat::ApertiumInput;
+                    } else {
+                        hfst_error(
+                            common,
+                            1,
+                            0,
+                            &format!(
+                                "Unknown output format {}; valid values are: xerox, cg, apertium\n",
+                                optarg
+                            ),
+                        );
+                        return Err(1);
+                    }
+                }
+                Event::InputFormat => {
+                    let optarg = self.input_format.as_deref().unwrap_or_default();
+                    if optarg == "text" {
+                        options.input_format = LookupInputFormat::Utf8TokenInput;
+                    } else if optarg == "spaced" {
+                        options.input_format = LookupInputFormat::SpaceSeparatedTokenInput;
+                    } else if optarg == "apertium" {
+                        options.input_format = LookupInputFormat::ApertiumInput;
+                    } else {
+                        hfst_error(
+                            common,
+                            1,
+                            0,
+                            &format!(
+                                "Unknown input format {}; valid values are:utf8, spaced, apertium\n",
+                                optarg
+                            ),
+                        );
+                        return Err(1);
+                    }
+                }
+                Event::EpsilonFormat => {
+                    options.epsilon_format = self.epsilon_format.clone().unwrap_or_default();
+                }
+                Event::EpsilonFormat2 => {
+                    options.epsilon_format = self.epsilon_format2.clone().unwrap_or_default();
+                }
+                Event::Beam => {
+                    let optarg = self.beam.as_deref().unwrap_or_default();
+                    options.beam = optarg.parse::<f32>().unwrap_or(0.0);
+                    if options.beam < 0.0 {
+                        eprintln!("Invalid argument for --beam");
+                        return Err(1);
+                    }
+                }
+                Event::TimeCutoff => {
+                    let optarg = self.time_cutoff.as_deref().unwrap_or_default();
+                    options.time_cutoff = optarg.parse::<f64>().unwrap_or(0.0);
+                    if options.time_cutoff < 0.0 {
+                        eprintln!("Invalid argument for --time-cutoff");
+                        return Err(1);
+                    }
+                }
+                Event::Xfst(k) => {
+                    let optarg = self.xfst[*k].as_str();
+                    if optarg == "print-pairs" {
+                        options.print_pairs = true;
+                    } else if optarg == "print-space" {
+                        options.print_space = true;
+                        options.space_format = " ".to_string();
+                    } else if optarg == "show-flags" {
+                        options.show_flags = true;
+                    } else if optarg == "quote-special" {
+                        options.quote_special = true;
+                    } else if optarg == "obey-flags" {
+                        options.obey_flags = false;
+                    } else {
+                        hfst_error(
+                            common,
+                            1,
+                            0,
+                            &format!("Xfst variable {} unrecognised", optarg),
+                        );
+                        return Err(1);
+                    }
+                    // NOTE: C++ falls through from 'X' into 'c' (no break).
+                    options.infinite_cutoff = optarg.parse::<i32>().unwrap_or(0) as usize;
+                }
+                Event::Cycles => {
+                    let optarg = self.cycles.as_deref().unwrap_or_default();
+                    options.infinite_cutoff = optarg.parse::<i32>().unwrap_or(0) as usize;
+                }
+                Event::PipeMode(k) => {
+                    let optarg = self.pipe_mode[*k].as_str();
+                    if optarg == "both" || optarg == "BOTH" {
+                        options.pipe_input = true;
+                        options.pipe_output = true;
+                    } else if optarg == "input"
+                        || optarg == "INPUT"
+                        || optarg == "in"
+                        || optarg == "IN"
+                    {
+                        options.pipe_input = true;
+                    } else if optarg == "output"
+                        || optarg == "OUTPUT"
+                        || optarg == "out"
+                        || optarg == "OUT"
+                    {
+                        options.pipe_output = true;
+                    } else {
+                        hfst_error(
+                            common,
+                            1,
+                            0,
+                            &format!("--pipe-mode argument {} unrecognised", optarg),
+                        );
+                        return Err(1);
+                    }
+                }
+            }
+        }
+
+        options.formats = Some(LookupFormats::for_output_format(options.output_format));
+
+        if let Some(name) = &self.input_strings {
+            options.lookup_file_name = name.clone();
+            // C: lookup_file = fopen(lookup_file_name, "r"); open the named
+            // file as a buffered std reader instead.
+            match std::fs::File::open(name) {
+                Ok(f) => options.lookup_reader = Some(Box::new(std::io::BufReader::new(f))),
+                Err(_) => options.lookup_reader = None,
+            }
+            options.lookup_given = true;
+        } else {
+            options.lookup_reader = Some(Box::new(std::io::BufReader::new(std::io::stdin())));
+            options.lookup_file_name = "<stdin>".to_string();
+        }
+        Ok(options)
+    }
+}
+
+impl ToolArgs for Args {
+    fn common(&self) -> &CommonArgs {
+        &self.common
+    }
+
+    fn apply_io(&self, opts: &mut CommonOptions) {
+        self.io.apply(opts);
+    }
+
+    fn absorb_matches(&mut self, matches: &clap::ArgMatches) {
+        let ids: &[(&str, Event)] = &[
+            ("output_format", Event::OutputFormat),
+            ("input_format", Event::InputFormat),
+            ("epsilon_format", Event::EpsilonFormat),
+            ("epsilon_format2", Event::EpsilonFormat2),
+            ("beam", Event::Beam),
+            ("time_cutoff", Event::TimeCutoff),
+            ("cycles", Event::Cycles),
+        ];
+        let mut ordered: Vec<(usize, Event)> = ids
+            .iter()
+            .filter(|(id, _)| {
+                matches.value_source(id) == Some(clap::parser::ValueSource::CommandLine)
+            })
+            .filter_map(|(id, event)| matches.index_of(id).map(|i| (i, *event)))
+            .collect();
+        for (id, make) in [
+            ("xfst", Event::Xfst as fn(usize) -> Event),
+            ("pipe_mode", Event::PipeMode as fn(usize) -> Event),
         ] {
-            long_options.push(getopt::GetOpt {
-                name,
-                has_arg,
-                val: val as i32,
-            });
-        }
-        let c = opt.getopt_long(args, &long_options);
-        if -1 == c {
-            break;
-        }
-
-        match handle_common_case(&mut common, &opt, c, print_usage) {
-            CaseResult::Return(code) => return Err(code),
-            CaseResult::Break => continue,
-            CaseResult::NotHandled => {}
-        }
-        match handle_unary_case(&mut common, &opt, c) {
-            CaseResult::Return(code) => return Err(code),
-            CaseResult::Break => continue,
-            CaseResult::NotHandled => {}
-        }
-
-        // add tool-specific cases here
-        let optarg = opt.optarg();
-        match c as u8 {
-            b'R' => {
-                options.invert = true;
-            }
-            b'I' => {
-                options.lookup_file_name = optarg.clone();
-                // C: lookup_file = fopen(lookup_file_name, "r"); open the named
-                // file as a buffered std reader instead.
-                match std::fs::File::open(&optarg) {
-                    Ok(f) => options.lookup_reader = Some(Box::new(std::io::BufReader::new(f))),
-                    Err(_) => options.lookup_reader = None,
+            if matches.value_source(id) == Some(clap::parser::ValueSource::CommandLine)
+                && let Some(indices) = matches.indices_of(id)
+            {
+                for (k, i) in indices.enumerate() {
+                    ordered.push((i, make(k)));
                 }
-                options.lookup_given = true;
-            }
-            b'O' => {
-                if optarg == "xerox" {
-                    options.output_format = LookupOutputFormat::XeroxOutput;
-                } else if optarg == "cg" {
-                    options.output_format = LookupOutputFormat::CgOutput;
-                } else if optarg == "apertium" {
-                    options.output_format = LookupOutputFormat::ApertiumOutput;
-                    options.input_format = LookupInputFormat::ApertiumInput;
-                } else {
-                    hfst_error(
-                        &common,
-                        1,
-                        0,
-                        &format!(
-                            "Unknown output format {}; valid values are: xerox, cg, apertium\n",
-                            optarg
-                        ),
-                    );
-                    return Err(1);
-                }
-            }
-            b'F' => {
-                if optarg == "text" {
-                    options.input_format = LookupInputFormat::Utf8TokenInput;
-                } else if optarg == "spaced" {
-                    options.input_format = LookupInputFormat::SpaceSeparatedTokenInput;
-                } else if optarg == "apertium" {
-                    options.input_format = LookupInputFormat::ApertiumInput;
-                } else {
-                    hfst_error(
-                        &common,
-                        1,
-                        0,
-                        &format!(
-                            "Unknown input format {}; valid values are:utf8, spaced, apertium\n",
-                            optarg
-                        ),
-                    );
-                    return Err(1);
-                }
-            }
-            b'e' | b'E' => {
-                options.epsilon_format = optarg.clone();
-            }
-            b'b' => {
-                options.beam = optarg.parse::<f32>().unwrap_or(0.0);
-                if options.beam < 0.0 {
-                    eprintln!("Invalid argument for --beam");
-                    return Err(1);
-                }
-            }
-            b't' => {
-                options.time_cutoff = optarg.parse::<f64>().unwrap_or(0.0);
-                if options.time_cutoff < 0.0 {
-                    eprintln!("Invalid argument for --time-cutoff");
-                    return Err(1);
-                }
-            }
-            b'x' => {
-                options.print_statistics = true;
-            }
-            b'X' => {
-                if optarg == "print-pairs" {
-                    options.print_pairs = true;
-                } else if optarg == "print-space" {
-                    options.print_space = true;
-                    options.space_format = " ".to_string();
-                } else if optarg == "show-flags" {
-                    options.show_flags = true;
-                } else if optarg == "quote-special" {
-                    options.quote_special = true;
-                } else if optarg == "obey-flags" {
-                    options.obey_flags = false;
-                } else {
-                    hfst_error(
-                        &common,
-                        1,
-                        0,
-                        &format!("Xfst variable {} unrecognised", optarg),
-                    );
-                }
-                // NOTE: C++ falls through from 'X' into 'c' (no break).
-                options.infinite_cutoff = optarg.parse::<i32>().unwrap_or(0) as usize;
-            }
-            b'c' => {
-                options.infinite_cutoff = optarg.parse::<i32>().unwrap_or(0) as usize;
-            }
-            b'p' => {
-                if opt.optarg_opt().is_none() || optarg == "both" || optarg == "BOTH" {
-                    options.pipe_input = true;
-                    options.pipe_output = true;
-                } else if optarg == "input" || optarg == "INPUT" || optarg == "in" || optarg == "IN"
-                {
-                    options.pipe_input = true;
-                } else if optarg == "output"
-                    || optarg == "OUTPUT"
-                    || optarg == "out"
-                    || optarg == "OUT"
-                {
-                    options.pipe_output = true;
-                } else {
-                    hfst_error(
-                        &common,
-                        1,
-                        0,
-                        &format!("--pipe-mode argument {} unrecognised", optarg),
-                    );
-                }
-            }
-            b'P' => {
-                options.show_progress_bar = true;
-            }
-            b'f' => {
-                options.force_ol = true;
-            }
-            _ => {
-                return Err(handle_error_case(&common, &opt, c));
             }
         }
+        ordered.sort_by_key(|(i, _)| *i);
+        self.events = ordered.into_iter().map(|(_, event)| event).collect();
     }
 
-    options.formats = Some(LookupFormats::for_output_format(options.output_format));
-
-    if !options.lookup_given {
-        options.lookup_reader = Some(Box::new(std::io::BufReader::new(std::io::stdin())));
-        options.lookup_file_name = "<stdin>".to_string();
+    fn validate(&self, opts: &CommonOptions) -> ToolResult {
+        // The vocabulary rejections happened inside the C loop, before the
+        // parameter checks.
+        self.resolve(opts)?;
+        Ok(())
     }
-    check_common_params(&mut common);
-    check_unary_params(&mut common, &opt, args);
-    Ok((common, options))
 }
 
 // [spec:hfst:def:hfst-flookup.print-prompt-fn]
@@ -719,14 +809,16 @@ fn process_stream(
 
 // [spec:hfst:def:hfst-flookup.main-fn]
 // [spec:hfst:sem:hfst-flookup.main-fn]
-pub fn run(mut args: Vec<String>) -> i32 {
+pub fn run(args: Vec<String>) -> i32 {
+    cli::exit_code(execute(args))
+}
+
+fn execute(args: Vec<String>) -> ToolResult {
     let argv0 = args.first().cloned().unwrap_or_default();
 
     let common = hfst_set_program_name(&argv0, "0.6", "HfstFlookup");
-    let (common, mut options) = match parse_options(common, &mut args) {
-        Ok(v) => v,
-        Err(code) => return code,
-    };
+    let (common, args) = cli::parse::<Args>(common, args)?;
+    let mut options = args.resolve(&common)?;
 
     // close buffers, we use streams
     verbose_print(
@@ -778,7 +870,7 @@ pub fn run(mut args: Vec<String>) -> i32 {
         Ok(s) => s,
         Err(e) => {
             hfst_error(&common, 1, 0, &format!("{e}"));
-            return 1;
+            return Err(1);
         }
     };
 
@@ -786,12 +878,12 @@ pub fn run(mut args: Vec<String>) -> i32 {
         Ok(w) => w,
         Err(e) => {
             eprintln!("hfst-flookup: cannot open output: {e}");
-            return 1;
+            return Err(1);
         }
     };
     process_stream(&common, &mut options, &mut instream, &mut *out);
     let _ = out.flush();
 
     // (free(inputfilename)/free(outfilename) in C++ are no-ops here.)
-    0
+    Ok(())
 }

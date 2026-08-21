@@ -1,25 +1,11 @@
 //! Faithful 1:1 port of tools/src/hfst-fst2strings.cc — the transducer path
-//! printing command-line tool. Drives the hfst-cli foundation (globals, getopt,
-//! commandline, program-options, inc fragments).
-//!
-//! Idiomatic option handling: the tool's state lives in [`CommonOptions`] (the
-//! shared `-v/-q/-o/-i/…` fields) and a tool-local [`Options`] — both built by
-//! `parse_options` and threaded into the processing functions. There are no
-//! `static mut` globals and no `unsafe`.
+//! printing command-line tool. Option handling is clap 4 derive through
+//! [`crate::cli`]; the value-checked options replay in command-line order so
+//! the diagnostics keep the C getopt loop's sequencing.
 
+use crate::cli::{self, CommonArgs, ToolArgs, ToolResult, UnaryIo};
 use crate::globals::CommonOptions;
-use crate::hfst_commandline::{
-    error, extend_options_from_env, hfst_set_program_name, parse_u64, verbose_print, warning,
-};
-use crate::hfst_getopt::{self as getopt, Getopt};
-use crate::hfst_program_options::{
-    hfst_getopt_common_long, hfst_getopt_unary_long, print_common_program_options,
-    print_common_unary_program_parameter_instructions,
-};
-use crate::inc::{
-    CaseResult, check_common_params, check_unary_params, handle_common_case, handle_error_case,
-    handle_unary_case,
-};
+use crate::hfst_commandline::{error, hfst_set_program_name, parse_u64, verbose_print, warning};
 use hfst::hfst_data_types::ImplementationType;
 use hfst::hfst_data_types::{HfstTwoLevelPath, HfstTwoLevelPaths};
 use hfst::hfst_extract_strings::{ExtractStringsCb, RetVal};
@@ -27,7 +13,6 @@ use hfst::hfst_flag_diacritics::FdOperation;
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_symbol_defs::is_epsilon;
 use hfst::hfst_transducer::HfstTransducer;
-use std::io::Write;
 
 /// hfst-fst2strings's own options (the former tool-specific `static mut`s).
 struct Options {
@@ -82,212 +67,313 @@ impl Default for Options {
     }
 }
 
-// [spec:hfst:req:cli.help]
-fn print_usage(common: &CommonOptions) {
-    // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
-    let mut msg = common.message_writer();
-    let program_name = &common.program_name;
-    let _ = write!(
-        msg,
-        "Usage: {} [OPTIONS...] [INFILE]\nDisplay the strings recognized by a transducer\n\n",
-        program_name
-    );
-    print_common_program_options(&mut *msg);
-    let _ = write!(
-        msg,
-        "Fst2strings options:\n\
-         \x20 -n, --max-strings=NSTR     print at most NSTR strings\n\
-         \x20 -N, --nbest=NBEST          print at most NBEST best strings\n\
-         \x20 -r, --random=NRAND         print at most NRAND random strings\n\
-         \x20 -c, --cycles=NCYC          follow cycles at most NCYC times\n\
-         \x20 -w, --print-weights        display the weight for each string\n\
-         \x20 -S, --print-separator      print separator \"--\" after each transducer\n\
-         \x20 -e, --epsilon-format=EPS   print epsilon as EPS\n\
-         \x20 -X, --xfst=VARIABLE        toggle xfst compatibility option VARIABLE\n"
-    );
-    let _ = write!(
-        msg,
-        "Path filters:\n\
-         \x20 -b, --beam=B               reject output string with weight more than B away from\n\
-         \x20                            the weight of the best output string\n\
-         \x20 -l, --max-in-length=MIL    reject input string longer than MIL\n\
-         \x20 -L, --max-out-length=MOL   reject output string longer than MOL\n\
-         \x20 -p, --in-prefix=OPREFIX    input string must begin with IPREFIX\n\
-         \x20 -P, --out-prefix=OPREFIX   output string must begin with OPREFIX\n\
-         \x20 -u, --in-exclude=IXSTR     input string must not contain IXSTR\n\
-         \x20 -U, --out-exclude=OXST     output string must not contain OXSTR\n"
-    );
-
-    let _ = writeln!(msg);
-
-    print_common_unary_program_parameter_instructions(&mut *msg);
-    let _ = write!(
-        msg,
-        "If all NSTR, NBEST and NCYC are omitted, \
-         all possible paths are printed:\n\
-         NSTR, NBEST and NCYC default to infinity.\n\
-         NBEST overrides NSTR and NCYC\n\
-         NRAND overrides NBEST, NSTR and NCYC\n\
-         B must be a non-negative float\n\
-         If EPS is not given, default is empty string.\n\
-         Numeric options are parsed with strtod(3).\n\
-         Xfst variables supported are {{ obey-flags, print-flags,\n\
-         print-pairs, print-space, quote-special }}.\n"
-    );
-    let _ = write!(
-        msg,
-        "\nExamples:\n\
-         \x20 {} lexical.hfst    generates all forms of lexical.hfst\n\
-         \x20 {} -P \"cat<n>\" -c 0 lexical.hfst\n\
-         \x20                    generates paradigm for cat<n> without following cycles\n\n",
-        program_name, program_name
-    );
-
-    let _ = write!(
-        msg,
-        "Known bugs:\n\
-         \x20 Does not work correctly for hfst optimized lookup format.\n\n"
-    );
-}
-
+/// hfst-fst2strings's command line.
 // [spec:hfst:def:hfst-fst2strings.parse-options-fn]
 // [spec:hfst:sem:hfst-fst2strings.parse-options-fn]
 // [spec:hfst:req:cli.arg-parse]
-//
-// Parse argv into the shared + tool options; `Err(code)` is an exit code the
-// caller should return (the former EXIT_CONTINUE sentinel is now `Ok`).
-fn parse_options(
-    mut common: CommonOptions,
-    args: &mut Vec<String>,
-) -> Result<(CommonOptions, Options), i32> {
-    let mut options = Options::default();
-    let mut opt = Getopt::new();
-    extend_options_from_env(args);
-    loop {
-        let mut long_options: Vec<getopt::GetOpt> = Vec::new();
-        long_options.extend(hfst_getopt_common_long());
-        long_options.extend(hfst_getopt_unary_long());
-        // add tool-specific options here
-        let tool_long: [(&str, i32, i32); 15] = [
-            ("beam", 1, b'b' as i32),
-            ("cycles", 1, b'c' as i32),
-            ("epsilon-format", 1, b'e' as i32),
-            ("in-exclude", 1, b'u' as i32),
-            ("in-prefix", 1, b'p' as i32),
-            ("max-in-length", 1, b'l' as i32),
-            ("max-out-length", 1, b'L' as i32),
-            ("max-strings", 1, b'n' as i32),
-            ("nbest", 1, b'N' as i32),
-            ("random", 1, b'r' as i32),
-            ("print-separator", 0, b'S' as i32),
-            ("out-exclude", 1, b'U' as i32),
-            ("out-prefix", 1, b'P' as i32),
-            ("print-weights", 0, b'w' as i32),
-            ("xfst", 1, b'X' as i32),
-        ];
-        for (name, has_arg, val) in tool_long.iter() {
-            long_options.push(getopt::GetOpt {
-                name,
-                has_arg: *has_arg,
-                val: *val,
-            });
-        }
-        let c = opt.getopt_long(args, &long_options);
-        if -1 == c {
-            break;
-        }
+// [spec:hfst:req:cli.help]
+#[derive(clap::Parser)]
+#[command(
+    about = "Display the strings recognized by a transducer",
+    after_help = "If all NSTR, NBEST and NCYC are omitted, all possible paths are printed:
+NSTR, NBEST and NCYC default to infinity.
+NBEST overrides NSTR and NCYC
+NRAND overrides NBEST, NSTR and NCYC
+B must be a non-negative float
+If EPS is not given, default is empty string.
+Numeric options are parsed with strtod(3).
+Xfst variables supported are { obey-flags, print-flags,
+print-pairs, print-space, quote-special }.
 
-        // The C switch chains the #include'd case groups in order: common
-        // cases, then unary cases, then the tool's own, then the terminal
-        // error arm.
-        match handle_common_case(&mut common, &opt, c, print_usage) {
-            CaseResult::Return(code) => return Err(code),
-            CaseResult::Break => continue,
-            CaseResult::NotHandled => {}
-        }
-        match handle_unary_case(&mut common, &opt, c) {
-            CaseResult::Return(code) => return Err(code),
-            CaseResult::Break => continue,
-            CaseResult::NotHandled => {}
-        }
+Examples:
+  hfst-fst2strings lexical.hfst    generates all forms of lexical.hfst
+  hfst-fst2strings -P \"cat<n>\" -c 0 lexical.hfst
+                   generates paradigm for cat<n> without following cycles
 
-        let optarg = opt.optarg();
-        match c as u8 as char {
-            'n' => {
-                options.max_strings = parse_u64(&common, &optarg, 10) as i32;
-            }
-            'N' => {
-                options.nbest_strings = parse_u64(&common, &optarg, 10) as i32;
-            }
-            'r' => {
-                options.max_random_strings = parse_u64(&common, &optarg, 10) as i32;
-            }
-            'b' => {
-                options.beam = optarg.trim().parse::<f32>().unwrap_or(0.0);
-                if options.beam < 0.0 {
-                    eprintln!("Invalid argument for --beam");
-                    return Err(1);
+Known bugs:
+  Does not work correctly for hfst optimized lookup format."
+)]
+struct Args {
+    #[command(flatten)]
+    common: CommonArgs,
+    #[command(flatten)]
+    io: UnaryIo,
+
+    /// print at most NSTR strings
+    #[arg(
+        short = 'n',
+        long = "max-strings",
+        value_name = "NSTR",
+        allow_hyphen_values = true
+    )]
+    max_strings: Option<String>,
+
+    /// print at most NBEST best strings
+    #[arg(
+        short = 'N',
+        long = "nbest",
+        value_name = "NBEST",
+        allow_hyphen_values = true
+    )]
+    nbest: Option<String>,
+
+    /// print at most NRAND random strings
+    #[arg(
+        short = 'r',
+        long = "random",
+        value_name = "NRAND",
+        allow_hyphen_values = true
+    )]
+    random: Option<String>,
+
+    /// follow cycles at most NCYC times
+    #[arg(
+        short = 'c',
+        long = "cycles",
+        value_name = "NCYC",
+        allow_hyphen_values = true
+    )]
+    cycles: Option<String>,
+
+    /// display the weight for each string
+    #[arg(short = 'w', long = "print-weights")]
+    print_weights: bool,
+
+    /// print separator "--" after each transducer
+    #[arg(short = 'S', long = "print-separator")]
+    print_separator: bool,
+
+    /// print epsilon as EPS
+    #[arg(
+        short = 'e',
+        long = "epsilon-format",
+        value_name = "EPS",
+        allow_hyphen_values = true
+    )]
+    epsilon_format: Option<String>,
+
+    /// toggle xfst compatibility option VARIABLE
+    #[arg(
+        short = 'X',
+        long = "xfst",
+        value_name = "VARIABLE",
+        action = clap::ArgAction::Append,
+        allow_hyphen_values = true
+    )]
+    xfst: Vec<String>,
+
+    /// reject output string with weight more than B away from the weight of
+    /// the best output string
+    #[arg(
+        short = 'b',
+        long = "beam",
+        value_name = "B",
+        allow_hyphen_values = true
+    )]
+    beam: Option<String>,
+
+    /// reject input string longer than MIL
+    #[arg(
+        short = 'l',
+        long = "max-in-length",
+        value_name = "MIL",
+        allow_hyphen_values = true
+    )]
+    max_in_length: Option<String>,
+
+    /// reject output string longer than MOL
+    #[arg(
+        short = 'L',
+        long = "max-out-length",
+        value_name = "MOL",
+        allow_hyphen_values = true
+    )]
+    max_out_length: Option<String>,
+
+    /// input string must begin with IPREFIX
+    #[arg(
+        short = 'p',
+        long = "in-prefix",
+        value_name = "IPREFIX",
+        allow_hyphen_values = true
+    )]
+    in_prefix: Option<String>,
+
+    /// output string must begin with OPREFIX
+    #[arg(
+        short = 'P',
+        long = "out-prefix",
+        value_name = "OPREFIX",
+        allow_hyphen_values = true
+    )]
+    out_prefix: Option<String>,
+
+    /// input string must not contain IXSTR
+    #[arg(
+        short = 'u',
+        long = "in-exclude",
+        value_name = "IXSTR",
+        allow_hyphen_values = true
+    )]
+    in_exclude: Option<String>,
+
+    /// output string must not contain OXSTR
+    #[arg(
+        short = 'U',
+        long = "out-exclude",
+        value_name = "OXSTR",
+        allow_hyphen_values = true
+    )]
+    out_exclude: Option<String>,
+
+    /// The checked option occurrences in command-line order: the C loop
+    /// validated each value (and printed the non-fatal --xfst diagnostic) as
+    /// it was scanned, so the diagnostics have to replay in that order.
+    #[arg(skip)]
+    events: Vec<Event>,
+}
+
+/// One value-checked iteration of the C option loop, in occurrence order.
+#[derive(Clone, Copy)]
+enum Event {
+    MaxStrings,
+    Nbest,
+    Random,
+    Beam,
+    Cycles,
+    MaxInLength,
+    MaxOutLength,
+    /// Index into the `xfst` occurrence vector.
+    Xfst(usize),
+}
+
+impl Args {
+    /// Replay the checked occurrences into the tool options. `print` guards
+    /// the non-fatal --xfst diagnostic so the second (post-validate) pass
+    /// does not repeat it.
+    fn resolve(&self, common: &CommonOptions, print: bool) -> Result<Options, i32> {
+        let mut options = Options::default();
+        for event in &self.events {
+            match event {
+                Event::MaxStrings => {
+                    let text = self.max_strings.as_deref().unwrap_or_default();
+                    options.max_strings = parse_u64(common, text, 10) as i32;
+                }
+                Event::Nbest => {
+                    let text = self.nbest.as_deref().unwrap_or_default();
+                    options.nbest_strings = parse_u64(common, text, 10) as i32;
+                }
+                Event::Random => {
+                    let text = self.random.as_deref().unwrap_or_default();
+                    options.max_random_strings = parse_u64(common, text, 10) as i32;
+                }
+                Event::Beam => {
+                    let text = self.beam.as_deref().unwrap_or_default();
+                    options.beam = text.trim().parse::<f32>().unwrap_or(0.0);
+                    if options.beam < 0.0 {
+                        eprintln!("Invalid argument for --beam");
+                        return Err(1);
+                    }
+                }
+                Event::Cycles => {
+                    let text = self.cycles.as_deref().unwrap_or_default();
+                    options.cycles = parse_u64(common, text, 10) as i32;
+                }
+                Event::MaxInLength => {
+                    let text = self.max_in_length.as_deref().unwrap_or_default();
+                    options.max_input_length = parse_u64(common, text, 10) as u32;
+                }
+                Event::MaxOutLength => {
+                    let text = self.max_out_length.as_deref().unwrap_or_default();
+                    options.max_output_length = parse_u64(common, text, 10) as u32;
+                }
+                Event::Xfst(k) => {
+                    let optarg = self.xfst[*k].as_str();
+                    if optarg == "obey-flags" {
+                        options.eval_fd = true;
+                    } else if optarg == "print-flags" {
+                        options.filter_fd = false;
+                    } else if optarg == "quote-special" {
+                        options.quote_special = true;
+                    } else if optarg == "print-pairs" {
+                        options.print_in_pairstring_format = true;
+                    } else if optarg == "print-space" {
+                        options.print_spaces = true;
+                    } else if print {
+                        error(
+                            common,
+                            0,
+                            1,
+                            "Unrecognised xfst option. available options are obey-flags, print-flags\n",
+                        );
+                    }
                 }
             }
-            'c' => {
-                options.cycles = parse_u64(&common, &optarg, 10) as i32;
-            }
-            'w' => {
-                options.display_weights = true;
-            }
-            'X' => {
-                if optarg == "obey-flags" {
-                    options.eval_fd = true;
-                } else if optarg == "print-flags" {
-                    options.filter_fd = false;
-                } else if optarg == "quote-special" {
-                    options.quote_special = true;
-                } else if optarg == "print-pairs" {
-                    options.print_in_pairstring_format = true;
-                } else if optarg == "print-space" {
-                    options.print_spaces = true;
-                } else {
-                    error(
-                        &common,
-                        0,
-                        1,
-                        "Unrecognised xfst option. available options are obey-flags, print-flags\n",
-                    );
-                }
-            }
-            'l' => {
-                options.max_input_length = parse_u64(&common, &optarg, 10) as u32;
-            }
-            'L' => {
-                options.max_output_length = parse_u64(&common, &optarg, 10) as u32;
-            }
-            'p' => {
-                options.input_prefix = optarg;
-            }
-            'P' => {
-                options.output_prefix = optarg;
-            }
-            'u' => {
-                options.input_exclude = optarg;
-            }
-            'U' => {
-                options.output_exclude = optarg;
-            }
-            'S' => {
-                options.print_separator_after_each_transducer = true;
-            }
-            'e' => {
-                options.epsilon_format = optarg;
-            }
-            _ => {
-                return Err(handle_error_case(&common, &opt, c));
-            }
         }
+        options.display_weights = self.print_weights;
+        options.print_separator_after_each_transducer = self.print_separator;
+        if let Some(prefix) = &self.in_prefix {
+            options.input_prefix = prefix.clone();
+        }
+        if let Some(prefix) = &self.out_prefix {
+            options.output_prefix = prefix.clone();
+        }
+        if let Some(exclude) = &self.in_exclude {
+            options.input_exclude = exclude.clone();
+        }
+        if let Some(exclude) = &self.out_exclude {
+            options.output_exclude = exclude.clone();
+        }
+        if let Some(eps) = &self.epsilon_format {
+            options.epsilon_format = eps.clone();
+        }
+        Ok(options)
+    }
+}
+
+impl ToolArgs for Args {
+    fn common(&self) -> &CommonArgs {
+        &self.common
     }
 
-    check_common_params(&mut common);
-    check_unary_params(&mut common, &opt, args);
-    Ok((common, options))
+    fn apply_io(&self, opts: &mut CommonOptions) {
+        self.io.apply(opts);
+    }
+
+    fn absorb_matches(&mut self, matches: &clap::ArgMatches) {
+        let ids: &[(&str, Event)] = &[
+            ("max_strings", Event::MaxStrings),
+            ("nbest", Event::Nbest),
+            ("random", Event::Random),
+            ("beam", Event::Beam),
+            ("cycles", Event::Cycles),
+            ("max_in_length", Event::MaxInLength),
+            ("max_out_length", Event::MaxOutLength),
+        ];
+        let mut ordered: Vec<(usize, Event)> = ids
+            .iter()
+            .filter(|(id, _)| {
+                matches.value_source(id) == Some(clap::parser::ValueSource::CommandLine)
+            })
+            .filter_map(|(id, event)| matches.index_of(id).map(|i| (i, *event)))
+            .collect();
+        if matches.value_source("xfst") == Some(clap::parser::ValueSource::CommandLine)
+            && let Some(indices) = matches.indices_of("xfst")
+        {
+            for (k, i) in indices.enumerate() {
+                ordered.push((i, Event::Xfst(k)));
+            }
+        }
+        ordered.sort_by_key(|(i, _)| *i);
+        self.events = ordered.into_iter().map(|(_, event)| event).collect();
+    }
+
+    fn validate(&self, opts: &CommonOptions) -> ToolResult {
+        // The value rejections (and the non-fatal --xfst diagnostic) happened
+        // inside the C loop, before the parameter checks.
+        self.resolve(opts, true)?;
+        Ok(())
+    }
 }
 
 /* Replace all strings str1 in symbol with str2. */
@@ -818,14 +904,16 @@ fn process_one_ol<B: hfst::backend::LookupBackend>(
 
 // [spec:hfst:def:hfst-fst2strings.main-fn]
 // [spec:hfst:sem:hfst-fst2strings.main-fn]
-pub fn run(mut args: Vec<String>) -> i32 {
+pub fn run(args: Vec<String>) -> i32 {
+    cli::exit_code(execute(args))
+}
+
+fn execute(args: Vec<String>) -> ToolResult {
     let argv0 = args.first().cloned().unwrap_or_default();
 
     let common = hfst_set_program_name(&argv0, "0.1", "HfstFst2Strings");
-    let (common, mut options) = match parse_options(common, &mut args) {
-        Ok(v) => v,
-        Err(code) => return code,
-    };
+    let (common, args) = cli::parse::<Args>(common, args)?;
+    let mut options = args.resolve(&common, false)?;
 
     if options.max_strings > 0 && options.max_random_strings > 0 && !common.silent {
         warning(
@@ -861,7 +949,7 @@ pub fn run(mut args: Vec<String>) -> i32 {
         Ok(v) => v,
         Err(e) => {
             error(&common, 1, 0, &format!("{e}"));
-            return 1;
+            return Err(1);
         }
     };
 
@@ -869,8 +957,13 @@ pub fn run(mut args: Vec<String>) -> i32 {
         Ok(w) => w,
         Err(e) => {
             eprintln!("hfst-fst2strings: cannot open output: {e}");
-            return 1;
+            return Err(1);
         }
     };
-    process_stream(&common, &mut options, &mut instream, &mut *out)
+    cli::from_code(process_stream(
+        &common,
+        &mut options,
+        &mut instream,
+        &mut *out,
+    ))
 }

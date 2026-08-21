@@ -453,7 +453,7 @@ pub trait ToolArgs: clap::Parser {
     }
 }
 
-/// Which of the two argument-error dialects a tool speaks.
+/// Which of the argument-error dialects a tool speaks.
 // [spec:hfst:req:cli.arg-parse]
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum ErrorStyle {
@@ -462,6 +462,10 @@ pub enum ErrorStyle {
     Hfst,
     /// CommandLine::parse_options: a bare line on stderr, exit 1.
     Twolc,
+    /// hfst-optimized-lookup's own dialect: "Invalid option\n\n" on stderr,
+    /// then the full usage on the message stream (its print_short_help IS
+    /// print_usage), exit 1.
+    UsageDump,
 }
 
 /// Parse a tool's argv into its derive struct and the shared
@@ -712,6 +716,12 @@ fn report_clap_error(
     }
     if style == ErrorStyle::Twolc {
         eprintln!("{}", twolc_error_text(cmd, &err));
+        return EXIT_FAILURE;
+    }
+    if style == ErrorStyle::UsageDump {
+        eprint!("Invalid option\n\n");
+        let mut out = common.message_writer();
+        let _ = write!(out, "{}", cmd.clone().render_help());
         return EXIT_FAILURE;
     }
     print_short_help(common);

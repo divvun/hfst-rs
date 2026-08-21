@@ -657,6 +657,27 @@ pub fn hfst_parse_format_name(opts: &CommonOptions, s: &str) -> ImplementationTy
     rv
 }
 
+/// The vocabulary of [`hfst_parse_format_name`] minus its diagnostics, for a
+/// clap tool's post-validate second pass (which must not repeat the
+/// ambiguous-name warning). Returns UNSPECIFIED_TYPE for a name the loud
+/// parse would reject, so it is only meaningful after that parse accepted.
+pub fn parse_format_name_quiet(s: &str) -> ImplementationType {
+    match s.to_ascii_lowercase().as_str() {
+        "sfst" => ImplementationType::SFST_TYPE,
+        "openfst-tropical" | "ofst-tropical" | "openfst" | "ofst" => {
+            ImplementationType::TROPICAL_OPENFST_TYPE
+        }
+        "foma" => ImplementationType::FOMA_TYPE,
+        "xfsm" => ImplementationType::XFSM_TYPE,
+        "optimized-lookup-unweighted" | "olu" => ImplementationType::HFST_OL_TYPE,
+        "optimized-lookup-weighted" | "olw" | "optimized-lookup" | "ol" => {
+            ImplementationType::HFST_OLW_TYPE
+        }
+        "thfst" => ImplementationType::THFST_TYPE,
+        _ => ImplementationType::UNSPECIFIED_TYPE,
+    }
+}
+
 // [spec:hfst:def:hfst-commandline.hfst-strformat-fn]
 // [spec:hfst:sem:hfst-commandline.hfst-strformat-fn]
 pub fn hfst_strformat(format: ImplementationType) -> &'static str {

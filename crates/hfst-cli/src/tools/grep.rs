@@ -1,6 +1,5 @@
 //! Faithful 1:1 port of tools/src/hfst-grep.cc — the Hfst-based grep clone.
-//! Drives the hfst-cli foundation (globals, getopt, commandline,
-//! program-options, inc fragments). Bug-for-bug translation of the C++ tool.
+//! Bug-for-bug translation of the C++ tool.
 //!
 //! As in the C++, the optimised-lookup match path is gated behind
 //! HFST_OPTIMISED_LOOKUP_CAN_IDENTITY, which is not defined; the active path
@@ -9,22 +8,22 @@
 //! match_lines, print_match_line) are still ported faithfully but are never
 //! reached at runtime.
 //!
-//! Idiomatic option handling: the tool's state lives in [`CommonOptions`] (the
-//! shared `-v/-q/-o/…` fields) and a tool-local [`Options`] — both built by
-//! `parse_options` and threaded into the processing functions. There are no
-//! `static mut` globals and no `unsafe`.
+//! Option handling is clap 4 derive through [`crate::cli`]; the tool's state
+//! lives in [`CommonOptions`] (the shared `-v/-q/-o/…` fields) and a
+//! tool-local [`Options`] built by [`Args::resolve`] and threaded into the
+//! processing functions. The old option table survives with its quirks: the
+//! GNU-grep options this clone accepts and then rejects keep their exact
+//! messages, `--directories` is a spelling of `-d`/`--debug` (its ACTION is
+//! swallowed), `--no-messages` joins the `-v`/`-q`/`-s` last-one-wins chain,
+//! and the `-A`/`-B` shorts keep their swapped before/after pairing.
 
+use crate::cli::{self, CommonArgs, ToolArgs, ToolResult};
 use crate::globals::ColourTristate;
 use crate::globals::CommonOptions;
 use crate::hfst_commandline::{
-    error, error_at_line, extend_options_from_env, hfst_parse_format_name, hfst_set_program_name,
+    error, error_at_line, hfst_parse_format_name, hfst_set_program_name, parse_format_name_quiet,
     parse_u64, print_short_help, verbose_print, warning,
 };
-use crate::hfst_getopt::{self as getopt, Getopt};
-use crate::hfst_program_options::{
-    hfst_getopt_common_long, hfst_getopt_unary_long, print_common_program_options,
-};
-use crate::inc::{CaseResult, check_common_params, handle_common_case, handle_error_case};
 use hfst::hfst_data_types::{HfstOneLevelPath, HfstTwoLevelPaths, ImplementationType};
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_symbol_defs::is_epsilon;
@@ -61,13 +60,31 @@ struct Options {
     dialect_fixed_strings: bool,
     match_word: bool,
     match_full_line: bool,
+    #[allow(
+        dead_code,
+        reason = "the '-z' arm writes it and no reader exists upstream either: \
+                  the line loop reads to '\\n' unconditionally. The C assigned \
+                  it inside parse_options, which is why the getopt-era port \
+                  did not trip this lint."
+    )]
     linesep: u8,
     invert_matches: bool,
     max_count: u64,
+    #[allow(
+        dead_code,
+        reason = "'-b' sets it and nothing prints byte offsets, exactly as \
+                  upstream: the feature was accepted but never implemented."
+    )]
     print_offset: bool,
     print_linenumbers: bool,
     flush_newlines: bool,
     print_filenames: bool,
+    #[allow(
+        dead_code,
+        reason = "'-O'/'--only-matching' sets it and no printer consults it, \
+                  exactly as upstream: the feature was accepted but never \
+                  implemented."
+    )]
     print_only_matches: bool,
     print_only_matching_filenames: bool,
     print_only_unmatching_filenames: bool,
@@ -125,335 +142,530 @@ struct MatcherState {
     linen: u64,
 }
 
-// [spec:hfst:req:cli.help]
-fn print_usage(common: &CommonOptions) {
-    // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
-    // Usage line
-    let mut msg = common.message_writer();
-    let _ = write!(
-        msg,
-        "Usage: {} [OPTIONS...] PATTERN [FILE...]\n\
-                 Search for PATTERN in each FILE or standard input.\n\
-                 Pattern is, by default, a Xerox regular expression (XRE).\n\
-                 Example: hfst-grep 'h e l l o %%  w o r l d' menu.h menu.c\n\
-                 \n",
-        common.program_name
-    );
-
-    // options, grouped
-    print_common_program_options(&mut *msg);
-    let _ = writeln!(
-        msg,
-        "  -9, --format=TYPE       compile expressions to TYPE automata"
-    );
-    let _ = writeln!(msg);
-    let _ = write!(
-        msg,
-        "Regexp selection and interpretation:\n\
-             \x20 -E, --extended-regexp     PATTERN is an extended regular expression (ERE)\n\
-             \x20 -F, --fixed-strings       PATTERN is a set of newline-separated fixed strings\n\
-             \x20 -G, --basic-regexp        PATTERN is a basic regular expression (BRE)\n\
-             \x20 -P, --perl-regexp         PATTERN is a Perl regular expression\n\
-             \x20 -X, --xerox-regexp        PATTERN is a Xerox regulare expression\n\
-             \x20 -e, --regexp=PATTERN      use PATTERN for matching\n\
-             \x20 -f, --file=FILE           obtain PATTERN from FILE\n\
-             \x20 -I, --ignore-case         ignore case distinctions\n\
-             \x20 -w, --word-regexp         force PATTERN to match only whole words\n\
-             \x20 -x, --line-regexp         force PATTERN to match only whole lines\n\
-             \x20 -z, --null-data           a data line ends in 0 byte, not newline\n",
-    );
-    let _ = write!(
-        msg,
-        "Miscellaneous options:\n\
-             \x20     --no-messages         suppress error messages\n\
-             \x20     --invert-match        select non-matching lines\n\
-             \n",
-    );
-    let _ = write!(
-        msg,
-        "Output control:\n\
-             \x20 -m, --max-count=NUM       stop after NUM matches\\n\
-             \x20 -b, --byte-offset         print the byte offset with output lines\n\
-             \x20 -n, --line-number         print line number with output lines\n\
-             \x20     --line-buffered       flush output on every line\n\
-             \x20 -H, --with-filename       print the filename for each match\n\
-             \x20 -h, --no-filename         suppress the prefixing filename on output\n\
-             \x20     --label=LABEL         print LABEL as filename for standard input\n\
-             \x20 -o, --only-matching       show only the part of a line matching PATTERN\n\
-             \x20     --binary-files=TYPE   assume that binary files are TYPE;\n\
-             \x20                           TYPE is `binary', `text', or `without-match'\n\
-             \x20 -a, --text                equivalent to --binary-files=text\n\
-             \x20 -d, --directories=ACTION  how to handle directories;\n\
-             \x20                           ACTION is `read', `recurse', or `skip'\n\
-             \x20 -D, --devices=ACTION      how to handle devices, FIFOs and sockets;\n\
-             \x20                           ACTION is `read' or `skip'\n\
-             \x20 -R, -r, --recursive       equivalent to --directories=recurse\n\
-             \x20     --include=FILE_PATTERN  search only files that match FILE_PATTERN\n\
-             \x20     --exclude=FILE_PATTERN  skip files and directories matching FILE_PATTERN\n\
-             \x20     --exclude-from=FILE   skip files matching any file pattern from FILE\n\
-             \x20     --exclude-dir=PATTERN  directories that match PATTERN will be skipped\n\
-             \x20 -L, --files-without-match  print only names of FILEs containing  no match\n\
-             \x20 -l, --files-with-matches  print only names of FILEs containing matches\n\
-             \x20 -c, --count               print only a count of matching lines per FILE\n\
-             \x20 -T, --initial-tab         make tabs line up (if needed)\n\
-             \x20 -Z, --null                print 0 byte after FILE name\n\
-             \n",
-    );
-    let _ = write!(
-        msg,
-        "Context control:\n\
-             \x20 -B, --before-context=NUM  print NUM lines of leading context\n\
-             \x20 -A, --after-context=NUM   print NUM lines of trailing context\n\
-             \x20 -C, --context=NUM         print NUM lines of output context\n\
-             \x20     --color[=WHEN],\n\
-             \x20     --colour[=WHEN]       use markers to highlight the matching strings;\n\
-             \x20                           WHEN is `always', `never', or `auto'\n\
-             \x20 -U, --binary              do not strip CR characters at EOL (MSDOS)\n\
-             \x20 -u, --unix-byte-offsets   report offsets as if CRs were not there (MSDOS)\n\
-             \n",
-    );
-
-    // parameter details
-    let _ = writeln!(msg);
-    // bug report address
-    // external docs
-}
-
+/// hfst-grep's command line.
 // [spec:hfst:def:hfst-grep.parse-options-fn]
 // [spec:hfst:sem:hfst-grep.parse-options-fn]
 // [spec:hfst:req:cli.arg-parse]
-//
-// Parse argv into the shared + tool options; `Err(code)` is an exit code the
-// caller should return (the former EXIT_CONTINUE sentinel is now `Ok`).
-fn parse_options(
-    mut common: CommonOptions,
-    args: &mut Vec<String>,
-) -> Result<(CommonOptions, Options), i32> {
-    let mut options = Options::default();
-    let mut opt = Getopt::new();
-    // use of this function requires options are settable on global scope
-    const INVERT_OPT: i32 = 19;
-    const LINEBUFFER_OPT: i32 = 20;
-    const LABEL_OPT: i32 = 21;
-    const BINARYFILES_OPT: i32 = 22;
-    const INCLUDE_OPT: i32 = 23;
-    const EXCLUDE_OPT: i32 = 24;
-    const INCLUDEFROM_OPT: i32 = 25;
-    const EXCLUDEFROM_OPT: i32 = 26;
-    const COLOR_OPT: i32 = 27;
-    extend_options_from_env(args);
-    loop {
-        let mut long_options: Vec<getopt::GetOpt> = Vec::new();
-        long_options.extend(hfst_getopt_common_long());
-        long_options.extend(hfst_getopt_unary_long());
-        // add tool-specific options here
-        let names: &[(&'static str, i32, i32)] = &[
-            ("format", 1, b'9' as i32),
-            ("extended-regexp", 0, b'E' as i32),
-            ("fixed-strings", 0, b'F' as i32),
-            ("basic-regexp", 0, b'G' as i32),
-            ("perl-regexp", 0, b'P' as i32),
-            ("xerox-regexp", 0, b'X' as i32),
-            ("regexp", 1, b'e' as i32),
-            ("file", 1, b'f' as i32),
-            ("ignore-case", 0, b'I' as i32),
-            ("word-regexp", 0, b'w' as i32),
-            ("line-regexp", 0, b'x' as i32),
-            ("null-data", 0, b'z' as i32),
-            ("no-messages", 0, b'q' as i32),
-            ("invert-match", 0, INVERT_OPT),
-            ("max-count", 1, b'm' as i32),
-            ("byte-offset", 0, b'b' as i32),
-            ("line-number", 0, b'n' as i32),
-            ("line-buffered", 0, LINEBUFFER_OPT),
-            ("with-filename", 0, b'H' as i32),
-            ("label", 1, LABEL_OPT),
-            ("only-matching", 0, b'O' as i32),
-            ("binary-files", 1, BINARYFILES_OPT),
-            ("text", 0, b'a' as i32),
-            ("directories", 1, b'd' as i32),
-            ("devices", 1, b'D' as i32),
-            ("recursive", 0, b'r' as i32),
-            ("include", 1, INCLUDE_OPT),
-            ("exclude", 1, EXCLUDE_OPT),
-            ("include-from", 1, INCLUDEFROM_OPT),
-            ("exclude-from", 1, EXCLUDEFROM_OPT),
-            ("files-without-match", 0, b'L' as i32),
-            ("files-with-match", 0, b'l' as i32),
-            ("count", 0, b'c' as i32),
-            ("null", 0, b'Z' as i32),
-            ("before-context", 1, b'A' as i32),
-            ("after-context", 1, b'B' as i32),
-            ("context", 1, b'C' as i32),
-            ("colour", 0, COLOR_OPT),
-            ("color", 0, COLOR_OPT),
-            ("binary", 0, b'u' as i32),
-            ("unix-byte-offset", 0, b'U' as i32),
-        ];
-        for (name, has_arg, val) in names.iter() {
-            long_options.push(getopt::GetOpt {
-                name,
-                has_arg: *has_arg,
-                val: *val,
-            });
-        }
-        // add tool-specific options here
-        let c = opt.getopt_long(args, &long_options);
-        if -1 == c {
-            break;
-        }
+// [spec:hfst:req:cli.help]
+#[derive(clap::Parser)]
+#[command(about = "Search for PATTERN in each FILE or standard input.\n\
+             Pattern is, by default, a Xerox regular expression (XRE).\n\
+             Example: hfst-grep 'h e l l o %  w o r l d' menu.h menu.c")]
+struct Args {
+    #[command(flatten)]
+    common: CommonArgs,
 
-        match handle_common_case(&mut common, &opt, c, print_usage) {
-            CaseResult::Return(code) => return Err(code),
-            CaseResult::Break => continue,
-            CaseResult::NotHandled => {}
-        }
+    /// Compile expressions to TYPE automata
+    #[arg(
+        short = '9',
+        long = "format",
+        value_name = "TYPE",
+        allow_hyphen_values = true
+    )]
+    format: Option<String>,
 
-        if c == b'9' as i32 {
-            options.format = hfst_parse_format_name(&common, &opt.optarg());
-        } else if c == b'E' as i32 {
-            error(&common, 1, 0, "POSIX ERE syntax not yet supported");
-            options.dialect_posix_ere = true;
-        } else if c == b'F' as i32 {
-            options.dialect_fixed_strings = true;
-        } else if c == b'G' as i32 {
-            error(&common, 1, 0, "POSIX BRE syntax not yet supported");
-            options.dialect_posix_bre = true;
-        } else if c == b'P' as i32 {
-            error(&common, 1, 0, "Perl syntax not yet supported");
-            options.dialect_perl = true;
-        } else if c == b'X' as i32 {
-            options.dialect_xerox = true;
-        } else if c == b'e' as i32 {
-            options.regexp = Some(opt.optarg());
-        } else if c == b'f' as i32 {
-            // C: expfile = hfst_fopen(optarg, "r"); the handle is never read,
-            // but hfst_fopen validates the file (erroring on failure) — mirror
-            // that and record that -f was given.
-            let fname = opt.optarg();
-            if fname != "-" && std::fs::File::open(&fname).is_err() {
-                error(&common, 1, 0, &format!("Could not open '{}'. ", fname));
-            }
-            options.expfile_given = true;
-        } else if c == b'I' as i32 {
-            error(&common, 1, 0, "Ignore case not supported");
-        } else if c == b'w' as i32 {
-            options.match_word = true;
-        } else if c == b'x' as i32 {
-            options.match_full_line = true;
-        } else if c == b'z' as i32 {
-            options.linesep = 0;
-        } else if c == INVERT_OPT {
-            options.invert_matches = true;
-        } else if c == b'm' as i32 {
-            options.max_count = parse_u64(&common, &opt.optarg(), 10);
-            options.count_matches = true;
-        } else if c == b'b' as i32 {
-            options.print_offset = true;
-        } else if c == b'n' as i32 {
-            options.print_linenumbers = true;
-        } else if c == LINEBUFFER_OPT {
-            options.flush_newlines = true;
-        } else if c == b'H' as i32 {
-            options.print_filenames = true;
-        } else if c == b'O' as i32 {
-            options.print_only_matches = true;
-        } else if c == BINARYFILES_OPT {
-            error(&common, 1, 0, "No binary handling implemented");
-        } else if c == b'a' as i32 {
-            warning(&common, 0, 0, "All files are always handled as text");
-        } else if c == b'D' as i32 || c == b'r' as i32 {
-            error(&common, 1, 0, "No directory handling implemented");
-        } else if c == INCLUDE_OPT
-            || c == EXCLUDE_OPT
-            || c == INCLUDEFROM_OPT
-            || c == EXCLUDEFROM_OPT
-        {
-            error(&common, 1, 0, "No directory/globbing implemented");
-        } else if c == b'L' as i32 {
-            options.print_only_unmatching_filenames = true;
-        } else if c == b'l' as i32 {
-            options.print_only_matching_filenames = true;
-        } else if c == b'c' as i32 {
+    /// PATTERN is an extended regular expression (ERE) — not yet supported
+    #[arg(short = 'E', long = "extended-regexp")]
+    extended_regexp: bool,
+
+    /// PATTERN is a set of newline-separated fixed strings
+    #[arg(short = 'F', long = "fixed-strings")]
+    fixed_strings: bool,
+
+    /// PATTERN is a basic regular expression (BRE) — not yet supported
+    #[arg(short = 'G', long = "basic-regexp")]
+    basic_regexp: bool,
+
+    /// PATTERN is a Perl regular expression — not yet supported
+    #[arg(short = 'P', long = "perl-regexp")]
+    perl_regexp: bool,
+
+    /// PATTERN is a Xerox regular expression (default)
+    #[arg(short = 'X', long = "xerox-regexp")]
+    xerox_regexp: bool,
+
+    /// Use PATTERN for matching
+    #[arg(
+        short = 'e',
+        long = "regexp",
+        value_name = "PATTERN",
+        allow_hyphen_values = true
+    )]
+    regexp: Option<String>,
+
+    /// Obtain PATTERN from FILE
+    #[arg(
+        short = 'f',
+        long = "file",
+        value_name = "FILE",
+        allow_hyphen_values = true
+    )]
+    file: Option<String>,
+
+    /// Ignore case distinctions — not supported
+    #[arg(short = 'I', long = "ignore-case")]
+    ignore_case: bool,
+
+    /// Force PATTERN to match only whole words
+    #[arg(short = 'w', long = "word-regexp")]
+    word_regexp: bool,
+
+    /// Force PATTERN to match only whole lines
+    #[arg(short = 'x', long = "line-regexp")]
+    line_regexp: bool,
+
+    /// A data line ends in 0 byte, not newline
+    #[arg(short = 'z', long = "null-data")]
+    null_data: bool,
+
+    /// Suppress error messages (alias of --quiet)
+    #[arg(long = "no-messages")]
+    no_messages: bool,
+
+    /// Select non-matching lines
+    #[arg(long = "invert-match")]
+    invert_match: bool,
+
+    /// Stop after NUM matches
+    #[arg(
+        short = 'm',
+        long = "max-count",
+        value_name = "NUM",
+        allow_hyphen_values = true
+    )]
+    max_count: Option<String>,
+
+    /// Print the byte offset with output lines
+    #[arg(short = 'b', long = "byte-offset")]
+    byte_offset: bool,
+
+    /// Print line number with output lines
+    #[arg(short = 'n', long = "line-number")]
+    line_number: bool,
+
+    /// Flush output on every line
+    #[arg(long = "line-buffered")]
+    line_buffered: bool,
+
+    /// Print the filename for each match
+    #[arg(short = 'H', long = "with-filename")]
+    with_filename: bool,
+
+    /// Print LABEL as filename for standard input — not implemented
+    #[arg(long = "label", value_name = "LABEL", allow_hyphen_values = true)]
+    label: Option<String>,
+
+    /// Show only the part of a line matching PATTERN
+    #[arg(short = 'O', long = "only-matching")]
+    only_matching: bool,
+
+    /// Assume that binary files are TYPE — not implemented
+    #[arg(long = "binary-files", value_name = "TYPE", allow_hyphen_values = true)]
+    binary_files: Option<String>,
+
+    /// Equivalent to --binary-files=text (all files are handled as text)
+    #[arg(short = 'a', long = "text")]
+    text: bool,
+
+    /// How to handle directories (a spelling of --debug; ACTION is swallowed)
+    #[arg(
+        long = "directories",
+        value_name = "ACTION",
+        allow_hyphen_values = true
+    )]
+    directories: Option<String>,
+
+    /// How to handle devices, FIFOs and sockets — not implemented
+    #[arg(
+        short = 'D',
+        long = "devices",
+        value_name = "ACTION",
+        allow_hyphen_values = true
+    )]
+    devices: Option<String>,
+
+    /// Equivalent to --directories=recurse — not implemented
+    #[arg(short = 'r', long = "recursive")]
+    recursive: bool,
+
+    /// Search only files that match FILE_PATTERN — not implemented
+    #[arg(
+        long = "include",
+        value_name = "FILE_PATTERN",
+        allow_hyphen_values = true
+    )]
+    include: Option<String>,
+
+    /// Skip files and directories matching FILE_PATTERN — not implemented
+    #[arg(
+        long = "exclude",
+        value_name = "FILE_PATTERN",
+        allow_hyphen_values = true
+    )]
+    exclude: Option<String>,
+
+    /// Search only files matching any file pattern from FILE — not implemented
+    #[arg(long = "include-from", value_name = "FILE", allow_hyphen_values = true)]
+    include_from: Option<String>,
+
+    /// Skip files matching any file pattern from FILE — not implemented
+    #[arg(long = "exclude-from", value_name = "FILE", allow_hyphen_values = true)]
+    exclude_from: Option<String>,
+
+    /// Print only names of FILEs containing no match
+    #[arg(short = 'L', long = "files-without-match")]
+    files_without_match: bool,
+
+    /// Print only names of FILEs containing matches
+    #[arg(short = 'l', long = "files-with-match")]
+    files_with_match: bool,
+
+    /// Print only a count of matching lines per FILE
+    #[arg(short = 'c', long = "count")]
+    count: bool,
+
+    /// Print 0 byte after FILE name
+    #[arg(short = 'Z', long = "null")]
+    null: bool,
+
+    /// Print NUM lines of leading context ('-A' is leading here: the old
+    /// option table paired the shorts the other way round from GNU grep)
+    #[arg(
+        short = 'A',
+        long = "before-context",
+        value_name = "NUM",
+        allow_hyphen_values = true
+    )]
+    before_context: Option<String>,
+
+    /// Print NUM lines of trailing context
+    #[arg(
+        short = 'B',
+        long = "after-context",
+        value_name = "NUM",
+        allow_hyphen_values = true
+    )]
+    after_context: Option<String>,
+
+    /// Print NUM lines of output context
+    #[arg(
+        short = 'C',
+        long = "context",
+        value_name = "NUM",
+        allow_hyphen_values = true
+    )]
+    context: Option<String>,
+
+    /// Do not strip CR characters at EOL (MSDOS) — not supported
+    #[arg(short = 'u', long = "binary")]
+    binary: bool,
+
+    /// Report offsets as if CRs were not there (MSDOS) — not supported
+    #[arg(short = 'U', long = "unix-byte-offset")]
+    unix_byte_offset: bool,
+
+    /// The pattern (unless -e/-f gave one) followed by the input files;
+    /// missing files or - read the standard input
+    #[arg(value_name = "PATTERN", num_args = 0..)]
+    operands: Vec<String>,
+
+    /// The checked option occurrences in command-line order: the C loop
+    /// rejected the GNU-grep leftovers, warned for '-a', validated numbers
+    /// and the '-f' file, and let '-A'/'-B'/'-C' overwrite each other as it
+    /// scanned, so the diagnostics and the context writes replay in that
+    /// order.
+    #[arg(skip)]
+    events: Vec<Event>,
+}
+
+/// One checked iteration of the C option loop, in occurrence order.
+#[derive(Clone, Copy)]
+enum Event {
+    Format,
+    ExtendedRegexp,
+    BasicRegexp,
+    PerlRegexp,
+    IgnoreCase,
+    File,
+    MaxCount,
+    Label,
+    BinaryFiles,
+    Text,
+    Devices,
+    Recursive,
+    Globbing,
+    BeforeContext,
+    AfterContext,
+    Context,
+    Msdos,
+}
+
+impl Args {
+    /// Replay the C option loop over the ordered occurrences, then the
+    /// post-loop resolution (dialect default, pattern and input files).
+    /// `print` gates the non-fatal diagnostics so the second pass after a
+    /// successful validate stays silent; every rejection is fatal (`error`
+    /// with a nonzero status exits).
+    fn resolve(&self, common: &CommonOptions, print: bool) -> Result<Options, i32> {
+        let mut options = Options {
+            dialect_fixed_strings: self.fixed_strings,
+            dialect_xerox: self.xerox_regexp,
+            match_word: self.word_regexp,
+            match_full_line: self.line_regexp,
+            linesep: if self.null_data { 0 } else { b'\n' },
+            invert_matches: self.invert_match,
+            print_offset: self.byte_offset,
+            print_linenumbers: self.line_number,
+            flush_newlines: self.line_buffered,
+            print_filenames: self.with_filename,
+            print_only_matches: self.only_matching,
+            print_only_matching_filenames: self.files_with_match,
+            print_only_unmatching_filenames: self.files_without_match,
+            regexp: self.regexp.clone(),
+            expfile_given: self.file.is_some(),
+            ..Options::default()
+        };
+        if self.count {
             options.count_matches = true;
             options.print_only_count = true;
-        } else if c == b'Z' as i32 {
-            options.print_filename_null = true;
-        } else if c == b'A' as i32 {
-            options.before_context = parse_u64(&common, &opt.optarg(), 10);
-        } else if c == b'B' as i32 {
-            options.after_context = parse_u64(&common, &opt.optarg(), 10);
-        } else if c == b'C' as i32 {
-            options.before_context = parse_u64(&common, &opt.optarg(), 10);
-            options.after_context = parse_u64(&common, &opt.optarg(), 10);
-        } else if c == b'u' as i32 || c == b'U' as i32 {
-            error(
-                &common,
-                1,
-                0,
-                "MSDOS binary format not supported; use fromdos or dos2unix",
-            );
-        } else {
-            return Err(handle_error_case(&common, &opt, c));
         }
-    }
-    if !options.dialect_fixed_strings
-        && !options.dialect_xerox
-        && !options.dialect_posix_bre
-        && !options.dialect_posix_ere
-        && !options.dialect_perl
-    {
-        warning(
-            &common,
-            0,
-            0,
-            "Dialect not defined, defaulting to Xerox for now!",
-        );
-        options.dialect_xerox = true;
-    }
-    if options.format == ImplementationType::UNSPECIFIED_TYPE {
-        options.format = ImplementationType::TROPICAL_OPENFST_TYPE;
-    }
-    if options.regexp.is_none() && !options.expfile_given {
-        if args.len() <= opt.optind {
-            print_usage(&common);
-            print_short_help(&common);
-            return Err(1);
-        } else {
-            options.regexp = Some(args[opt.optind].clone());
-            opt.optind += 1;
+        options.print_filename_null = self.null;
+        for event in &self.events {
+            match event {
+                Event::Format => {
+                    let optarg = self.format.as_deref().unwrap_or_default();
+                    options.format = if print {
+                        hfst_parse_format_name(common, optarg)
+                    } else {
+                        parse_format_name_quiet(optarg)
+                    };
+                }
+                Event::ExtendedRegexp => {
+                    error(common, 1, 0, "POSIX ERE syntax not yet supported");
+                    options.dialect_posix_ere = true;
+                    return Err(1);
+                }
+                Event::BasicRegexp => {
+                    error(common, 1, 0, "POSIX BRE syntax not yet supported");
+                    options.dialect_posix_bre = true;
+                    return Err(1);
+                }
+                Event::PerlRegexp => {
+                    error(common, 1, 0, "Perl syntax not yet supported");
+                    options.dialect_perl = true;
+                    return Err(1);
+                }
+                Event::IgnoreCase => {
+                    error(common, 1, 0, "Ignore case not supported");
+                    return Err(1);
+                }
+                Event::File => {
+                    // C: expfile = hfst_fopen(optarg, "r"); the handle is
+                    // never read, but hfst_fopen validates the file (erroring
+                    // on failure).
+                    let fname = self.file.as_deref().unwrap_or_default();
+                    if fname != "-" && std::fs::File::open(fname).is_err() {
+                        error(common, 1, 0, &format!("Could not open '{}'. ", fname));
+                        return Err(1);
+                    }
+                }
+                Event::MaxCount => {
+                    options.max_count =
+                        parse_u64(common, self.max_count.as_deref().unwrap_or_default(), 10);
+                    options.count_matches = true;
+                }
+                Event::Label => {
+                    // The option table declared --label but the switch had no
+                    // arm for it, so it fell into the getopt-cases-error.h
+                    // 'default' — an "invalid option" naming the unprintable
+                    // option value 21.
+                    print_short_help(common);
+                    error(common, 1, 0, &format!("invalid option -{}", '\u{15}'));
+                    return Err(1);
+                }
+                Event::BinaryFiles => {
+                    error(common, 1, 0, "No binary handling implemented");
+                    return Err(1);
+                }
+                Event::Text => {
+                    if print {
+                        warning(common, 0, 0, "All files are always handled as text");
+                    }
+                }
+                Event::Devices | Event::Recursive => {
+                    error(common, 1, 0, "No directory handling implemented");
+                    return Err(1);
+                }
+                Event::Globbing => {
+                    error(common, 1, 0, "No directory/globbing implemented");
+                    return Err(1);
+                }
+                Event::BeforeContext => {
+                    options.before_context = parse_u64(
+                        common,
+                        self.before_context.as_deref().unwrap_or_default(),
+                        10,
+                    );
+                }
+                Event::AfterContext => {
+                    options.after_context = parse_u64(
+                        common,
+                        self.after_context.as_deref().unwrap_or_default(),
+                        10,
+                    );
+                }
+                Event::Context => {
+                    let optarg = self.context.as_deref().unwrap_or_default();
+                    options.before_context = parse_u64(common, optarg, 10);
+                    options.after_context = parse_u64(common, optarg, 10);
+                }
+                Event::Msdos => {
+                    error(
+                        common,
+                        1,
+                        0,
+                        "MSDOS binary format not supported; use fromdos or dos2unix",
+                    );
+                    return Err(1);
+                }
+            }
         }
-    }
-    if args.len() == opt.optind {
-        options.infilenames.push("<stdin>".to_string());
-        options
-            .infile_readers
-            .push(Box::new(std::io::BufReader::new(std::io::stdin())));
-    } else {
-        for i in opt.optind..args.len() {
-            let name = args[i].clone();
-            options.infilenames.push(name.clone());
-            // C: infiles[i] = hfst_fopen(infilenames[i], "r"); open the named
-            // file as a buffered std reader, mapping "-" to stdin and erroring
-            // on a failed open through the same path.
-            if name == "-" {
-                options
-                    .infile_readers
-                    .push(Box::new(std::io::BufReader::new(std::io::stdin())));
-            } else {
-                match std::fs::File::open(&name) {
-                    Ok(f) => options
+        if !options.dialect_fixed_strings
+            && !options.dialect_xerox
+            && !options.dialect_posix_bre
+            && !options.dialect_posix_ere
+            && !options.dialect_perl
+        {
+            if print {
+                warning(
+                    common,
+                    0,
+                    0,
+                    "Dialect not defined, defaulting to Xerox for now!",
+                );
+            }
+            options.dialect_xerox = true;
+        }
+        if options.format == ImplementationType::UNSPECIFIED_TYPE {
+            options.format = ImplementationType::TROPICAL_OPENFST_TYPE;
+        }
+        let mut files: &[String] = &self.operands;
+        if options.regexp.is_none() && !options.expfile_given {
+            match files.split_first() {
+                None => {
+                    // C: print_usage + the short help, exit 1. The usage text
+                    // is clap's now.
+                    if print {
+                        let mut msg = common.message_writer();
+                        let mut cmd = <Args as clap::CommandFactory>::command()
+                            .bin_name(common.program_name.clone());
+                        let _ = write!(msg, "{}", cmd.render_help());
+                    }
+                    print_short_help(common);
+                    return Err(1);
+                }
+                Some((pattern, rest)) => {
+                    options.regexp = Some(pattern.clone());
+                    files = rest;
+                }
+            }
+        }
+        if files.is_empty() {
+            options.infilenames.push("<stdin>".to_string());
+            options
+                .infile_readers
+                .push(Box::new(std::io::BufReader::new(std::io::stdin())));
+        } else {
+            for name in files {
+                options.infilenames.push(name.clone());
+                // C: infiles[i] = hfst_fopen(infilenames[i], "r"); open the
+                // named file as a buffered std reader, mapping "-" to stdin
+                // and erroring on a failed open through the same path.
+                if name == "-" {
+                    options
                         .infile_readers
-                        .push(Box::new(std::io::BufReader::new(f))),
-                    Err(_) => {
-                        error(&common, 1, 0, &format!("Could not open '{}'. ", name));
+                        .push(Box::new(std::io::BufReader::new(std::io::stdin())));
+                } else {
+                    match std::fs::File::open(name) {
+                        Ok(f) => options
+                            .infile_readers
+                            .push(Box::new(std::io::BufReader::new(f))),
+                        Err(_) => {
+                            error(common, 1, 0, &format!("Could not open '{}'. ", name));
+                            return Err(1);
+                        }
                     }
                 }
             }
         }
+        Ok(options)
     }
-    check_common_params(&mut common);
-    Ok((common, options))
+}
+
+impl ToolArgs for Args {
+    fn common(&self) -> &CommonArgs {
+        &self.common
+    }
+
+    fn apply_io(&self, opts: &mut CommonOptions) {
+        // '--directories' rode the same option value as '-d'/'--debug' in the
+        // old table, so giving it (with any ACTION) turned debug mode on.
+        if self.directories.is_some() {
+            opts.debug = true;
+        }
+    }
+
+    fn absorb_matches(&mut self, matches: &clap::ArgMatches) {
+        use clap::parser::ValueSource;
+        let given = |id: &str| matches.value_source(id) == Some(ValueSource::CommandLine);
+        // '--no-messages' was the C loop's 'q' arm under another long name, so
+        // it joins the -v/-q/-s last-one-wins chain by occurrence index.
+        if given("no_messages") {
+            let nm = matches.index_of("no_messages").unwrap_or(0);
+            let verbose_at = matches.index_of("verbose").filter(|_| given("verbose"));
+            if verbose_at.is_none_or(|v| nm > v) {
+                self.common.verbose = false;
+                self.common.quiet = true;
+            }
+        }
+        let ids: &[(&str, Event)] = &[
+            ("format", Event::Format),
+            ("extended_regexp", Event::ExtendedRegexp),
+            ("basic_regexp", Event::BasicRegexp),
+            ("perl_regexp", Event::PerlRegexp),
+            ("ignore_case", Event::IgnoreCase),
+            ("file", Event::File),
+            ("max_count", Event::MaxCount),
+            ("label", Event::Label),
+            ("binary_files", Event::BinaryFiles),
+            ("text", Event::Text),
+            ("devices", Event::Devices),
+            ("recursive", Event::Recursive),
+            ("include", Event::Globbing),
+            ("exclude", Event::Globbing),
+            ("include_from", Event::Globbing),
+            ("exclude_from", Event::Globbing),
+            ("before_context", Event::BeforeContext),
+            ("after_context", Event::AfterContext),
+            ("context", Event::Context),
+            ("binary", Event::Msdos),
+            ("unix_byte_offset", Event::Msdos),
+        ];
+        let mut ordered: Vec<(usize, Event)> = ids
+            .iter()
+            .filter(|(id, _)| given(id))
+            .filter_map(|(id, event)| matches.index_of(id).map(|i| (i, *event)))
+            .collect();
+        ordered.sort_by_key(|(i, _)| *i);
+        self.events = ordered.into_iter().map(|(_, event)| event).collect();
+    }
+
+    fn validate(&self, opts: &CommonOptions) -> ToolResult {
+        // The rejections, number checks and file checks happened inside the C
+        // loop, and the pattern/input resolution before check-params-common.
+        self.resolve(opts, true)?;
+        Ok(())
+    }
 }
 
 // [spec:hfst:def:hfst-grep.string-to-utf8-fn]
@@ -933,14 +1145,16 @@ fn optimise_matcher(
 
 // [spec:hfst:def:hfst-grep.main-fn]
 // [spec:hfst:sem:hfst-grep.main-fn]
-pub fn run(mut args: Vec<String>) -> i32 {
+pub fn run(args: Vec<String>) -> i32 {
+    cli::exit_code(execute(args))
+}
+
+fn execute(args: Vec<String>) -> ToolResult {
     let argv0 = args.first().cloned().unwrap_or_default();
 
     let common = hfst_set_program_name(&argv0, "0.1", "HfstGrep");
-    let (common, options) = match parse_options(common, &mut args) {
-        Ok(v) => v,
-        Err(code) => return code,
-    };
+    let (common, args) = cli::parse::<Args>(common, args)?;
+    let options = args.resolve(&common, false)?;
     verbose_print(&common, &format!("Writing to {}\n", common.output_filename));
     let mut state = MatcherState {
         matcher: HfstTransducer::new(),
@@ -958,7 +1172,7 @@ pub fn run(mut args: Vec<String>) -> i32 {
         Ok(w) => w,
         Err(e) => {
             eprintln!("hfst-grep: cannot open output: {e}");
-            return 1;
+            return Err(1);
         }
     };
     // #if HFST_OPTIMISED_LOOKUP_CAN_IDENTITY_SYMBOL: optimise_matcher();
@@ -981,5 +1195,5 @@ pub fn run(mut args: Vec<String>) -> i32 {
     let _ = out.flush();
 
     // The former EXIT_CONTINUE return value: success once processing is done.
-    0
+    Ok(())
 }

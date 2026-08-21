@@ -6,19 +6,16 @@
 //! `github.com/divvun/divvunspell` (its `src/archive/boxf.rs` loader), and the
 //! reference producer it mirrors is divvunspell's `thfst-tools`.
 //!
-//! It follows the house getopt/[`CommonOptions`] pattern (like the other tools),
-//! not clap. Unlike the algebra/lookup tools it has NO default input/output
-//! streams: pack mode requires `-a`, `-e`, `-o`; info mode requires only `-I`.
-//! It therefore uses only [`hfst_getopt_common_long`] plus its own options (no
-//! unary/binary `inc` helpers, which assume a standard in/out stream).
+//! Option handling is clap 4 derive through [`crate::cli`]. Unlike the
+//! algebra/lookup tools it has NO default input/output streams: pack mode
+//! requires `-a`, `-e`, `-o`; info mode requires only `-I`. It therefore never
+//! runs the check-params fragments (no standard in/out stream to resolve).
 
+use crate::cli::{self, CommonArgs, ToolArgs, ToolResult};
 use crate::globals::CommonOptions;
 use crate::hfst_commandline::{
-    convert_any_with_options, error, extend_options_from_env, hfst_set_program_name, verbose_print,
+    convert_any_with_options, error, hfst_set_program_name, verbose_print,
 };
-use crate::hfst_getopt::{self as getopt, Getopt, REQUIRED_ARGUMENT};
-use crate::hfst_program_options::{hfst_getopt_common_long, print_common_program_options};
-use crate::inc::{CaseResult, handle_common_case, handle_error_case};
 use box_format::{
     BoxPath, Compression, CompressionConfig, HashMap as BoxHashMap, sync::BoxReader,
     sync::BoxWriter,
@@ -42,6 +39,101 @@ const ERRMODEL_DIRNAME: &str = "errmodel.default.thfst";
 
 /// The three THFST member files, in the order they must enter the archive.
 const THFST_MEMBERS: [&str; 3] = ["alphabet", "index", "transition"];
+
+/// hfst-bhfst's command line.
+// [spec:hfst:req:cli.arg-parse]
+// [spec:hfst:req:cli.help]
+#[derive(clap::Parser)]
+#[command(
+    about = "Pack a THFST acceptor/errmodel pair (+ speller metadata) into a BHFST archive",
+    after_help = "Pack mode needs -a, -e and -o. Info mode needs only -I."
+)]
+struct Args {
+    #[command(flatten)]
+    common: CommonArgs,
+
+    /// Acceptor: a .thfst directory, or any transducer file (auto-converted
+    /// to THFST)
+    #[arg(
+        short = 'a',
+        long = "acceptor",
+        value_name = "FILE",
+        allow_hyphen_values = true
+    )]
+    acceptor: Option<String>,
+
+    /// Error model: same as --acceptor
+    #[arg(
+        short = 'e',
+        long = "errmodel",
+        value_name = "FILE",
+        allow_hyphen_values = true
+    )]
+    errmodel: Option<String>,
+
+    /// zhfst index.xml, converted to meta.json (ids .hfst->.thfst)
+    #[arg(
+        short = 'X',
+        long = "index-xml",
+        value_name = "FILE",
+        allow_hyphen_values = true
+    )]
+    index_xml: Option<String>,
+
+    /// meta.json embedded verbatim (mutually exclusive with -X)
+    #[arg(
+        short = 'm',
+        long = "meta",
+        value_name = "FILE",
+        allow_hyphen_values = true
+    )]
+    meta: Option<String>,
+
+    /// Print metadata of an existing .bhfst and exit
+    #[arg(
+        short = 'I',
+        long = "info",
+        value_name = "FILE",
+        allow_hyphen_values = true
+    )]
+    info: Option<String>,
+
+    /// (rejected: this tool takes no positional arguments)
+    #[arg(value_name = "ARG", num_args = 0.., hide = true)]
+    infiles: Vec<String>,
+}
+
+impl ToolArgs for Args {
+    fn common(&self) -> &CommonArgs {
+        &self.common
+    }
+
+    /// No default output transducer stream: mirror only check-params-common's
+    /// message routing (stderr when no '-o'), never its "<stdout>" default.
+    fn apply_io(&self, opts: &mut CommonOptions) {
+        if !opts.output_named {
+            opts.message_to_stderr = true;
+        }
+    }
+
+    fn applies_check_common_params(&self) -> bool {
+        false
+    }
+
+    fn validate(&self, opts: &CommonOptions) -> ToolResult {
+        // The C rejected leftover free arguments right after its getopt loop.
+        if !self.infiles.is_empty() {
+            error(
+                opts,
+                1,
+                0,
+                "hfst-bhfst takes no positional arguments; use -a/-e/-o or -I",
+            );
+            return Err(1);
+        }
+        Ok(())
+    }
+}
 
 /// hfst-bhfst's own options.
 #[derive(Default)]
@@ -131,140 +223,6 @@ mod bhfst_meta {
 }
 
 use bhfst_meta::SpellerMetadata;
-
-// -----------------------------------------------------------------------------
-// usage / option parsing
-// -----------------------------------------------------------------------------
-
-fn print_usage(common: &CommonOptions) {
-    let mut msg = common.message_writer();
-    let _ = write!(
-        msg,
-        "Usage: {} [OPTIONS...]\n\
-         Pack a THFST acceptor/errmodel pair (+ speller metadata) into a BHFST archive\n\n",
-        common.program_name
-    );
-    print_common_program_options(&mut *msg);
-    let _ = write!(
-        msg,
-        "Packing options:\n\
-         \u{20}\u{20}-a, --acceptor=FILE   Acceptor: a .thfst directory, or any transducer file\n\
-         \u{20}\u{20}                        (auto-converted to THFST)\n\
-         \u{20}\u{20}-e, --errmodel=FILE   Error model: same as --acceptor\n\
-         \u{20}\u{20}-X, --index-xml=FILE  zhfst index.xml, converted to meta.json (ids .hfst->.thfst)\n\
-         \u{20}\u{20}-m, --meta=FILE       meta.json embedded verbatim (mutually exclusive with -X)\n\
-         \u{20}\u{20}-o, --output=FILE     Output .bhfst archive (required for packing; stdout unsupported)\n\
-         \u{20}\u{20}-I, --info=FILE       Print metadata of an existing .bhfst and exit\n\
-         \n\
-         Pack mode needs -a, -e and -o. Info mode needs only -I.\n"
-    );
-    let _ = writeln!(msg);
-}
-
-/// Parse argv into the shared + tool options; `Err(code)` is an exit code the
-/// caller should return.
-fn parse_options(
-    mut common: CommonOptions,
-    args: &mut Vec<String>,
-) -> Result<(CommonOptions, Options), i32> {
-    let mut options = Options::default();
-    let mut opt = Getopt::new();
-    extend_options_from_env(args);
-    loop {
-        let mut long_options: Vec<getopt::GetOpt> = Vec::new();
-        long_options.extend(hfst_getopt_common_long());
-        long_options.push(getopt::GetOpt {
-            name: "acceptor",
-            has_arg: REQUIRED_ARGUMENT,
-            val: b'a' as i32,
-        });
-        long_options.push(getopt::GetOpt {
-            name: "errmodel",
-            has_arg: REQUIRED_ARGUMENT,
-            val: b'e' as i32,
-        });
-        long_options.push(getopt::GetOpt {
-            name: "index-xml",
-            has_arg: REQUIRED_ARGUMENT,
-            val: b'X' as i32,
-        });
-        long_options.push(getopt::GetOpt {
-            name: "meta",
-            has_arg: REQUIRED_ARGUMENT,
-            val: b'm' as i32,
-        });
-        // '-o/--output' is recognized here but routed to `handle_common_case`,
-        // which populates `common.output_filename`/`output_named` (there is no
-        // `b'o'` arm below). No `inc` unary/binary helpers are chained: this
-        // tool has no default input/output transducer stream.
-        long_options.push(getopt::GetOpt {
-            name: "output",
-            has_arg: REQUIRED_ARGUMENT,
-            val: b'o' as i32,
-        });
-        long_options.push(getopt::GetOpt {
-            name: "info",
-            has_arg: REQUIRED_ARGUMENT,
-            val: b'I' as i32,
-        });
-
-        let c = opt.getopt_long(args, &long_options);
-        if -1 == c {
-            break;
-        }
-
-        match handle_common_case(&mut common, &opt, c, print_usage) {
-            CaseResult::Return(code) => return Err(code),
-            CaseResult::Break => continue,
-            CaseResult::NotHandled => {}
-        }
-        let ch = c as u8;
-        match ch {
-            b'a' => {
-                options.acceptor = Some(opt.optarg());
-                continue;
-            }
-            b'e' => {
-                options.errmodel = Some(opt.optarg());
-                continue;
-            }
-            b'X' => {
-                options.index_xml = Some(opt.optarg());
-                continue;
-            }
-            b'm' => {
-                options.meta = Some(opt.optarg());
-                continue;
-            }
-            b'I' => {
-                options.info = Some(opt.optarg());
-                continue;
-            }
-            _ => {}
-        }
-        return Err(handle_error_case(&common, &opt, c));
-    }
-
-    // No default output stream: mirror check-params-common's default so
-    // message routing (stderr) matches the rest of the suite.
-    if !common.output_named {
-        common.message_to_stderr = true;
-    }
-
-    // No positional operands are accepted.
-    let optind = opt.optind;
-    if args.len() > optind {
-        error(
-            &common,
-            1,
-            0,
-            "hfst-bhfst takes no positional arguments; use -a/-e/-o or -I",
-        );
-        return Err(1);
-    }
-
-    Ok((common, options))
-}
 
 // -----------------------------------------------------------------------------
 // pack mode
@@ -656,13 +614,21 @@ fn info(common: &CommonOptions, path: &str) -> i32 {
 
 // [spec:hfst:def:thfst-backend.bhfst-tool]
 // [spec:hfst:sem:thfst-backend.bhfst-tool]
-pub fn run(mut args: Vec<String>) -> i32 {
+pub fn run(args: Vec<String>) -> i32 {
+    cli::exit_code(execute(args))
+}
+
+fn execute(args: Vec<String>) -> ToolResult {
     let argv0 = args.first().cloned().unwrap_or_default();
 
     let common = hfst_set_program_name(&argv0, "0.1", "HfstBhfst");
-    let (common, options) = match parse_options(common, &mut args) {
-        Ok(v) => v,
-        Err(code) => return code,
+    let (common, args) = cli::parse::<Args>(common, args)?;
+    let options = Options {
+        acceptor: args.acceptor.clone(),
+        errmodel: args.errmodel.clone(),
+        index_xml: args.index_xml.clone(),
+        meta: args.meta.clone(),
+        info: args.info.clone(),
     };
 
     // Info mode short-circuits everything else.
@@ -679,9 +645,9 @@ pub fn run(mut args: Vec<String>) -> i32 {
                 0,
                 "--info cannot be combined with packing options",
             );
-            return 1;
+            return Err(1);
         }
-        return info(&common, info_path);
+        return cli::from_code(info(&common, info_path));
     }
 
     // Pack mode: -a, -e and -o are all required. '-o' flows through the common
@@ -697,7 +663,7 @@ pub fn run(mut args: Vec<String>) -> i32 {
             0,
             "pack mode requires --acceptor, --errmodel and --output (or use --info)",
         );
-        return 1;
+        return Err(1);
     };
     if common.output_filename == "<stdout>" {
         error(
@@ -707,7 +673,7 @@ pub fn run(mut args: Vec<String>) -> i32 {
             "writing a .bhfst archive to standard output is not supported,\n\
              use 'hfst-bhfst [--output|-o] OUT.bhfst' instead",
         );
-        return 1;
+        return Err(1);
     }
     let output = common.output_filename.clone();
 
@@ -718,17 +684,11 @@ pub fn run(mut args: Vec<String>) -> i32 {
             0,
             "--index-xml and --meta are mutually exclusive",
         );
-        return 1;
+        return Err(1);
     }
 
-    let acceptor = match resolve_thfst_source(&common, acceptor_path) {
-        Ok(s) => s,
-        Err(code) => return code,
-    };
-    let errmodel = match resolve_thfst_source(&common, errmodel_path) {
-        Ok(s) => s,
-        Err(code) => return code,
-    };
+    let acceptor = resolve_thfst_source(&common, acceptor_path)?;
+    let errmodel = resolve_thfst_source(&common, errmodel_path)?;
 
-    pack(&common, &options, &acceptor, &errmodel, &output)
+    cli::from_code(pack(&common, &options, &acceptor, &errmodel, &output))
 }

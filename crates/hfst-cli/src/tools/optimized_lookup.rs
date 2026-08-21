@@ -7,15 +7,17 @@
 //! (`HfstTransducer::lookup_fd_string`), so the tool no longer carries its own
 //! binary-format reader or traversal code.
 //!
-//! Idiomatic option handling: the tool's state lives in [`CommonOptions`] (the
-//! shared program-name/version/verbosity fields) and a tool-local [`Options`] —
-//! both built by `parse_options` and threaded into the processing functions.
-//! There are no `static mut` globals and no `unsafe`.
+//! Option handling is clap 4 derive through [`crate::cli`], but the shared
+//! [`crate::cli::CommonArgs`] group is NOT flattened in: this tool carries its
+//! own option table (no '-o', no '-d', no '--colour') and its own
+//! `-h/-V/-v/-q/-s` semantics — '-q'/'-s' turn weight display ON, '-v' changes
+//! nothing, and a parse failure dumps the full usage
+//! ([`crate::cli::ErrorStyle::UsageDump`]).
 
+use crate::cli::{self, CommonArgs, ErrorStyle, ToolArgs, ToolResult};
 use crate::globals::CommonOptions;
+use crate::hfst_commandline::hfst_set_program_name;
 use crate::hfst_commandline::{VERSION_COPYRIGHT_BLOCK, version_line};
-use crate::hfst_commandline::{extend_options_from_env, hfst_set_program_name};
-use crate::hfst_getopt::{self as getopt, Getopt};
 use hfst::hfst_flag_diacritics::FdOperation;
 use std::io::Write;
 
@@ -645,51 +647,256 @@ fn setup(options: &Options, path: &str) -> i32 {
 }
 
 // ---------------------------------------------------------------------------
-// print_usage / print_version / print_short_help
+// the command line
 // ---------------------------------------------------------------------------
+
+/// hfst-optimized-lookup's command line.
+// [spec:hfst:req:cli.arg-parse]
 // [spec:hfst:req:cli.help]
-fn print_usage(common: &CommonOptions) -> bool {
-    let mut msg = common.message_writer();
-    let _ = write!(
-        msg,
-        "\nUsage: {} [OPTIONS] TRANSDUCER\n\
-Run a transducer on standard input (one word per line) and print analyses\n\
-NOTE: hfst-optimized-lookup does lookup from left to right as opposed to xfst\n\
-      and foma lookup which is carried out from right to left. In order to do\n\
-      lookup in a similar way as xfst and foma, invert the transducer first.\n\
-\n\
-  -h, --help                  Print this help message\n\
-  -V, --version               Print version information\n\
-  -v, --verbose               Be verbose\n\
-  -q, --quiet                 Don't be verbose (default)\n\
-  -s, --silent                Same as quiet\n\
-  -e, --echo                  Echo inputs\n\
-                              (useful if redirecting lots of output to a file)\n\
-  -w, --show-weights          Print final analysis weights (if any)\n\
-  -u, --unique                Suppress duplicate analyses\n\
-  -n N, --analyses=N          Output no more than N analyses\n\
-                              (if the transducer is weighted, the N best analyses)\n\
-  -b, --beam=B                Output only analyses whose weight is within B from\n\
-                              the best analysis\n\
-  -t, --time-cutoff=S         Limit search after having used S seconds per input\n\
-  -x, --xerox                 Xerox output format (default)\n\
-  -f, --fast                  Be as fast as possible.\n\
-                              (with this option enabled -u and -n don't work and\n\
-                              output won't be ordered by weight).\n\
-  -p, --pipe-mode[=STREAM]    Control input and output streams.\n\
-\n\
-N must be a positive integer. B must be a non-negative float.\n\
-S must be a non-negative float. The default, 0.0, indicates no cutoff.\n\
-Options -n and -b are combined with AND, i.e. they both restrict the output.\n\
-\n\
-STREAM can be {{ input, output, both }}. If not given, defaults to {{both}}.\n\
-Input is read interactively line by line from the user. If you redirect input\n\
-from a file, use --pipe-mode=input. --pipe-mode=output is ignored on non-windows\n\
-platforms.\n\
-\n",
-        common.program_name
-    );
-    true
+#[derive(clap::Parser)]
+#[command(
+    about = "Run a transducer on standard input (one word per line) and print analyses\n\
+             NOTE: hfst-optimized-lookup does lookup from left to right as opposed to xfst\n\
+             and foma lookup which is carried out from right to left. In order to do\n\
+             lookup in a similar way as xfst and foma, invert the transducer first.",
+    after_help = "N must be a positive integer. B must be a non-negative float.
+S must be a non-negative float. The default, 0.0, indicates no cutoff.
+Options -n and -b are combined with AND, i.e. they both restrict the output.
+
+STREAM can be { input, output, both }. If not given, defaults to {both}.
+Input is read interactively line by line from the user. If you redirect input
+from a file, use --pipe-mode=input. --pipe-mode=output is ignored on non-windows
+platforms."
+)]
+struct Args {
+    /// Never populated: this tool carries its own option table with its own
+    /// `-v/-q/-s` semantics instead of the shared common cases.
+    #[arg(skip)]
+    common: CommonArgs,
+
+    /// Print version information
+    #[arg(short = 'V', long = "version")]
+    version: bool,
+
+    /// Be verbose
+    #[arg(short = 'v', long = "verbose")]
+    verbose: bool,
+
+    /// Don't be verbose (default)
+    #[arg(short = 'q', long = "quiet")]
+    quiet: bool,
+
+    /// Same as quiet
+    #[arg(short = 's', long = "silent")]
+    silent: bool,
+
+    /// Echo inputs (useful if redirecting lots of output to a file)
+    #[arg(short = 'e', long = "echo-inputs")]
+    echo_inputs: bool,
+
+    /// Print final analysis weights (if any)
+    #[arg(short = 'w', long = "show-weights")]
+    show_weights: bool,
+
+    /// Suppress duplicate analyses
+    #[arg(short = 'u', long = "unique")]
+    unique: bool,
+
+    /// Output no more than N analyses (if the transducer is weighted, the N
+    /// best analyses)
+    #[arg(
+        short = 'n',
+        long = "analyses",
+        value_name = "N",
+        allow_hyphen_values = true
+    )]
+    analyses: Option<String>,
+
+    /// Output only analyses whose weight is within B from the best analysis
+    #[arg(
+        short = 'b',
+        long = "beam",
+        value_name = "B",
+        allow_hyphen_values = true
+    )]
+    beam: Option<String>,
+
+    /// Limit search after having used S seconds per input
+    #[arg(
+        short = 't',
+        long = "time-cutoff",
+        value_name = "S",
+        allow_hyphen_values = true
+    )]
+    time_cutoff: Option<String>,
+
+    /// Xerox output format (default)
+    #[arg(short = 'x', long = "xerox")]
+    xerox: bool,
+
+    /// Be as fast as possible (with this option enabled -u and -n don't work
+    /// and output won't be ordered by weight)
+    #[arg(short = 'f', long = "fast")]
+    fast: bool,
+
+    /// Control input and output streams
+    #[arg(
+        short = 'p',
+        long = "pipe-mode",
+        value_name = "STREAM",
+        num_args = 0..=1,
+        require_equals = true,
+        default_missing_value = "both",
+        action = clap::ArgAction::Append
+    )]
+    pipe_mode: Vec<String>,
+
+    /// The transducer file
+    #[arg(value_name = "TRANSDUCER", num_args = 0..)]
+    infiles: Vec<String>,
+
+    /// The checked option occurrences in command-line order: the C loop
+    /// answered '-V' and rejected bad '-b/-t/-n/-p' values as it scanned, so
+    /// the diagnostics replay in that order.
+    #[arg(skip)]
+    events: Vec<Event>,
+}
+
+/// One checked iteration of the C option loop, in occurrence order.
+#[derive(Clone, Copy)]
+enum Event {
+    Version,
+    Beam,
+    TimeCutoff,
+    Analyses,
+    /// Index into the `pipe_mode` occurrence vector.
+    PipeMode(usize),
+}
+
+impl Args {
+    /// Replay the checked occurrences into the tool options; fatal value
+    /// rejections print exactly as the C loop's arms did.
+    fn resolve(&self, common: &CommonOptions, print: bool) -> Result<Options, i32> {
+        let mut options = Options {
+            verbose_flag: self.verbose && !(self.quiet || self.silent),
+            // Quiet also turns weights on. It reads like a typo, but it is
+            // what upstream does and the only half of -q/-s a user can see,
+            // so dropping it would silently change every -q invocation.
+            display_weights_flag: self.show_weights || self.quiet || self.silent,
+            display_unique_flag: self.unique,
+            echo_inputs_flag: self.echo_inputs,
+            be_fast: self.fast,
+            ..Options::default()
+        };
+        if self.xerox {
+            options.output_type = Xerox;
+        }
+        for event in &self.events {
+            match event {
+                Event::Version => {
+                    if print {
+                        print_version(common);
+                    }
+                    return Err(0);
+                }
+                Event::Beam => {
+                    options.beam =
+                        parse_leading_f64(self.beam.as_deref().unwrap_or_default()) as f32;
+                    if options.beam < 0.0 {
+                        print_err("Invalid argument for --beam\n");
+                        return Err(1);
+                    }
+                }
+                Event::TimeCutoff => {
+                    options.time_cutoff =
+                        parse_leading_f64(self.time_cutoff.as_deref().unwrap_or_default());
+                    if options.time_cutoff < 0.0 {
+                        print_err("Invalid argument for --time-cutoff\n");
+                        return Err(1);
+                    }
+                }
+                Event::Analyses => {
+                    options.max_analyses =
+                        parse_leading_i32(self.analyses.as_deref().unwrap_or_default());
+                    if options.max_analyses < 1 {
+                        print_err("Invalid or no argument for analyses count\n");
+                        return Err(1);
+                    }
+                }
+                Event::PipeMode(k) => {
+                    let a = self.pipe_mode[*k].as_str();
+                    if a == "both" || a == "BOTH" {
+                        options.pipe_input = true;
+                        options.pipe_output = true;
+                    } else if a == "input" || a == "INPUT" || a == "in" || a == "IN" {
+                        options.pipe_input = true;
+                    } else if a == "output" || a == "OUTPUT" || a == "out" || a == "OUT" {
+                        options.pipe_output = true;
+                    } else {
+                        print_err(&format!("--pipe-mode argument {} unrecognised\n\n", a));
+                        return Err(1);
+                    }
+                }
+            }
+        }
+        // The single positional operand, resolved the way the tool's own
+        // post-loop block did.
+        match self.infiles.len() {
+            0 => options.input_path = None,
+            1 => options.input_path = Some(self.infiles[0].clone()),
+            _ => {
+                print_err("More than one input file given\n");
+                return Err(1);
+            }
+        }
+        Ok(options)
+    }
+}
+
+impl ToolArgs for Args {
+    fn common(&self) -> &CommonArgs {
+        &self.common
+    }
+
+    fn apply_io(&self, _opts: &mut CommonOptions) {}
+
+    fn applies_common_options(&self) -> bool {
+        false
+    }
+
+    fn error_style() -> ErrorStyle {
+        ErrorStyle::UsageDump
+    }
+
+    fn absorb_matches(&mut self, matches: &clap::ArgMatches) {
+        let ids: &[(&str, Event)] = &[
+            ("version", Event::Version),
+            ("beam", Event::Beam),
+            ("time_cutoff", Event::TimeCutoff),
+            ("analyses", Event::Analyses),
+        ];
+        let mut ordered: Vec<(usize, Event)> = ids
+            .iter()
+            .filter(|(id, _)| {
+                matches.value_source(id) == Some(clap::parser::ValueSource::CommandLine)
+            })
+            .filter_map(|(id, event)| matches.index_of(id).map(|i| (i, *event)))
+            .collect();
+        if matches.value_source("pipe_mode") == Some(clap::parser::ValueSource::CommandLine)
+            && let Some(indices) = matches.indices_of("pipe_mode")
+        {
+            for (k, i) in indices.enumerate() {
+                ordered.push((i, Event::PipeMode(k)));
+            }
+        }
+        ordered.sort_by_key(|(i, _)| *i);
+        self.events = ordered.into_iter().map(|(_, event)| event).collect();
+    }
+
+    fn validate(&self, opts: &CommonOptions) -> ToolResult {
+        self.resolve(opts, true)?;
+        Ok(())
+    }
 }
 
 // [spec:hfst:def:hfst-optimized-lookup.print-version-fn]
@@ -705,188 +912,31 @@ fn print_version(common: &CommonOptions) -> bool {
     true
 }
 
-// [spec:hfst:def:hfst-optimized-lookup.print-short-help-fn]
-// [spec:hfst:sem:hfst-optimized-lookup.print-short-help-fn]
-fn print_short_help(common: &CommonOptions) -> bool {
-    print_usage(common);
-    true
-}
-
-// ---------------------------------------------------------------------------
-// parse_options
-// ---------------------------------------------------------------------------
-//
-// Parse argv into the shared + tool options; `Err(code)` is an exit code the
-// caller should return. hfst-optimized-lookup carries its own long-option
-// table and its own `-h/-V/-v/-q/-s` cases (it does not use the shared
-// getopt-cases fragments).
-fn parse_options(
-    common: CommonOptions,
-    args: &mut Vec<String>,
-) -> Result<(CommonOptions, Options), i32> {
-    let mut options = Options::default();
-    let mut opt = Getopt::new();
-    extend_options_from_env(args);
-    loop {
-        let long_options: [getopt::GetOpt; 14] = [
-            // first the hfst-mandated options
-            opt_def("help", 0, b'h'),
-            opt_def("version", 0, b'V'),
-            opt_def("verbose", 0, b'v'),
-            opt_def("quiet", 0, b'q'),
-            opt_def("silent", 0, b's'),
-            // the hfst-optimized-lookup-specific options
-            opt_def("echo-inputs", 0, b'e'),
-            opt_def("show-weights", 0, b'w'),
-            opt_def("beam", 1, b'b'),
-            opt_def("time-cutoff", 1, b't'),
-            opt_def("unique", 0, b'u'),
-            opt_def("xerox", 0, b'x'),
-            opt_def("fast", 0, b'f'),
-            opt_def("pipe-mode", 2, b'p'),
-            opt_def("analyses", 1, b'n'),
-        ];
-
-        let c = opt.getopt_long(args, &long_options);
-
-        if c == -1 {
-            // no more options to look at
-            break;
-        }
-
-        match c as u8 {
-            b'h' => {
-                print_usage(&common);
-                return Err(0);
-            }
-            b'V' => {
-                print_version(&common);
-                return Err(0);
-            }
-            b'v' => {
-                options.verbose_flag = true;
-            }
-            b'q' | b's' => {
-                options.verbose_flag = false;
-                // Quiet also turns weights on. It reads like a typo, but it is
-                // what upstream does and the only half of -q/-s a user can see,
-                // so dropping it would silently change every -q invocation.
-                options.display_weights_flag = true;
-            }
-            b'e' => {
-                options.echo_inputs_flag = true;
-            }
-            b'w' => {
-                options.display_weights_flag = true;
-            }
-            b'u' => {
-                options.display_unique_flag = true;
-            }
-            b'b' => {
-                options.beam = parse_leading_f64(&opt.optarg()) as f32;
-                if options.beam < 0.0 {
-                    print_err("Invalid argument for --beam\n");
-                    return Err(1);
-                }
-            }
-            b't' => {
-                options.time_cutoff = parse_leading_f64(&opt.optarg());
-                if options.time_cutoff < 0.0 {
-                    print_err("Invalid argument for --time-cutoff\n");
-                    return Err(1);
-                }
-            }
-            b'n' => {
-                options.max_analyses = parse_leading_i32(&opt.optarg());
-                if options.max_analyses < 1 {
-                    print_err("Invalid or no argument for analyses count\n");
-                    return Err(1);
-                }
-            }
-            b'x' => {
-                options.output_type = Xerox;
-            }
-            b'f' => {
-                options.be_fast = true;
-            }
-            b'p' => match opt.optarg_opt() {
-                None => {
-                    options.pipe_input = true;
-                    options.pipe_output = true;
-                }
-                Some(a) => {
-                    if a == "both" || a == "BOTH" {
-                        options.pipe_input = true;
-                        options.pipe_output = true;
-                    } else if a == "input" || a == "INPUT" || a == "in" || a == "IN" {
-                        options.pipe_input = true;
-                    } else if a == "output" || a == "OUTPUT" || a == "out" || a == "OUT" {
-                        options.pipe_output = true;
-                    } else {
-                        print_err(&format!("--pipe-mode argument {} unrecognised\n\n", a));
-                        return Err(1);
-                    }
-                }
-            },
-            _ => {
-                print_err("Invalid option\n\n");
-                print_short_help(&common);
-                return Err(1);
-            }
-        }
-    }
-
-    // no more options, we should now be at the input filename. `optind` is the
-    // getopt parser's index of the first free (non-option) argument after the
-    // permutation.
-    let optind = opt.optind;
-    if (optind + 1) < args.len() {
-        print_err("More than one input file given\n");
-        return Err(1);
-    } else if (optind + 1) == args.len() {
-        options.input_path = Some(args[optind].clone());
-    } else {
-        // (no operand; run() reports "No input file given")
-        options.input_path = None;
-    }
-
-    Ok((common, options))
-}
-
 // ---------------------------------------------------------------------------
 // main
 // ---------------------------------------------------------------------------
 // [spec:hfst:def:hfst-optimized-lookup.main-fn]
 // [spec:hfst:sem:hfst-optimized-lookup.main-fn]
-pub fn run(mut args: Vec<String>) -> i32 {
+pub fn run(args: Vec<String>) -> i32 {
+    cli::exit_code(execute(args))
+}
+
+fn execute(args: Vec<String>) -> ToolResult {
     let argv0 = args.first().cloned().unwrap_or_default();
 
     let common = hfst_set_program_name(&argv0, "1.2", "HfstOptimizedLookup");
-    let (_common, options) = match parse_options(common, &mut args) {
-        Ok(v) => v,
-        Err(code) => return code,
-    };
+    let (common, args) = cli::parse::<Args>(common, args)?;
+    let options = args.resolve(&common, false)?;
 
-    // the single positional operand (the transducer path) was resolved in
-    // parse_options while the getopt state was live.
     match &options.input_path {
         Some(path) => {
             let pathstr = path.clone();
-            setup(&options, &pathstr)
+            cli::from_code(setup(&options, &pathstr))
         }
         None => {
             print_err("No input file given\n");
-            1
+            Err(1)
         }
-    }
-}
-
-// helpers -------------------------------------------------------------------
-fn opt_def(name: &'static str, has_arg: i32, val: u8) -> getopt::GetOpt {
-    getopt::GetOpt {
-        name,
-        has_arg,
-        val: val as i32,
     }
 }
 

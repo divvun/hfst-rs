@@ -1,19 +1,10 @@
 //! Faithful 1:1 port of tools/src/hfst-pair-test.cc — the twolc rule-file
-//! pair-test command-line tool. Drives the hfst-cli foundation (globals,
-//! getopt, commandline, program-options, inc fragments).
+//! pair-test command-line tool. Option handling is clap 4 derive through
+//! [`crate::cli`].
 
+use crate::cli::{self, CommonArgs, ToolArgs, ToolResult, UnaryIo};
 use crate::globals::CommonOptions;
-use crate::hfst_commandline::{
-    error, extend_options_from_env, hfst_set_program_name, verbose_print,
-};
-use crate::hfst_getopt::{self as getopt, Getopt};
-use crate::hfst_program_options::{
-    hfst_getopt_common_long, hfst_getopt_unary_long, print_common_program_options,
-};
-use crate::inc::{
-    CaseResult, check_common_params, check_unary_params, handle_common_case, handle_error_case,
-    handle_unary_case,
-};
+use crate::hfst_commandline::{error, hfst_set_program_name, verbose_print};
 use hfst::hfst_basic_transducer::HfstBasicTransducer;
 use hfst::hfst_data_types::{StringPairVector, Symbol};
 use hfst::hfst_input_stream::HfstInputStream;
@@ -28,20 +19,8 @@ use std::io::{BufRead, Write};
 /// std BufRead in process_stream (the "<stdin>" sentinel selects stdin).
 struct Options {
     pair_test_file_name: String,
-    pair_test_given: bool,
     positive_test: bool,
     xerox_mode: bool,
-}
-
-impl Default for Options {
-    fn default() -> Options {
-        Options {
-            pair_test_file_name: String::new(),
-            pair_test_given: false,
-            positive_test: true,
-            xerox_mode: false,
-        }
-    }
 }
 
 // Open the pair-test strings file (pair_test_file_name) as a buffered reader;
@@ -57,186 +36,59 @@ fn pair_test_reader(name: &str) -> std::io::Result<Box<dyn BufRead>> {
     }
 }
 
-// [spec:hfst:req:cli.help]
-fn print_usage(common: &CommonOptions) {
-    // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
-    let mut msg = common.message_writer();
-    let _ = write!(
-        msg,
-        "Usage: {} [OPTIONS...] [INFILE]\npair test for a twolc rule file.\n\n",
-        common.program_name
-    );
-
-    print_common_program_options(&mut *msg);
-    let _ = write!(
-        msg,
-        "Input/Output options:\n\
-         \x20 -i, --input=INFILE     Read input rule file from INFILE\n\
-         \x20 -o, --output=OUTFILE   Write test output to OUTFILE\n\
-         \x20 -N  --negative-test    Test fails if any of the pair strings is\n\
-         \x20                        accepted.\n\
-         \x20 -X  --xerox-mode       In xerox mode, test cases are harvested\n\
-         \x20                        from a twolc source file.\n"
-    );
-
-    let _ = write!(
-        msg,
-        "Pair test options:\n\
-         \x20 -I, --input-strings=SFILE        Read pair test strings from\n\
-         \x20                                  SFILE\n"
-    );
-    let _ = writeln!(msg);
-    let _ = write!(
-        msg,
-        "If SFILE is missing, the test pair strings are read from STDIN.\n\
-         If OUTFILE is missing, test output is written to STDOUT.\n"
-    );
-    let _ = writeln!(msg);
-    let _ = write!(
-        msg,
-        "The rule file is tested using correspondences given as\n\
-         pair strings, e.g. \"e a r l y:i e r\". Every pair string is\n\
-         tested using every rule and the program prints information\n\
-         about correspondences that are incorrectly allowed or\n\
-         disallowed.\n"
-    );
-    let _ = writeln!(msg);
-    let _ = write!(
-        msg,
-        "The test pair string files contain one pair string/line. Lines\n\
-         where the first non-white-space character is \"!\" are\n\
-         considered comment lines and skipped.\n"
-    );
-    let _ = writeln!(msg);
-    let _ = write!(
-        msg,
-        "There are three test modes positive, negative and Xerox mode. In\n\
-         positive mode, all of the pair strings should be allowed and in\n\
-         negative mode they should be disallowed. In Xerox mode the cases\n\
-         are read from a twolc source file and both positive and negative\n\
-         cases can occur.\n"
-    );
-    let _ = writeln!(msg);
-    let _ = write!(
-        msg,
-        "Ordinarily, positive test mode is in use. Option -N switches to\n\
-         negative test mode. The exit code for a successful test is 0. \n\
-         The exit code is 1 otherwise. A successful test will print\n\
-         \"Test passed\". A failing test prints \"Test failed\" and\n\
-         information about pair strings that are handled incorrectly.\n"
-    );
-    let _ = writeln!(msg);
-    let _ = write!(
-        msg,
-        "In positive test mode (i.e. without option -N), if a pair\n\
-         string is not accepted, the names of the rules that reject\n\
-         it are printed as well as the positions in the string where the\n\
-         rules run out of possible transitions. In negative mode, only\n\
-         the strings that are allowed are printed.\n"
-    );
-    let _ = writeln!(msg);
-    let _ = write!(
-        msg,
-        "In Xerox mode, the input should be a twolc file. Tests consist of\n\
-         two lines: an input form and an output form. The test cases are\n\
-         specialized comments prefixed with either '!!\u{20ac}' or '!!$' depeding on\n\
-         whether the pair should succeed or fail. An example of a positive\n\
-         test:\n\n\
-         !!\u{20ac} earlYer\n\
-         !!\u{20ac} earlier\n\n\
-         An example of a negative test:\n\n\
-         !!$ earlYer\n\
-         !!$ earlyer\n"
-    );
-    let _ = writeln!(msg);
-    let _ = write!(
-        msg,
-        "In silent mode (-s), the program won't print anything. Only the\n\
-         exit code tells whether the test was successful or not.\n"
-    );
-    let _ = writeln!(msg);
-}
-
+/// hfst-pair-test's command line.
 // [spec:hfst:def:hfst-pair-test.parse-options-fn]
 // [spec:hfst:sem:hfst-pair-test.parse-options-fn]
 // [spec:hfst:req:cli.arg-parse]
-fn parse_options(
-    mut common: CommonOptions,
-    args: &mut Vec<String>,
-) -> Result<(CommonOptions, Options), i32> {
-    let mut options = Options::default();
-    let mut opt = Getopt::new();
-    extend_options_from_env(args);
-    loop {
-        let mut long_options: Vec<getopt::GetOpt> = Vec::new();
-        long_options.extend(hfst_getopt_common_long());
-        long_options.extend(hfst_getopt_unary_long());
-        // add tool-specific options here
-        long_options.push(getopt::GetOpt {
-            name: "input-strings",
-            has_arg: getopt::REQUIRED_ARGUMENT,
-            val: 'I' as i32,
-        });
-        long_options.push(getopt::GetOpt {
-            name: "negative-test",
-            has_arg: getopt::NO_ARGUMENT,
-            val: 'N' as i32,
-        });
-        long_options.push(getopt::GetOpt {
-            name: "xerox-mode",
-            has_arg: getopt::NO_ARGUMENT,
-            val: 'X' as i32,
-        });
-        let c = opt.getopt_long(args, &long_options);
-        if -1 == c {
-            break;
-        }
+// [spec:hfst:req:cli.help]
+#[derive(clap::Parser)]
+#[command(
+    about = "pair test for a twolc rule file",
+    after_help = "If SFILE is missing, the test pair strings are read from STDIN.
+If OUTFILE is missing, test output is written to STDOUT.
 
-        match handle_common_case(&mut common, &opt, c, print_usage) {
-            CaseResult::Return(code) => return Err(code),
-            CaseResult::Break => continue,
-            CaseResult::NotHandled => {}
-        }
-        match handle_unary_case(&mut common, &opt, c) {
-            CaseResult::Return(code) => return Err(code),
-            CaseResult::Break => continue,
-            CaseResult::NotHandled => {}
-        }
-        // add tool-specific cases here
-        match c as u8 as char {
-            'I' => {
-                options.pair_test_file_name = opt.optarg();
-                options.pair_test_given = true;
-                continue;
-            }
-            'N' => {
-                options.positive_test = false;
-                continue;
-            }
-            'X' => {
-                options.xerox_mode = true;
-                continue;
-            }
-            _ => {}
-        }
-        return Err(handle_error_case(&common, &opt, c));
+The rule file is tested using correspondences given as pair strings,
+e.g. \"e a r l y:i e r\". Lines whose first non-white-space character
+is \"!\" are comment lines and skipped.
+
+Ordinarily, positive test mode is in use. Option -N switches to
+negative test mode; option -X reads both positive ('!!\u{20ac}') and
+negative ('!!$') cases from a twolc source file. The exit code for a
+successful test is 0 and 1 otherwise; in silent mode (-s) only the
+exit code tells whether the test was successful."
+)]
+struct Args {
+    #[command(flatten)]
+    common: CommonArgs,
+    #[command(flatten)]
+    io: UnaryIo,
+
+    /// Read pair test strings from SFILE
+    #[arg(
+        short = 'I',
+        long = "input-strings",
+        value_name = "SFILE",
+        allow_hyphen_values = true
+    )]
+    input_strings: Option<String>,
+
+    /// Test fails if any of the pair strings is accepted
+    #[arg(short = 'N', long = "negative-test")]
+    negative_test: bool,
+
+    /// In xerox mode, test cases are harvested from a twolc source file
+    #[arg(short = 'X', long = "xerox-mode")]
+    xerox_mode: bool,
+}
+
+impl ToolArgs for Args {
+    fn common(&self) -> &CommonArgs {
+        &self.common
     }
 
-    if !options.pair_test_given {
-        options.pair_test_file_name = String::from("<stdin>");
+    fn apply_io(&self, opts: &mut CommonOptions) {
+        self.io.apply(opts);
     }
-    check_common_params(&mut common);
-    check_unary_params(&mut common, &opt, args);
-
-    if common.input_filename == "<stdin>" {
-        error(
-            &common,
-            1,
-            0,
-            "The rule transducer file needs to be given using option -i.",
-        );
-    }
-    Ok((common, options))
 }
 
 // [spec:hfst:def:hfst-pair-test.print-recognized-prefix-fn]
@@ -720,14 +572,34 @@ fn process_stream(
 
 // [spec:hfst:def:hfst-pair-test.main-fn]
 // [spec:hfst:sem:hfst-pair-test.main-fn]
-pub fn run(mut args: Vec<String>) -> i32 {
+pub fn run(args: Vec<String>) -> i32 {
+    cli::exit_code(execute(args))
+}
+
+fn execute(args: Vec<String>) -> ToolResult {
     let argv0 = args.first().cloned().unwrap_or_default();
 
     let common = hfst_set_program_name(&argv0, "0.6", "HfstPairTest");
-    let (common, options) = match parse_options(common, &mut args) {
-        Ok(v) => v,
-        Err(code) => return code,
+    let (common, args) = cli::parse::<Args>(common, args)?;
+    let options = Options {
+        pair_test_file_name: args
+            .input_strings
+            .clone()
+            .unwrap_or_else(|| String::from("<stdin>")),
+        positive_test: !args.negative_test,
+        xerox_mode: args.xerox_mode,
     };
+
+    // The C ran this right after check-params-unary.h resolved the operand.
+    if common.input_filename == "<stdin>" {
+        error(
+            &common,
+            1,
+            0,
+            "The rule transducer file needs to be given using option -i.",
+        );
+        return Err(1);
+    }
 
     // close buffers, we use streams
     verbose_print(
@@ -748,7 +620,7 @@ pub fn run(mut args: Vec<String>) -> i32 {
         Ok(v) => v,
         Err(e) => {
             error(&common, 1, 0, &format!("{e}"));
-            return 1;
+            return Err(1);
         }
     };
     // (the C wraps the ctor in try/catch on HfstException; the Rust ctor
@@ -759,7 +631,7 @@ pub fn run(mut args: Vec<String>) -> i32 {
         Ok(w) => w,
         Err(e) => {
             eprintln!("hfst-pair-test: cannot open output: {e}");
-            return 1;
+            return Err(1);
         }
     };
 
@@ -773,5 +645,5 @@ pub fn run(mut args: Vec<String>) -> i32 {
         }
     }
 
-    exit_code
+    cli::from_code(exit_code)
 }

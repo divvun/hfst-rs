@@ -1,24 +1,19 @@
 //! Faithful 1:1 port of tools/src/hfst-lexc-compiler.cc — the lexc compilation
-//! command-line tool. Drives the hfst-cli foundation (getopt, commandline,
-//! program-options, tool-metadata, inc fragments) and the now-available
-//! hfst::lexc::LexcCompiler library API.
-//!
-//! Idiomatic option handling: the tool's state lives in [`CommonOptions`] (the
-//! shared `-v/-q/-o/…` fields) and a tool-local [`Options`] — both built by
-//! `parse_options` and threaded into the processing functions. There are no
-//! `static mut` globals and no `unsafe`.
+//! command-line tool, driving the hfst::lexc::LexcCompiler library API.
+//! Option handling is clap 4 derive through [`crate::cli`]; the -W/-x/-X/-f
+//! vocabularies replay in command-line order so their diagnostics keep the C
+//! getopt loop's sequencing (and so --Werror and -Wall interleave the way the
+//! last writer wins).
 //!
 //! Compile lexc files into a transducer.
 
+use crate::cli::{self, CommonArgs, ToolArgs, ToolResult};
 use crate::globals::CommonOptions;
 use crate::hfst_commandline::{
-    error, extend_options_from_env, hfst_parse_format_name, hfst_set_program_name, hfst_warning,
+    error, hfst_parse_format_name, hfst_set_program_name, hfst_warning, parse_format_name_quiet,
     redirect_converting, verbose_print,
 };
-use crate::hfst_getopt::{self as getopt, Getopt};
-use crate::hfst_program_options::{hfst_getopt_common_long, print_common_program_options};
 use crate::hfst_tool_metadata::{hfst_set_formula, hfst_set_name};
-use crate::inc::{CaseResult, check_common_params, handle_common_case, handle_error_case};
 use hfst::hfst_data_types::ImplementationType;
 use hfst::hfst_output_stream::HfstOutputStream;
 use hfst::lexc::LexcCompiler;
@@ -89,276 +84,282 @@ fn eput(s: &str) {
     let _ = std::io::stderr().write_all(s.as_bytes());
 }
 
-// [spec:hfst:req:cli.help]
-fn print_usage(common: &CommonOptions) {
-    // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
-    let mut msg = common.message_writer();
-    let _ = write!(
-        msg,
-        "Usage: {} [OPTIONS...] [INFILE1...]]\nCompile lexc files into transducer\n\n",
-        common.program_name
-    );
-    print_common_program_options(&mut *msg);
-    let _ = write!(
-        msg,
-        "Input/Output options:\n  -f, --format=FORMAT     compile into FORMAT transducer\n  -o, --output=OUTFILE    write result into OUTFILE\n"
-    );
-    let _ = write!(
-        msg,
-        "Lexc options:\n  -A, --alignStrings      align characters in input and output strings\n  -E, --encode-weights    encode weights when minimizing (default is false)\n  -F, --withFlags         use flags to hyperminimize result\n  -M, --minimizeFlags     if --withFlags is used, minimize the number of flags\n  -R, --renameFlags       if --withFlags and --minimizeFlags are used, rename\n                          flags (for testing)\n  -x,\n  --xerox-composition=BOOL   Whether flag diacritics are treated as ordinary\n                             symbols in composition (default is true).\n  -X, --xfst=VARIABLE     toggle xfst compatibility option VARIABLE.\n   --split-characters     disable unicode character parsing for multichars\n   -Wall                  enable all warnings:\n   -Wone-sided-flags      warn about one sided flag diacritics\n   -Wrepeated-lexicons    warn about repeat lexicon names\n   -Wmissing-lexicons     warn about lexicons used but missing\n   -Wunused-lexicons      warn about lexicons defined but unused\n   -Wmissing-alphabets    warn about implicit alphabets\n   -Wunnecessary-escapes  warn about unneeded %-escapes\n   -Werror                treat warnings as errors\n"
-    );
-    let _ = writeln!(msg);
-    let _ = msg.write_all(
-        "If INFILE or OUTFILE are omitted or -, standard streams will be used\nThe possible values for FORMAT are { sfst, openfst-tropical,\nfoma, optimized-lookup-unweighted, optimized-lookup-weighted }.\nBOOL is one of {true,ON,yes} or {false,OFF,no}.\nXfst variables are {flag-is-epsilon (default OFF)}.\n"
-            .as_bytes(),
-    );
-    let _ = write!(
-        msg,
-        "\nExamples:\n  {0} -o cat.hfst cat.lexc               Compile single-file lexicon\n  {0} -o L.hfst Root.lexc 2.lexc 3.lexc  Compile multi-file lexicon\n\nUsing weights:\n  LEXICON Root\n  cat # \"weight: 2\" ;    Define weight for a word\n  <[dog::1]+> # ;        Use weights in regular expressions\n\nUsing weights has an effect only if FORMAT is weighted, i.e.\n{{ openfst-tropical, optimized-lookup-weighted }}.\n\n",
-        common.program_name
-    );
-}
-
+/// hfst-lexc's command line.
 // [spec:hfst:def:hfst-lexc-compiler.parse-options-fn]
 // [spec:hfst:sem:hfst-lexc-compiler.parse-options-fn]
 // [spec:hfst:req:cli.arg-parse]
-//
-// Parse argv into the shared + tool options; `Err(code)` is an exit code the
-// caller should return (the former EXIT_CONTINUE sentinel is now `Ok`).
-fn parse_options(
-    mut common: CommonOptions,
-    args: &mut Vec<String>,
-) -> Result<(CommonOptions, Options), i32> {
-    let mut options = Options::default();
-    let mut opt = Getopt::new();
-    extend_options_from_env(args);
-    loop {
-        let mut long_options: Vec<getopt::GetOpt> = Vec::new();
-        long_options.extend(hfst_getopt_common_long());
-        long_options.push(getopt::GetOpt {
-            name: "encode-weights",
-            has_arg: getopt::NO_ARGUMENT,
-            val: 'E' as i32,
-        });
-        long_options.push(getopt::GetOpt {
-            name: "format",
-            has_arg: getopt::REQUIRED_ARGUMENT,
-            val: 'f' as i32,
-        });
-        long_options.push(getopt::GetOpt {
-            name: "output",
-            has_arg: getopt::REQUIRED_ARGUMENT,
-            val: 'o' as i32,
-        });
-        long_options.push(getopt::GetOpt {
-            name: "alignStrings",
-            has_arg: getopt::NO_ARGUMENT,
-            val: 'A' as i32,
-        });
-        long_options.push(getopt::GetOpt {
-            name: "withFlags",
-            has_arg: getopt::NO_ARGUMENT,
-            val: 'F' as i32,
-        });
-        long_options.push(getopt::GetOpt {
-            name: "minimizeFlags",
-            has_arg: getopt::NO_ARGUMENT,
-            val: 'M' as i32,
-        });
-        long_options.push(getopt::GetOpt {
-            name: "renameFlags",
-            has_arg: getopt::NO_ARGUMENT,
-            val: 'R' as i32,
-        });
-        long_options.push(getopt::GetOpt {
-            name: "xerox-composition",
-            has_arg: getopt::REQUIRED_ARGUMENT,
-            val: 'x' as i32,
-        });
-        long_options.push(getopt::GetOpt {
-            name: "xfst",
-            has_arg: getopt::REQUIRED_ARGUMENT,
-            val: 'X' as i32,
-        });
-        long_options.push(getopt::GetOpt {
-            name: "Werror",
-            has_arg: getopt::NO_ARGUMENT,
-            val: 'Q' as i32,
-        });
-        long_options.push(getopt::GetOpt {
-            name: "Wstuff",
-            has_arg: getopt::REQUIRED_ARGUMENT,
-            val: 'W' as i32,
-        });
-        long_options.push(getopt::GetOpt {
-            name: "split-characters",
-            has_arg: getopt::NO_ARGUMENT,
-            val: '9' as i32,
-        });
-        let c = opt.getopt_long(args, &long_options);
-        if -1 == c {
-            break;
-        }
+// [spec:hfst:req:cli.help]
+#[derive(clap::Parser)]
+#[command(
+    about = "Compile lexc files into transducer",
+    after_help = "If INFILE or OUTFILE are omitted or -, standard streams will be used
+The possible values for FORMAT are { sfst, openfst-tropical,
+foma, optimized-lookup-unweighted, optimized-lookup-weighted }.
+BOOL is one of {true,ON,yes} or {false,OFF,no}.
+Xfst variables are {flag-is-epsilon (default OFF)}.
+The -W switches are: all, error, [no-]one-sided-flags,
+[no-]repeated-lexicons, [no-]missing-lexicons, [no-]unused-lexicons,
+[no-]missing-alphabets, [no-]unnecessary-escapes.
 
-        // The C switch chains the #include'd case groups in order: common
-        // cases, then the tool's own, then the terminal error arm.
-        match handle_common_case(&mut common, &opt, c, print_usage) {
-            CaseResult::Return(code) => return Err(code),
-            CaseResult::Break => continue,
-            CaseResult::NotHandled => {}
-        }
-        // tool-specific cases
-        let cc = c as u8 as char;
-        match cc {
-            'A' => {
-                options.align_strings = true;
-                continue;
-            }
-            'E' => {
-                options.encode_weights = true;
-                continue;
-            }
-            'f' => {
-                options.format = hfst_parse_format_name(&common, &opt.optarg());
-                continue;
-            }
-            'F' => {
-                options.with_flags = true;
-                continue;
-            }
-            'M' => {
-                options.minimize_flags = true;
-                continue;
-            }
-            'R' => {
-                options.rename_flags = true;
-                continue;
-            }
-            'x' => {
-                let argument = opt.optarg();
-                if argument == "yes" || argument == "true" || argument == "ON" {
-                    options.xerox_composition = true;
-                } else if argument == "no" || argument == "false" || argument == "OFF" {
-                    options.xerox_composition = false;
-                } else {
-                    eput(&format!(
-                        "Error: unknown option to --xerox-composition: '{}'\n",
-                        opt.optarg()
-                    ));
-                    return Err(1);
+Examples:
+  hfst-lexc -o cat.hfst cat.lexc               Compile single-file lexicon
+  hfst-lexc -o L.hfst Root.lexc 2.lexc 3.lexc  Compile multi-file lexicon
+
+Using weights:
+  LEXICON Root
+  cat # \"weight: 2\" ;    Define weight for a word
+  <[dog::1]+> # ;        Use weights in regular expressions
+
+Using weights has an effect only if FORMAT is weighted, i.e.
+{ openfst-tropical, optimized-lookup-weighted }."
+)]
+struct Args {
+    #[command(flatten)]
+    common: CommonArgs,
+
+    /// compile into FORMAT transducer
+    #[arg(
+        short = 'f',
+        long = "format",
+        value_name = "FORMAT",
+        allow_hyphen_values = true
+    )]
+    format: Option<String>,
+
+    /// align characters in input and output strings
+    #[arg(short = 'A', long = "alignStrings")]
+    align_strings: bool,
+
+    /// encode weights when minimizing (default is false)
+    #[arg(short = 'E', long = "encode-weights")]
+    encode_weights: bool,
+
+    /// use flags to hyperminimize result
+    #[arg(short = 'F', long = "withFlags")]
+    with_flags: bool,
+
+    /// if --withFlags is used, minimize the number of flags
+    #[arg(short = 'M', long = "minimizeFlags")]
+    minimize_flags: bool,
+
+    /// if --withFlags and --minimizeFlags are used, rename flags (for
+    /// testing)
+    #[arg(short = 'R', long = "renameFlags")]
+    rename_flags: bool,
+
+    /// Whether flag diacritics are treated as ordinary symbols in composition
+    /// (default is true)
+    #[arg(
+        short = 'x',
+        long = "xerox-composition",
+        value_name = "BOOL",
+        allow_hyphen_values = true
+    )]
+    xerox_composition: Option<String>,
+
+    /// toggle xfst compatibility option VARIABLE
+    #[arg(
+        short = 'X',
+        long = "xfst",
+        value_name = "VARIABLE",
+        allow_hyphen_values = true
+    )]
+    xfst: Option<String>,
+
+    /// Warning switch, e.g. -Wall or -Werror. (The C long table spells this
+    /// '--Wstuff'; the accepted spelling is kept.)
+    #[arg(
+        short = 'W',
+        long = "Wstuff",
+        value_name = "SWITCH",
+        action = clap::ArgAction::Append,
+        allow_hyphen_values = true
+    )]
+    warnings: Vec<String>,
+
+    /// deprecated: treat warnings as errors (use -Werror -Wall instead).
+    /// The C option table gave the '--Werror' long the option value 'Q', so
+    /// '-Q' has always been an (unadvertised) spelling of it.
+    #[arg(short = 'Q', long = "Werror")]
+    werror_deprecated: bool,
+
+    /// disable unicode character parsing for multichars
+    #[arg(short = '9', long = "split-characters")]
+    split_characters: bool,
+
+    /// The lexc source files; missing or - reads the standard input
+    #[arg(value_name = "INFILE", num_args = 0..)]
+    infiles: Vec<String>,
+
+    /// The vocabulary-checked option occurrences in command-line order: the C
+    /// loop's -W/-Q arms overwrite the same warning flags (and -f/-x/-X print
+    /// their diagnostics as scanned), so the last writer wins and the
+    /// diagnostics must replay in that order.
+    #[arg(skip)]
+    events: Vec<Event>,
+}
+
+/// One vocabulary-checked iteration of the C option loop, in occurrence order.
+#[derive(Clone, Copy)]
+enum Event {
+    Format,
+    XeroxComposition,
+    Xfst,
+    /// Index into the `warnings` occurrence vector.
+    Warning(usize),
+    /// The deprecated '--Werror' long option (the C's 'Q' case).
+    WerrorDeprecated,
+}
+
+impl Args {
+    /// Replay the C option loop over the ordered occurrences. `print` guards
+    /// the non-fatal diagnostics (the --Werror deprecation line, the
+    /// ambiguous-format warning) so the second pass does not repeat them.
+    fn resolve(&self, common: &CommonOptions, print: bool) -> Result<Options, i32> {
+        let mut options = Options {
+            align_strings: self.align_strings,
+            encode_weights: self.encode_weights,
+            with_flags: self.with_flags,
+            minimize_flags: self.minimize_flags,
+            rename_flags: self.rename_flags,
+            split_characters: self.split_characters,
+            ..Options::default()
+        };
+        for event in &self.events {
+            match event {
+                Event::Format => {
+                    let name = self.format.as_deref().unwrap_or_default();
+                    options.format = if print {
+                        hfst_parse_format_name(common, name)
+                    } else {
+                        parse_format_name_quiet(name)
+                    };
                 }
-                continue;
-            }
-            'X' => {
-                let argument = opt.optarg();
-                if argument == "flag-is-epsilon" {
-                    options.flag_is_epsilon = true;
-                } else {
-                    eput(&format!(
-                        "Error: unknown option to --xfst: '{}'\n",
-                        opt.optarg()
-                    ));
-                    return Err(1);
+                Event::XeroxComposition => {
+                    let argument = self.xerox_composition.as_deref().unwrap_or_default();
+                    if argument == "yes" || argument == "true" || argument == "ON" {
+                        options.xerox_composition = true;
+                    } else if argument == "no" || argument == "false" || argument == "OFF" {
+                        options.xerox_composition = false;
+                    } else {
+                        eput(&format!(
+                            "Error: unknown option to --xerox-composition: '{}'\n",
+                            argument
+                        ));
+                        return Err(1);
+                    }
                 }
-                continue;
-            }
-            'Q' => {
-                options.treat_warnings_as_errors = true;
-                options.warn_one_sided_flags = true;
-                options.warn_missing_lexicons = true;
-                options.warn_unused_lexicons = true;
-                options.warn_repeated_lexicons = true;
-                // compatibility?? might change later:
-                options.warn_unnecessary_escapes = false;
-                options.warn_missing_alphabets = false;
-                eput("Warning: --Werror is deprecated, use -Werror -Wall instead\n");
-                continue;
-            }
-            'W' => {
-                let optarg = opt.optarg();
-                if optarg == "error" {
+                Event::Xfst => {
+                    let argument = self.xfst.as_deref().unwrap_or_default();
+                    if argument == "flag-is-epsilon" {
+                        options.flag_is_epsilon = true;
+                    } else {
+                        eput(&format!(
+                            "Error: unknown option to --xfst: '{}'\n",
+                            argument
+                        ));
+                        return Err(1);
+                    }
+                }
+                Event::WerrorDeprecated => {
                     options.treat_warnings_as_errors = true;
-                } else if optarg == "all" {
                     options.warn_one_sided_flags = true;
-                    options.warn_everything = true;
                     options.warn_missing_lexicons = true;
                     options.warn_unused_lexicons = true;
                     options.warn_repeated_lexicons = true;
-                    options.warn_missing_alphabets = true;
-                    options.warn_unnecessary_escapes = true;
-                    options.warn_missing_alphabets = true;
-                } else if optarg == "one-sided-flags" {
-                    options.warn_one_sided_flags = true;
-                } else if optarg == "no-one-sided-flags" {
-                    options.warn_one_sided_flags = false;
-                } else if optarg == "unused-lexicons" {
-                    options.warn_unused_lexicons = true;
-                } else if optarg == "no-unused-lexicons" {
-                    options.warn_unused_lexicons = false;
-                } else if optarg == "repeated-lexicons" {
-                    options.warn_repeated_lexicons = true;
-                } else if optarg == "no-repeated-lexicons" {
-                    options.warn_repeated_lexicons = false;
-                } else if optarg == "missing-lexicons" {
-                    options.warn_missing_lexicons = true;
-                } else if optarg == "no-missing-lexicons" {
-                    options.warn_missing_lexicons = false;
-                } else if optarg == "missing-alphabets" {
-                    options.warn_missing_alphabets = true;
-                } else if optarg == "no-missing-alphabets" {
-                    options.warn_missing_alphabets = false;
-                } else if optarg == "unnecessary-escapes" {
-                    options.warn_unnecessary_escapes = true;
-                } else if optarg == "no-unnecessary-escapes" {
+                    // compatibility?? might change later:
                     options.warn_unnecessary_escapes = false;
-                } else {
-                    eput(&format!("Unknown warning option {}\n", optarg));
-                    return Err(1);
+                    options.warn_missing_alphabets = false;
+                    if print {
+                        eput("Warning: --Werror is deprecated, use -Werror -Wall instead\n");
+                    }
                 }
-                continue;
+                Event::Warning(k) => {
+                    let optarg = self.warnings[*k].as_str();
+                    if optarg == "error" {
+                        options.treat_warnings_as_errors = true;
+                    } else if optarg == "all" {
+                        options.warn_one_sided_flags = true;
+                        options.warn_everything = true;
+                        options.warn_missing_lexicons = true;
+                        options.warn_unused_lexicons = true;
+                        options.warn_repeated_lexicons = true;
+                        options.warn_missing_alphabets = true;
+                        options.warn_unnecessary_escapes = true;
+                        options.warn_missing_alphabets = true;
+                    } else if optarg == "one-sided-flags" {
+                        options.warn_one_sided_flags = true;
+                    } else if optarg == "no-one-sided-flags" {
+                        options.warn_one_sided_flags = false;
+                    } else if optarg == "unused-lexicons" {
+                        options.warn_unused_lexicons = true;
+                    } else if optarg == "no-unused-lexicons" {
+                        options.warn_unused_lexicons = false;
+                    } else if optarg == "repeated-lexicons" {
+                        options.warn_repeated_lexicons = true;
+                    } else if optarg == "no-repeated-lexicons" {
+                        options.warn_repeated_lexicons = false;
+                    } else if optarg == "missing-lexicons" {
+                        options.warn_missing_lexicons = true;
+                    } else if optarg == "no-missing-lexicons" {
+                        options.warn_missing_lexicons = false;
+                    } else if optarg == "missing-alphabets" {
+                        options.warn_missing_alphabets = true;
+                    } else if optarg == "no-missing-alphabets" {
+                        options.warn_missing_alphabets = false;
+                    } else if optarg == "unnecessary-escapes" {
+                        options.warn_unnecessary_escapes = true;
+                    } else if optarg == "no-unnecessary-escapes" {
+                        options.warn_unnecessary_escapes = false;
+                    } else {
+                        eput(&format!("Unknown warning option {}\n", optarg));
+                        return Err(1);
+                    }
+                }
             }
-            '9' => {
-                options.split_characters = true;
-                continue;
-            }
-            _ => {}
         }
-        return Err(handle_error_case(&common, &opt, c));
+        Ok(options)
+    }
+}
+
+impl ToolArgs for Args {
+    fn common(&self) -> &CommonArgs {
+        &self.common
     }
 
-    check_common_params(&mut common);
-    if options.format == ImplementationType::UNSPECIFIED_TYPE {
-        if !common.silent {
-            hfst_warning(&common, 0, 0, "Defaulting to OpenFst tropical type");
+    fn apply_io(&self, _opts: &mut CommonOptions) {}
+
+    fn absorb_matches(&mut self, matches: &clap::ArgMatches) {
+        let ids: &[(&str, Event)] = &[
+            ("format", Event::Format),
+            ("xerox_composition", Event::XeroxComposition),
+            ("xfst", Event::Xfst),
+            ("werror_deprecated", Event::WerrorDeprecated),
+        ];
+        let mut ordered: Vec<(usize, Event)> = ids
+            .iter()
+            .filter(|(id, _)| {
+                matches.value_source(id) == Some(clap::parser::ValueSource::CommandLine)
+            })
+            .filter_map(|(id, event)| matches.index_of(id).map(|i| (i, *event)))
+            .collect();
+        if matches.value_source("warnings") == Some(clap::parser::ValueSource::CommandLine)
+            && let Some(indices) = matches.indices_of("warnings")
+        {
+            for (k, i) in indices.enumerate() {
+                ordered.push((i, Event::Warning(k)));
+            }
         }
-        options.format = ImplementationType::TROPICAL_OPENFST_TYPE;
+        ordered.sort_by_key(|(i, _)| *i);
+        self.events = ordered.into_iter().map(|(_, event)| event).collect();
     }
 
-    if args.len() > opt.optind {
-        while opt.optind < args.len() {
-            let name = args[opt.optind].clone();
-            // C: lexcfiles.push(hfst_fopen(name, "r")); a "-" resolved to stdin,
-            // otherwise the named file was opened (erroring on failure). The
-            // content is read by filename later, so only validate openability and
-            // record "<stdin>" for "-".
-            if name == "-" {
-                options.lexcfilenames.push("<stdin>".to_string());
-            } else {
-                if std::fs::File::open(&name).is_err() {
-                    error(&common, 1, 0, &format!("Could not open '{}'. ", name));
-                }
-                options.lexcfilenames.push(name.clone());
-            }
-            options.lexccount += 1;
-            opt.optind += 1;
-        }
-        options.is_input_stdin = false;
-    } else {
-        options.lexcfilenames.push("<stdin>".to_string());
-        options.is_input_stdin = true;
-        options.lexccount += 1;
+    fn validate(&self, opts: &CommonOptions) -> ToolResult {
+        // The vocabulary rejections happened inside the C loop, before the
+        // parameter checks.
+        self.resolve(opts, true)?;
+        Ok(())
     }
-    Ok((common, options))
 }
 
 // [spec:hfst:def:hfst-lexc-compiler.lexc-streams-fn]
@@ -443,14 +444,48 @@ fn lexc_streams<B: hfst::backend::AlgebraBackend>(
 
 // [spec:hfst:def:hfst-lexc-compiler.main-fn]
 // [spec:hfst:sem:hfst-lexc-compiler.main-fn]
-pub fn run(mut args: Vec<String>) -> i32 {
+pub fn run(args: Vec<String>) -> i32 {
+    cli::exit_code(execute(args))
+}
+
+fn execute(args: Vec<String>) -> ToolResult {
     let argv0 = args.first().cloned().unwrap_or_default();
 
     let common = hfst_set_program_name(&argv0, "0.1", "HfstLexc");
-    let (common, options) = match parse_options(common, &mut args) {
-        Ok(v) => v,
-        Err(code) => return code,
-    };
+    let (common, args) = cli::parse::<Args>(common, args)?;
+    let mut options = args.resolve(&common, false)?;
+
+    // The C ran these right after check-params-common.h: the default-format
+    // warning, then the operand resolution with its per-file open checks.
+    if options.format == ImplementationType::UNSPECIFIED_TYPE {
+        if !common.silent {
+            hfst_warning(&common, 0, 0, "Defaulting to OpenFst tropical type");
+        }
+        options.format = ImplementationType::TROPICAL_OPENFST_TYPE;
+    }
+    if !args.infiles.is_empty() {
+        for name in &args.infiles {
+            // C: lexcfiles.push(hfst_fopen(name, "r")); a "-" resolved to
+            // stdin, otherwise the named file was opened (erroring on
+            // failure). The content is read by filename later, so only
+            // validate openability and record "<stdin>" for "-".
+            if name == "-" {
+                options.lexcfilenames.push("<stdin>".to_string());
+            } else {
+                if std::fs::File::open(name).is_err() {
+                    error(&common, 1, 0, &format!("Could not open '{}'. ", name));
+                    return Err(1);
+                }
+                options.lexcfilenames.push(name.clone());
+            }
+            options.lexccount += 1;
+        }
+        options.is_input_stdin = false;
+    } else {
+        options.lexcfilenames.push("<stdin>".to_string());
+        options.is_input_stdin = true;
+        options.lexccount += 1;
+    }
 
     // close buffers, we use streams
     verbose_print(&common, "Reading from ");
@@ -469,13 +504,13 @@ pub fn run(mut args: Vec<String>) -> i32 {
         Ok(s) => s,
         Err(e) => {
             error(&common, 1, 0, &format!("{e}"));
-            return 1;
+            return Err(1);
         }
     };
     // The parsed --format is matched ONCE into the compiler's backend
     // type ([dec:hfst:monomorphic-backends]); optimized-lookup formats
     // compile at tropical and convert at the write.
-    match options.format {
+    cli::from_code(match options.format {
         ImplementationType::SFST_TYPE
         | ImplementationType::TROPICAL_OPENFST_TYPE
         | ImplementationType::FOMA_TYPE
@@ -488,7 +523,7 @@ pub fn run(mut args: Vec<String>) -> i32 {
         | ImplementationType::ERROR_TYPE => {
             run_typed::<hfst_openfst::StdVectorFst>(&common, &options, &mut outstream)
         }
-    }
+    })
 }
 
 fn run_typed<B: hfst::backend::AlgebraBackend>(

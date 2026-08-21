@@ -1,30 +1,16 @@
 //! Faithful 1:1 port of tools/src/hfst-compose-intersect.cc — the
 //! compose-intersect command-line tool (compose a lexicon with one or more
-//! rule transducers). Drives the hfst-cli foundation (getopt, commandline,
-//! program-options, tool-metadata, inc fragments). This is a BINARY tool: it
-//! reads a first stream (the lexicon) and a second stream (the rule file).
-//!
-//! Idiomatic option handling: the tool's state lives in [`CommonOptions`] (the
-//! shared `-v/-q/-o/-1/-2/…` fields) and a tool-local [`Options`] — both built
-//! by `parse_options` and threaded into the processing functions. There are no
-//! `static mut` globals and no `unsafe`.
+//! rule transducers). This is a BINARY tool: it reads a first stream (the
+//! lexicon) and a second stream (the rule file). Option handling is clap 4
+//! derive through [`crate::cli`].
 
 use crate::binary_ops::{open_output_stream, open_two_input_streams, resolve_output_type};
+use crate::cli::{self, BinaryIo, CommonArgs, ToolArgs, ToolResult};
 use crate::globals::CommonOptions;
 use crate::hfst_commandline::{
-    error, extend_options_from_env, hfst_set_program_name, is_input_stream_in_ol_format,
-    verbose_print, warning,
-};
-use crate::hfst_getopt::{self as getopt, Getopt};
-use crate::hfst_program_options::{
-    hfst_getopt_binary_long, hfst_getopt_common_long, print_common_binary_program_options,
-    print_common_program_options,
+    error, hfst_set_program_name, is_input_stream_in_ol_format, verbose_print, warning,
 };
 use crate::hfst_tool_metadata::{hfst_get_name, hfst_set_formula_unary};
-use crate::inc::{
-    CaseResult, check_binary_params, check_common_params, handle_binary_case, handle_common_case,
-    handle_error_case,
-};
 use crate::memory_limit::{self, LimitSource, ResolvedMemoryLimit};
 use hfst::convert_transducer_format::ConversionFunctions;
 use hfst::hfst_input_stream::HfstInputStream;
@@ -34,9 +20,94 @@ use hfst::hfst_transducer::EngineConfig;
 use hfst::hfst_transducer::{HfstTransducer, HfstTransducerVector};
 use std::io::Write;
 
-const GETOPT_MEMORY_LIMIT: i32 = 0x100;
-
 // static bool insert_missing_flags=false;
+
+/// hfst-compose-intersect's command line.
+// [spec:hfst:req:cli.arg-parse]
+// [spec:hfst:req:cli.help]
+#[derive(clap::Parser)]
+#[command(
+    about = "Compose a lexicon with one or more rule transducers",
+    after_help = "SIZE, in --memory-limit=SIZE, is an integer byte count with an optional binary K/KB/KiB through T/TB/TiB suffix; 0 forces a nonempty product to spill. HFST_COMPOSE_MEMORY_LIMIT supplies SIZE when the option is absent.
+
+If OUTFILE, or either INFILE1 or INFILE2 is missing or -, standard
+streams will be used. INFILE1, INFILE2, or both, must be specified
+The format of INFILE1 and INFILE2 must be the same; the result will
+have the same format as these.
+INFILE1 (the lexicon) must contain exactly one transducer.
+INFILE2 (rule file) may contain several transducers.
+
+Examples:
+  hfst-compose-intersect -o analyzer.hfst lexicon.hfst rules.hfst
+compose rules with lexicon"
+)]
+struct Args {
+    #[command(flatten)]
+    common: CommonArgs,
+    #[command(flatten)]
+    io: BinaryIo,
+
+    /// Compose the intersection of the rules with the lexicon instead of
+    /// composing the lexicon with the intersection of the rules
+    #[arg(short = 'I', long = "invert")]
+    invert: bool,
+
+    /// Faster compose intersect using more memory
+    #[arg(short = 'f', long = "fast")]
+    fast: bool,
+
+    /// Encode weights when minimizing (default is false)
+    #[arg(short = 'e', long = "encode-weights")]
+    encode_weights: bool,
+
+    /// Harmonize symbols
+    #[arg(short = 'a', long = "harmonize")]
+    harmonize: bool,
+
+    /// Working-memory allowance for one-rule, non-inverted OpenFst tropical
+    /// compose-intersect, as --memory-limit=SIZE (default: 50% of available
+    /// RAM; excess spills)
+    #[arg(long = "memory-limit", value_name = "SIZE")]
+    memory_limit: Option<String>,
+}
+
+impl Args {
+    /// Case GETOPT_MEMORY_LIMIT: parse SIZE, or refuse before any input is
+    /// opened.
+    fn memory_limit_bytes(&self, common: &CommonOptions) -> Result<Option<u64>, i32> {
+        let Some(argument) = self.memory_limit.as_deref() else {
+            return Ok(None);
+        };
+        match memory_limit::parse_size(argument) {
+            Ok(bytes) => Ok(Some(bytes)),
+            Err(detail) => {
+                let _ = writeln!(
+                    std::io::stderr(),
+                    "{}: invalid value for --memory-limit: {detail}",
+                    common.program_name
+                );
+                Err(1)
+            }
+        }
+    }
+}
+
+impl ToolArgs for Args {
+    fn common(&self) -> &CommonArgs {
+        &self.common
+    }
+
+    fn apply_io(&self, opts: &mut CommonOptions) {
+        self.io.apply(opts);
+    }
+
+    fn validate(&self, opts: &CommonOptions) -> ToolResult {
+        // The SIZE parse ran inside the C getopt loop, before the parameter
+        // checks; run it here for the same ordering.
+        self.memory_limit_bytes(opts)?;
+        Ok(())
+    }
+}
 
 /// hfst-compose-intersect's own options (the former tool-specific `static mut`s).
 #[derive(Default)]
@@ -51,155 +122,6 @@ struct Options {
     fast_ci: bool,
     /// '-a, --harmonize': harmonize symbols.
     harmonize: bool,
-    /// '--memory-limit=SIZE': one-rule tropical product memory allowance.
-    memory_limit_bytes: Option<u64>,
-}
-
-// [spec:hfst:req:cli.help]
-fn print_usage(common: &CommonOptions) {
-    let mut msg = common.message_writer();
-    // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dhelp
-    let program_name = &common.program_name;
-    let _ = write!(
-        msg,
-        "Usage: {} [OPTIONS...] [INFILE1 [INFILE2]]\n\
-         Compose a lexicon with one or more rule transducers.\n\n",
-        program_name
-    );
-    print_common_program_options(&mut *msg);
-    print_common_binary_program_options(&mut *msg);
-    let _ = write!(
-        msg,
-        "Composition options:\n\
-         \x20 -I, --invert                 Compose the intersection of the\n\
-         \x20                              rules with the lexicon instead\n\
-         \x20                              of composing the lexicon with\n\
-         \x20                              the intersection of the rules.\n\
-         \x20 -f, --fast                   Faster compose instersect using\n\
-         \x20                              more memory.\n\
-         \x20 -e, --encode-weights         Encode weights when minimizing\n\
-         \x20                              (default is false).\n\
-         \x20 -a, --harmonize              Harmonize symbols.\n"
-    );
-    let _ = writeln!(
-        msg,
-        "      --memory-limit=SIZE         Working-memory allowance for one-rule, non-inverted OpenFst tropical compose-intersect (default: 50% of available RAM; excess spills)."
-    );
-    let _ = writeln!(
-        msg,
-        "SIZE is an integer byte count with an optional binary K/KB/KiB through T/TB/TiB suffix; 0 forces a nonempty product to spill. HFST_COMPOSE_MEMORY_LIMIT supplies SIZE when the option is absent."
-    );
-    // print_common_binary_program_parameter_instructions(message_out);
-    let _ = write!(
-        msg,
-        "\nIf OUTFILE, or either INFILE1 or INFILE2 is missing or -, standard\n\
-         streams will be used. INFILE1, INFILE2, or both, must be specified\n\
-         The format of INFILE1 and INFILE2 must be the same; the result will\n\
-         have the same format as these.\n\
-         INFILE1 (the lexicon) must contain exactly one transducer.\n\
-         INFILE2 (rule file) may contain several transducers.\n"
-    );
-    let _ = write!(
-        msg,
-        "\nExamples:\n\
-         \x20 {} -o analyzer.hfst lexicon.hfst rules.hfst\n\
-         compose rules with lexicon\n\n",
-        program_name
-    );
-}
-
-// [spec:hfst:req:cli.arg-parse]
-//
-// Parse argv into the shared + tool options; `Err(code)` is an exit code the
-// caller should return (the former EXIT_CONTINUE sentinel is now `Ok`).
-fn parse_options(
-    mut common: CommonOptions,
-    args: &mut Vec<String>,
-) -> Result<(CommonOptions, Options), i32> {
-    let mut options = Options::default();
-    let mut opt = Getopt::new();
-    extend_options_from_env(args);
-    loop {
-        let mut long_options: Vec<getopt::GetOpt> = Vec::new();
-        long_options.extend(hfst_getopt_common_long());
-        long_options.extend(hfst_getopt_binary_long());
-        long_options.push(getopt::GetOpt {
-            name: "invert",
-            has_arg: 0,
-            val: b'I' as i32,
-        });
-        long_options.push(getopt::GetOpt {
-            name: "encode-weights",
-            has_arg: 0,
-            val: b'e' as i32,
-        });
-        long_options.push(getopt::GetOpt {
-            name: "fast",
-            has_arg: 0,
-            val: b'f' as i32,
-        });
-        long_options.push(getopt::GetOpt {
-            name: "harmonize",
-            has_arg: 0,
-            val: b'a' as i32,
-        });
-        long_options.push(getopt::GetOpt {
-            name: "memory-limit",
-            has_arg: getopt::REQUIRED_ARGUMENT,
-            val: GETOPT_MEMORY_LIMIT,
-        });
-        let c = opt.getopt_long(args, &long_options);
-        if -1 == c {
-            break;
-        }
-
-        // The C switch chains the #include'd case groups in order: binary
-        // cases, common cases, the terminal error arm, then the tool's own
-        // cases. The tool-specific cases must be tried before the error arm
-        // falls through, so we test them ahead of handle_error_case.
-        match handle_binary_case(&mut common, &opt, c) {
-            CaseResult::Return(code) => return Err(code),
-            CaseResult::Break => continue,
-            CaseResult::NotHandled => {}
-        }
-        match handle_common_case(&mut common, &opt, c, print_usage) {
-            CaseResult::Return(code) => return Err(code),
-            CaseResult::Break => continue,
-            CaseResult::NotHandled => {}
-        }
-        if c == b'I' as i32 {
-            options.invert = true;
-            continue;
-        } else if c == b'e' as i32 {
-            options.encode_weights = true;
-            continue;
-        } else if c == b'f' as i32 {
-            options.fast_ci = true;
-            continue;
-        } else if c == b'a' as i32 {
-            options.harmonize = true;
-            continue;
-        } else if c == GETOPT_MEMORY_LIMIT {
-            let argument = opt.optarg();
-            options.memory_limit_bytes = match memory_limit::parse_size(&argument) {
-                Ok(bytes) => Some(bytes),
-                Err(detail) => {
-                    let _ = writeln!(
-                        std::io::stderr(),
-                        "{}: invalid value for --memory-limit: {detail}",
-                        common.program_name
-                    );
-                    return Err(1);
-                }
-            };
-            continue;
-        }
-        return Err(handle_error_case(&common, &opt, c));
-    }
-
-    check_binary_params(&mut common, &opt, args);
-    check_common_params(&mut common);
-    Ok((common, options))
 }
 
 // [spec:hfst:def:hfst-compose-intersect.string-set]
@@ -612,19 +534,26 @@ fn compose_streams_typed<
 
 // [spec:hfst:def:hfst-compose-intersect.main-fn]
 // [spec:hfst:sem:hfst-compose-intersect.main-fn]
-pub fn run(mut args: Vec<String>) -> i32 {
+pub fn run(args: Vec<String>) -> i32 {
+    cli::exit_code(execute(args))
+}
+
+fn execute(args: Vec<String>) -> ToolResult {
     let argv0 = args.first().cloned().unwrap_or_default();
 
     let common = hfst_set_program_name(&argv0, "0.1", "HfstComposeIntersect");
-    let (common, options) = match parse_options(common, &mut args) {
-        Ok(v) => v,
-        Err(code) => return code,
+    let (common, args) = cli::parse::<Args>(common, args)?;
+    let options = Options {
+        invert: args.invert,
+        encode_weights: args.encode_weights,
+        fast_ci: args.fast,
+        harmonize: args.harmonize,
     };
-    let memory_limit = match memory_limit::resolve(options.memory_limit_bytes) {
+    let memory_limit = match memory_limit::resolve(args.memory_limit_bytes(&common)?) {
         Ok(limit) => limit,
         Err(detail) => {
             let _ = writeln!(std::io::stderr(), "{}: {detail}", common.program_name);
-            return 1;
+            return Err(1);
         }
     };
     // close buffers, we use streams
@@ -635,18 +564,15 @@ pub fn run(mut args: Vec<String>) -> i32 {
             common.first_filename, common.second_filename, common.output_filename
         ),
     );
-    let (mut firststream, mut secondstream) = match open_two_input_streams(&common) {
-        Ok(v) => v,
-        Err(code) => return code,
-    };
+    let (mut firststream, mut secondstream) = open_two_input_streams(&common)?;
 
-    compose_streams(
+    cli::from_code(compose_streams(
         &common,
         &options,
         memory_limit,
         &mut firststream,
         &mut secondstream,
-    )
+    ))
 }
 
 #[cfg(test)]
