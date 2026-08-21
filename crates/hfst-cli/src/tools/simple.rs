@@ -36,10 +36,10 @@ pub mod affix_guessify {
     use std::io::Write;
 
     /// hfst-affix-guessify's command line.
-    ///
-    /// GuessDirection and the per-transducer affix-guesser construction live in
-    /// hfst::guessify_fst; this tool keeps only the option-driven state + the
-    /// stream-driver loop.
+    //
+    // GuessDirection and the per-transducer affix-guesser construction live in
+    // hfst::guessify_fst; this tool keeps only the option-driven state + the
+    // stream-driver loop.
     // [spec:hfst:def:hfst-affix-guessify.parse-options-fn]
     // [spec:hfst:sem:hfst-affix-guessify.parse-options-fn]
     // [spec:hfst:req:cli.arg-parse]
@@ -1730,10 +1730,10 @@ pub mod prune_alphabet {
     use std::borrow::Cow;
 
     /// hfst-prune-alphabet's command line.
-    ///
-    /// The C cases assign the SAME flag ('f' sets it, 'S' clears it), so the
-    /// last of the two on the command line decides; mutual overrides_with is
-    /// how clap says that.
+    //
+    // The C cases assign the SAME flag ('f' sets it, 'S' clears it), so the
+    // last of the two on the command line decides; mutual overrides_with is
+    // how clap says that.
     // [spec:hfst:req:cli.arg-parse]
     // [spec:hfst:req:cli.help]
     #[derive(clap::Parser)]

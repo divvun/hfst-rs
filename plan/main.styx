@@ -6665,4 +6665,26 @@ children (
             }
         )
     }
+
+    {
+        id cli-residual-fixes
+        title "Fix thin-cli residuals: grep empty-pattern panic, lookup -I missing-file unwrap panic, long_about help leak in edit_metadata/name; validate migrated CLI with a full Giella speller build"
+        kind @fix
+        sealed true
+        log (
+            {
+                at 2026-08-21T20:36:50.851428Z
+                author "brendan@necessary.nu"
+                kind @status
+                text "Todo → Doing (nplan start)"
+            }
+
+            {
+                at 2026-08-21T20:53:38.377963Z
+                author "brendan@necessary.nu"
+                kind @status
+                text "Doing → Done (nplan complete)"
+            }
+        )
+    }
 )

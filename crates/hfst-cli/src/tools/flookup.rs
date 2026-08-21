@@ -444,10 +444,14 @@ impl Args {
         if let Some(name) = &self.input_strings {
             options.lookup_file_name = name.clone();
             // C: lookup_file = fopen(lookup_file_name, "r"); open the named
-            // file as a buffered std reader instead.
+            // file as a buffered std reader instead, erroring on failure the
+            // way hfst_fopen did.
             match std::fs::File::open(name) {
                 Ok(f) => options.lookup_reader = Some(Box::new(std::io::BufReader::new(f))),
-                Err(_) => options.lookup_reader = None,
+                Err(_) => {
+                    hfst_error(common, 1, 0, &format!("Could not open '{}'", name));
+                    return Err(1);
+                }
             }
             options.lookup_given = true;
         } else {
@@ -693,7 +697,7 @@ fn process_stream(
         match options
             .lookup_reader
             .as_mut()
-            .unwrap()
+            .expect("lookup reader is initialised in resolve")
             .read_until(b'\n', &mut raw_bytes)
         {
             Ok(0) => break,

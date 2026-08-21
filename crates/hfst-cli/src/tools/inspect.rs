@@ -54,13 +54,13 @@ pub mod dump_alphabets {
     }
 
     /// hfst-dump-alphabets's command line.
-    ///
-    /// The two exclusion switches keep their upstream names: '-1,
-    /// --include-seen' EXCLUDES the alphabet seen in the automaton and '-2,
-    /// --include-metadata' EXCLUDES the header alphabet — the long names say
-    /// the opposite of what the cases do, and the usage text spelled them
-    /// '--exclude-seen' / '--exclude-metadata' while the getopt table did not
-    /// accept those. Preserved bug-for-bug.
+    //
+    // The two exclusion switches keep their upstream names: '-1,
+    // --include-seen' EXCLUDES the alphabet seen in the automaton and '-2,
+    // --include-metadata' EXCLUDES the header alphabet — the long names say
+    // the opposite of what the cases do, and the usage text spelled them
+    // '--exclude-seen' / '--exclude-metadata' while the getopt table did not
+    // accept those. Preserved bug-for-bug.
     // [spec:hfst:def:hfst-dump-alphabets.parse-options-fn]
     // [spec:hfst:sem:hfst-dump-alphabets.parse-options-fn]
     // [spec:hfst:req:cli.arg-parse]
@@ -333,10 +333,10 @@ pub mod edit_metadata {
     use std::io::Write;
 
     /// hfst-edit-metadata's command line.
-    ///
-    /// '-p' takes an OPTIONAL argument, so it only ever binds a value written
-    /// as '-pNAME' or '--print-name=NAME'; a following word is an operand, not
-    /// the property name.
+    //
+    // '-p' takes an OPTIONAL argument, so it only ever binds a value written
+    // as '-pNAME' or '--print-name=NAME'; a following word is an operand, not
+    // the property name.
     // [spec:hfst:def:hfst-edit-metadata.parse-options-fn]
     // [spec:hfst:sem:hfst-edit-metadata.parse-options-fn]
     // [spec:hfst:req:cli.arg-parse]
@@ -362,10 +362,10 @@ pub mod edit_metadata {
         add: Vec<String>,
 
         /// Print the current NAME; without NAME, print every property
-        ///
-        /// The default-missing value is a NUL, which no argv string can carry:
-        /// it marks the bare '-p' while still giving clap a value to index, so
-        /// the '-a'-versus-bare-'-p' ordering below is recoverable.
+        //
+        // The default-missing value is a NUL, which no argv string can carry:
+        // it marks the bare '-p' while still giving clap a value to index, so
+        // the '-a'-versus-bare-'-p' ordering below is recoverable.
         #[arg(
             short = 'p',
             long = "print-name",
@@ -1125,11 +1125,11 @@ pub mod info {
     }
 
     /// hfst-info's command line.
-    ///
-    /// This tool's switch handles only its own version/feature options plus
-    /// help and version: '-v/-q/-s/-d/-o/--colour' are accepted and discarded,
-    /// and no output file is resolved, which is why the report goes to stdout.
-    /// [`ToolArgs::applies_common_options`] carries that.
+    //
+    // This tool's switch handles only its own version/feature options plus
+    // help and version: '-v/-q/-s/-d/-o/--colour' are accepted and discarded,
+    // and no output file is resolved, which is why the report goes to stdout.
+    // [`ToolArgs::applies_common_options`] carries that.
     // [spec:hfst:def:hfst-info.parse-options-fn]
     // [spec:hfst:sem:hfst-info.parse-options-fn]
     // [spec:hfst:req:cli.arg-parse]
@@ -1384,12 +1384,12 @@ pub mod name {
     }
 
     /// hfst-name's command line.
-    ///
-    /// '--truncate_length' keeps its upstream underscore: that is the long
-    /// name the getopt table carried, and Giella scripts spell it that way.
-    /// '-p' takes no argument here (unlike hfst-edit-metadata's) and, when
-    /// given together with '-n', overrides it — a warning the tool body emits
-    /// after the parameter checks.
+    //
+    // '--truncate_length' keeps its upstream underscore: that is the long
+    // name the getopt table carried, and Giella scripts spell it that way.
+    // '-p' takes no argument here (unlike hfst-edit-metadata's) and, when
+    // given together with '-n', overrides it — a warning the tool body emits
+    // after the parameter checks.
     // [spec:hfst:def:hfst-name.parse-options-fn]
     // [spec:hfst:sem:hfst-name.parse-options-fn]
     // [spec:hfst:req:cli.arg-parse]
@@ -1609,11 +1609,11 @@ pub mod split {
     }
 
     /// hfst-split's command line.
-    ///
-    /// '-o' is REFUSED, not ignored: the tool names its own output files from
-    /// PRE + N + EXT and its option table never carried the output option, so
-    /// the shared common group's '-o' is rejected in `validate` the way the C's
-    /// error arm rejected the unknown letter.
+    //
+    // '-o' is REFUSED, not ignored: the tool names its own output files from
+    // PRE + N + EXT and its option table never carried the output option, so
+    // the shared common group's '-o' is rejected in `validate` the way the C's
+    // error arm rejected the unknown letter.
     // [spec:hfst:def:hfst-split.parse-options-fn]
     // [spec:hfst:sem:hfst-split.parse-options-fn]
     // [spec:hfst:req:cli.arg-parse]

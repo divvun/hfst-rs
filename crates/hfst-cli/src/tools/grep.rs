@@ -775,7 +775,23 @@ fn read_matcher(
                 expression
             ),
         );
-        let mut trans = comp.compile(expression).unwrap();
+        // C: comp.compile returned NULL on a parse failure (an empty pattern
+        // included) and the next line dereferenced it — a crash upstream. Fail
+        // cleanly instead: XRE has no empty expression, so nothing sound can
+        // be built from one.
+        let Some(mut trans) = comp.compile(expression) else {
+            if expression.is_empty() {
+                error(
+                    common,
+                    1,
+                    0,
+                    "empty pattern: XRE parsing failed (an empty Xerox regular expression is not valid)",
+                );
+            } else {
+                error(common, 1, 0, &format!("XRE parsing failed: {}", expression));
+            }
+            return;
+        };
         if let Err(e) = trans.input_project() {
             error(common, 1, 0, &format!("{e}"));
             return;

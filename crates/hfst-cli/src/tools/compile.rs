@@ -507,10 +507,10 @@ pub mod twolc {
     const PROGRAM_NAME: &str = "hfst-twolc";
 
     /// hfst-twolc's command line, i.e. the C++ `CommandLine`'s option table.
-    ///
-    /// clap's own '--help' is switched off: '-h' only records the request here
-    /// and `execute` prints `print_help` afterwards, which is what lets
-    /// '-f bogus -h' fail on the format instead of printing help.
+    //
+    // clap's own '--help' is switched off: '-h' only records the request here
+    // and `execute` prints `print_help` afterwards, which is what lets
+    // '-f bogus -h' fail on the format instead of printing help.
     // [spec:hfst:def:command-line.command-line.parse-options-fn]
     // [spec:hfst:sem:command-line.command-line.parse-options-fn]
     // [spec:hfst:req:cli.arg-parse]

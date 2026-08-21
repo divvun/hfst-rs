@@ -415,6 +415,95 @@ fn pmatch2fst_reserved_name_redefinition_reports_parse_error() {
     );
 }
 
+/// Run `hfst <args>` with `stdin`, returning (exit code, stderr).
+fn run_status(args: &[&str], stdin: &[u8]) -> (Option<i32>, String) {
+    let mut child = Command::new(env!("CARGO_BIN_EXE_hfst"))
+        .args(args)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn hfst");
+    child
+        .stdin
+        .take()
+        .expect("child stdin")
+        .write_all(stdin)
+        .expect("write stdin");
+    let out = child.wait_with_output().expect("wait for hfst");
+    (
+        out.status.code(),
+        String::from_utf8_lossy(&out.stderr).into_owned(),
+    )
+}
+
+/// Port-found (thin-cli refactor): `hfst lookup -I MISSING` (and flookup's)
+/// used to leave the lookup reader unset and panic (exit 101) at the first
+/// read. It must report the file like any other failed open and exit 1.
+#[test]
+fn lookup_missing_input_strings_file_reports_clean_error() {
+    let missing = scratch("lookup_missing_i")
+        .join("no-such-strings.txt")
+        .to_str()
+        .expect("utf8 path")
+        .to_string();
+    for tool in ["lookup", "flookup"] {
+        let (code, err) = run_status(&[tool, "-I", &missing], b"");
+        assert_eq!(
+            code,
+            Some(1),
+            "{tool} -I with a missing file must exit 1, got {code:?}:\n{err}"
+        );
+        assert!(
+            err.contains("Could not open") && err.contains("no-such-strings.txt"),
+            "{tool} -I error must name the file:\n{err}"
+        );
+        assert!(
+            !err.contains("panicked"),
+            "{tool} -I with a missing file panicked:\n{err}"
+        );
+    }
+}
+
+/// Port-found (thin-cli refactor): an empty pattern reached
+/// `XreCompiler::compile("")` through `.unwrap()` and panicked (exit 101) —
+/// upstream dereferenced the NULL the compiler returned, a crash. Both the
+/// explicit empty pattern and `-f` (whose patterns upstream never read, so the
+/// regexp stays unset) must fail cleanly instead.
+#[test]
+fn grep_empty_pattern_reports_clean_error() {
+    let dir = scratch("grep_empty_pattern");
+    let patterns = dir.join("empty-patterns.txt");
+    let input = dir.join("input.txt");
+    std::fs::write(&patterns, b"").expect("write pattern file");
+    std::fs::write(&input, b"cat\n").expect("write input file");
+    let cases: &[&[&str]] = &[
+        &["grep", "", input.to_str().expect("utf8 path")],
+        &[
+            "grep",
+            "-f",
+            patterns.to_str().expect("utf8 path"),
+            input.to_str().expect("utf8 path"),
+        ],
+    ];
+    for args in cases {
+        let (code, err) = run_status(args, b"");
+        assert_eq!(
+            code,
+            Some(1),
+            "hfst {args:?} must exit 1, got {code:?}:\n{err}"
+        );
+        assert!(
+            err.contains("empty pattern"),
+            "hfst {args:?} error must name the empty pattern:\n{err}"
+        );
+        assert!(
+            !err.contains("panicked"),
+            "hfst {args:?} panicked on an empty pattern:\n{err}"
+        );
+    }
+}
+
 /// End-to-end lock for the `hfst-tokenize -c` cohort contract, covering two
 /// defects found by diffing 2 000 corpus lines against the C++ oracle on the
 /// Giella sma tokeniser (39 200 cohorts: 668 differed in reading multiplicity,

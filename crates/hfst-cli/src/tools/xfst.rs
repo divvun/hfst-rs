@@ -62,10 +62,10 @@ impl Default for Options {
 }
 
 /// hfst-xfst's command line.
-///
-/// The 'k' arm of the C switch (set pipe_output) is unreachable: no long-table
-/// entry carries the value 'k', so '-k' has always reported an unknown option.
-/// It is therefore not declared here either.
+//
+// The 'k' arm of the C switch (set pipe_output) is unreachable: no long-table
+// entry carries the value 'k', so '-k' has always reported an unknown option.
+// It is therefore not declared here either.
 // [spec:hfst:req:cli.arg-parse]
 // [spec:hfst:req:cli.help]
 #[derive(clap::Parser)]

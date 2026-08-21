@@ -375,6 +375,7 @@ assertions (
     {id librarify2, kind @complete, author "brendan@necessary.nu", at 2026-08-20T14:59:19.432788Z}
     {id spec-rewrite, kind @complete, author "brendan@necessary.nu", at 2026-08-20T16:26:52.346169Z}
     {id clap-migration, kind @complete, author "brendan@necessary.nu", at 2026-08-21T20:31:39.110378Z}
+    {id cli-residual-fixes, kind @complete, author "brendan@necessary.nu", at 2026-08-21T20:53:38.377963Z}
 )
 
 impl_evidence (

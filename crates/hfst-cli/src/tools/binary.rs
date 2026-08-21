@@ -1547,11 +1547,11 @@ pub mod disjunct {
     use hfst::hfst_transducer::HfstTransducer;
 
     /// hfst-disjunct's command line.
-    ///
-    /// '-F, --harmonize-flags' is DELIBERATELY absent: upstream's usage text
-    /// advertises it, but its getopt table never carried the option and the
-    /// harmonize_flags static stayed false, so the flag was never accepted.
-    /// Preserved bug-for-bug — the usage text is what stops advertising it.
+    //
+    // '-F, --harmonize-flags' is DELIBERATELY absent: upstream's usage text
+    // advertises it, but its getopt table never carried the option and the
+    // harmonize_flags static stayed false, so the flag was never accepted.
+    // Preserved bug-for-bug — the usage text is what stops advertising it.
     // [spec:hfst:def:hfst-disjunct.parse-options-fn]
     // [spec:hfst:sem:hfst-disjunct.parse-options-fn]
     // [spec:hfst:req:cli.arg-parse]
@@ -1654,11 +1654,11 @@ pub mod priority_disjunct {
     use hfst::hfst_transducer::HfstTransducer;
 
     /// hfst-priority-disjunct's command line.
-    ///
-    /// '-H' is accepted and has no effect, and '-F' is not accepted at all:
-    /// upstream's usage text advertises both, its getopt table carried only
-    /// 'do-not-harmonize', and priority_union takes no harmonize parameter, so
-    /// neither static ever reached the operation. Preserved bug-for-bug.
+    //
+    // '-H' is accepted and has no effect, and '-F' is not accepted at all:
+    // upstream's usage text advertises both, its getopt table carried only
+    // 'do-not-harmonize', and priority_union takes no harmonize parameter, so
+    // neither static ever reached the operation. Preserved bug-for-bug.
     // [spec:hfst:req:cli.arg-parse]
     // [spec:hfst:req:cli.help]
     #[derive(clap::Parser)]
