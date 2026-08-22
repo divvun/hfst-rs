@@ -6761,4 +6761,56 @@ children (
             }
         )
     }
+
+    {
+        id test-health.foma-subtract
+        title "foma subtract went through a single-tape complement, so every difference of relations came back empty and replace rules lost their output symbols"
+        kind @fix
+        log (
+            {
+                at 2026-08-21T23:51:55.908707Z
+                author "brendan@necessary.nu"
+                kind @status
+                text "Todo → Doing (nplan start)"
+            }
+        )
+    }
+
+    {
+        id test-health.delete-ignored
+        title "Delete the four permanently-ignored tests: two self-contradictory upstream xerox cases, one assertion the &str facade makes unreachable, and one unimplemented! documentation stub"
+        kind @test
+        log (
+            {
+                at 2026-08-21T23:59:24.778907Z
+                author "brendan@necessary.nu"
+                kind @status
+                text "Todo → Doing (nplan start)"
+            }
+        )
+    }
+
+    {
+        id xre-root-finalization
+        title "Bracketed XRE roots skipped the REGEXP2 boundary optimization, so -E compiles kept surplus states and duplicate non-minimal-weight paths"
+        kind @fix
+        implements {
+            target-impl ([spec:hfst:req:xre-finalization.root-optimize])
+        }
+        log (
+            {
+                at 2026-08-22T00:00:45.31524Z
+                author "brendan@necessary.nu"
+                kind @status
+                text "Todo → Doing (nplan start)"
+            }
+
+            {
+                at 2026-08-22T00:01:07.949068Z
+                author "brendan@necessary.nu"
+                kind @note
+                text "Regression from ed15542 (xre-intermediate-optimization, 2026-08-20), which made the compiler boundary skip its optimize() for any root whose evaluation \"already optimized\" — and counted a bracketed Group among those. It is not one: [ ... ] is REGEXP11, whose optimize() is the bracket's; the REGEXP2 reduction every complete expression passes through still owes one. C++ optimizes unconditionally at REGEXP2 (xre_parse.yy:207).\n\nLocalized by an optimize-count ladder on the reported Giella speller error model ([ words-txt.hfst | chain.hfst ], hfst-regexp2fst -S -E). Counting optimize applications rather than trusting the bracket:\n  1 optimize: ours [X] and C++ bare X are IDENTICAL — 5,990 states / 20,835,787 arcs / 5,481 finals / 333,445,796 bytes / 985,855 probe paths.\n  2 optimizes: ours [[X]] and C++ [X] are IDENTICAL — 5,982 states / 20,711,564 arcs / 5,473 finals / 331,458,132 bytes / 983,746 probe paths.\n  3 optimizes: both implementations sit at the same fixpoint.\nSo the two implementations agree state-for-state at every count and the ONLY divergence was that ours applied one fewer. The reported 0.5% path surplus (2,109 duplicate paths) and 2 MB size surplus are exactly one missing pass.\n\nMechanism of the non-idempotence (shared with upstream, faithfully ported, not a defect): HfstTransducer::minimize under encode_weights runs Encode(labels+weights) -> Determinize -> Minimize -> Decode. The encoded machine is a weighted acceptor, so Minimize takes its weighted-acceptor branch and pushes weights ReweightToInitial before refining the partition (rustfst minimize.rs:164, mirroring OpenFST). The equivalence classes it computes are the ones induced by that intermediate weight distribution, not the machine's own, so a second pass finds merges the first could not see. Content converges after 2 passes.\n\nFix: drop the Group arms from the already_optimized set in eval_finalized, keeping the arms that genuinely ARE REGEXP2 productions (compose, cross product, lenient compose, both merges) — those still skip, which preserves the whole point of ed15542 (the Giella composition-chain win, and the count C++ uses for them). Restores the pre-ed15542 behaviour for bracketed roots, which is the one the lang-sma byte-identity work validated.\n\nVerified end-to-end: the rebuilt binary compiles the reported u.regex to 331,458,132 bytes, matching the C++ oracle exactly (was 333,445,796). Full suite 542/542.\n\nOut of scope, recorded: on this particular artifact ours and C++ differ in ~97M bytes at EQUAL optimize counts while every structural count matches — the symbol table is a numbering permutation (index 4 is ':' for C++ and \"'\" for us, 5 is 'c' vs '3', ...). Same cosmetic class as the retired twolc-sigma-numbering-permutation node; present before this fix and unaffected by it. Small fresh-symbol expressions ARE byte-identical to the oracle."
+            }
+        )
+    }
 )
