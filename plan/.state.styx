@@ -403,8 +403,8 @@ assertions (
     {id cli-residual-fixes, kind @complete, author "brendan@necessary.nu", at 2026-08-21T20:53:38.377963Z}
     {id upstream-bugs.t3.rs3-centre, kind @complete, author "brendan@necessary.nu", at 2026-08-21T22:55:55.310677Z}
     {id test-health.census-scanner, kind @complete, author "brendan@necessary.nu", at 2026-08-21T23:07:30.829777Z}
-    {id test-health.foma-subtract, kind @doing, author "brendan@necessary.nu", at 2026-08-21T23:51:55.908707Z}
-    {id test-health.delete-ignored, kind @doing, author "brendan@necessary.nu", at 2026-08-21T23:59:24.778907Z}
+    {id test-health.foma-subtract, kind @complete, author "brendan@necessary.nu", at 2026-08-22T00:10:05.44238Z}
+    {id test-health.delete-ignored, kind @complete, author "brendan@necessary.nu", at 2026-08-22T00:10:08.174189Z}
 )
 
 impl_evidence (

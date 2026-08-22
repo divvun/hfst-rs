@@ -6766,12 +6766,20 @@ children (
         id test-health.foma-subtract
         title "foma subtract went through a single-tape complement, so every difference of relations came back empty and replace rules lost their output symbols"
         kind @fix
+        sealed true
         log (
             {
                 at 2026-08-21T23:51:55.908707Z
                 author "brendan@necessary.nu"
                 kind @status
                 text "Todo → Doing (nplan start)"
+            }
+
+            {
+                at 2026-08-22T00:10:05.44238Z
+                author "brendan@necessary.nu"
+                kind @status
+                text "Doing → Done (nplan complete)"
             }
         )
     }
@@ -6780,12 +6788,20 @@ children (
         id test-health.delete-ignored
         title "Delete the four permanently-ignored tests: two self-contradictory upstream xerox cases, one assertion the &str facade makes unreachable, and one unimplemented! documentation stub"
         kind @test
+        sealed true
         log (
             {
                 at 2026-08-21T23:59:24.778907Z
                 author "brendan@necessary.nu"
                 kind @status
                 text "Todo → Doing (nplan start)"
+            }
+
+            {
+                at 2026-08-22T00:10:08.174189Z
+                author "brendan@necessary.nu"
+                kind @status
+                text "Doing → Done (nplan complete)"
             }
         )
     }
