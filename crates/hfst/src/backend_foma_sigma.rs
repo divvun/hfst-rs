@@ -2,12 +2,13 @@
 
 use crate::hfst_tropical_transducer_transition_data::SymbolType;
 
-use foma::types::Sigma;
+use foma::types::{Fsm, Sigma};
+use std::collections::BTreeSet;
 
 /// The HFST special-symbol strings for Foma's three reserved sigma numbers.
 const EPSILON_SYMBOL: &str = "@_EPSILON_SYMBOL_@";
 const UNKNOWN_SYMBOL: &str = "@_UNKNOWN_SYMBOL_@";
-const IDENTITY_SYMBOL: &str = "@_IDENTITY_SYMBOL_@";
+pub(crate) const IDENTITY_SYMBOL: &str = "@_IDENTITY_SYMBOL_@";
 
 /// Whether `symbol` is one of the three HFST special strings Foma represents
 /// by a reserved sigma number rather than an ordinary alphabet entry.
@@ -51,4 +52,23 @@ pub(crate) fn sigma_declare<'a>(
         foma::sigma::sigma_add(symbol, &mut net.sigma);
     }
     foma::sigma::sigma_sort(net);
+}
+
+/// The label pairs on `net`'s arcs whose two sides differ — the arcs that make
+/// it a transducer rather than an automaton, named by their HFST symbol
+/// strings.
+pub(crate) fn transducing_pairs(net: &Fsm) -> BTreeSet<(SymbolType, SymbolType)> {
+    let mut pairs = BTreeSet::new();
+    for line in net.states.rows().iter() {
+        if line.state_no == -1 {
+            break;
+        }
+        let (input, output) = (line.r#in as i32, line.out as i32);
+        // A state with no outgoing arcs still occupies a marker row.
+        if line.target == -1 || input < 0 || output < 0 || input == output {
+            continue;
+        }
+        pairs.insert((sym(input, &net.sigma), sym(output, &net.sigma)));
+    }
+    pairs
 }

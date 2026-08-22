@@ -489,6 +489,29 @@ fn algebra_parity_union_intersect_compose_subtract_concat() {
         "subtract {a,b} - {b}",
     );
 
+    // subtract {a:x, a:y} - {a:y} = {a:x}. A difference of RELATIONS: both
+    // operands agree on the input side, so a subtraction that only looked at
+    // languages would answer the empty net. foma's complement is single-tape
+    // and cannot answer this alone (see 'pair_complement' in backend_foma.rs).
+    let ax_or_ay = {
+        let mut n = basic_pair("a", "x");
+        let tr = HfstBasicTransition::new_symbols(1, sym("a"), sym("y"), 0.0, n.coder_mut());
+        n.add_transition(0, &tr, true);
+        n // 0 -a:x-> 1(final), 0 -a:y-> 1(final)
+    };
+    assert_binary_parity(
+        &ax_or_ay,
+        &basic_pair("a", "y"),
+        |x, y| {
+            x.subtract(y, true).unwrap();
+        },
+        |x, y| {
+            x.subtract(y, true).unwrap();
+        },
+        &[("a", "x")],
+        "subtract {a:x,a:y} - {a:y}",
+    );
+
     // concatenate {a} · {b} = {ab}
     assert_binary_parity(
         &a,
@@ -867,26 +890,6 @@ fn boolean_minimize_does_not_blow_up_vs_weighted() {
         fs < ts,
         "weight-divergent branches: foma ({fs}) must be strictly smaller than openfst ({ts})"
     );
-}
-
-// [spec:hfst:sem:foma-backend.algebra-impl/test]
-// The real repro of the plan/main.styx:97,104 blowup: compile the lang-sma
-// tokeniser-disamb pmscript to a pmatch archive under both backends and compare
-// archive sizes / TOP state+arc counts. It needs the sma pmscript data (the
-// `lang-sma` pmatch sources), which is not vendored into this repo, so it is
-// documented here rather than run.
-//
-//   1. Obtain the lang-sma tokeniser-disamb pmscript (the sma pmatch sources).
-//   2. `hfst pmatch2fst` it with the tropical/openfst backend (weighted
-//      minimize, encode_weights=false) -> ~538MB, TOP ~553k states / ~22.7M
-//      arcs (plan/main.styx:104).
-//   3. Route the same build's optimize()/minimize() chain through the foma
-//      backend (boolean subset construction) and confirm the archive stays
-//      compact — that is what this backend is for.
-#[test]
-#[ignore = "needs the lang-sma pmscript data (out of scope for a unit test); see plan/main.styx:97,104"]
-fn sma_tokeniser_pmatch_archive_blowup_repro() {
-    unimplemented!("documentation stub: see the comment above for the manual repro steps");
 }
 
 // ---------------------------------------------------------------------------

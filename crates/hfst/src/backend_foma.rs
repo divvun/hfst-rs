@@ -10,7 +10,9 @@
 //! the contract in `docs/spec/port/back-ends/foma/foma-backend.md`.
 
 use crate::backend::{AlgebraBackend, Backend, FlagDiacriticOperation, LookupBackend};
-use crate::backend_foma_sigma::{is_reserved_symbol, sigma_declare, sym};
+use crate::backend_foma_sigma::{
+    IDENTITY_SYMBOL, is_reserved_symbol, sigma_declare, sym, transducing_pairs,
+};
 use crate::hfst_basic_transducer::HfstBasicTransducer;
 use crate::hfst_basic_transition::HfstBasicTransition;
 use crate::hfst_data_types::{
@@ -606,6 +608,48 @@ impl FomaTransducer {
     }
 }
 
+/// The complement foma's own 'fsm_complement' cannot take: one over label
+/// PAIRS.
+///
+/// 'fsm_completes' (constructions/boolean.rs, the body behind both complete and
+/// complement) rebuilds a machine one symbol NUMBER at a time —
+/// 'add_fsm_arc(..., j, j, ...)' — so what it hands back is single-tape: every
+/// arc of it has its two sides equal, and a mapping arc like 'a:x' has nothing
+/// there to meet. Intersecting a real transducer with such a complement is the
+/// empty net whatever the operands were, which is no difference of relations.
+///
+/// Completing over the pairs the operands actually use instead makes the
+/// universe a relation: '(identity symbols | mapping pairs)*' minus the
+/// subtrahend, taken with foma's own difference — 'fsm_minus' matches a
+/// subtrahend arc on BOTH labels, so it is already pair-aware. Unlike folding
+/// each pair onto a symbol of its own, this leaves every label where it was,
+/// which the flag overlay depends on: it reads the arcs' output labels to tell
+/// a flag from a true epsilon from an ordinary symbol.
+///
+/// The identity half is exactly what 'fsm_completes' would have completed over:
+/// every ordinary sigma symbol of the subtrahend, plus foma's IDENTITY, which
+/// it declares itself when the net has none.
+fn pair_complement(
+    opts: &FomaOptions,
+    subtrahend: foma::types::Fsm,
+    mapping_pairs: &std::collections::BTreeSet<(SymbolType, SymbolType)>,
+) -> foma::types::Fsm {
+    let mut handle = foma::dynarray::fsm_construct_init("");
+    foma::dynarray::fsm_construct_set_initial(&mut handle, 0);
+    foma::dynarray::fsm_construct_set_final(&mut handle, 0);
+    for entry in &subtrahend.sigma {
+        if entry.number > foma::types::IDENTITY {
+            foma::dynarray::fsm_construct_add_arc(&mut handle, 0, 0, &entry.symbol, &entry.symbol);
+        }
+    }
+    foma::dynarray::fsm_construct_add_arc(&mut handle, 0, 0, IDENTITY_SYMBOL, IDENTITY_SYMBOL);
+    for (input, output) in mapping_pairs {
+        foma::dynarray::fsm_construct_add_arc(&mut handle, 0, 0, input, output);
+    }
+    let universe = foma::dynarray::fsm_construct_done(handle);
+    foma::constructions::fsm_minus(opts, universe, subtrahend)
+}
+
 // [spec:hfst:def:foma-backend.algebra-impl]
 // [spec:hfst:sem:foma-backend.algebra-impl]
 // Every op maps to its foma construction, all unweighted: weight arguments and
@@ -746,6 +790,27 @@ impl AlgebraBackend for FomaTransducer {
         }
         if operation == FlagDiacriticOperation::Subtract {
             let FomaTransducer { net, opts } = self;
+
+            // With no virtual loops to supply, this is an ordinary difference,
+            // and foma's own 'fsm_minus' is the primitive for it: its product
+            // matches a subtrahend arc on BOTH labels (constructions/boolean.rs
+            // fsm_minus: 'fsm1[ai].in == fsm2[bi].in && fsm1[ai].out ==
+            // fsm2[bi].out'), so it subtracts relations, not just languages.
+            // The complement route below cannot: 'fsm_completes' rebuilds the
+            // machine one symbol NUMBER at a time ('add_fsm_arc(..., j, j,
+            // ...)'), so the complement it returns is single-tape and no arc of
+            // it can meet a mapping arc whose sides differ — every subtraction
+            // from a real transducer came back empty. This is also what the C++
+            // did (FomaTransducer.cc:581 'FomaTransducer::subtract' ->
+            // 'fsm_minus(fsm_copy(t1), fsm_copy(t2))').
+            let no_virtual_loops = flag_overlay.is_none_or(|overlay| {
+                overlay.left_self_loops.is_empty() && overlay.right_self_loops.is_empty()
+            });
+            if no_virtual_loops {
+                let result = foma::constructions::fsm_minus(&opts, net, another.net);
+                return Ok(FomaTransducer { net: result, opts });
+            }
+
             let mut complement_source = another.net;
 
             // A missing right-side flag is a self-loop at every state of the
@@ -761,7 +826,18 @@ impl AlgebraBackend for FomaTransducer {
                 }
                 foma::sigma::sigma_sort(&mut complement_source);
             }
-            let complement = foma::constructions::fsm_complement(&opts, complement_source);
+            // The overlay lives in the intersection, so this route has to keep
+            // the complement; when either operand maps one symbol to another,
+            // that complement has to be taken over pairs (see 'pair_complement').
+            let mapping_pairs = transducing_pairs(&net)
+                .into_iter()
+                .chain(transducing_pairs(&complement_source))
+                .collect::<std::collections::BTreeSet<_>>();
+            let complement = if mapping_pairs.is_empty() {
+                foma::constructions::fsm_complement(&opts, complement_source)
+            } else {
+                pair_complement(&opts, complement_source, &mapping_pairs)
+            };
             let result = foma::constructions::fsm_intersect_with_flag_overlay(
                 &opts, net, complement, &overlay,
             )
