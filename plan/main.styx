@@ -4653,6 +4653,30 @@ children (
                     }
                 )
             }
+
+            {
+                id flag-encode-table-parity
+                title "Fix the in-place tropical flag encode/decode to rename BOTH symbol tables. The flag-encode-diverge fast path rewrote only the input table, so a transducer also carrying an output table (minimize's reverse-orientation fallback leaves exactly that shape on budget overrun) kept the pre-rename flag spelling there; copy_alphabet unions both tables, so the decode renamed onto a name the alphabet already held and silently dropped every flag arc (774,901 to 0 in one compose). Flags are the casing constraint, so lowercase proper nouns were accepted: 191 false negatives in the lang-smj speller. Cross-language: fires for any speller big enough to trip the determinize budget before an eliminate flag."
+                kind @fix
+                implements {
+                    target-impl ([spec:hfst:req:flag-encode-symbol-tables.table-parity])
+                }
+                log (
+                    {
+                        at 2026-08-24T19:45:36.535467Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
+
+                    {
+                        at 2026-08-24T19:54:26.613738Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "lang-smj speller measured before/after (divvunspell accuracy, n-best 100, beam null, reweight 3/1/1, typos-all.tsv, 5052 words). false_negative 191 -> 0; true_positive 4861 -> 5052; top-1 3408 -> 3544 (67.46% -> 70.15%, +2.69pp); top-5 4231 -> 4384 (83.75% -> 86.78%); any-position 4468 -> 4596; false_accept 0 -> 0 (no over-acceptance). no_suggestions 20 -> 32 and only_wrong 373 -> 424 both rise because the 191 words that were previously not even recognised as errors are now correctly flagged, and some of them draw no or wrong suggestions. Six-word casing check on the rebuilt acceptor: aho/bajas/danska/europa reject (+? inf), Aho/Europa accept -- matching C++ exactly, where the pre-fix acceptor accepted all six. Cross-language check: lang-sme and lang-sma acceptors probed with lowercase proper nouns and are NOT affected (constraint intact; the only lowercase accepts are genuine common nouns). Residual, not addressed here: the generator step still emits 161MB vs C++ 54MB because minimize bails on the determinization budget in both orientations -- that overrun is the trigger that exposed this bug and it remains."
+                    }
+                )
+            }
         )
     }
 

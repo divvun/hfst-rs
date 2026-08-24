@@ -1220,7 +1220,28 @@ mod construction_io {
                 };
                 st.add_symbol_with_key(new_sym.as_str(), label);
             }
-            t.set_input_symbols(Arc::new(st));
+            Self::set_both_symbol_tables(t, st);
+        }
+
+        // An HFST tropical transducer may carry an output symbol table, and when
+        // it does that table is equivalent to the input one (the invariant
+        // `handle_symbol_tables` relies on). The in-place flag rename replaces
+        // the input table wholesale, so a surviving output table would still hold
+        // the pre-rename spelling of every flag. `copy_alphabet` unions BOTH
+        // tables into the interchange graph's alphabet, so that stale table
+        // reintroduces the un-encoded `@...@` names beside their `%...%`
+        // encodings; the matching decode then renames `%X%` back onto a name the
+        // alphabet already carries and the flag arcs are lost. The C++ rebuilds
+        // the whole graph and cannot drift this way — so mirror the rename onto
+        // the output table whenever one is present, which is what keeps the
+        // in-place shortcut equivalent to that rebuild.
+        // [spec:hfst:req:flag-encode-symbol-tables.table-parity]
+        fn set_both_symbol_tables(t: &mut StdVectorFst, st: SymbolTable) {
+            let st = Arc::new(st);
+            if t.output_symbols().is_some() {
+                t.set_output_symbols(Arc::clone(&st));
+            }
+            t.set_input_symbols(st);
         }
 
         // In-place flag decode: the exact inverse of `encode_flag_diacritics`,
@@ -1244,7 +1265,7 @@ mod construction_io {
                 };
                 st.add_symbol_with_key(new_sym.as_str(), label);
             }
-            t.set_input_symbols(Arc::new(st));
+            Self::set_both_symbol_tables(t, st);
         }
 
         // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.get-alphabet-fn]
@@ -3497,6 +3518,9 @@ mod lookup_extract_misc {
 
 #[cfg(test)]
 mod compose_owned_tests;
+
+#[cfg(test)]
+mod flag_encode_tests;
 
 #[cfg(test)]
 mod determinize_budget_tests;

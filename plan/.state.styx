@@ -490,4 +490,9 @@ impl_evidence (
     ), covered_claims (
         {impl_name target-impl, rule xre-finalization.root-optimize}
     )}
+    {id flag-encode-table-parity, covered_rules (
+        flag-encode-symbol-tables.table-parity
+    ), covered_claims (
+        {impl_name target-impl, rule flag-encode-symbol-tables.table-parity}
+    )}
 )
