@@ -207,6 +207,47 @@ fn transition_budget_preserves_the_relation() {
     );
 }
 
+fn states_only(n: usize) -> StdVectorFst {
+    let mut input = StdVectorFst::new();
+    for _ in 0..n {
+        input.add_state();
+    }
+    input
+}
+
+// The lang-smj speller generator's flag-elimination input: 3,805,759 states
+// after epsilon removal, whose legitimate determinized form holds 5,920,780
+// states. The scaled floors must clear it with margin on both axes.
+// [spec:hfst:req:determinize-envelope.input-scaled-floors/test]
+#[test]
+fn large_inputs_scale_the_state_and_subset_floors() {
+    let budget = TropicalWeightTransducer::determinize_budget(&states_only(3_805_759));
+    assert_eq!(budget.states, 4 * 3_805_759);
+    assert_eq!(budget.states, 15_223_036);
+    assert_eq!(budget.subset_elements, 8 * 3_805_759);
+    assert_eq!(budget.subset_elements, 30_446_072);
+}
+
+// The error-model union that motivated the envelope sits below both engagement
+// thresholds, so its budgets are bit-identical to the fixed envelope and its
+// artifacts cannot move.
+// [spec:hfst:req:determinize-envelope.input-scaled-floors/test]
+#[test]
+fn the_error_model_precedent_keeps_the_fixed_envelope() {
+    let budget = TropicalWeightTransducer::determinize_budget(&states_only(356_823));
+    assert_eq!(budget.states, 2_000_000);
+    assert_eq!(budget.subset_elements, 4 * 1024 * 1024);
+}
+
+// [spec:hfst:req:determinize-envelope.input-scaled-floors/test]
+#[test]
+fn small_machines_keep_their_heuristic_budget() {
+    let budget = TropicalWeightTransducer::determinize_budget(&states_only(1_000));
+    assert_eq!(budget.states, 256 * 1_000);
+    assert_eq!(budget.subset_elements, 4 * 1024 * 1024);
+    assert_eq!(budget.trs, 128 * 1024 * 1024);
+}
+
 // Widening or adding an axis must never perturb a compilation that already fit.
 // [spec:hfst:req:determinize-envelope.transition-axis/test]
 #[test]

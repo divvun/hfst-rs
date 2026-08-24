@@ -69,3 +69,28 @@ any operation licence to change the relation it returns.
 > that stays inside every bound MUST produce byte-identical output to the same
 > run with the bounds removed, so that adding or widening an axis can never
 > perturb a compilation that was already succeeding.
+
+## The state and subset axes are floors too
+
+> [spec:hfst:req:determinize-envelope.input-scaled-floors]
+> The state bound and the weighted-subset-element bound MUST be input-scaled
+> floors, not fixed ceilings, for the same reason the transition bound is: an
+> input that already holds many states affords a determinized machine of
+> comparable size.  Each of the two axes MUST admit at least a small multiple
+> of the input's state count, so that the fixed envelope binds only inputs
+> small enough that it already represents a generous multiple of them.
+>
+> The subset-element count in particular accumulates across every subset the
+> construction stores and never shrinks, so it grows with the output even when
+> every subset is a singleton; a fixed cap on it therefore forbids *every*
+> determinization whose output exceeds a fixed state count, including
+> perfectly deterministic expansions that split nothing.  The measured case is
+> the lang-smj speller generator: flag elimination over a 3,805,760-state
+> machine whose legitimate determinized form holds 5,920,780 states — 1.56
+> times its input — which fixed caps of 2,000,000 states and 4,194,304 subset
+> elements rejected in both orientations, shipping a three-times-larger
+> unminimized artifact and more than doubling lookup latency.  Below the input
+> sizes where the scaled terms engage, the computed budgets MUST be identical
+> to the fixed envelope, so that machines the envelope already bounded — the
+> error-model union above among them — see bit-for-bit the same budgets as
+> before.

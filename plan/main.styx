@@ -6882,4 +6882,22 @@ children (
             }
         )
     }
+
+    {
+        id determinize-scaled-floors
+        title "Make the determinize state and subset-element budgets input-scaled floors, not fixed ceilings: the lang-smj speller generator's 3.8M-state flag-elimination input has a legitimate 5.9M-state determinized form (1.56x input, minimized to 1.2M) that both absolute caps rejected in both orientations — the cumulative subset-element counter alone forbids ANY determinization whose output exceeds ~4.19M states — so minimize shipped the 3x-larger unminimized machine (acceptor 169MB vs 55MB, lookup 57ms vs 23ms). states .max(4n) / subset_elements .max(8n), engaging only above 500K/524K input states, so the sme error-model precedent (356,823 states) keeps bit-identical budgets; plus tracing on the silent both-axes fallback arm"
+        kind @fix
+        implements {
+            target-impl ([spec:hfst:req:determinize-envelope.input-scaled-floors])
+        }
+        deps (determinize-transition-budget)
+        log (
+            {
+                at 2026-08-24T21:00:19.439817Z
+                author "brendan@necessary.nu"
+                kind @status
+                text "Todo → Doing (nplan start)"
+            }
+        )
+    }
 )

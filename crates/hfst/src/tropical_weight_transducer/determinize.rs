@@ -95,11 +95,31 @@ impl TropicalWeightTransducer {
     // comparable size: a determinization whose result stays within a small
     // multiple of its input has not blown up, whatever its absolute size, and
     // must keep behaving exactly as before.
+    //
+    // The state and subset-element axes are floors of the same kind. An input
+    // that already holds n states affords a determinized machine within a
+    // small multiple of n, and the subset-element counter accumulates across
+    // every stored subset without ever shrinking — it tracks the output's
+    // size even when every subset is a singleton — so a fixed cap on either
+    // axis rejects every determinization whose output exceeds it, however
+    // tame the expansion. The measured case is the lang-smj speller
+    // generator, a 3.8M-state flag-elimination input whose legitimate
+    // determinized form holds 5.9M states (1.56x input, then minimized to
+    // 1.2M): both fixed caps sat below it in both orientations, so minimize
+    // shipped the 3x-larger unminimized machine. The scaled terms engage only
+    // above MAX_STATES / STATES_FLOOR_PER_INPUT_STATE (500,000) and
+    // MAX_SUBSET_ELEMENTS / SUBSET_ELEMENTS_FLOOR_PER_INPUT_STATE (524,288)
+    // input states; below that the budgets are bit-identical to the fixed
+    // envelope, so everything it already bounded — the error-model union
+    // among them — keeps behaving exactly as before.
     // [spec:hfst:req:determinize-envelope.transition-axis]
-    fn determinize_budget(input: &StdVectorFst) -> DeterminizeBudget {
+    // [spec:hfst:req:determinize-envelope.input-scaled-floors]
+    pub(super) fn determinize_budget(input: &StdVectorFst) -> DeterminizeBudget {
         const STATES_PER_INPUT: usize = 256;
         const MAX_STATES: usize = 2_000_000;
+        const STATES_FLOOR_PER_INPUT_STATE: usize = 4;
         const MAX_SUBSET_ELEMENTS: usize = 4 * 1024 * 1024;
+        const SUBSET_ELEMENTS_FLOOR_PER_INPUT_STATE: usize = 8;
         const MIN_TRS: usize = 128 * 1024 * 1024;
         const TRS_PER_INPUT_TR: usize = 4;
 
@@ -112,8 +132,10 @@ impl TropicalWeightTransducer {
         DeterminizeBudget {
             states: STATES_PER_INPUT
                 .saturating_mul(input_states)
-                .clamp(1024, MAX_STATES),
-            subset_elements: MAX_SUBSET_ELEMENTS,
+                .clamp(1024, MAX_STATES)
+                .max(STATES_FLOOR_PER_INPUT_STATE.saturating_mul(input_states)),
+            subset_elements: MAX_SUBSET_ELEMENTS
+                .max(SUBSET_ELEMENTS_FLOOR_PER_INPUT_STATE.saturating_mul(input_states)),
             trs: TRS_PER_INPUT_TR.saturating_mul(input_trs).max(MIN_TRS),
         }
     }
@@ -172,9 +194,17 @@ impl TropicalWeightTransducer {
             // cannot shrink a result that is already too large: retrying it
             // would burn the budget again to reach the same verdict.
             Err(
-                algorithms::DeterminizeBoundedError::SubsetElements { .. }
-                | algorithms::DeterminizeBoundedError::Transitions { .. },
+                err @ (algorithms::DeterminizeBoundedError::SubsetElements { .. }
+                | algorithms::DeterminizeBoundedError::Transitions { .. }),
             ) if preserve_on_subset_limit => {
+                // The relation survives, but the caller falls back to a weaker
+                // representation; report which axis tripped and by how much,
+                // or the fallback is undiagnosable from a build log.
+                tracing::info!(
+                    caller,
+                    %err,
+                    "label-only determinization exceeded its budget; skipping the weight-encoded retry"
+                );
                 algorithms::Decode(t, label_mapper);
                 AdaptiveDeterminize::SubsetLimit
             }

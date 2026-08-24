@@ -518,4 +518,9 @@ impl_evidence (
         {impl_name target-impl, rule general-lookup-termination.non-progressing-cycle}
         {impl_name target-impl, rule general-lookup-termination.progress-resets-the-trap}
     )}
+    {id determinize-scaled-floors, covered_rules (
+        determinize-envelope.input-scaled-floors
+    ), covered_claims (
+        {impl_name target-impl, rule determinize-envelope.input-scaled-floors}
+    )}
 )
