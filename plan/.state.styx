@@ -1,11 +1,12 @@
 schema_version 7
 
-last_sync_at 2026-08-21T21:18:14.374864Z
+last_sync_at 2026-08-24T19:58:10.172058Z
 
 rule_versions (
     {id determinize-envelope.bounded-strategies, version 0}
     {id determinize-envelope.relation-preserved, version 0}
     {id determinize-envelope.transition-axis, version 0}
+    {id flag-encode-symbol-tables.table-parity, version 0}
     {id foma-transducer.hfst.implementations.foma-transducer.resource-controlled-compose, version 0}
     {id ol-lookup-enumeration.meta-arc-output, version 0}
     {id ol-lookup-enumeration.meta-arc-restriction, version 0}
@@ -19,6 +20,7 @@ rule_versions (
     {id virtual-flag-algebra.materialized-reference, version 0}
     {id virtual-flag-algebra.special-compose, version 0}
     {id virtual-flag-algebra.subtraction, version 0}
+    {id xre-finalization.root-optimize, version 0}
 )
 
 derived_priorities (
@@ -39,6 +41,7 @@ derived_priorities (
     {id flag-complement.audit, priority 1, derived_at 2026-07-11T20:19:58.119495Z}
     {id flag-complement.fix, priority 0, derived_at 2026-07-11T20:19:58.119495Z}
     {id flag-encode-diverge, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
+    {id flag-encode-table-parity, priority 0, derived_at 2026-08-24T19:58:10.172058Z}
     {id foma-backend.algebra, priority 3, derived_at 2026-07-11T20:19:58.119495Z}
     {id foma-backend.cli, priority 0, derived_at 2026-07-11T20:19:58.119495Z}
     {id foma-backend.convert, priority 2, derived_at 2026-07-11T20:19:58.119495Z}
@@ -113,6 +116,9 @@ derived_priorities (
     {id smolstr, priority 0, derived_at 2026-07-11T20:19:58.119495Z}
     {id spec-rewrite, priority 3, derived_at 2026-08-21T21:18:14.374864Z}
     {id strtoweight-strtod-semantics, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
+    {id test-health.census-scanner, priority 0, derived_at 2026-08-24T19:58:10.172058Z}
+    {id test-health.delete-ignored, priority 0, derived_at 2026-08-24T19:58:10.172058Z}
+    {id test-health.foma-subtract, priority 0, derived_at 2026-08-24T19:58:10.172058Z}
     {id thfst.bhfst, priority 3, derived_at 2026-07-11T20:19:58.119495Z}
     {id thfst.io, priority 3, derived_at 2026-07-11T20:19:58.119495Z}
     {id thfst.oracle, priority 3, derived_at 2026-07-11T20:19:58.119495Z}
@@ -128,6 +134,7 @@ derived_priorities (
     {id twolc-sigma-numbering-permutation, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
     {id unary-driver, priority 0, derived_at 2026-08-21T21:18:14.374864Z}
     {id upstream-bugs.t3.rs2-3, priority 0, derived_at 2026-08-21T21:18:14.374864Z}
+    {id upstream-bugs.t3.rs3-centre, priority 0, derived_at 2026-08-24T19:58:10.172058Z}
     {id version-line-provenance, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
     {id weighted-determinize-fallback, priority 1, derived_at 2026-08-21T21:18:14.374864Z}
     {id xfst-copyright-owner-plain, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
@@ -137,6 +144,7 @@ derived_priorities (
     {id xfst-prototype-adjacency, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
     {id xre-function-as-network-error, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
     {id xre-intermediate-optimization, priority 1, derived_at 2026-08-21T21:18:14.374864Z}
+    {id xre-root-finalization, priority 0, derived_at 2026-08-24T19:58:10.172058Z}
 )
 
 assertions (
@@ -421,6 +429,13 @@ impl_evidence (
         {id determinize-envelope.relation-preserved, version 0}
         {id determinize-envelope.transition-axis, version 0}
     )}
+    {id flag-encode-table-parity, covered_rules (
+        flag-encode-symbol-tables.table-parity
+    ), covered_claims (
+        {impl_name target-impl, rule flag-encode-symbol-tables.table-parity}
+    ), rule_versions_seen (
+        {id flag-encode-symbol-tables.table-parity, version 0}
+    )}
     {id foma-compose-resource-integration, covered_rules (
         foma-transducer.hfst.implementations.foma-transducer.resource-controlled-compose
     ), covered_claims (
@@ -489,10 +504,18 @@ impl_evidence (
         xre-finalization.root-optimize
     ), covered_claims (
         {impl_name target-impl, rule xre-finalization.root-optimize}
+    ), rule_versions_seen (
+        {id xre-finalization.root-optimize, version 0}
     )}
-    {id flag-encode-table-parity, covered_rules (
-        flag-encode-symbol-tables.table-parity
+    {id general-lookup-cycle-trap, covered_rules (
+        general-lookup-termination.enumeration-divergence
+        general-lookup-termination.no-cycle-count-termination
+        general-lookup-termination.non-progressing-cycle
+        general-lookup-termination.progress-resets-the-trap
     ), covered_claims (
-        {impl_name target-impl, rule flag-encode-symbol-tables.table-parity}
+        {impl_name target-impl, rule general-lookup-termination.enumeration-divergence}
+        {impl_name target-impl, rule general-lookup-termination.no-cycle-count-termination}
+        {impl_name target-impl, rule general-lookup-termination.non-progressing-cycle}
+        {impl_name target-impl, rule general-lookup-termination.progress-resets-the-trap}
     )}
 )

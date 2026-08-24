@@ -48,6 +48,80 @@ pub use crate::hfst_data_types::StringVector;
 // deterministic pure function of the string, so the cache is gone: the accessors
 // recompute via 'parse_diacritic' on demand. Four shared-mutable globals removed.
 
+/// A snapshot of the flag registers: the feature values in force and their
+/// polarities. Ordered so a walk can key a visited-set on it.
+// [spec:hfst:req:general-lookup-termination.non-progressing-cycle]
+#[derive(Clone, Default, PartialEq, Eq, PartialOrd, Ord, Debug)]
+pub struct FlagConfiguration {
+    values: FeatureValues,
+    polarities: FeaturePolarities,
+}
+
+impl FlagConfiguration {
+    /// The configuration this one becomes once `symbol` has been applied to it.
+    /// A symbol that is not a flag diacritic leaves the registers alone, so this
+    /// is also the configuration on the far side of an epsilon arc.
+    // [spec:hfst:req:general-lookup-termination.non-progressing-cycle]
+    pub fn after(&self, symbol: &str) -> FlagConfiguration {
+        let mut table = FlagDiacriticTable {
+            feature_values: self.values.clone(),
+            feature_polarities: self.polarities.clone(),
+            error_flag: false,
+        };
+        table.insert_symbol(symbol);
+        table.configuration()
+    }
+}
+
+/// The configurations one lookup walk has stood in, interned. A machine reaches
+/// few of them — its own diacritics name every feature and value there is — so
+/// the walk and its non-progressing-cycle trap can pass an index around instead
+/// of a copy of the registers, which is what makes the trap cheap enough to
+/// consult on every arc.
+// [spec:hfst:req:general-lookup-termination.non-progressing-cycle]
+#[derive(Debug)]
+pub struct FlagConfigurations {
+    seen: Vec<FlagConfiguration>,
+}
+
+impl FlagConfigurations {
+    /// Where a walk starts: every register unset.
+    pub const INITIAL: usize = 0;
+
+    pub fn new() -> Self {
+        FlagConfigurations {
+            seen: vec![FlagConfiguration::default()],
+        }
+    }
+
+    /// The configuration an arc labelled `symbol` arrives in, coming from the
+    /// one at `here`. Only a flag diacritic can move the walk to a different
+    /// one, so any other symbol answers with the configuration it was given and
+    /// costs nothing.
+    // [spec:hfst:req:general-lookup-termination.non-progressing-cycle]
+    pub fn after(&mut self, here: usize, symbol: &str) -> usize {
+        match FlagDiacriticTable::is_diacritic(symbol) {
+            false => here,
+            true => {
+                let arrival = self.seen[here].after(symbol);
+                match self.seen.iter().position(|known| *known == arrival) {
+                    Some(at) => at,
+                    None => {
+                        self.seen.push(arrival);
+                        self.seen.len() - 1
+                    }
+                }
+            }
+        }
+    }
+}
+
+impl Default for FlagConfigurations {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 // [spec:hfst:def:hfst-lookup-flag-diacritics.flag-diacritic-table]
 pub struct FlagDiacriticTable {
     feature_values: FeatureValues,
@@ -329,6 +403,18 @@ impl FlagDiacriticTable {
             }
         }
         true
+    }
+
+    /// The register file a flag path leaves behind — everything a later flag
+    /// operation can read. Two walks holding the same configuration accept
+    /// exactly the same flag continuations, which is what lets a lookup treat
+    /// them as the same situation.
+    // [spec:hfst:req:general-lookup-termination.non-progressing-cycle]
+    pub fn configuration(&self) -> FlagConfiguration {
+        FlagConfiguration {
+            values: self.feature_values.clone(),
+            polarities: self.feature_polarities.clone(),
+        }
     }
 
     // [spec:hfst:def:hfst-lookup-flag-diacritics.flag-diacritic-table.filter-diacritics-fn]

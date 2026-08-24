@@ -6853,4 +6853,33 @@ children (
             }
         )
     }
+
+    {
+        id general-lookup-cycle-trap
+        title "General lookup: bound the non-consuming walk by the shape of its cycles instead of a count of them, which let one character on an eight-state flag filter run forever"
+        kind @fix
+        implements {
+            target-impl (
+                [spec:hfst:req:general-lookup-termination.non-progressing-cycle]
+                [spec:hfst:req:general-lookup-termination.progress-resets-the-trap]
+                [spec:hfst:req:general-lookup-termination.no-cycle-count-termination]
+                [spec:hfst:sem:general-lookup-termination.enumeration-divergence]
+            )
+        }
+        log (
+            {
+                at 2026-08-24T20:44:35.934021Z
+                author "brendan@necessary.nu"
+                kind @status
+                text "Todo → Doing (nplan start)"
+            }
+
+            {
+                at 2026-08-24T20:45:05.727711Z
+                author "brendan@necessary.nu"
+                kind @note
+                text "Root cause. The general engine's only bound on arcs that consume no input was HfstEpsilonHandler: a counter of cycle re-entries (hfst lookup default -c 5), which truncates the epsilon path at each detection and permits max_cycles further re-entries along every branch. That bounds the DEPTH of a walk, not its BREADTH, and the reported machine — /Users/brendan/git/divvun/lang-smj/src/fst/orthography/downcase-derived_proper-strings.lookup.hfst, 8 states, 576 arcs, all states final — offers four non-consuming arcs out of nearly every state: @U.Cap.Opt@, @U.CmpHyph.TRUE@, @P.LEXNAME.Root@, @P.LEXNAME.ProperNoun@, in 32 flag arcs including self-loops at 4, 5 and 7 and four-way fans into 6 and 7. Two are P-ops (always succeed) and two are U-ops that unify against the value they themselves set, so every one is takeable on every turn. Because the handler truncates its path on each cycle detection, states already walked become fresh again, so a branch can wander roughly (max_cycles + 1) x |states| deep with a branching factor of four. Measured on the reported file with `hfst lookup -c N`, input `A`: 0.01s/191 lines, 0.02s/3,364, 0.26s/55,703, 4.98s/902,360 for N = 0,1,2,3 — about 16x per permitted turn, which puts the default N=5 at a quarter of a billion readings. Every one of them was one of the same two analyses, `A -> A` and `A -> a`, both at weight 0: the flag symbols are stripped before printing, so the entire tree is duplicate output.\n\nOracle. C++ HFST 3.17.1 hfst-lookup does not return on this input either (killed at 60s), so there is no upstream output to match; the port was faithful, and the bug is upstream's. Where C++ does terminate, it was matched exactly before this change: four constructed probes (zero-weight epsilon-output cycle, weighted epsilon-output cycle, pure epsilon cycle, flag-gated cycle) produced byte-identical Rust and C++ output.\n\nFix. A structural trap in HfstBasicTransducer::lookup_recursive, the same shape as the optimized-lookup engine's (transducer.rs try_epsilon_transitions, from the hfst/hfst#293 + #476 work): a DFS-path-scoped stack of the (state, flag configuration) situations the walk currently stands in without having consumed input, pushed on entering a non-consuming arc, popped on leaving it, emptied for the descent below a consuming arc and handed back afterwards. An arc landing in a situation already on that stack is refused. The key is the EVALUATED flag configuration (feature values + polarities), not the traversed flag-symbol sequence — the sequence grows on every turn of a loop and so never repeats — and not the state alone, which would cut readings needing two flag arcs through one state. The configuration is threaded down the recursion (a flag arc knows what it does to the registers) and interned per walk, so the trap holds a pair of numbers rather than a copy of the registers. The caller's cycle cap stays as the enumeration limit it always was, but termination no longer rests on it: the situations are finite, so the non-consuming path is bounded by |states| x |configurations|.\n\nDivergence. An input-epsilon cycle that writes output is now enumerated once rather than once per permitted cycle: `A [0:x]*` answers A and Ax, where C++ answers A..Axxxxx at -c 5. This is exactly what the optimized-lookup engine already answers, so the two engines now agree on every probe — the same relation held as an openfst-tropical machine and as a packed OL table gave different answers before this change and gives identical answers after it. Pinned by [spec:hfst:sem:general-lookup-termination.enumeration-divergence] and the both_engines_bound_a_cyclic_machine_alike test.\n\nMeasured after. The reported file: 0.04s, distinct answer {A -> A, A -> a} plus the [...cyclic...] marker, at any cycle cap. Real-world check: 400 words through lang-smj analyser-gt-desc.hfst (29 MB, general path) is byte-identical to both the pre-fix engine and C++ hfst-lookup, at 0.46s against 0.40s before — a 15% cost on the slow-lookup path for a termination guarantee that holds at any cap. is_possible_transition still re-validates the whole flag trail per arc; folding that into the threaded configuration would take the path below its pre-fix cost and is left alone here to keep the fix small."
+            }
+        )
+    }
 )
