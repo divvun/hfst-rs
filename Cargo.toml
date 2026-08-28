@@ -60,8 +60,8 @@ rustfst = { git = "https://github.com/necessary-nu/rustfst", rev = "15fd756b8320
 # three shape-reading predicates — is_left_concatenation_with_context and the two
 # get_initial_*RC_initial_symbols — were ported from C++ and assume that nesting,
 # so the AST they now receive is the one they were written for.
-nfst-xre = "0.3.0"
-nfst-lexc = "0.3.0"
-nfst-pmatch = "0.3.0"
-nfst-twolc = "0.4.0"
-nfst-xfst = "0.3.1"
+nfst-xre = "0.4.0"
+nfst-lexc = "0.4.0"
+nfst-pmatch = "0.4.0"
+nfst-twolc = "0.5.0"
+nfst-xfst = "0.4.0"
