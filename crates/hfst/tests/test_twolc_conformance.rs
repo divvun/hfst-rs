@@ -336,3 +336,71 @@ fn bare_symbol_identity_pair_still_checks_declaration() {
         "a bare symbol declared nowhere must still fail compilation (hfst#334)"
     );
 }
+
+// ─────────────────────── nested set definitions ───────────────────────
+// A Sets member may itself name an earlier set, e.g. `Sgm = Vow Cns ;`. The
+// members of the named set are spliced in. Without that, the outer set holds
+// the literal symbols `Vow` and `Cns`, which are in no alphabet, so every pair
+// set built from it is empty and the grammar fails to compile with
+// "The pair set Sgm:? is empty." lang-smn's phonology.twolc is built this way
+// and could not be compiled at all.
+
+#[test]
+fn nested_set_member_expands_to_its_members() {
+    let _g = serialized();
+    let src = "Alphabet a b c d ;\n\
+               Sets\n\
+               Vow = a b ;\n\
+               Cns = c d ;\n\
+               Sgm = Vow Cns ;\n\
+               Rules\n\
+               \"R1\"\n\
+               a:b <=> Sgm: _ ;\n";
+    compile(src).expect("a set whose members name other sets must compile");
+}
+
+#[test]
+fn nested_set_expansion_is_transitive() {
+    let _g = serialized();
+    // Outer names Mid, Mid names Inner: the leaf symbols must reach Outer.
+    let src = "Alphabet a b c ;\n\
+               Sets\n\
+               Inner = a ;\n\
+               Mid = Inner b ;\n\
+               Outer = Mid c ;\n\
+               Rules\n\
+               \"R1\"\n\
+               a:b <=> Outer: _ ;\n";
+    compile(src).expect("nested set references must expand transitively");
+}
+
+#[test]
+fn a_set_naming_itself_terminates() {
+    let _g = serialized();
+    // Self-reference must not splice the partially built list into itself. The
+    // name is kept literal, so the set is just its other members (here `a`) plus
+    // an inert symbol -- the point is that expansion terminates rather than
+    // recursing, and the grammar still compiles.
+    let src = "Alphabet a b ;\n\
+               Sets\n\
+               S = a S ;\n\
+               Rules\n\
+               \"R1\"\n\
+               a:b <=> S: _ ;\n";
+    compile(src).expect("a self-referencing set must terminate, not loop");
+}
+
+#[test]
+fn overlapping_sets_list_a_symbol_once() {
+    let _g = serialized();
+    // Both Vow and Alt contain `a`; the union must not list it twice.
+    let src = "Alphabet a b c ;\n\
+               Sets\n\
+               Vow = a b ;\n\
+               Alt = a c ;\n\
+               Both = Vow Alt ;\n\
+               Rules\n\
+               \"R1\"\n\
+               a:b <=> Both: _ ;\n";
+    compile(src).expect("overlapping nested sets must compile");
+}

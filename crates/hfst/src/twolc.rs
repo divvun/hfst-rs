@@ -3543,12 +3543,26 @@ impl<B: AlgebraBackend> TwolcCompiler<B> {
 
     /// Register the 'Sets' section: record each set's ordered member list, so a
     /// 'Symbol' naming a set expands to the disjunction of its members.
+    ///
+    /// A member may itself name an earlier set, as in `Sgm = Vow Cns ;`, and is
+    /// replaced by that set's members -- otherwise `Sgm` holds the literal
+    /// symbols `Vow` and `Cns`, which are in no alphabet, and every pair set
+    /// built from it is empty. Expansion is against the sets registered so far,
+    /// so a member naming a later set, or naming nothing, stays literal.
     pub fn register_sets(&mut self, sets: &[Spanned<SetDefinition>]) {
         for s in sets {
-            self.sets.insert(
-                s.value.name.clone(),
-                s.value.members.iter().map(Symbol::new).collect(),
-            );
+            let mut members: Vec<Symbol> = Vec::new();
+            for m in &s.value.members {
+                // Self-reference would splice in the partially built list.
+                match self.sets.get(m.as_str()) {
+                    Some(n) if m.as_str() != s.value.name => members.extend(n.iter().cloned()),
+                    _ => members.push(Symbol::new(m)),
+                }
+            }
+            // A symbol reachable through two sets is listed once.
+            let mut seen = std::collections::HashSet::new();
+            members.retain(|sym| seen.insert(sym.clone()));
+            self.sets.insert(s.value.name.clone(), members);
         }
     }
 
