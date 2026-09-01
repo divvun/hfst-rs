@@ -65,3 +65,17 @@ nfst-lexc = "0.4.0"
 nfst-pmatch = "0.4.0"
 nfst-twolc = "0.5.0"
 nfst-xfst = "0.4.0"
+
+# Pinned until nfst-twolc 0.5.1 is published. Carries the twolc fix where a
+# colon only forms a pair when it adjoins the symbol before it -- without it,
+# `%> :v` reads as the pair `%>:v` and a morpheme boundary surfaces as `v`,
+# corrupting generated forms in every language whose phonology spaces a colon
+# (smn, smj, sme, sma all do). All six crates are pinned together so the graph
+# holds one copy of the shared AST types. Drop on republish.
+[patch.crates-io]
+nfst-syntax = { git = "https://github.com/necessary-nu/nfst", rev = "b27bdbe2dda95edc14696c45e6aeb2a187e19960" }
+nfst-xre = { git = "https://github.com/necessary-nu/nfst", rev = "b27bdbe2dda95edc14696c45e6aeb2a187e19960" }
+nfst-lexc = { git = "https://github.com/necessary-nu/nfst", rev = "b27bdbe2dda95edc14696c45e6aeb2a187e19960" }
+nfst-pmatch = { git = "https://github.com/necessary-nu/nfst", rev = "b27bdbe2dda95edc14696c45e6aeb2a187e19960" }
+nfst-xfst = { git = "https://github.com/necessary-nu/nfst", rev = "b27bdbe2dda95edc14696c45e6aeb2a187e19960" }
+nfst-twolc = { git = "https://github.com/necessary-nu/nfst", rev = "b27bdbe2dda95edc14696c45e6aeb2a187e19960" }
