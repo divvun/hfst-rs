@@ -39,5 +39,14 @@ serde_json = "1"
 serde-xml-rs = { version = "=0.6.0", default-features = false }
 tempfile = "3"
 
+# Reading zhfst speller archives (hfst-bhfst --zhfst). Same major version
+# divvunspell reads them with. Only deflate is needed (Giella zhfst members are
+# deflated), and it is taken through flate2's zlib-rs backend — the one already
+# in the tree — rather than zip's default `deflate`, which would also drag in
+# zopfli purely for writing. Naming the backend explicitly (not the bare
+# `deflate-flate2`) is what keeps flate2 compiling under
+# `--no-default-features`, where nothing else selects one for it.
+zip = { version = "6.0.0", default-features = false, features = ["deflate-flate2-zlib-rs"] }
+
 [lints]
 workspace = true

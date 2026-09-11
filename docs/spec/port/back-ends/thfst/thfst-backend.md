@@ -251,13 +251,46 @@ conversion steps disappear.
 > content}, the acceptor's `type` attribute defaults to "" when
 > absent, and both the acceptor and errmodel `id` fields are
 > rewritten replacing ".hfst" with ".thfst". A caller-supplied
-> meta.json is embedded verbatim.
+> meta.json is embedded verbatim, unless a speller runtime
+> configuration has to be merged into it (see `.speller-config`).
+
+## The speller runtime configuration
+
+> [spec:hfst:def:thfst-backend.speller-config]
+> A speller runtime configuration is the JSON object divvunspell
+> deserializes into its `SpellerConfig` (n-best, max-weight, beam,
+> reweight, node-pool-size, recase, completion-marker, ...). It
+> travels in a zhfst as the member `speller-config.json`, and in a
+> BHFST as the meta.json member's top-level `spellerConfig` key.
+
+> [spec:hfst:sem:thfst-backend.speller-config]
+> The packer carries the configuration through verbatim in content:
+> the member's JSON is parsed and re-embedded as a JSON OBJECT under
+> `spellerConfig` (never as an embedded string), with no field
+> renamed, added or dropped — the kebab/snake-case tolerance is
+> divvunspell's serde's business, not the packer's. `spellerConfig`
+> sits at the top level of the meta object beside `info`/`acceptor`/
+> `errmodel`, where divvunspell's `SpellerMetadata` deserializer
+> finds it; the key is camelCase because the payload is a foreign
+> JSON document, not one of the XML-derived element names. When no
+> configuration is supplied the key is ABSENT and meta.json is
+> byte-identical to what the same inputs produced before the key
+> existed. A configuration that is not well-formed JSON, or that is
+> well-formed but not a JSON object, fails the conversion with a
+> diagnostic naming the offending source — build time is when a
+> malformed runtime configuration must be caught, not speller
+> startup. A configuration with no accompanying metadata is refused
+> as well: `spellerConfig` alone is not a meta.json divvunspell can
+> load.
 
 > [spec:hfst:def:thfst-backend.bhfst-tool]
 > hfst-bhfst — a new CLI tool (no C++ ancestor) that packs and
 > inspects BHFST archives:
 > hfst-bhfst -a/--acceptor FILE -e/--errmodel FILE
-> [-X/--index-xml FILE | -m/--meta FILE] -o/--output FILE.bhfst,
+> [-X/--index-xml FILE | -m/--meta FILE]
+> [-c/--speller-config FILE] -o/--output FILE.bhfst,
+> or hfst-bhfst -z/--zhfst FILE.zhfst [-c/--speller-config FILE]
+> -o/--output FILE.bhfst,
 > or hfst-bhfst -I/--info FILE.bhfst.
 
 > [spec:hfst:sem:thfst-backend.bhfst-tool]
@@ -268,8 +301,27 @@ conversion steps disappear.
 > format-conversion path and serialized to a temporary directory
 > first. Metadata comes from -X (index.xml, converted per
 > `.meta-json`) or -m (meta.json verbatim); the two options are
-> mutually exclusive and both optional. The archive is written per
-> `.bhfst-layout`; the output path is required (no stdout). Info
-> mode: open the archive, print meta.json (or a no-metadata notice).
-> All failures exit nonzero through the common error path; the tool
-> follows the house getopt/CommonOptions pattern.
+> mutually exclusive and both optional. -c supplies the speller
+> runtime configuration per `.speller-config` and requires metadata
+> to merge into. The archive is written per `.bhfst-layout`; the
+> output path is required (no stdout). Info mode: open the archive,
+> print meta.json (or a no-metadata notice). All failures exit
+> nonzero through the common error path; the tool follows the house
+> getopt/CommonOptions pattern.
+
+> [spec:hfst:def:thfst-backend.zhfst-input]
+> hfst-bhfst -z/--zhfst FILE.zhfst — pack mode fed by a whole zhfst
+> (zip) speller archive instead of loose files, the replacement for
+> `thfst-tools zhfst-to-bhfst`.
+
+> [spec:hfst:sem:thfst-backend.zhfst-input]
+> -z is mutually exclusive with -a/-e/-X/-m and still requires -o.
+> The archive's `index.xml` member is required and supplies both the
+> metadata (converted per `.meta-json`) and the member names of the
+> acceptor and error model — the `id` fields as written in the XML,
+> BEFORE the .hfst -> .thfst rewrite — falling back to
+> `acceptor.default.hfst` / `errmodel.default.hfst` when the archive
+> does not carry a member under the named id. Both are extracted to a
+> temporary directory and then resolved exactly like a `-a`/`-e`
+> file. The optional `speller-config.json` member is carried through
+> per `.speller-config`; an explicit `-c` overrides it.
