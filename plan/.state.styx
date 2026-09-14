@@ -532,4 +532,13 @@ impl_evidence (
         {impl_name target-impl, rule table-residency.untrusted-size-fields}
         {impl_name target-impl, rule table-residency.views-not-copies}
     )}
+    {id lookup-state-split, covered_rules (
+        lookup-run-state.caller-owned-scratch
+        lookup-run-state.immutable-core
+        lookup-run-state.out-of-alphabet-overlay
+    ), covered_claims (
+        {impl_name target-impl, rule lookup-run-state.caller-owned-scratch}
+        {impl_name target-impl, rule lookup-run-state.immutable-core}
+        {impl_name target-impl, rule lookup-run-state.out-of-alphabet-overlay}
+    )}
 )

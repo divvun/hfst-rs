@@ -255,7 +255,7 @@ fn n_a(s: &str) -> usize {
 /// Membership test: convert the composed tropical net to the optimized-lookup
 /// backend (which exposes `lookup_string`) and check the input is accepted.
 fn accepts(t: &T, s: &str) -> Result<bool, hfst::error::Error> {
-    let mut ol = HfstTransducer::<Transducer<WeightedTables>>::new_from_basic(&t.to_basic()?)?;
+    let ol = HfstTransducer::<Transducer<WeightedTables>>::new_from_basic(&t.to_basic()?)?;
     Ok(!ol.lookup_string(s, -1, 0.0)?.is_empty())
 }
 

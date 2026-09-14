@@ -10,7 +10,7 @@ fn main() -> hfst::error::Result<()> {
     basic.set_final_weight(1, &0.3);
 
     // Convert to the optimized-lookup format and look up "a".
-    let mut ol = ConversionFunctions::hfst_basic_transducer_to_hfst_ol(&basic, true, "", None)?;
+    let ol = ConversionFunctions::hfst_basic_transducer_to_hfst_ol(&basic, true, "", None)?;
 
     let results = ol.lookup_fd_str("a", -1, 0.0);
     assert_eq!(results.len(), 1, "expected exactly one analysis");

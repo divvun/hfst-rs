@@ -87,7 +87,7 @@ fn lookup_a_string(
     t: &HfstTransducer<StdVectorFst>,
     input: &str,
 ) -> Result<HfstOneLevelPaths, hfst::error::Error> {
-    let mut ol = HfstTransducer::<Transducer<WeightedTables>>::from_basic(&t.to_basic()?);
+    let ol = HfstTransducer::<Transducer<WeightedTables>>::from_basic(&t.to_basic()?);
     let tok = HfstTokenizer::new();
     let key = tok.tokenize_one_level(input, false);
     ol.lookup_string_vector(&key, -1, 0.0)
@@ -255,7 +255,7 @@ fn small_weighted_acyclic_minimize_byte_identical() {
 
 // Helper mirroring lookup_a_string but for arbitrary lowercase input.
 fn lookup_a_string_generic(t: &HfstTransducer<StdVectorFst>, input: &str) -> HfstOneLevelPaths {
-    let mut ol =
+    let ol =
         HfstTransducer::<Transducer<WeightedTables>>::from_basic(&t.to_basic().expect("to_basic"));
     let tok = HfstTokenizer::new();
     let key = tok.tokenize_one_level(input, false);

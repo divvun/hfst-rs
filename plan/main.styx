@@ -6930,6 +6930,14 @@ children (
                     target-impl ([spec:hfst:req:lookup-run-state.immutable-core] [spec:hfst:req:lookup-run-state.caller-owned-scratch] [spec:hfst:req:lookup-run-state.out-of-alphabet-overlay])
                 }
                 deps (table-copy-elimination)
+                log (
+                    {
+                        at 2026-09-14T12:17:17.57512Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
+                )
             }
 
             {

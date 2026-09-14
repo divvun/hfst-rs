@@ -73,6 +73,7 @@ pub mod hfst_xerox_rules;
 pub mod io_utils;
 pub mod lexc;
 pub mod lookup_driver;
+pub mod lookup_state;
 pub mod ospell;
 pub mod pair_test_driver;
 pub mod pmatch;

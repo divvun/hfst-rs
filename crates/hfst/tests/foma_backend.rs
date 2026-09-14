@@ -921,7 +921,7 @@ fn lookup_parity_vs_optimized_lookup() {
         // The openfst-family lookup path is the optimized-lookup backend, which
         // is how hfst looks up an openfst transducer (Backend::from_basic builds
         // the weighted-shaped OL tables).
-        let mut ol: Transducer<WeightedTables> =
+        let ol: Transducer<WeightedTables> =
             <Transducer<WeightedTables> as Backend>::from_basic(net).expect("OL from_basic");
 
         let foma_out = lookup_outputs(&foma.lookup_fd_str(input, -1, 0.0));
@@ -935,7 +935,7 @@ fn lookup_parity_vs_optimized_lookup() {
 
     // Unknown input yields the empty set in both backends.
     let mut foma = foma_of(&cat_dog);
-    let mut ol: Transducer<WeightedTables> =
+    let ol: Transducer<WeightedTables> =
         <Transducer<WeightedTables> as Backend>::from_basic(&cat_dog).expect("OL from_basic");
     assert!(
         foma.lookup_fd_str("zzz", -1, 0.0).is_empty(),
@@ -1218,7 +1218,7 @@ fn is_lookup_infinitely_ambiguous_depends_on_the_input() {
     net.set_final_weight(2, &0.0);
 
     let mut foma = foma_of(&net);
-    let mut ol: Transducer<WeightedTables> =
+    let ol: Transducer<WeightedTables> =
         <Transducer<WeightedTables> as Backend>::from_basic(&net).expect("OL from_basic");
 
     for (input, want) in [("a", true), ("b", false)] {

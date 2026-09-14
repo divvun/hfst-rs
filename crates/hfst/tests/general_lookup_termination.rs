@@ -157,7 +157,7 @@ fn analyses(results: &HfstTwoLevelPaths) -> BTreeSet<(String, String)> {
 /// The same lookup through the optimized-lookup engine, which bounds its own
 /// walk the same way and is this engine's conformance target.
 fn ol_analyses(net: &HfstBasicTransducer, input: &str) -> BTreeSet<(String, String)> {
-    let mut ol = ConversionFunctions::hfst_basic_transducer_to_hfst_ol(net, true, "", None)
+    let ol = ConversionFunctions::hfst_basic_transducer_to_hfst_ol(net, true, "", None)
         .expect("fixture is well within the OL format limits");
     let paths: HfstOneLevelPaths = ol.lookup_fd_cstr(input, -1, 0.0);
     paths

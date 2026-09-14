@@ -1530,7 +1530,7 @@ pub fn make_naive_tokenizer<B: AlgebraBackend>(
         "",                  // no special options
         Some(&dict_backend), // harmonize with the dictionary
     )?;
-    let mut retval = PmatchContainer::new_from_transducer(Box::new(tokenizer_ol))?;
+    let mut retval = PmatchContainer::new_from_transducer(tokenizer_ol)?;
     retval.add_rtn(&dict_backend, &dict_name)?;
     Ok(retval)
 }

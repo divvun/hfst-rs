@@ -110,8 +110,7 @@ fn thfst_conversion_matches_olw_lookup() {
     // engine by an O(1) move (`into_olw`), so the analyses and weights must be
     // identical to the direct OLW conversion.
     let tok = HfstTokenizer::new();
-    let mut olw = olw;
-    let mut thfst_as_olw = thfst.into_olw();
+    let thfst_as_olw = thfst.into_olw();
 
     for word in ["cat", "dog", "mouse", "hippopotamus"] {
         let sv = tok_one_level(&tok, word);
@@ -162,7 +161,7 @@ fn olw_thfst_olw_round_trip_preserves_lookup_and_name() {
     assert_eq!(thfst.get_type(), THFST_TYPE);
     assert_eq!(thfst.get_name(), "animals-net", "name survives OLW->THFST");
 
-    let mut back = thfst.into_olw();
+    let back = thfst.into_olw();
     assert_eq!(back.get_type(), HFST_OLW_TYPE);
     assert_eq!(back.get_name(), "animals-net", "name survives THFST->OLW");
 
@@ -217,7 +216,7 @@ fn animals_thfst() -> (ThfstTransducer, HfstTransducer<Transducer<WeightedTables
 #[test]
 fn thfst_roundtrip_lookup_parity() {
     let _guard = serialized();
-    let (thfst, mut olw) = animals_thfst();
+    let (thfst, olw) = animals_thfst();
 
     // Reference lookups BEFORE writing to disk.
     let tok = HfstTokenizer::new();
@@ -535,7 +534,7 @@ fn animals_thfst_facade() -> HfstTransducer<ThfstTransducer> {
 #[test]
 fn thfst_stream_roundtrip() {
     let _guard = serialized();
-    let (_thfst, mut olw) = animals_thfst();
+    let (_thfst, olw) = animals_thfst();
 
     // Reference lookups BEFORE writing to disk (via the OLW facade of the same
     // source).
@@ -596,7 +595,7 @@ fn thfst_stream_roundtrip() {
     // Lookup parity on the re-read engine: convert the read AnyTransducer back
     // to a THFST facade, then O(1)-move to the weighted OL engine to look up
     // each word (the THFST facade delegates lookup through the OLW engine).
-    let mut reread = any
+    let reread = any
         .into_typed::<ThfstTransducer>()
         .expect("into thfst")
         .into_olw();

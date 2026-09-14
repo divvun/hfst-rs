@@ -1301,7 +1301,7 @@ impl PmatchContainer {
 
     // PmatchContainer(Transducer *t)
     pub fn new_from_transducer(
-        toplevel: Box<crate::transducer::Transducer>,
+        toplevel: crate::transducer::Transducer,
     ) -> crate::error::Result<PmatchContainer> {
         let mut c = PmatchContainer::new();
         c.set_properties();
@@ -1349,7 +1349,7 @@ impl PmatchContainer {
             // static fact of the parameter type now.
             let top = &transducers[0];
             let backend = crate::transducer::Transducer::copy(&top.fst)?;
-            let mut c = PmatchContainer::new_from_transducer(Box::new(backend))?;
+            let mut c = PmatchContainer::new_from_transducer(backend)?;
             // C++ sets these from transducers[0]'s properties before building; the
             // build does not depend on them, so applying them afterwards is
             // equivalent.

@@ -90,7 +90,7 @@ fn write_ol(t: &Transducer<WeightedTables>) -> Vec<u8> {
 #[test]
 fn empty_transducer_lookup_returns_no_analyses() {
     let _guard = serialized();
-    let mut ol = to_ol(&HfstBasicTransducer::new());
+    let ol = to_ol(&HfstBasicTransducer::new());
     assert!(
         ol.lookup_fd_str("foo", -1, 0.0).is_empty(),
         "the empty language accepts nothing, so lookup yields no analyses"
@@ -108,7 +108,7 @@ fn empty_transducer_lookup_returns_no_analyses() {
 fn plain_optimized_lookup_transducer_in_pmatch_runtime_does_not_panic() {
     let _guard = serialized();
     let mut container =
-        PmatchContainer::new_from_transducer(Box::new(one_arc_ol())).expect("container builds");
+        PmatchContainer::new_from_transducer(one_arc_ol()).expect("container builds");
     // "zzz" is an output-only symbol: numbered above input_symbol_count, so the
     // probe lands outside the padding. This panicked in
     // `PmatchTransducer::make_transition_table_index`.
@@ -163,7 +163,7 @@ fn expect_read_error(bytes: &[u8], why: &str) -> hfst::error::Error {
 fn well_formed_optimized_lookup_bytes_still_load() {
     let _guard = serialized();
     let bytes = write_ol(&one_arc_ol());
-    let mut back = match read_ol(&bytes) {
+    let back = match read_ol(&bytes) {
         Ok(t) => t,
         Err(e) => panic!("round-tripped bytes are valid: {e}"),
     };
@@ -260,7 +260,7 @@ fn empty_symbol_string_in_the_alphabet_does_not_panic() {
     spliced.extend_from_slice(&bytes[alphabet_end(&bytes, symbols)..]);
     // Nameless symbols cannot be tokenized, so nothing matches — but the load
     // and the lookup both have to come back.
-    let mut back = match read_ol(&spliced) {
+    let back = match read_ol(&spliced) {
         Ok(t) => t,
         Err(e) => panic!("an unnameable alphabet is still readable: {e}"),
     };

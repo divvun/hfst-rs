@@ -773,9 +773,10 @@ impl AlgebraBackend for StdVectorFst {
     }
 }
 
-/// The lookup surface (OL backends). The underlying 'hfst_ol' lookup engine
-/// mutates internal state, so these take '&mut self'; the facade exposes them
-/// on '&self' through the const-cast island (see 'HfstTransducer').
+/// The lookup surface (OL backends). '&mut self' is what the foma and THFST
+/// implementors need — the optimized-lookup one keeps its run state outside the
+/// machine (['crate::lookup_state::LookupState']) and takes only a shared
+/// borrow, which is what its own inherent methods expose.
 pub trait LookupBackend: Backend {
     fn lookup_fd_str(&mut self, s: &str, limit: isize, time_cutoff: f64) -> HfstOneLevelPaths;
     fn lookup_fd_strvec(

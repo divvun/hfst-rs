@@ -152,7 +152,7 @@ fn ol_round_trip_is_lossless() {
     let original = build_ol();
     let bytes = write_ol(&original);
 
-    let mut reloaded = read_ol(&bytes);
+    let reloaded = read_ol(&bytes);
 
     // The header fields survive the round-trip identically.
     assert_eq!(
