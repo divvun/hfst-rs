@@ -6900,4 +6900,52 @@ children (
             }
         )
     }
+
+    {
+        id runtime-residency
+        title "Runtime residency + shared-core program: one exactly-sized copy of every loaded table, immutable machine cores with caller-owned run state (Speller pattern), pmatch shareable across threads, istream simulation retired; mmap-backed tables as an evidence-gated tail"
+        kind @perf
+        children (
+            {
+                id table-copy-elimination
+                title "Delete the get_vector() C++ shape (accessor-that-clones) and the stacked table copies it causes: pmatch new_istream pays one extra full copy per table, new_from_transducer stacks three (copy_*_table -> get_vector -> .clone()); replace with as_slice views + a consuming into_vector, and release read-loop growth overshoot via shrink_to_fit AFTER a good read — NOT a naive reserve_exact, which would re-open the corrupt-header allocation the batching in TransducerTable::new_istream deliberately bounds. The two fixes are coupled: the clone at pmatch.rs:2583 currently launders the overshoot to exact capacity, so deleting it alone can regress steady RSS. Gate: RSS measured on the sma tokeniser .pmhfst before/after, full nextest suite, byte-identical tokenise output"
+                implements {
+                    target-impl ([spec:hfst:req:table-residency.untrusted-size-fields] [spec:hfst:req:table-residency.single-copy-load] [spec:hfst:req:table-residency.views-not-copies])
+                }
+            }
+
+            {
+                id lookup-state-split
+                title "Split the OL Transducer into immutable machine + caller-owned LookupState (the Speller&lt;'a&gt; pattern from ospell.rs): move the ~10 scratch fields (tapes, flag state, traversal states, lookup_paths, current_weight, limits, clock) out of Transducer so lookup_fd_* takes &amp;machine + &amp;mut state. Out-of-alphabet admission (initialize_input's alphabet/encoder mutation, transducer.rs:3308-3327) becomes a run-state OVERLAY numbered past orig_symbol_count — strict rejection is ruled out because identity/unknown passthrough on ordinary text depends on admission and [spec:hfst:req:ol-lookup-enumeration.out-of-alphabet-input] pins it; the overlay is the faithful reading of that rule's \"for the duration of the lookup\". Analyses must be identical to the mutating implementation on the full suite"
+                kind @refactor
+                implements {
+                    target-impl ([spec:hfst:req:lookup-run-state.immutable-core] [spec:hfst:req:lookup-run-state.caller-owned-scratch] [spec:hfst:req:lookup-run-state.out-of-alphabet-overlay])
+                }
+                deps (table-copy-elimination)
+            }
+
+            {
+                id pmatch-shared-core
+                title "Pmatch shared core: Rc -&gt; Arc on the table handles (13 sites; only runtime cost is an atomic incr per re-entrant RTN clone_with_frame), move PmatchTransducer's per-run local_stack out of the struct that owns the shared tables, and split PmatchContainer into a Send+Sync core (tables, alphabet-derived structure, encoder) + caller-owned run state (flag state, tapes, line_number, symbol overlay via include_symbol_in_alphabet). Downstream payoff to validate in divvun-runtime: the Mutex around AnyTransducer/PmatchContainer in modules/hfst.rs exists only because lookup takes &amp;mut self — after this lands, N pipelines share one Arc'd tokeniser core and run concurrently. Gate: hfst-tokenise byte-identical on the sma corpus harness vs C++ and vs pre-change; concurrent runs identical to serial"
+                kind @refactor
+                implements {
+                    target-impl ([spec:hfst:req:lookup-run-state.pmatch-shared-core])
+                }
+                deps (lookup-state-split)
+            }
+
+            {
+                id istream-retirement
+                title "Retire the std::istream simulation: IStream (transducer.rs:189, used across 12 files) with its good/fail flag model, ignore(), is_good/is_bad/is_eof approximations, and the new_istream constructor naming go away in favour of std::io::BufRead + Result-based loader errors. The port def/sem rules covering the flag-simulation methods (HfstOlInputStream is-good/is-bad/is-eof etc.) are retired from the spec IN THE SAME COMMIT as their impl sites — removing either side alone breaks coverage/orphan checks. Renames of surviving APIs keep their existing spec annotations"
+                kind @refactor
+                deps (pmatch-shared-core)
+            }
+
+            {
+                id mapped-tables
+                title "EVIDENCE-GATED, decide before building: mmap-backed tables via the existing TransducerTablesInterface seam — a MappedTables impl over the bundle's byte range decoding entries with from_le_bytes on access (no unsafe; TransitionWIndex is 6 bytes on disk vs 8 in memory, TransitionW 12/12), slotting into Transducer&lt;T&gt; without touching traversal, making divvun-runtime's existing mmap_io segment actually count (page-cache sharing + instant load). GO/NO-GO: after the shared-core nodes land, measure resident + startup for N concurrent pipelines in divvun-runtime; if one exact-sized shared copy is already acceptable, close this node as retired rather than building it. Spec rules are authored with the implementation if it goes ahead, not before"
+                deps (pmatch-shared-core istream-retirement)
+            }
+        )
+    }
 )
