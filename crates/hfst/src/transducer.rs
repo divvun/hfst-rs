@@ -755,12 +755,35 @@ impl TransducerHeader {
 
 // [spec:hfst:def:transducer.hfst-ol.transducer-alphabet.unicode-class-cache-value]
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum UnicodeClassCacheValue {
+pub(crate) enum UnicodeClassCacheValue {
     upperalpha,
     loweralpha,
     whitespace,
     no_value,
     other,
+}
+
+/// The Unicode class of a symbol spelling's first character, computed rather
+/// than looked up.
+///
+/// [`TransducerAlphabet::cache_unicode_class`] memoizes the same answer into the
+/// alphabet, which makes asking the question a write to a structure that is
+/// otherwise fixed at load. A caller holding the alphabet shared computes the
+/// class from the spelling and keeps its own memo.
+// [spec:hfst:req:lookup-run-state.pmatch-shared-core]
+pub(crate) fn unicode_class_of(spelling: &str) -> UnicodeClassCacheValue {
+    let Some(c) = spelling.chars().next() else {
+        return UnicodeClassCacheValue::no_value;
+    };
+    if c.is_lowercase() {
+        UnicodeClassCacheValue::loweralpha
+    } else if c.is_uppercase() {
+        UnicodeClassCacheValue::upperalpha
+    } else if c.is_whitespace() {
+        UnicodeClassCacheValue::whitespace
+    } else {
+        UnicodeClassCacheValue::other
+    }
 }
 
 // [spec:hfst:def:transducer.hfst-ol.transducer-alphabet]

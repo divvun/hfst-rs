@@ -1530,9 +1530,11 @@ pub fn make_naive_tokenizer<B: AlgebraBackend>(
         "",                  // no special options
         Some(&dict_backend), // harmonize with the dictionary
     )?;
-    let mut retval = PmatchContainer::new_from_transducer(tokenizer_ol)?;
-    retval.add_rtn(&dict_backend, &dict_name)?;
-    Ok(retval)
+    // The dictionary RTN joins the archive while it is still being assembled,
+    // before the core is shared.
+    let mut core = crate::pmatch_core::PmatchCore::from_transducer(tokenizer_ol)?;
+    core.add_rtn(&dict_backend, &dict_name)?;
+    Ok(PmatchContainer::from_core(std::sync::Arc::new(core)))
 }
 
 // TODO: lambda this when C++11 available everywhere

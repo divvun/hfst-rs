@@ -542,4 +542,9 @@ impl_evidence (
         {impl_name target-impl, rule lookup-run-state.immutable-core}
         {impl_name target-impl, rule lookup-run-state.out-of-alphabet-overlay}
     )}
+    {id pmatch-shared-core, covered_rules (
+        lookup-run-state.pmatch-shared-core
+    ), covered_claims (
+        {impl_name target-impl, rule lookup-run-state.pmatch-shared-core}
+    )}
 )

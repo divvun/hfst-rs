@@ -6948,6 +6948,14 @@ children (
                     target-impl ([spec:hfst:req:lookup-run-state.pmatch-shared-core])
                 }
                 deps (lookup-state-split)
+                log (
+                    {
+                        at 2026-09-14T13:08:31.715087Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
+                )
             }
 
             {

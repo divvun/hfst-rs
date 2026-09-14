@@ -78,6 +78,8 @@ pub mod ospell;
 pub mod pair_test_driver;
 pub mod pmatch;
 pub mod pmatch_compiler;
+pub mod pmatch_core;
+pub mod pmatch_state;
 pub mod pmatch_tokenize;
 pub mod string_manipulation;
 pub mod string_utils;
