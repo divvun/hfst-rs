@@ -523,4 +523,13 @@ impl_evidence (
     ), covered_claims (
         {impl_name target-impl, rule determinize-envelope.input-scaled-floors}
     )}
+    {id table-copy-elimination, covered_rules (
+        table-residency.single-copy-load
+        table-residency.untrusted-size-fields
+        table-residency.views-not-copies
+    ), covered_claims (
+        {impl_name target-impl, rule table-residency.single-copy-load}
+        {impl_name target-impl, rule table-residency.untrusted-size-fields}
+        {impl_name target-impl, rule table-residency.views-not-copies}
+    )}
 )

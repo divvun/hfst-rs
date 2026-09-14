@@ -6912,6 +6912,14 @@ children (
                 implements {
                     target-impl ([spec:hfst:req:table-residency.untrusted-size-fields] [spec:hfst:req:table-residency.single-copy-load] [spec:hfst:req:table-residency.views-not-copies])
                 }
+                log (
+                    {
+                        at 2026-09-14T11:50:21.907169Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
+                )
             }
 
             {

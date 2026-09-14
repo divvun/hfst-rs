@@ -211,6 +211,22 @@ fn out_of_range_transition_target_is_rejected() {
     );
 }
 
+// The header's third field is the index-table entry count and its fourth the
+// transition-table entry count. Turning either into one allocation the size it
+// claims hands a corrupt file the power to abort the process — 4.29e9 six-byte
+// index entries is 25 GB — before the short read that would have disproved the
+// claim. The read has to stay bounded and come back with an error instead.
+// [spec:hfst:req:table-residency.untrusted-size-fields/test]
+#[test]
+fn oversized_table_size_field_rejected() {
+    let _guard = serialized();
+    for field in [4usize, 8] {
+        let mut bytes = write_ol(&one_arc_ol());
+        bytes[field..field + 4].copy_from_slice(&u32::MAX.to_le_bytes());
+        expect_read_error(&bytes, "a table cannot be bigger than the file holding it");
+    }
+}
+
 /// The optimized-lookup header: two u16 counts, four u32 fields, then nine u32
 /// boolean properties.
 const HEADER_LEN: usize = 2 * 2 + 4 * 4 + 9 * 4;

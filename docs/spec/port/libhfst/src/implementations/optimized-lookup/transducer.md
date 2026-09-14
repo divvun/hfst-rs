@@ -980,13 +980,6 @@
 > effect is stdout output only. The `transition_table` parameter just toggles
 > showing the offset index for transition-table entries.
 
-> [spec:hfst:def:transducer.hfst-ol.transducer-table.get-vector-fn]
-> std::vector<T> get_vector(void) const
-
-> [spec:hfst:sem:transducer.hfst-ol.transducer-table.get-vector-fn]
-> Returns a copy of the underlying `table` vector, by constructing and returning
-> std::vector<T>(table). Const. Callers receive an independent copy.
-
 > [spec:hfst:def:transducer.hfst-ol.transducer-table.set-fn]
 > void set(size_t index, const T& v)
 

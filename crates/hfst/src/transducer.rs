@@ -1623,6 +1623,7 @@ impl<T: TableEntry + Clone> TransducerTable<T> {
         // short read that would have revealed the corruption. Batching keeps
         // the ask bounded and stops at the first short read; the caller sees
         // the stream's fail flag and reports a clean error.
+        // [spec:hfst:req:table-residency.untrusted-size-fields]
         const BATCH: usize = 64 * 1024;
         let mut table = Vec::new();
         let mut remaining = index_count as usize;
@@ -1639,6 +1640,11 @@ impl<T: TableEntry + Clone> TransducerTable<T> {
             }
             remaining -= n;
         }
+        // Growing a vector without knowing the final length leaves it holding
+        // up to twice the entries' bytes. The excess is capacity the allocator
+        // keeps for the life of the transducer.
+        // [spec:hfst:req:table-residency.single-copy-load]
+        table.shrink_to_fit();
         TransducerTable { table }
     }
 
@@ -1675,10 +1681,16 @@ impl<T: TableEntry + Clone> TransducerTable<T> {
         self.table.get(offset as usize)
     }
 
-    // [spec:hfst:def:transducer.hfst-ol.transducer-table.get-vector-fn]
-    // [spec:hfst:sem:transducer.hfst-ol.transducer-table.get-vector-fn]
-    pub fn get_vector(&self) -> Vec<T> {
-        self.table.clone()
+    /// The entries, borrowed.
+    // [spec:hfst:req:table-residency.views-not-copies]
+    pub fn as_slice(&self) -> &[T] {
+        &self.table
+    }
+
+    /// The entries, moved out of the table.
+    // [spec:hfst:req:table-residency.views-not-copies]
+    pub fn into_vector(self) -> Vec<T> {
+        self.table
     }
 
     // [spec:hfst:def:transducer.hfst-ol.transducer-table.size-fn]
@@ -1833,6 +1845,12 @@ impl<T1: IndexEntry + TableEntry + Clone + IndexCtor, T2: TransitionEntry + Tabl
             index_table,
             transition_table,
         }
+    }
+
+    /// The index table and the transition table, moved out of the pair.
+    // [spec:hfst:req:table-residency.views-not-copies]
+    pub fn into_tables(self) -> (TransducerTable<T1>, TransducerTable<T2>) {
+        (self.index_table, self.transition_table)
     }
 }
 
@@ -2981,6 +2999,24 @@ impl<T: TransducerTablesInterface> Transducer<T> {
         }
         Ok(another)
     }
+
+    /// The weighted table pair, moved out of a transducer the caller owns.
+    ///
+    /// What [`Self::copy_windex_table`] and [`Self::copy_transitionw_table`]
+    /// produce between them, without either copy. Their entrywise rebuild
+    /// reads back every field it writes and is bounded by the header's size
+    /// fields, which every constructor keeps in step with the tables' lengths,
+    /// so the two answers are the same table pair.
+    // [spec:hfst:req:table-residency.single-copy-load]
+    pub fn into_weighted_tables(self) -> crate::error::Result<T> {
+        if !self.hdr().probe_flag(HeaderFlag::Weighted) {
+            crate::bail!(TransducerHasWrongType);
+        }
+        Ok(self
+            .tables
+            .expect("tables are initialized during container load"))
+    }
+
     // [spec:hfst:def:transducer.hfst-ol.transducer.copy-index-table-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transducer.copy-index-table-fn]
     pub fn copy_index_table(&self) -> crate::error::Result<TransducerTable<TransitionIndex>> {
@@ -3926,5 +3962,26 @@ impl<T: TransducerTablesInterface> Transducer<T> {
 impl<T: TransducerTablesInterface> Default for Transducer<T> {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // A table is read entry by entry, so its vector grows geometrically and
+    // ends up holding up to twice the bytes the entries need.
+    // [spec:hfst:req:table-residency.single-copy-load/test]
+    // [spec:hfst:req:table-residency.views-not-copies/test]
+    #[test]
+    fn loaded_table_capacity_equals_len() {
+        // Past the read batch, and not a power of two, so the growth sequence
+        // does overshoot.
+        const ENTRIES: usize = 100_000;
+        let mut cursor = std::io::Cursor::new(vec![0u8; ENTRIES * TransitionWIndex::SIZE]);
+        let mut is = IStream::new(&mut cursor);
+        let table = TransducerTable::<TransitionWIndex>::new_istream(&mut is, ENTRIES as u32);
+        assert_eq!(table.as_slice().len(), ENTRIES);
+        assert_eq!(table.into_vector().capacity(), ENTRIES);
     }
 }

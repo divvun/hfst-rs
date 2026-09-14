@@ -215,16 +215,16 @@ fn scan(path: &Path, rel: &str, out: &mut Vec<Finding>) {
         // censused under their neighbour's constant.
         let mut open = None;
         let mut empty_one_liner = false;
-        for k in i..lines.len().min(i + 12) {
-            if lines[k].ends_with("{}") {
+        for (k, line) in lines.iter().enumerate().take(i + 12).skip(i) {
+            if line.ends_with("{}") {
                 empty_one_liner = true;
                 break;
             }
-            if lines[k].ends_with('{') {
+            if line.ends_with('{') {
                 open = Some(k);
                 break;
             }
-            if k > i && lines[k].starts_with("    fn ") {
+            if k > i && line.starts_with("    fn ") {
                 break;
             }
         }

@@ -261,15 +261,13 @@ impl<B: AlgebraBackend> SubstituteEngine<B> {
                 self.pair_batch_in_use = true;
                 return Ok(());
             }
-        } else if !from_empty && !to_empty {
-            if !in_order {
-                if let (Some(fl), Some(tl)) = (&request.from_label, &request.to_label) {
-                    self.label_substitutions
-                        .insert(Symbol::new(fl), Symbol::new(tl));
-                }
-                self.label_batch_in_use = true;
-                return Ok(());
+        } else if !from_empty && !to_empty && !in_order {
+            if let (Some(fl), Some(tl)) = (&request.from_label, &request.to_label) {
+                self.label_substitutions
+                    .insert(Symbol::new(fl), Symbol::new(tl));
             }
+            self.label_batch_in_use = true;
+            return Ok(());
         }
         self.do_substitute(request, trans, transducer_n, reporter)
     }

@@ -1316,11 +1316,11 @@ impl PmatchContainer {
             c.alphabet.get_symbol_table(),
             c.orig_symbol_count,
         ));
-        let transitions = toplevel.copy_transitionw_table()?;
-        let indices = toplevel.copy_windex_table()?;
+        // [spec:hfst:req:table-residency.single-copy-load]
+        let (indices, transitions) = toplevel.into_weighted_tables()?.into_tables();
         let top = PmatchTransducer::new_from_vectors(
-            transitions.get_vector().clone(),
-            indices.get_vector().clone(),
+            transitions.into_vector(),
+            indices.into_vector(),
             &c.alphabet,
             "TOP".to_string(),
         );
@@ -1428,11 +1428,11 @@ impl PmatchContainer {
                 c.alphabet.get_symbol_table(),
                 c.orig_symbol_count,
             ));
-            let transitions = harmonized_tmp.copy_transitionw_table()?;
-            let indices = harmonized_tmp.copy_windex_table()?;
+            // [spec:hfst:req:table-residency.single-copy-load]
+            let (indices, transitions) = harmonized_tmp.into_weighted_tables()?.into_tables();
             let top_pt = PmatchTransducer::new_from_vectors(
-                transitions.get_vector().clone(),
-                indices.get_vector().clone(),
+                transitions.into_vector(),
+                indices.into_vector(),
                 &c.alphabet,
                 "TOP".to_string(),
             );
@@ -1455,12 +1455,12 @@ impl PmatchContainer {
                     "",
                     Some(harmonizer_ol),
                 )?;
-                let transitions = harmonized_tmp.copy_transitionw_table()?;
-                let indices = harmonized_tmp.copy_windex_table()?;
+                // [spec:hfst:req:table-residency.single-copy-load]
+                let (indices, transitions) = harmonized_tmp.into_weighted_tables()?.into_tables();
                 let name = transducer.get_name();
                 let rtn = PmatchTransducer::new_from_vectors(
-                    transitions.get_vector().clone(),
-                    indices.get_vector().clone(),
+                    transitions.into_vector(),
+                    indices.into_vector(),
                     &c.alphabet,
                     name.clone(),
                 );
@@ -1738,11 +1738,14 @@ impl PmatchContainer {
         rtn: &crate::transducer::Transducer,
         name: &str,
     ) -> crate::error::Result<()> {
+        // The argument is borrowed and outlives the call, so the copy the
+        // copy_*_table pair makes is the one copy this construction needs.
+        // [spec:hfst:req:table-residency.single-copy-load]
         let transitions = rtn.copy_transitionw_table()?;
         let indices = rtn.copy_windex_table()?;
         let pmatch_rtn = Box::new(PmatchTransducer::new_from_vectors(
-            transitions.get_vector().clone(),
-            indices.get_vector().clone(),
+            transitions.into_vector(),
+            indices.into_vector(),
             &self.alphabet,
             name.to_string(),
         ));
@@ -2580,8 +2583,9 @@ impl PmatchTransducer {
                 "pmatch archive is truncated: the transducer's tables end early"
             );
         }
-        let index_table = index_table.get_vector();
-        let transition_table = transition_table.get_vector();
+        // [spec:hfst:req:table-residency.single-copy-load]
+        let index_table = index_table.into_vector();
+        let transition_table = transition_table.into_vector();
 
         // The runtime indexes the alphabet's parallel per-symbol vectors
         // (printability, capture tags, symbol lists, RTNs) with symbol numbers
