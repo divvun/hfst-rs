@@ -6981,6 +6981,15 @@ children (
                 )
             }
         )
+        log (
+            {
+                at 2026-09-14T19:31:05.059185Z
+                author "brendan@necessary.nu"
+                kind @errata
+                text "AMENDMENT to the mapped-tables retirement (teaksta audit, 2026-09-14): the go/no-go numbers were true at hfst's API boundary and FALSE end-to-end. Nothing between hfst and teaksta called from_core across instances: divvun-runtime 8fc4a6a shares only WITHIN one Tokenize instance (every Tokenize::new loads its own core, modules/hfst.rs:203), there was no path-keyed cache anywhere, and teaksta opens a bundle per handle — so each worker paid +244 MiB / ~124 ms per pipeline, W=8 held 7.4-8.8 GiB, and 66-79% of the marginal per-worker bill was duplicated tokenizer loads. The measured ~172 MiB/worker real saving was the 64ddcaa transient-copy elimination (recurs per concurrent load), not the architecture. \"Fan-out is free\" should have read \"fan-out can be made free\". The unshipped deliverable named in the retirement note itself — a process-wide, model-keyed Arc<PmatchCore> cache in divvun-runtime (Context-level is insufficient: each handle owns its Context) — is now being built. Also from the audit: OOV overlay verified byte-identical on emoji/CJK/Cyrillic/Arabic through the real tokeniser, but every unit fixture is 2-byte — a 4-byte admission test is owed."
+                after_done true
+            }
+        )
     }
 
     {
@@ -6991,6 +7000,21 @@ children (
         log (
             {
                 at 2026-09-14T13:07:28.238383Z
+                author "brendan@necessary.nu"
+                kind @status
+                text "Todo → Done (nplan complete)"
+            }
+        )
+    }
+
+    {
+        id oov-four-byte-tests
+        title "Close the OOV fixture gap the teaksta audit named: every out-of-alphabet unit fixture was 2-byte UTF-8, nothing drove a 4-byte sequence through the admission overlay. One test each in ol_lookup_run_state.rs and pmatch_run_state.rs now does (alone, doubled, mixed with declared symbols; machine/core unchanged; fresh-state answers identical)"
+        kind @test
+        sealed true
+        log (
+            {
+                at 2026-09-14T20:12:50.098996Z
                 author "brendan@necessary.nu"
                 kind @status
                 text "Todo → Done (nplan complete)"

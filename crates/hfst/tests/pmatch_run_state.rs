@@ -184,3 +184,36 @@ fn concurrent_matches_share_one_loaded_core() -> Result<(), hfst::error::Error> 
     assert_eq!(found, expected, "a concurrent match answered differently");
     Ok(())
 }
+
+/// Every fixture unknown above is two bytes of UTF-8; a four-byte sequence
+/// must ride the echo path identically and stay out of the core.
+// [spec:hfst:req:lookup-run-state.pmatch-shared-core/test]
+#[test]
+fn a_four_byte_symbol_echoes_through_pmatch() -> Result<(), hfst::error::Error> {
+    let _g = serialized();
+    let core = load(&compiled_top()?)?.core();
+    let symbols_before = core.symbol_count();
+
+    let mut run = PmatchContainer::from_core(Arc::clone(&core));
+    for line in lines_for("😀") {
+        let matched = run.do_match(&line, 0.0, 0.0);
+        assert!(
+            matched.contains("😀"),
+            "a four-byte symbol was dropped instead of echoed: {matched:?}"
+        );
+    }
+
+    assert_eq!(
+        core.symbol_count(),
+        symbols_before,
+        "matching a four-byte symbol grew the core's alphabet"
+    );
+    let mut fresh = PmatchContainer::from_core(core);
+    let line = lines_for("😀").remove(0);
+    assert_eq!(
+        fresh.do_match(&line, 0.0, 0.0),
+        run.do_match(&line, 0.0, 0.0),
+        "a run that had admitted the four-byte symbol answered differently"
+    );
+    Ok(())
+}

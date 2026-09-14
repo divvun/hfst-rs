@@ -219,3 +219,44 @@ fn concurrent_lookups_share_one_loaded_machine() {
 
     assert_eq!(found, expected, "a concurrent lookup answered differently");
 }
+
+/// Admission is byte-length-blind: every other fixture symbol is two bytes of
+/// UTF-8, so this drives a four-byte sequence through the same identity arcs —
+/// alone, doubled, and beside a declared symbol.
+// [spec:hfst:req:lookup-run-state.out-of-alphabet-overlay/test]
+#[test]
+fn four_byte_symbols_admit_like_two_byte() {
+    let _g = serialized();
+    let machine = to_ol(&fixture());
+    let symbols_before = machine.get_symbol_table().len();
+    let emoji = "😀";
+
+    let mut state = machine.lookup_state();
+    for word in [
+        emoji.to_string(),
+        format!("{emoji}{emoji}"),
+        format!("a{emoji}"),
+        format!("{emoji}a"),
+    ] {
+        let found = analyses(state.lookup_fd(&word, -1, 0.0));
+        assert!(
+            found.iter().any(|(o, _)| *o == word),
+            "{word:?} was not echoed back by the identity arcs: {found:?}"
+        );
+        assert_eq!(
+            found,
+            analyses(machine.lookup_state().lookup_fd(&word, -1, 0.0)),
+            "a fresh state answered {word:?} differently"
+        );
+    }
+
+    assert_eq!(
+        machine.get_symbol_table().len(),
+        symbols_before,
+        "a four-byte lookup grew the machine's alphabet"
+    );
+    assert!(
+        !machine.can_tokenize(emoji),
+        "a lookup taught the machine's encoder a four-byte symbol"
+    );
+}

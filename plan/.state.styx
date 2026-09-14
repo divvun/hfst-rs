@@ -415,6 +415,7 @@ assertions (
     {id test-health.delete-ignored, kind @complete, author "brendan@necessary.nu", at 2026-08-22T00:10:08.174189Z}
     {id cli-gpl-license, kind @complete, author "brendan@necessary.nu", at 2026-09-14T13:07:28.238383Z}
     {id istream-retirement, kind @complete, author "brendan@necessary.nu", at 2026-09-14T16:32:05.759792Z}
+    {id oov-four-byte-tests, kind @complete, author "brendan@necessary.nu", at 2026-09-14T20:12:50.098996Z}
 )
 
 impl_evidence (
