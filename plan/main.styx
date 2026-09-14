@@ -6964,4 +6964,19 @@ children (
             }
         )
     }
+
+    {
+        id cli-gpl-license
+        title "CLI licence is GPLv3, library stays LGPLv3+ (operator 2026-09-14): fix the --version banner (printed \"License LGPLv3+\" on GPL tools, seen in the wild), hfst-cli Cargo.toml license field, the print-version-fn spec rule's quoted block, and ship the GPL text as crates/hfst-cli/COPYING"
+        kind @fix
+        sealed true
+        log (
+            {
+                at 2026-09-14T13:07:28.238383Z
+                author "brendan@necessary.nu"
+                kind @status
+                text "Todo → Done (nplan complete)"
+            }
+        )
+    }
 )

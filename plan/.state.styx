@@ -413,6 +413,7 @@ assertions (
     {id test-health.census-scanner, kind @complete, author "brendan@necessary.nu", at 2026-08-21T23:07:30.829777Z}
     {id test-health.foma-subtract, kind @complete, author "brendan@necessary.nu", at 2026-08-22T00:10:05.44238Z}
     {id test-health.delete-ignored, kind @complete, author "brendan@necessary.nu", at 2026-08-22T00:10:08.174189Z}
+    {id cli-gpl-license, kind @complete, author "brendan@necessary.nu", at 2026-09-14T13:07:28.238383Z}
 )
 
 impl_evidence (

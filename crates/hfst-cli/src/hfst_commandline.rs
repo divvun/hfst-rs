@@ -66,14 +66,12 @@ pub fn version_line(program_name: &str) -> String {
 ///
 /// UiT holds copyright on the Rust work; the University of Helsinki line is
 /// retained because this remains a derivative work of the C++ HFST, whose
-/// LGPL terms require the original notice to be preserved. The licence named
-/// here is the one this project actually ships under (LGPLv3-or-later, see
-/// COPYING) — upstream's banners said GPLv3, which was never right for a
-/// library-licensed tree.
+/// notice must survive. The licence named here is the CLI's: the tools ship
+/// under GPLv3, while the hfst library crate is LGPL-3.0-or-later (COPYING).
 pub const VERSION_COPYRIGHT_BLOCK: &str = "\
 Copyright (C) 2026 UiT The Arctic University of Norway
 Copyright (C) 2017 University of Helsinki
-License LGPLv3+: GNU LGPL version 3 or later <https://gnu.org/licenses/lgpl.html>
+License GPLv3+: GNU GPL version 3 or later <https://gnu.org/licenses/gpl.html>
 This is free software: you are free to change and redistribute it.
 There is NO WARRANTY, to the extent permitted by law.
 ";
