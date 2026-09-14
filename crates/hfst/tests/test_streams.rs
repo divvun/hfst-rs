@@ -203,6 +203,46 @@ fn stream_round_trip_tropical() -> Result<(), hfst::error::Error> {
     Ok(())
 }
 
+// --- An embedder reads the archive as bytes, not as a path (a member of a
+// memory-mapped bundle, say). 'read_from' has to answer exactly as
+// 'new_filename' does over the same bytes, including across the multi-
+// transducer loop, or the in-memory route is a second-class one.
+fn stream_round_trip_in_memory<B: AlgebraBackend + FromAnyTransducer>()
+-> Result<(), hfst::error::Error> {
+    let mut tr1 = HfstTransducer::<B>::new_symbol("foo")?;
+    let mut tr2 = HfstTransducer::<B>::new_symbol_pair("bar", "foo")?;
+
+    let path = temp_path(&format!("hfst_test_streams_mem{:?}.hfst", B::TYPE));
+    {
+        let mut out = HfstOutputStream::new_filename(&path, B::TYPE, true)?;
+        out.write(&mut tr1)?;
+        out.write(&mut tr2)?;
+        out.close();
+    }
+    let bytes = std::fs::read(&path).expect("written archive is readable");
+    let _ = std::fs::remove_file(&path);
+
+    let mut cursor = std::io::Cursor::new(&bytes[..]);
+    let mut instream = HfstInputStream::read_from(&mut cursor)?;
+    let mut transducers: Vec<HfstTransducer<B>> = Vec::new();
+    while !instream.is_eof() {
+        transducers.push(instream.read()?.into_typed()?);
+    }
+    instream.close();
+
+    assert_eq!(transducers.len(), 2);
+    assert!(transducers[0].compare_default(&tr1)?);
+    assert!(transducers[1].compare_default(&tr2)?);
+    Ok(())
+}
+
+#[test]
+fn stream_round_trip_in_memory_tropical() -> Result<(), hfst::error::Error> {
+    let _g = serialized();
+    stream_round_trip_in_memory::<StdVectorFst>()?;
+    Ok(())
+}
+
 // --- Regression: sparse symbol-table round trip (not a C++ port block).
 //
 // A transducer whose symbol table has a hole — a symbol dropped from the

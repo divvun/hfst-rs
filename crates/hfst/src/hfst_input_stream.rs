@@ -1113,6 +1113,15 @@ mod input_impl {
             Self::new_with_reader(Box::new(std::io::stdin()), String::new())
         }
 
+        /// C++ 'HfstInputStream(std::istream &is)': read the archive from a
+        /// caller's byte source instead of opening a file. An embedder holding
+        /// the transducer as bytes — a member of a memory-mapped bundle, a
+        /// socket — has no filename for ['new_filename'] to open, and copying
+        /// the bytes to a temporary file to get one is the cost this avoids.
+        pub fn read_from(is: &'a mut dyn std::io::BufRead) -> crate::error::Result<Self> {
+            Self::new_with_reader(Box::new(is), String::new())
+        }
+
         // FIXME: HfstOutputStream takes a string parameter,
         //        HfstInputStream a const char*
         // [spec:hfst:def:hfst-input-stream.hfst-input-stream.hfst-input-stream-fn]
