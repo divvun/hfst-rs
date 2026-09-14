@@ -6980,12 +6980,6 @@ children (
                     }
                 )
             }
-
-            {
-                id mapped-tables
-                title "EVIDENCE-GATED, decide before building: mmap-backed tables via the existing TransducerTablesInterface seam — a MappedTables impl over the bundle's byte range decoding entries with from_le_bytes on access (no unsafe; TransitionWIndex is 6 bytes on disk vs 8 in memory, TransitionW 12/12), slotting into Transducer&lt;T&gt; without touching traversal, making divvun-runtime's existing mmap_io segment actually count (page-cache sharing + instant load). GO/NO-GO: after the shared-core nodes land, measure resident + startup for N concurrent pipelines in divvun-runtime; if one exact-sized shared copy is already acceptable, close this node as retired rather than building it. Spec rules are authored with the implementation if it goes ahead, not before"
-                deps (pmatch-shared-core istream-retirement)
-            }
         )
     }
 
