@@ -170,21 +170,6 @@
 > Discards the next `n` bytes from the input stream by calling
 > `input_stream.ignore(n)`. No return value.
 
-> [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-input-stream.is-bad-fn]
-> bool
-
-> [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-input-stream.is-bad-fn]
-> Const. If `filename` is empty (stdin-backed), returns `std::cin.bad()`;
-> otherwise returns `input_stream.bad()`. Reports whether the stream's badbit is
-> set.
-
-> [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-input-stream.is-eof-fn]
-> bool
-
-> [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-input-stream.is-eof-fn]
-> Const. Returns `input_stream.peek() == EOF`, i.e. true iff peeking the next
-> character yields end-of-file. Peek does not consume input.
-
 > [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-input-stream.is-fst-fn]
 > bool
 
@@ -196,22 +181,6 @@
 > `is_fst(std::istream &s)` overload returns `s.good() && (s.peek() == 0xd6)`, and
 > the no-arg `is_fst()` const member delegates to `is_fst(input_stream)`. None
 > consume input permanently (peek/ungetc restore it).
-
-> [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-input-stream.is-good-fn]
-> bool
-
-> [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-input-stream.is-good-fn]
-> Const. First, if `is_eof()` is true, returns false immediately. Otherwise, if
-> `filename` is empty (stdin), returns `std::cin.good()`; else returns
-> `input_stream.good()`. Reports stream usability (not at EOF and goodbit set).
-
-> [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-input-stream.operator-fn]
-> bool
-
-> [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-input-stream.operator-fn]
-> `bool operator()(void) const`. Returns `is_good()`, i.e. the stream-state test:
-> true when the stream is not at EOF and its goodbit is set. Provides the
-> stream's boolean "is this still usable" conversion.
 
 > [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-input-stream.read-transducer-fn]
 > StdVectorFst *
@@ -258,13 +227,6 @@
 > Reads a raw `short` (`sizeof(short)` bytes, native byte order) directly from the
 > stream: declares a local `short i`, calls `input_stream.read((char*)&i,
 > sizeof(i))`, and returns `i`.
-
-> [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-input-stream.stream-unget-fn]
-> void
-
-> [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-input-stream.stream-unget-fn]
-> Pushes character `c` back onto the input stream via `input_stream.putback(c)`,
-> so it will be the next byte read. No return value.
 
 > [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-input-stream.tropical-weight-input-stream-fn]
 > TropicalWeightInputStream::TropicalWeightInputStream(

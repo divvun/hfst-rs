@@ -7,20 +7,13 @@
 //! ## Ownership redesign (owned reader)
 //! The C++ holds a raw 'std::istream * input_stream' pointing at 'std::cin' / an
 //! 'std::ifstream' / a caller 'std::istream', probes the first transducer's
-//! header through it, then constructs a backend stream from the SAME source. The
-//! original Rust skeleton tried to model 'input_stream' with ['IStream']'<'a>',
-//! which only BORROWS '&'a mut dyn Read' and offers no putback — so it could
-//! neither own 'std::cin'/a file nor support the heavy 'stream_unget' the header
-//! probing needs. Both made the constructors and 'read_transducer'
-//! 'unimplemented!'.
+//! header through it, then constructs a backend stream from the SAME source.
 //!
-//! This port fixes that: 'HfstInputStream' OWNS its reader via ['PushbackReader'],
-//! a heap-pinned buffered reader (a 'Box<dyn Read>' plus an unget stack) that
-//! models 'std::istream''s 'get' / 'putback' / 'peek' / 'eof'. The reader is held
-//! behind a raw pointer ('reader') so the in-scope backend streams can borrow the
-//! very same source via an ['IStream'] built from that pointer (the C++
-//! shares one underlying stream; we share one owned reader). 'reader' is freed in
-//! ['Drop'].
+//! This port OWNS its reader via ['PushbackReader'], a 'Box<dyn Read>' plus an
+//! unget stack. Pushback is what the header probing needs and what a plain
+//! ['std::io::BufRead'] cannot give: 'guess_fst_type' ungets up to 26 bytes, and
+//! reading one transducer out of a multi-transducer stream pushes the whole
+//! unparsed remainder back for the next read.
 //!
 //! ## Backend union modelling
 //! The C++ holds a 'union StreamImplementation' of raw backend-stream pointers;
@@ -37,8 +30,8 @@
 //!     remaining bytes are the OpenFst/rustfst 'VectorFst' payload that
 //!     'HfstOutputStream' wrote via 'store()'; we slurp them and rebuild with
 //!     'SerializableFst::load'.
-//!   * HFST_OL / HFST_OLW: built through the implemented
-//!     'HfstOlInputStream::read_transducer' / 'Transducer::new_istream'.
+//!   * HFST_OL / HFST_OLW: read straight off the owned reader through
+//!     'Transducer::read_from'.
 //!
 //! SFST/FOMA/XFSM stay deferred (no backend).
 
@@ -58,7 +51,7 @@ use crate::hfst_data_types::{ImplementationType, StringPairVector};
 use crate::hfst_ol_transducer::HfstOlInputStream as HfstOlBackendInputStream;
 use crate::hfst_transducer::{AnyTransducer, HfstTransducer};
 use crate::transducer::{
-    HeaderFlag, IStream, Transducer, TransducerHeader, UnweightedTables, WeightedTables,
+    HeaderFlag, Transducer, TransducerHeader, UnweightedTables, WeightedTables,
 };
 use crate::tropical_weight_transducer::TropicalWeightInputStream;
 
@@ -70,12 +63,11 @@ pub struct SfstInputStream;
 pub struct FomaInputStream;
 pub struct XfsmInputStream;
 
-/// 'std::istream'-like owned reader used to probe the HFST header. It owns the
-/// underlying byte source ('Box<dyn Read>': a file, stdin, ...) and an unget
-/// stack, so it supports 'get' / 'unget' / 'peek' / 'eof' — exactly what the
-/// header probing requires (the borrowing ['IStream'] cannot). It also implements
-/// ['Read'] (draining the unget stack first) so a backend ['IStream'] can keep
-/// reading the same source after the header.
+/// The owned reader used to probe the HFST header: the underlying byte source
+/// ('Box<dyn Read>': a file, stdin, ...) plus an unget stack, so it supports
+/// 'get' / 'unget' / 'peek' / 'eof' — exactly what the header probing requires.
+/// It also implements ['Read'] (draining the unget stack first) so the payload
+/// readers keep reading the same source after the header.
 pub struct PushbackReader<'a> {
     inner: Box<dyn Read + 'a>,
     /// Unget stack: bytes are pushed by 'unget' and popped LIFO. The probing code
@@ -178,8 +170,8 @@ impl<'a> Read for PushbackReader<'a> {
 /// Port of the C++ 'union StreamImplementation' (the backend implementation).
 /// Kept for fidelity with the C++ union; in this single-owned-reader port the
 /// in-scope backend stream is built transiently in 'read_transducer', so these
-/// fields stay 'None'. The tropical/hfst_ol members carry the reader lifetime
-/// ('IStream<'a>'); the rest are deferred placeholders.
+/// fields stay 'None'. The tropical/hfst_ol members carry the reader lifetime;
+/// the rest are deferred placeholders.
 // [spec:hfst:def:hfst-input-stream.hfst.hfst-input-stream.stream-implementation]
 #[derive(Default)]
 pub struct StreamImplementation<'a> {
@@ -394,6 +386,26 @@ mod input_impl {
             false
         }
 
+        /// One optimized-lookup payload, positioned just after the HFST header
+        /// that probing consumed. The payload header's Weighted flag picks the
+        /// table instantiation — the ONE place OL weightedness is data rather
+        /// than type. The C++ converted the payload when its weightedness
+        /// disagreed with the stream tag ('t.convert(self.ty)'); typed loads
+        /// trust the payload header instead, so a stream-tag/payload mismatch (a
+        /// malformed file) surfaces as the payload's own type.
+        fn read_ol_payload(is: &mut dyn std::io::BufRead) -> crate::error::Result<AnyTransducer> {
+            let header = TransducerHeader::read_from(is)?;
+            Ok(if header.probe_flag(HeaderFlag::Weighted) {
+                AnyTransducer::OlW(HfstTransducer::wrap(
+                    Transducer::<WeightedTables>::read_from_with_header(header, is)?,
+                ))
+            } else {
+                AnyTransducer::OlU(HfstTransducer::wrap(
+                    Transducer::<UnweightedTables>::read_from_with_header(header, is)?,
+                ))
+            })
+        }
+
         /// Slurp every remaining byte from the owned reader (unget stack first,
         /// then the underlying source). Used to hand the OpenFst/rustfst
         /// 'VectorFst' payload to 'SerializableFst::load'.
@@ -541,32 +553,17 @@ mod input_impl {
                     }
                 }
                 ImplementationType::HFST_OL_TYPE | ImplementationType::HFST_OLW_TYPE => {
-                    // Read the OL payload directly off the owned reader
-                    // (positioned just after the HFST header that probing
-                    // consumed): peek the payload header's Weighted flag to pick
-                    // the table instantiation — the ONE place the OL weightedness
-                    // is data rather than type.
-                    // The backend stream only needs the reader for the duration
-                    // of this arm ('is' does not escape); a scoped reborrow of
-                    // the owned reader is all it takes.
-                    let mut is = IStream::new(&mut *self.reader);
-                    let header = TransducerHeader::new_istream(&mut is)?;
-                    // The C++ converted the payload when its weightedness
-                    // disagreed with the stream tag ('t.convert(self.ty)');
-                    // typed loads trust the payload header instead — the
-                    // stream-tag/payload mismatch case (a malformed file) now
-                    // surfaces as the payload's own type.
-                    if header.probe_flag(HeaderFlag::Weighted) {
-                        AnyTransducer::OlW(HfstTransducer::wrap(
-                            Transducer::<WeightedTables>::new_istream_with_header(header, &mut is)?,
-                        ))
-                    } else {
-                        AnyTransducer::OlU(HfstTransducer::wrap(
-                            Transducer::<UnweightedTables>::new_istream_with_header(
-                                header, &mut is,
-                            )?,
-                        ))
-                    }
+                    // The OL readers want a 'BufRead'; the owned reader is not
+                    // one, so it is wrapped for the duration of this arm. The
+                    // wrapper reads ahead, and in a multi-transducer stream that
+                    // read-ahead is the NEXT member — so whatever it buffered
+                    // and did not consume goes back on the unget stack before
+                    // any error propagates.
+                    let mut buffered = std::io::BufReader::new(&mut *self.reader);
+                    let loaded = Self::read_ol_payload(&mut buffered);
+                    let leftover = buffered.buffer().to_vec();
+                    self.reader.unget_all(&leftover);
+                    loaded?
                 }
                 ImplementationType::THFST_TYPE => {
                     // Unreachable: THFST has no byte-stream encoding and is never
@@ -1184,16 +1181,6 @@ mod input_impl {
                 input_stream_active: false,
                 preloaded: Some(AnyTransducer::Thfst(HfstTransducer::wrap(t))),
             })
-        }
-
-        // HfstInputStream(std::istream &is)
-        pub fn new_istream(is: IStream<'a>) -> crate::error::Result<Self> {
-            // C++ 'input_stream = &is;' — adopt the (possibly borrowed) stream as
-            // this 'HfstInputStream's source, then probe its first transducer's
-            // header in 'new_with_reader' exactly like the other constructors. The
-            // 'PushbackReader'/'HfstInputStream' lifetime parameter lets a borrowed
-            // 'IStream<'a>' back the stream for 'a.
-            Self::new_with_reader(is.into_reader(), String::new())
         }
 
         // [spec:hfst:def:hfst-input-stream.hfst-input-stream.close-fn]

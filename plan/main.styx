@@ -6963,6 +6963,22 @@ children (
                 title "Retire the std::istream simulation: IStream (transducer.rs:189, used across 12 files) with its good/fail flag model, ignore(), is_good/is_bad/is_eof approximations, and the new_istream constructor naming go away in favour of std::io::BufRead + Result-based loader errors. The port def/sem rules covering the flag-simulation methods (HfstOlInputStream is-good/is-bad/is-eof etc.) are retired from the spec IN THE SAME COMMIT as their impl sites — removing either side alone breaks coverage/orphan checks. Renames of surviving APIs keep their existing spec annotations"
                 kind @refactor
                 deps (pmatch-shared-core)
+                sealed true
+                log (
+                    {
+                        at 2026-09-14T15:52:44.306039Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
+
+                    {
+                        at 2026-09-14T16:32:05.759792Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan complete)"
+                    }
+                )
             }
 
             {

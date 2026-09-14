@@ -1,5 +1,5 @@
 use hfst::transducer::{
-    HeaderFlag, IStream, Transducer, TransducerTablesInterface, UnweightedTables, WeightedTables,
+    HeaderFlag, Transducer, TransducerTablesInterface, UnweightedTables, WeightedTables,
 };
 
 // Round-trip a constructed transducer through the real binary writer + reader.
@@ -12,8 +12,7 @@ fn roundtrip<T: TransducerTablesInterface>() -> hfst::error::Result<()> {
     t.write(&mut buf);
 
     let mut cursor = &buf[..];
-    let mut is = IStream::new(&mut cursor);
-    let t2 = Transducer::<T>::new_istream(&mut is)?;
+    let t2 = Transducer::<T>::read_from(&mut cursor)?;
 
     let h1 = t.get_header();
     let h2 = t2.get_header();

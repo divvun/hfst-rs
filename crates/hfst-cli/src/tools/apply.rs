@@ -436,7 +436,7 @@ pub mod pmatch {
     use crate::globals::CommonOptions;
     use crate::hfst_commandline::hfst_set_program_name;
     use hfst::pmatch::{PmatchContainer, print_locate_matches};
-    use hfst::transducer::{INFINITE_WEIGHT, IStream, Weight};
+    use hfst::transducer::{INFINITE_WEIGHT, Weight};
     use std::io::{BufRead, Write};
 
     // [spec:hfst:def:hfst-pmatch.var-val]
@@ -801,7 +801,7 @@ pub mod pmatch {
         // HAVE_READLINE: rl_bind_key('\t', rl_insert) to disable tab completion;
         // compiled out in this build.
 
-        let mut file = match std::fs::File::open(&inputfilename) {
+        let file = match std::fs::File::open(&inputfilename) {
             Ok(f) => f,
             Err(_) => {
                 eprintln!("Could not open file {}", inputfilename);
@@ -810,10 +810,9 @@ pub mod pmatch {
         };
         // The C wraps the container construction + processing in try/catch on
         // HfstException; if the archive is not a valid weighted optimized-lookup
-        // pmatch file the catch arm prints a hint and returns 1. The Rust ctor
-        // currently panics rather than throwing, so that catch arm is not
-        // reproduced here.
-        let mut instream = IStream::new(&mut file as &mut dyn std::io::Read);
+        // pmatch file the catch arm prints a hint and returns 1. The Rust reader
+        // returns the error instead, and it is reported below.
+        let mut instream = std::io::BufReader::new(file);
         let mut container = match PmatchContainer::new_from_stream(&mut instream) {
             Ok(v) => v,
             Err(e) => {
@@ -1295,8 +1294,7 @@ pub mod tokenize {
         // do this, rather than load the whole thing into a HfstTransducer, we read
         // just the header variables with parse_hfst3_header, then rewind.
         let first_header_attributes = {
-            let mut hdr_stream =
-                hfst::transducer::IStream::new(&mut file as &mut dyn std::io::Read);
+            let mut hdr_stream = std::io::BufReader::new(&mut file);
             match PmatchContainer::parse_hfst3_header(&mut hdr_stream) {
                 Ok(h) => h,
                 Err(e) => {
@@ -1377,7 +1375,7 @@ pub mod tokenize {
                 &common,
                 "TOP automaton seen, treating as pmatch script...\n",
             );
-            let mut is = hfst::transducer::IStream::new(&mut file as &mut dyn std::io::Read);
+            let mut is = std::io::BufReader::new(&mut file);
             let mut container = match PmatchContainer::new_from_stream(&mut is) {
                 Ok(c) => c,
                 Err(e) => {

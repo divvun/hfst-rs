@@ -25,7 +25,7 @@ use hfst::convert_transducer_format::ConversionFunctions;
 use hfst::hfst_basic_transducer::HfstBasicTransducer;
 use hfst::hfst_basic_transition::HfstBasicTransition;
 use hfst::pmatch::PmatchContainer;
-use hfst::transducer::{IStream, Transducer, WeightedTables};
+use hfst::transducer::{Transducer, WeightedTables};
 
 // The tropical transition-data symbol coding lives in process-global statics;
 // cargo runs each #[test] as a parallel thread in one process, so construction
@@ -129,9 +129,8 @@ fn non_pmatch_archive_is_rejected_with_a_diagnostic() {
         &write_ol(&one_arc_ol()),
     );
     let mut cursor = std::io::Cursor::new(archive);
-    let mut is = IStream::new(&mut cursor);
     // `PmatchContainer` has no `Debug`, so `Result::expect_err` is unavailable.
-    let err = match PmatchContainer::new_from_stream(&mut is) {
+    let err = match PmatchContainer::new_from_stream(&mut cursor) {
         Ok(_) => panic!("a plain optimized-lookup transducer is not a pmatch archive"),
         Err(e) => e,
     };
@@ -147,8 +146,7 @@ fn non_pmatch_archive_is_rejected_with_a_diagnostic() {
 
 fn read_ol(bytes: &[u8]) -> hfst::error::Result<Transducer<WeightedTables>> {
     let mut cursor = std::io::Cursor::new(bytes.to_vec());
-    let mut is = IStream::new(&mut cursor);
-    Transducer::<WeightedTables>::new_istream(&mut is)
+    Transducer::<WeightedTables>::read_from(&mut cursor)
 }
 
 /// `Transducer` has no `Debug`, so `Result::expect_err` is unavailable.

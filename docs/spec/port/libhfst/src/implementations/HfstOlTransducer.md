@@ -85,21 +85,6 @@
 > Discards `n` bytes from the underlying `input_stream` by calling
 > `input_stream.ignore(n)`. No return value.
 
-> [spec:hfst:def:hfst-ol-transducer.hfst.implementations.hfst-ol-input-stream.is-bad-fn]
-> bool HfstOlInputStream::is_bad(void) const
-
-> [spec:hfst:sem:hfst-ol-transducer.hfst.implementations.hfst-ol-input-stream.is-bad-fn]
-> Returns whether the stream is in a bad (unrecoverable error) state. If
-> `filename` is empty (stdin case), returns `std::cin.bad()`. Otherwise returns
-> `input_stream.bad()`.
-
-> [spec:hfst:def:hfst-ol-transducer.hfst.implementations.hfst-ol-input-stream.is-eof-fn]
-> bool HfstOlInputStream::is_eof(void) const
-
-> [spec:hfst:sem:hfst-ol-transducer.hfst.implementations.hfst-ol-input-stream.is-eof-fn]
-> Returns true if the stream is at end-of-file, determined by peeking the next
-> character (`input_stream.peek()`) and comparing it to `EOF`.
-
 > [spec:hfst:def:hfst-ol-transducer.hfst.implementations.hfst-ol-input-stream.is-fst-fn]
 > int HfstOlInputStream::is_fst(istream &s)
 
@@ -119,14 +104,6 @@
 > 6. If `num_read != 24`, call `s.clear()` to reset error flags.
 > 7. Return `res` (0 = not an HFST-OL fst, 1 = unweighted, 2 = weighted).
 
-> [spec:hfst:def:hfst-ol-transducer.hfst.implementations.hfst-ol-input-stream.is-good-fn]
-> bool HfstOlInputStream::is_good(void) const
-
-> [spec:hfst:sem:hfst-ol-transducer.hfst.implementations.hfst-ol-input-stream.is-good-fn]
-> Returns whether the stream is in a usable state. First, if `is_eof()` is true,
-> returns false. Otherwise, if `filename` is empty (stdin case) returns
-> `std::cin.good()`, else returns `input_stream.good()`.
-
 > [spec:hfst:def:hfst-ol-transducer.hfst.implementations.hfst-ol-input-stream.is-open-fn]
 > bool HfstOlInputStream::is_open(void) const
 
@@ -141,13 +118,6 @@
 > [spec:hfst:sem:hfst-ol-transducer.hfst.implementations.hfst-ol-input-stream.open-fn]
 > No-op. The function body is empty (the stream is already opened in the
 > constructor); does nothing.
-
-> [spec:hfst:def:hfst-ol-transducer.hfst.implementations.hfst-ol-input-stream.operator-fn]
-> bool HfstOlInputStream::operator() (void) const
-
-> [spec:hfst:sem:hfst-ol-transducer.hfst.implementations.hfst-ol-input-stream.operator-fn]
-> Function-call operator returning the stream's usability: simply returns
-> `is_good()`.
 
 > [spec:hfst:def:hfst-ol-transducer.hfst.implementations.hfst-ol-input-stream.read-transducer-fn]
 > hfst_ol::Transducer * HfstOlInputStream::read_transducer(bool has_header)
@@ -193,13 +163,6 @@
 > Reads a `short` from `input_stream` in raw binary form: declares a local
 > `short i`, calls `input_stream.read((char*)&i, sizeof(i))` to read sizeof(short)
 > bytes directly into it (native byte order), and returns `i`.
-
-> [spec:hfst:def:hfst-ol-transducer.hfst.implementations.hfst-ol-input-stream.stream-unget-fn]
-> void HfstOlInputStream::stream_unget(char c)
-
-> [spec:hfst:sem:hfst-ol-transducer.hfst.implementations.hfst-ol-input-stream.stream-unget-fn]
-> Pushes the character `c` back onto `input_stream` by calling
-> `input_stream.putback(c)`, so the next read returns it again.
 
 > [spec:hfst:def:hfst-ol-transducer.hfst.implementations.hfst-ol-output-stream]
 > class HfstOlOutputStream {

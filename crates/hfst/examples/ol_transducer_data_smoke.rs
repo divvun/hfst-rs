@@ -1,6 +1,4 @@
-use hfst::transducer::{
-    Encoder, HeaderFlag, IStream, SymbolTable, TransducerHeader, TransitionIndex,
-};
+use hfst::transducer::{Encoder, HeaderFlag, SymbolTable, TransducerHeader, TransitionIndex};
 
 fn main() -> hfst::error::Result<()> {
     // Header binary round-trip: write to a buffer, read it back, compare.
@@ -8,8 +6,7 @@ fn main() -> hfst::error::Result<()> {
     let mut buf: Vec<u8> = Vec::new();
     h.write(&mut buf);
     let mut cursor = &buf[..];
-    let mut is = IStream::new(&mut cursor);
-    let h2 = TransducerHeader::new_istream(&mut is)?;
+    let h2 = TransducerHeader::read_from(&mut cursor)?;
     assert_eq!(h2.input_symbol_count(), 2);
     assert_eq!(h2.symbol_count(), 5);
     assert_eq!(h2.index_table_size(), 7);

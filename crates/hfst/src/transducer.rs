@@ -9,9 +9,9 @@
 //! bytes are portable and deterministic across targets. This is byte-identical
 //! to the old native-endian path on the little-endian hosts everyone actually
 //! ships on (x86-64/aarch64), and matches the sibling THFST format, which is
-//! already explicitly little-endian. 'std::istream' is modelled by ['IStream'],
-//! a thin wrapper over '&mut dyn Read' that tracks a fail flag so the C++
-//! 'if(!is)' checks port directly; 'std::ostream' becomes '&mut dyn Write'.
+//! already explicitly little-endian. 'std::istream' becomes '&mut dyn BufRead'
+//! and every reader reports a short or malformed read as an [`crate::error::Error`];
+//! 'std::ostream' becomes '&mut dyn Write'.
 //!
 //! C++ value-type inheritance (the concrete base 'TransitionIndex' with a
 //! derived 'TransitionWIndex' overriding 'final_weight', likewise
@@ -181,204 +181,45 @@ pub fn indexes_transition_index_table(i: TransitionTableIndex) -> bool {
     i < TRANSITION_TARGET_TABLE_START
 }
 
-/// 'std::istream' modelled with a fail flag, so the C++ 'if(!is)' checks port
-/// straight across. Reads are native-endian to mirror 'reinterpret_cast'.
-pub struct IStream<'a> {
-    // Boxed so the stream can either BORROW a reader ('new') or OWN one
-    // ('new_owned', for the stdin/file-backed *InputStream constructors that the
-    // C++ builds around an ifstream/cin).
-    inner: Box<dyn std::io::Read + 'a>,
-    fail: bool,
-    eof: bool,
-    // Bytes pushed back via 'putback'/'unget' (std::istream's get-area), LIFO:
-    // the last pushed byte is the next one returned by get()/read()/read_until().
-    putback: Vec<u8>,
+/// Read exactly `buf.len()` bytes, reporting a short read as a malformed
+/// optimized-lookup payload — the one shape every reader below shares.
+fn read_exact_bytes(is: &mut dyn std::io::BufRead, buf: &mut [u8]) -> crate::error::Result<()> {
+    is.read_exact(buf)
+        .map_err(|_| crate::err!(TransducerHasWrongType))
 }
 
-impl<'a> IStream<'a> {
-    pub fn new(inner: &'a mut dyn std::io::Read) -> Self {
-        IStream {
-            inner: Box::new(inner),
-            fail: false,
-            eof: false,
-            putback: Vec::new(),
-        }
-    }
+// 'is.read(reinterpret_cast<char*>(&p), sizeof(T))' for the integer properties —
+// the mirror of the static template 'read_property<T>' that 'TransducerHeader'
+// uses to read its fields. Little-endian per hfst/hfst#328 (see module docs).
+// [spec:hfst:def:transducer.hfst-ol.transducer-header.read-property-fn]
+// [spec:hfst:sem:transducer.hfst-ol.transducer-header.read-property-fn]
+fn read_u16(is: &mut dyn std::io::BufRead) -> crate::error::Result<u16> {
+    let mut b = [0u8; 2];
+    read_exact_bytes(is, &mut b)?;
+    Ok(u16::from_le_bytes(b))
+}
+fn read_u32(is: &mut dyn std::io::BufRead) -> crate::error::Result<u32> {
+    let mut b = [0u8; 4];
+    read_exact_bytes(is, &mut b)?;
+    Ok(u32::from_le_bytes(b))
+}
 
-    /// Construct an IStream that OWNS its reader (e.g. an opened file or stdin),
-    /// for the backend '*InputStream::new'/'new_filename' constructors.
-    pub fn new_owned(inner: impl std::io::Read + 'a) -> Self {
-        IStream {
-            inner: Box::new(inner),
-            fail: false,
-            eof: false,
-            putback: Vec::new(),
-        }
+/// One NUL-terminated symbol string off the alphabet block.
+///
+/// 'std::getline' with a NUL delimiter accepts a final run of bytes the stream
+/// ends before terminating; only a read that finds nothing at all fails. That
+/// tolerance is preserved here, so an alphabet whose last symbol lost its
+/// terminator still loads.
+fn read_symbol_string(is: &mut dyn std::io::BufRead) -> crate::error::Result<String> {
+    let mut bytes: Vec<u8> = Vec::new();
+    match is.read_until(b'\0', &mut bytes) {
+        Ok(0) | Err(_) => crate::bail!(TransducerHasWrongType),
+        Ok(_) => {}
     }
-
-    /// Consume the stream into a single 'Read' that first yields any remaining
-    /// put-back bytes (LIFO order) and then the rest of the underlying reader.
-    /// Used by 'HfstInputStream(std::istream&)' to adopt a borrowed stream as its
-    /// owned source.
-    pub fn into_reader(self) -> Box<dyn std::io::Read + 'a> {
-        if self.putback.is_empty() {
-            return self.inner;
-        }
-        // 'putback' is LIFO (last pushed is read first); reverse it so a Cursor
-        // replays the bytes in read order ahead of the underlying reader.
-        use std::io::Read as _;
-        let mut pending = self.putback;
-        pending.reverse();
-        Box::new(std::io::Cursor::new(pending).chain(self.inner))
+    if bytes.last() == Some(&b'\0') {
+        bytes.pop();
     }
-
-    /// '!is' — true when the stream is in a good (non-failed) state.
-    pub fn good(&self) -> bool {
-        !self.fail
-    }
-
-    /// 'is.clear()': reset the fail/eof state (e.g. after a short read while
-    /// peeking).
-    pub fn clear(&mut self) {
-        self.fail = false;
-        self.eof = false;
-    }
-
-    /// 'is.get()': read and return the next byte, or -1 at end of stream
-    /// (mirrors std::istream::get()'s int return).
-    pub fn get(&mut self) -> i32 {
-        if let Some(b) = self.putback.pop() {
-            return b as i32;
-        }
-        if self.fail {
-            return -1;
-        }
-        let mut b = [0u8; 1];
-        match self.inner.read(&mut b) {
-            Ok(0) => {
-                self.eof = true;
-                -1
-            }
-            Ok(_) => b[0] as i32,
-            Err(_) => {
-                self.fail = true;
-                -1
-            }
-        }
-    }
-
-    /// 'is.putback(c)' / 'is.unget()': return a byte to the get-area so the
-    /// next read sees it again.
-    pub fn putback(&mut self, c: u8) {
-        self.putback.push(c);
-    }
-
-    /// Read all remaining bytes (the put-back get-area first, then the reader to
-    /// EOF). Used by the backend 'read_transducer' (load one FST from the prefix,
-    /// then put the unused remainder back).
-    pub fn read_to_end(&mut self) -> Vec<u8> {
-        let mut buf: Vec<u8> = Vec::new();
-        while let Some(b) = self.putback.pop() {
-            buf.push(b);
-        }
-        let _ = std::io::Read::read_to_end(&mut self.inner, &mut buf);
-        buf
-    }
-
-    /// 'is.read(buf, buf.len())': a short read sets the fail flag.
-    pub fn read(&mut self, buf: &mut [u8]) {
-        if self.fail {
-            return;
-        }
-        let mut got = 0;
-        // First drain the put-back get-area (LIFO), as the byte-at-a-time loop
-        // did — the last pushed byte is returned first.
-        while got < buf.len() {
-            if let Some(b) = self.putback.pop() {
-                buf[got] = b;
-                got += 1;
-            } else {
-                break;
-            }
-        }
-        // Then bulk-read the remainder straight into 'buf', looping only to
-        // service short reads. (This used to read ONE BYTE PER 'inner.read()'
-        // call, which turned loading a 565MB pmatch/OL table into ~half a
-        // billion syscalls — a multi-minute hang. Filling the caller's buffer
-        // directly reads exactly buf.len() bytes with no read-ahead, so the
-        // multi-transducer stream framing that reborrows the reader stays
-        // correct.)
-        while got < buf.len() {
-            match self.inner.read(&mut buf[got..]) {
-                Ok(0) => {
-                    self.eof = true;
-                    self.fail = true;
-                    return;
-                }
-                Ok(n) => got += n,
-                Err(_) => {
-                    self.fail = true;
-                    return;
-                }
-            }
-        }
-    }
-
-    /// 'std::getline(is, str, delim)': collect bytes up to (not including)
-    /// 'delim'; an immediate EOF with no bytes sets the fail flag.
-    pub fn read_until(&mut self, delim: u8) -> String {
-        let mut bytes: Vec<u8> = Vec::new();
-        let mut got_any = false;
-        loop {
-            if let Some(b) = self.putback.pop() {
-                got_any = true;
-                if b == delim {
-                    break;
-                }
-                bytes.push(b);
-                continue;
-            }
-            let mut b = [0u8; 1];
-            match self.inner.read(&mut b) {
-                Ok(0) => {
-                    self.eof = true;
-                    if !got_any {
-                        self.fail = true;
-                    }
-                    break;
-                }
-                Ok(_) => {
-                    got_any = true;
-                    if b[0] == delim {
-                        break;
-                    }
-                    bytes.push(b[0]);
-                }
-                Err(_) => {
-                    self.fail = true;
-                    break;
-                }
-            }
-        }
-        String::from_utf8_lossy(&bytes).into_owned()
-    }
-
-    // 'is.read(reinterpret_cast<char*>(&p), sizeof(T))' for the integer
-    // properties — the typed mirror of the static template 'read_property<T>'
-    // that 'TransducerHeader' uses to read its fields. Little-endian per
-    // hfst/hfst#328 (see module docs).
-    // [spec:hfst:def:transducer.hfst-ol.transducer-header.read-property-fn]
-    // [spec:hfst:sem:transducer.hfst-ol.transducer-header.read-property-fn]
-    fn read_u16(&mut self) -> u16 {
-        let mut b = [0u8; 2];
-        self.read(&mut b);
-        u16::from_le_bytes(b)
-    }
-    fn read_u32(&mut self) -> u32 {
-        let mut b = [0u8; 4];
-        self.read(&mut b);
-        u32::from_le_bytes(b)
-    }
+    Ok(String::from_utf8_lossy(&bytes).into_owned())
 }
 
 // 'os.write(reinterpret_cast<const char*>(&prop), sizeof(prop))' for the
@@ -532,8 +373,8 @@ impl TransducerHeader {
 
     // [spec:hfst:def:transducer.hfst-ol.transducer-header.read-bool-property-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transducer-header.read-bool-property-fn]
-    fn read_bool_property(is: &mut IStream<'_>) -> crate::error::Result<bool> {
-        let prop = is.read_u32();
+    fn read_bool_property(is: &mut dyn std::io::BufRead) -> crate::error::Result<bool> {
+        let prop = read_u32(is)?;
         if prop == 0 {
             return Ok(false);
         }
@@ -602,14 +443,14 @@ impl TransducerHeader {
 
     // [spec:hfst:def:transducer.hfst-ol.transducer-header.transducer-header-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transducer-header.transducer-header-fn]
-    pub fn new_istream(is: &mut IStream<'_>) -> crate::error::Result<Self> {
-        let header = TransducerHeader {
-            number_of_input_symbols: is.read_u16(),
-            number_of_symbols: is.read_u16(),
-            size_of_transition_index_table: is.read_u32(),
-            size_of_transition_target_table: is.read_u32(),
-            number_of_states: is.read_u32(),
-            number_of_transitions: is.read_u32(),
+    pub fn read_from(is: &mut dyn std::io::BufRead) -> crate::error::Result<Self> {
+        Ok(TransducerHeader {
+            number_of_input_symbols: read_u16(is)?,
+            number_of_symbols: read_u16(is)?,
+            size_of_transition_index_table: read_u32(is)?,
+            size_of_transition_target_table: read_u32(is)?,
+            number_of_states: read_u32(is)?,
+            number_of_transitions: read_u32(is)?,
             weighted: Self::read_bool_property(is)?,
             deterministic: Self::read_bool_property(is)?,
             input_deterministic: Self::read_bool_property(is)?,
@@ -619,11 +460,7 @@ impl TransducerHeader {
             has_input_epsilon_transitions: Self::read_bool_property(is)?,
             has_input_epsilon_cycles: Self::read_bool_property(is)?,
             has_unweighted_input_epsilon_cycles: Self::read_bool_property(is)?,
-        };
-        if !is.good() {
-            crate::bail!(TransducerHasWrongType);
-        }
-        Ok(header)
+        })
     }
 
     // [spec:hfst:def:transducer.hfst-ol.transducer-header.symbol-count-fn]
@@ -814,8 +651,8 @@ impl TransducerAlphabet {
 
     // [spec:hfst:def:transducer.hfst-ol.transducer-alphabet.transducer-alphabet-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transducer-alphabet.transducer-alphabet-fn]
-    pub fn new_istream(
-        is: &mut IStream<'_>,
+    pub fn read_from(
+        is: &mut dyn std::io::BufRead,
         symbol_count: SymbolNumber,
         preserve_diacritic_strings: bool,
     ) -> crate::error::Result<Self> {
@@ -830,7 +667,7 @@ impl TransducerAlphabet {
         };
         let mut i: SymbolNumber = 0;
         while i < symbol_count {
-            let mut str = is.read_until(b'\0');
+            let mut str = read_symbol_string(is)?;
             if FdOperation::is_diacritic(&str) {
                 alpha.fd_table.define_diacritic(i, &str);
                 if !preserve_diacritic_strings {
@@ -843,9 +680,6 @@ impl TransducerAlphabet {
             } else if is_identity(&str) {
                 alpha.identity_symbol = i;
             }
-            if !is.good() {
-                crate::bail!(TransducerHasWrongType);
-            }
             alpha.symbol_table.push(Symbol::from(str));
             i += 1;
         }
@@ -856,10 +690,10 @@ impl TransducerAlphabet {
 
     // [spec:hfst:def:transducer.hfst-ol.transducer-alphabet.fake-read-alphabet-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transducer-alphabet.fake-read-alphabet-fn]
-    pub fn fake_read_alphabet(is: &mut IStream<'_>, symbol_count: SymbolNumber) {
+    pub fn fake_read_alphabet(is: &mut dyn std::io::BufRead, symbol_count: SymbolNumber) {
         let mut i: SymbolNumber = 0;
         while i < symbol_count {
-            let _str = is.read_until(b'\0');
+            let _ = read_symbol_string(is);
             i += 1;
         }
     }
@@ -1162,14 +996,11 @@ impl TransitionIndex {
 
     // [spec:hfst:def:transducer.hfst-ol.transition-index.transition-index-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transition-index.transition-index-fn]
-    pub fn new_istream(is: &mut IStream<'_>) -> Self {
-        let mut ti = TransitionIndex {
-            input_symbol: NO_SYMBOL_NUMBER,
-            first_transition_index: 0,
-        };
-        ti.input_symbol = is.read_u16();
-        ti.first_transition_index = is.read_u32();
-        ti
+    pub fn read_from(is: &mut dyn std::io::BufRead) -> crate::error::Result<Self> {
+        Ok(TransitionIndex {
+            input_symbol: read_u16(is)?,
+            first_transition_index: read_u32(is)?,
+        })
     }
 
     // [spec:hfst:def:transducer.hfst-ol.transition-index.get-target-fn]
@@ -1645,13 +1476,16 @@ impl<T: TableEntry + Clone> TransducerTable<T> {
 
     // [spec:hfst:def:transducer.hfst-ol.transducer-table.transducer-table-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transducer-table.transducer-table-fn]
-    pub fn new_istream(is: &mut IStream<'_>, index_count: TransitionTableIndex) -> Self {
+    pub fn read_from(
+        is: &mut dyn std::io::BufRead,
+        index_count: TransitionTableIndex,
+    ) -> crate::error::Result<Self> {
         // 'index_count' is a header field read straight off disk. Reading it in
         // one 'index_count * T::SIZE' buffer lets a corrupt header ask the
         // allocator for tens of gigabytes, which aborts the process before the
         // short read that would have revealed the corruption. Batching keeps
-        // the ask bounded and stops at the first short read; the caller sees
-        // the stream's fail flag and reports a clean error.
+        // the ask bounded and stops at the first short read, which is reported
+        // as the malformed payload it is.
         // [spec:hfst:req:table-residency.untrusted-size-fields]
         const BATCH: usize = 64 * 1024;
         let mut table = Vec::new();
@@ -1660,10 +1494,7 @@ impl<T: TableEntry + Clone> TransducerTable<T> {
         while remaining != 0 {
             let n = remaining.min(BATCH);
             let chunk = &mut buf[..T::SIZE * n];
-            is.read(chunk);
-            if !is.good() {
-                break;
-            }
+            read_exact_bytes(is, chunk)?;
             for p in (0..chunk.len()).step_by(T::SIZE) {
                 table.push(T::from_bytes(&chunk[p..p + T::SIZE]));
             }
@@ -1674,7 +1505,7 @@ impl<T: TableEntry + Clone> TransducerTable<T> {
         // keeps for the life of the transducer.
         // [spec:hfst:req:table-residency.single-copy-load]
         table.shrink_to_fit();
-        TransducerTable { table }
+        Ok(TransducerTable { table })
     }
 
     // [spec:hfst:def:transducer.hfst-ol.transducer-table.append-fn]
@@ -1774,18 +1605,18 @@ impl<T: TransitionEntry> TransducerTable<T> {
 // [spec:hfst:def:transducer.hfst-ol.transducer-tables-interface]
 // [spec:hfst:def:transducer.hfst-ol.transducer-tables-interface.transducer-tables-interface-fn]
 // [spec:hfst:sem:transducer.hfst-ol.transducer-tables-interface.transducer-tables-interface-fn]
-pub trait TransducerTablesInterface {
+pub trait TransducerTablesInterface: Sized {
     /// Whether this is the weighted table pair — the static counterpart of
     /// the header's 'Weighted' flag; checked against it at load time.
     const WEIGHTED: bool;
     /// Construct the one-final-index empty table pair ('TransducerTables()').
     fn new_empty() -> Self;
     /// Read both tables from a stream ('TransducerTables(istream&, ...)').
-    fn new_istream(
-        is: &mut IStream<'_>,
+    fn read_from(
+        is: &mut dyn std::io::BufRead,
         index_table_size: TransitionTableIndex,
         transition_table_size: TransitionTableIndex,
-    ) -> Self;
+    ) -> crate::error::Result<Self>;
     // [spec:hfst:def:transducer.hfst-ol.transducer-tables-interface.get-weight-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transducer-tables-interface.get-weight-fn]
     fn get_weight(&self, i: TransitionTableIndex) -> Weight;
@@ -1848,15 +1679,15 @@ impl<T1: IndexEntry + TableEntry + Clone + IndexCtor, T2: TransitionEntry + Tabl
 {
     // [spec:hfst:def:transducer.hfst-ol.transducer-tables.transducer-tables-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transducer-tables.transducer-tables-fn]
-    pub fn new_istream(
-        is: &mut IStream<'_>,
+    pub fn read_from(
+        is: &mut dyn std::io::BufRead,
         index_table_size: TransitionTableIndex,
         transition_table_size: TransitionTableIndex,
-    ) -> Self {
-        TransducerTables {
-            index_table: TransducerTable::new_istream(is, index_table_size),
-            transition_table: TransducerTable::new_istream(is, transition_table_size),
-        }
+    ) -> crate::error::Result<Self> {
+        Ok(TransducerTables {
+            index_table: TransducerTable::read_from(is, index_table_size)?,
+            transition_table: TransducerTable::read_from(is, transition_table_size)?,
+        })
     }
 
     pub fn new() -> Self {
@@ -1898,12 +1729,12 @@ impl<T1: IndexEntry + TableEntry + Clone + IndexCtor, T2: TransitionEntry + Tabl
     fn new_empty() -> Self {
         Self::new()
     }
-    fn new_istream(
-        is: &mut IStream<'_>,
+    fn read_from(
+        is: &mut dyn std::io::BufRead,
         index_table_size: TransitionTableIndex,
         transition_table_size: TransitionTableIndex,
-    ) -> Self {
-        TransducerTables::new_istream(is, index_table_size, transition_table_size)
+    ) -> crate::error::Result<Self> {
+        TransducerTables::read_from(is, index_table_size, transition_table_size)
     }
     // An index past the end of a table is the blank-padding entry the writer
     // would have supplied had the probing symbol been an input symbol (see
@@ -2636,17 +2467,16 @@ impl<T: TransducerTablesInterface> Transducer<T> {
         }
     }
 
-    pub fn new_istream(is: &mut IStream<'_>) -> crate::error::Result<Self> {
-        let header = TransducerHeader::new_istream(is)?;
-        Self::new_istream_with_header(header, is)
+    pub fn read_from(is: &mut dyn std::io::BufRead) -> crate::error::Result<Self> {
+        let header = TransducerHeader::read_from(is)?;
+        Self::read_from_with_header(header, is)
     }
 
-    /// The tail of 'new_istream' once the header has been read — the caller
-    /// (['AnyOlTransducer::new_istream']) peeks the Weighted flag to pick the
-    /// instantiation, then hands the header over.
-    pub fn new_istream_with_header(
+    /// The tail of 'read_from' once the header has been read — the caller peeks
+    /// the Weighted flag to pick the instantiation, then hands the header over.
+    pub fn read_from_with_header(
         header: TransducerHeader,
-        is: &mut IStream<'_>,
+        is: &mut dyn std::io::BufRead,
     ) -> crate::error::Result<Self> {
         let header = Box::new(header);
         // The weightedness is now static; a stream of the other flavour is the
@@ -2667,7 +2497,7 @@ impl<T: TransducerTablesInterface> Transducer<T> {
                 )
             );
         }
-        let alphabet = Box::new(TransducerAlphabet::new_istream(
+        let alphabet = Box::new(TransducerAlphabet::read_from(
             is,
             header.symbol_count(),
             true,
@@ -3023,16 +2853,13 @@ impl<T: TransducerTablesInterface> Transducer<T> {
 
     // [spec:hfst:def:transducer.hfst-ol.transducer.load-tables-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transducer.load-tables-fn]
-    pub fn load_tables(&mut self, is: &mut IStream<'_>) -> crate::error::Result<()> {
+    pub fn load_tables(&mut self, is: &mut dyn std::io::BufRead) -> crate::error::Result<()> {
         if self.hdr().probe_flag(HeaderFlag::Weighted) != T::WEIGHTED {
             crate::bail!(TransducerHasWrongType);
         }
         let its = self.hdr().index_table_size();
         let tts = self.hdr().target_table_size();
-        self.tables = Some(T::new_istream(is, its, tts));
-        if !is.good() {
-            crate::bail!(TransducerHasWrongType);
-        }
+        self.tables = Some(T::read_from(is, its, tts)?);
         self.validate_tables()
     }
 
@@ -3405,8 +3232,8 @@ mod tests {
         // does overshoot.
         const ENTRIES: usize = 100_000;
         let mut cursor = std::io::Cursor::new(vec![0u8; ENTRIES * TransitionWIndex::SIZE]);
-        let mut is = IStream::new(&mut cursor);
-        let table = TransducerTable::<TransitionWIndex>::new_istream(&mut is, ENTRIES as u32);
+        let table = TransducerTable::<TransitionWIndex>::read_from(&mut cursor, ENTRIES as u32)
+            .expect("the cursor holds exactly the bytes the table asks for");
         assert_eq!(table.as_slice().len(), ENTRIES);
         assert_eq!(table.into_vector().capacity(), ENTRIES);
     }

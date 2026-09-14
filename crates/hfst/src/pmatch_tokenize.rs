@@ -1388,7 +1388,7 @@ pub fn match_and_print(
 // [spec:hfst:sem:pmatch-tokenize.hfst-ol-tokenize.process-input-fn]
 pub fn process_input(
     container: &mut PmatchContainer,
-    instream: &mut crate::transducer::IStream<'_>,
+    instream: &mut dyn BufRead,
     outstream: &mut dyn Write,
     s: &TokenizeSettings,
 ) {
@@ -1402,14 +1402,19 @@ pub fn process_input(
     };
     container.set_single_codepoint_tokenization(single_codepoint);
     // C++ reads fixed-size lines (bufsize 4096) via std::istream::getline as the
-    // loop condition; the IStream wrapper read_until reads up to the delimiter and
-    // sets the fail flag on an immediate EOF with no bytes read.
+    // loop condition: a read that finds nothing at all ends the loop, and the
+    // newline itself is not part of the line.
+    let mut line: Vec<u8> = Vec::new();
     loop {
-        let line = instream.read_until(b'\n');
-        if !instream.good() {
-            break;
+        line.clear();
+        match instream.read_until(b'\n', &mut line) {
+            Ok(0) | Err(_) => break,
+            Ok(_) => {}
         }
-        let input_text = line;
+        if line.last() == Some(&b'\n') {
+            line.pop();
+        }
+        let input_text = String::from_utf8_lossy(&line);
         if !input_text.is_empty() {
             match_and_print(container, outstream, &input_text, s);
         }

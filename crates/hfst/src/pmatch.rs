@@ -298,7 +298,7 @@ impl PmatchAlphabet {
     // and touches hfst::FdOperation::get_feature/get_value plus fd_table mutation,
     // which is part of the istream-reading facade path.
     pub fn new_from_stream(
-        inputstream: &mut crate::transducer::IStream<'_>,
+        inputstream: &mut dyn std::io::BufRead,
         symbol_count: SymbolNumber,
         cont: &mut PmatchCore,
     ) -> crate::error::Result<PmatchAlphabet> {
@@ -306,7 +306,7 @@ impl PmatchAlphabet {
         // 'TransducerAlphabet(istream, n, true)' then builds the pmatch symbol
         // maps; read the base alphabet from the stream and reuse the same
         // map-building done by 'new_from_alphabet'.
-        let base = TransducerAlphabet::new_istream(inputstream, symbol_count, true)?;
+        let base = TransducerAlphabet::read_from(inputstream, symbol_count, true)?;
         Ok(Self::new_from_alphabet(&base, cont))
     }
 
@@ -955,7 +955,7 @@ impl PmatchTransducer {
     // [spec:hfst:sem:pmatch.hfst-ol.pmatch-transducer.pmatch-transducer-fn]
     // ctor from istream
     pub fn new_from_stream(
-        is: &mut crate::transducer::IStream<'_>,
+        is: &mut dyn std::io::BufRead,
         index_table_size: TransitionTableIndex,
         transition_table_size: TransitionTableIndex,
         alphabet: &PmatchAlphabet,
@@ -963,23 +963,21 @@ impl PmatchTransducer {
     ) -> crate::error::Result<PmatchTransducer> {
         let orig_symbol_count = u32::try_from(alphabet.get_symbol_table().len())
             .expect("value out of u32 range") as SymbolNumber;
+        let truncated = || {
+            crate::err!(
+                Hfst,
+                "pmatch archive is truncated: the transducer's tables end early"
+            )
+        };
         // Both tables come off disk in one batched pass each, so a size field
         // inflated by corruption stops at the short read instead of asking the
         // allocator for the whole claim up front.
-        let index_table = crate::transducer::TransducerTable::<TransitionWIndex>::new_istream(
-            is,
-            index_table_size,
-        );
-        let transition_table = crate::transducer::TransducerTable::<TransitionW>::new_istream(
-            is,
-            transition_table_size,
-        );
-        if !is.good() {
-            crate::bail!(
-                Hfst,
-                "pmatch archive is truncated: the transducer's tables end early"
-            );
-        }
+        let index_table =
+            crate::transducer::TransducerTable::<TransitionWIndex>::read_from(is, index_table_size)
+                .map_err(|_| truncated())?;
+        let transition_table =
+            crate::transducer::TransducerTable::<TransitionW>::read_from(is, transition_table_size)
+                .map_err(|_| truncated())?;
         // [spec:hfst:req:table-residency.single-copy-load]
         let index_table = index_table.into_vector();
         let transition_table = transition_table.into_vector();

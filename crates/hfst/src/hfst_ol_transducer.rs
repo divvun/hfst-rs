@@ -21,19 +21,18 @@
 //! Stream modelling (per the porting convention): the C++ 'HfstOlInputStream'
 //! holds an 'std::ifstream i_stream' plus an 'std::istream &input_stream'
 //! reference that aliases either 'i_stream' or 'std::cin'; this is modelled as
-//! a single binary input stream 'crate::transducer::IStream', which borrows its
-//! reader, hence the ''a' lifetime (mirroring 'TropicalWeightInputStream<'a>').
-//! 'HfstOlOutputStream' holds 'std::ofstream o_stream' + 'std::ostream
-//! &output_stream' aliasing it or 'std::cout'; modelled as a single owned
-//! writer. The C 'FILE*' overload of 'is_fst' is ported over '&mut dyn
-//! std::io::BufRead' so no raw C file handle is needed.
+//! a single owned 'Box<dyn BufRead>', hence the ''a' lifetime (mirroring
+//! 'TropicalWeightInputStream<'a>'). 'HfstOlOutputStream' holds 'std::ofstream
+//! o_stream' + 'std::ostream &output_stream' aliasing it or 'std::cout';
+//! modelled as a single owned writer. Both overloads of 'is_fst' — the C
+//! 'FILE*' one and the 'std::istream' one — are ported over '&mut dyn BufRead'
+//! and peek rather than consume, so no raw C file handle is needed.
 
 #![allow(non_snake_case)]
 #![allow(dead_code)] // many ported ops are only reached once the facade lands
 
 use std::collections::BTreeSet;
-
-use crate::transducer::IStream;
+use std::io::BufRead;
 
 /// 'typedef std::set<std::string> StringSet' (used by 'get_alphabet').
 pub type StringSet = BTreeSet<String>;
@@ -43,13 +42,12 @@ pub struct HfstOlInputStream<'a> {
     filename: String,
     /// C++ holds an 'std::ifstream i_stream' plus an 'std::istream
     /// &input_stream' reference that aliases either 'i_stream' or 'std::cin'.
-    /// Modelled here as a single binary input stream (per the porting
-    /// convention, 'std::istream' (binary) -> 'crate::transducer::IStream').
-    input_stream: IStream<'a>,
+    /// Modelled here as the one owned buffered reader.
+    input_stream: Box<dyn BufRead + 'a>,
     weighted: bool,
 }
 
-// (no Default: HfstOlInputStream borrows its reader and cannot be constructed
+// (no Default: HfstOlInputStream owns its reader and cannot be constructed
 // without one; the no-source ctor 'HfstOlInputStream(bool)' is deferred.)
 
 // [spec:hfst:def:hfst-ol-transducer.hfst.implementations.hfst-ol-output-stream]
@@ -70,7 +68,7 @@ mod ol_construction_io {
     use super::*;
     use crate::hfst_flag_diacritics::FdTable;
     use crate::hfst_symbol_defs::StringSet;
-    use crate::transducer::{HeaderFlag, IStream, SymbolNumber, SymbolTable, Transducer};
+    use crate::transducer::{HeaderFlag, SymbolNumber, SymbolTable, Transducer};
 
     // ===========================================================================
     // HfstOlInputStream
@@ -82,7 +80,7 @@ mod ol_construction_io {
             // C++ reads from std::cin; own a stdin reader.
             HfstOlInputStream {
                 filename: String::new(),
-                input_stream: IStream::new_owned(std::io::stdin()),
+                input_stream: Box::new(std::io::BufReader::new(std::io::stdin())),
                 weighted,
             }
         }
@@ -90,24 +88,16 @@ mod ol_construction_io {
         // [spec:hfst:def:hfst-ol-transducer.hfst.implementations.hfst-ol-input-stream.hfst-ol-input-stream-fn]
         // [spec:hfst:sem:hfst-ol-transducer.hfst.implementations.hfst-ol-input-stream.hfst-ol-input-stream-fn]
         pub fn new_filename(filename: &str, weighted: bool) -> Self {
-            // C++ opens an ifstream in binary mode; own the opened file (a failed
-            // open leaves the stream in the not-good state the C++ would have).
-            let reader: Box<dyn std::io::Read> = match std::fs::File::open(filename) {
-                Ok(f) => Box::new(f),
+            // C++ opens an ifstream in binary mode; own the opened file. A failed
+            // open yields an empty reader, so every read reports end of stream
+            // exactly as the C++ not-good stream would.
+            let reader: Box<dyn BufRead + 'a> = match std::fs::File::open(filename) {
+                Ok(f) => Box::new(std::io::BufReader::new(f)),
                 Err(_) => Box::new(std::io::empty()),
             };
             HfstOlInputStream {
                 filename: filename.to_string(),
-                input_stream: IStream::new_owned(reader),
-                weighted,
-            }
-        }
-
-        /// 'HfstOlInputStream(std::istream &is, bool weighted)'.
-        pub fn new_istream(is: IStream<'a>, weighted: bool) -> Self {
-            HfstOlInputStream {
-                filename: String::new(),
-                input_stream: is,
+                input_stream: reader,
                 weighted,
             }
         }
@@ -134,8 +124,8 @@ mod ol_construction_io {
         // [spec:hfst:sem:hfst-ol-transducer.hfst.implementations.hfst-ol-input-stream.close-fn]
         pub fn close(&mut self) {
             if !self.filename.is_empty() {
-                // C++ 'i_stream.close()': the IStream borrows its reader (owned by the
-                // caller); there is nothing to close on our side.
+                // C++ 'i_stream.close()': the owned reader is closed when this
+                // stream is dropped, so there is nothing to do here.
             }
         }
 
@@ -143,55 +133,18 @@ mod ol_construction_io {
         // [spec:hfst:sem:hfst-ol-transducer.hfst.implementations.hfst-ol-input-stream.is-open-fn]
         pub fn is_open(&self) -> bool {
             if !self.filename.is_empty() {
-                // C++ 'i_stream.is_open()': the IStream owns a valid reader once
-                // constructed; modelled as always open.
+                // C++ 'i_stream.is_open()': the reader is opened by the
+                // constructor, so it is open for as long as this stream exists.
                 true
             } else {
                 true
-            }
-        }
-
-        // [spec:hfst:def:hfst-ol-transducer.hfst.implementations.hfst-ol-input-stream.is-eof-fn]
-        // [spec:hfst:sem:hfst-ol-transducer.hfst.implementations.hfst-ol-input-stream.is-eof-fn]
-        pub fn is_eof(&self) -> bool {
-            // C++ tests 'input_stream.peek() == EOF'; 'IStream' has no peek, so we
-            // approximate with the good/fail flag (set once a read hits EOF).
-            !self.input_stream.good()
-        }
-
-        // [spec:hfst:def:hfst-ol-transducer.hfst.implementations.hfst-ol-input-stream.is-bad-fn]
-        // [spec:hfst:sem:hfst-ol-transducer.hfst.implementations.hfst-ol-input-stream.is-bad-fn]
-        pub fn is_bad(&self) -> bool {
-            if self.filename.is_empty() {
-                // std::cin.bad(): IStream has no badbit; approximated with !good().
-                !self.input_stream.good()
-            } else {
-                // input_stream.bad(): same approximation.
-                !self.input_stream.good()
-            }
-        }
-
-        // Also 'bool operator() (void) const' — the stream-good predicate.
-        // [spec:hfst:def:hfst-ol-transducer.hfst.implementations.hfst-ol-input-stream.is-good-fn]
-        // [spec:hfst:sem:hfst-ol-transducer.hfst.implementations.hfst-ol-input-stream.is-good-fn]
-        // [spec:hfst:def:hfst-ol-transducer.hfst.implementations.hfst-ol-input-stream.operator-fn]
-        // [spec:hfst:sem:hfst-ol-transducer.hfst.implementations.hfst-ol-input-stream.operator-fn]
-        pub fn is_good(&self) -> bool {
-            if self.is_eof() {
-                return false;
-            }
-            if self.filename.is_empty() {
-                // std::cin.good()
-                self.input_stream.good()
-            } else {
-                self.input_stream.good()
             }
         }
 
         /// 'bool is_fst(void) const;' — routes to the static 'is_fst(istream&)'.
         pub fn is_fst_self(&mut self) -> bool {
             // C++ 'is_fst(void) const' -> 'is_fst(input_stream) != 0'.
-            Self::is_fst_istream(&mut self.input_stream) != 0
+            Self::is_fst_stream(&mut *self.input_stream) != 0
         }
 
         /// 'static int is_fst(FILE * f);' — 1=unweighted, 2=weighted.
@@ -234,29 +187,29 @@ mod ol_construction_io {
         }
 
         /// 'static int is_fst(std::istream &s);'
+        ///
+        /// The C++ reads 24 bytes and then puts every one of them back, leaving
+        /// the stream exactly where it found it; peeking the buffer does the
+        /// same without the round trip. The reader must be able to serve the
+        /// 24-byte header from a single fill, which a file-backed or in-memory
+        /// one always can.
         // [spec:hfst:def:hfst-ol-transducer.hfst.implementations.hfst-ol-input-stream.is-fst-fn]
         // [spec:hfst:sem:hfst-ol-transducer.hfst.implementations.hfst-ol-input-stream.is-fst-fn]
-        pub fn is_fst_istream(s: &mut IStream<'_>) -> i32 {
-            // C++ reads 24 bytes, inspects buffer[20..24] for the weighted flag,
-            // then puts every read byte back. gcount = bytes actually read.
-            if !s.good() {
-                return 0;
-            }
+        pub fn is_fst_stream(s: &mut dyn BufRead) -> i32 {
             let mut buffer = [0u8; 24];
-            let mut num_read = 0usize;
-            while num_read < 24 {
-                let c = s.get();
-                if c < 0 {
-                    break;
+            let num_read = match s.fill_buf() {
+                Ok(buf) => {
+                    let n = std::cmp::min(buf.len(), 24);
+                    buffer[..n].copy_from_slice(&buf[..n]);
+                    n
                 }
-                buffer[num_read] = c as u8;
-                num_read += 1;
-            }
+                Err(_) => 0,
+            };
             // buffer[20..24] is the OL header's 'weighted' u32 property; read it
             // little-endian to match the write path (hfst/hfst#328).
             let weighted: u32 =
                 u32::from_le_bytes([buffer[20], buffer[21], buffer[22], buffer[23]]);
-            let res: i32 = if num_read != 24 {
+            if num_read != 24 {
                 0
             } else if weighted == 0 {
                 1
@@ -264,25 +217,14 @@ mod ol_construction_io {
                 2
             } else {
                 0
-            };
-            if num_read > 0 {
-                let mut i = num_read as isize - 1;
-                while i >= 0 {
-                    s.putback(buffer[i as usize]);
-                    i -= 1;
-                }
             }
-            if num_read != 24 {
-                s.clear();
-            }
-            res
         }
 
         // [spec:hfst:def:hfst-ol-transducer.hfst.implementations.hfst-ol-input-stream.stream-get-fn]
         // [spec:hfst:sem:hfst-ol-transducer.hfst.implementations.hfst-ol-input-stream.stream-get-fn]
         pub fn stream_get(&mut self) -> char {
             let mut b = [0u8; 1];
-            self.input_stream.read(&mut b);
+            let _ = std::io::Read::read_exact(&mut self.input_stream, &mut b);
             b[0] as char
         }
 
@@ -290,37 +232,37 @@ mod ol_construction_io {
         // [spec:hfst:sem:hfst-ol-transducer.hfst.implementations.hfst-ol-input-stream.stream-get-short-fn]
         pub fn stream_get_short(&mut self) -> i16 {
             let mut b = [0u8; 2];
-            self.input_stream.read(&mut b);
+            let _ = std::io::Read::read_exact(&mut self.input_stream, &mut b);
             // Little-endian per hfst/hfst#328 — this is an OL-format reader.
             i16::from_le_bytes(b)
-        }
-
-        // [spec:hfst:def:hfst-ol-transducer.hfst.implementations.hfst-ol-input-stream.stream-unget-fn]
-        // [spec:hfst:sem:hfst-ol-transducer.hfst.implementations.hfst-ol-input-stream.stream-unget-fn]
-        pub fn stream_unget(&mut self, c: char) {
-            self.input_stream.putback(c as u8);
         }
 
         // [spec:hfst:def:hfst-ol-transducer.hfst.implementations.hfst-ol-input-stream.ignore-fn]
         // [spec:hfst:sem:hfst-ol-transducer.hfst.implementations.hfst-ol-input-stream.ignore-fn]
         pub fn ignore(&mut self, n: u32) {
-            let mut buf = vec![0u8; n as usize];
-            self.input_stream.read(&mut buf);
+            let mut sink = std::io::sink();
+            let mut head = std::io::Read::take(&mut self.input_stream, n as u64);
+            let _ = std::io::copy(&mut head, &mut sink);
         }
 
         // [spec:hfst:def:hfst-ol-transducer.hfst.implementations.hfst-ol-input-stream.read-transducer-fn]
         // [spec:hfst:sem:hfst-ol-transducer.hfst.implementations.hfst-ol-input-stream.read-transducer-fn]
         pub fn read_transducer(&mut self, has_header: bool) -> crate::error::Result<Transducer> {
-            if self.is_eof() {
+            // C++ 'if (is_eof()) HFST_THROW(StreamIsClosedException)', where
+            // 'is_eof' peeks for EOF; an empty fill is that same peek.
+            if self
+                .input_stream
+                .fill_buf()
+                .map(|b| b.is_empty())
+                .unwrap_or(true)
+            {
                 crate::bail!(StreamIsClosed);
             }
-            // C++ wraps the body in 'try { ... } catch (const HfstException e) { throw e; }',
-            // i.e. it merely rethrows; Rust panics propagate, so no wrapper is needed.
             if has_header {
                 self.skip_hfst_header();
             }
             // 'new hfst_ol::Transducer(input_stream)' -> owned Transducer.
-            Transducer::new_istream(&mut self.input_stream)
+            Transducer::read_from(&mut *self.input_stream)
         }
     }
 

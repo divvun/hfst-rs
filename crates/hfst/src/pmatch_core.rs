@@ -312,9 +312,7 @@ impl PmatchCore {
     // [spec:hfst:sem:pmatch.hfst-ol.pmatch-container.pmatch-container-fn]
     // explicit PmatchContainer(std::istream &) — reads a binary pmatch archive:
     // the TOP transducer followed by any UNCOMPOSE L/R nets and RTN sub-nets.
-    pub fn from_stream(
-        is: &mut crate::transducer::IStream<'_>,
-    ) -> crate::error::Result<PmatchCore> {
+    pub fn from_stream(is: &mut dyn std::io::BufRead) -> crate::error::Result<PmatchCore> {
         use crate::transducer::{TransducerAlphabet, TransducerHeader};
         let mut c = PmatchCore::new();
         let mut properties = PmatchContainer::parse_hfst3_header(is)?;
@@ -335,7 +333,7 @@ impl PmatchCore {
             warn!("archive type isn't weighted optimized-lookup according to header");
         }
         c.props.set_from_map(&properties);
-        let header = TransducerHeader::new_istream(is)?;
+        let header = TransducerHeader::read_from(is)?;
         c.alphabet = PmatchAlphabet::new_from_stream(is, header.symbol_count(), &mut c)?;
         // Every compiled pmatch TOP is wrapped in @PMATCH_ENTRY@/@PMATCH_EXIT@
         // (`add_pmatch_delimiters`); those markers are what delimits a match, so
@@ -373,28 +371,22 @@ impl PmatchCore {
         // C++ loops 'while (inputstream.good())' reading further archive members,
         // breaking when parse_hfst3_header throws TransducerHeaderException. A
         // well-formed archive ends in a clean EOF right after the last member, so
-        // peek for end-of-stream (now possible via get/putback) instead of
-        // catching the throw.
+        // peek for end-of-stream instead of catching the throw.
         loop {
-            if !is.good() {
+            if is.fill_buf().map(|b| b.is_empty()).unwrap_or(true) {
                 break;
             }
-            let probe = is.get();
-            if probe < 0 {
-                break;
-            }
-            is.putback(probe as u8);
             properties = PmatchContainer::parse_hfst3_header(is)?;
             let transducer_name = properties.get("name").cloned().unwrap_or_default();
             if transducer_name.starts_with("UNCOMPOSE LEFT") {
-                c.uncompose_left = Some(Box::new(crate::transducer::Transducer::new_istream(is)?));
+                c.uncompose_left = Some(Box::new(crate::transducer::Transducer::read_from(is)?));
                 c.props.uncomposable = true;
             } else if transducer_name.starts_with("UNCOMPOSE RIGHT") {
-                c.uncompose_right = Some(Box::new(crate::transducer::Transducer::new_istream(is)?));
+                c.uncompose_right = Some(Box::new(crate::transducer::Transducer::read_from(is)?));
                 c.props.uncomposable = true;
             } else {
-                let rtn_header = TransducerHeader::new_istream(is)?;
-                let _dummy = TransducerAlphabet::new_istream(is, rtn_header.symbol_count(), true)?;
+                let rtn_header = TransducerHeader::read_from(is)?;
+                let _dummy = TransducerAlphabet::read_from(is, rtn_header.symbol_count(), true)?;
                 let rtn = PmatchTransducer::new_from_stream(
                     is,
                     rtn_header.index_table_size(),

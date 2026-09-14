@@ -25,7 +25,7 @@
 use hfst::convert_transducer_format::ConversionFunctions;
 use hfst::hfst_basic_transducer::HfstBasicTransducer;
 use hfst::hfst_basic_transition::HfstBasicTransition;
-use hfst::transducer::{IStream, Transducer, WeightedTables, ol_table_size};
+use hfst::transducer::{Transducer, WeightedTables, ol_table_size};
 
 static SYMBOL_TABLE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
@@ -73,8 +73,7 @@ fn write_ol(t: &Transducer<WeightedTables>) -> Vec<u8> {
 /// header, matching `Transducer::write`).
 fn read_ol(bytes: &[u8]) -> Transducer<WeightedTables> {
     let mut cursor = std::io::Cursor::new(bytes.to_vec());
-    let mut is = IStream::new(&mut cursor);
-    Transducer::<WeightedTables>::new_istream(&mut is).expect("round-tripped OL bytes are valid")
+    Transducer::<WeightedTables>::read_from(&mut cursor).expect("round-tripped OL bytes are valid")
 }
 
 // ---- hfst/hfst#123: the checked u32 table-size conversion helper ----

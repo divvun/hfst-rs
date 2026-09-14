@@ -43,7 +43,6 @@ use crate::hfst_symbol_defs::{
     NumberNumberMap, NumberPair, NumberPairSet, NumberPairVector, internal_epsilon,
     internal_identity, internal_unknown,
 };
-use crate::transducer::IStream;
 
 // [spec:hfst:def:tropical-weight-transducer.int64]
 
@@ -84,13 +83,12 @@ impl StdArcLessThan {
 pub struct TropicalWeightInputStream<'a> {
     filename: String,
     /// C++ holds an 'std::ifstream i_stream' plus an 'std::istream &input_stream'
-    /// reference that aliases either 'i_stream' or 'std::cin'. Modelled here as a
-    /// single owned binary input stream (per the porting convention,
-    /// 'std::istream' (binary) -> 'crate::transducer::IStream').
-    input_stream: IStream<'a>,
+    /// reference that aliases either 'i_stream' or 'std::cin'. Modelled here as
+    /// the one owned buffered reader.
+    input_stream: Box<dyn std::io::BufRead + 'a>,
 }
 
-// (no Default: TropicalWeightInputStream borrows its reader and cannot be
+// (no Default: TropicalWeightInputStream owns its reader and cannot be
 // constructed without one; the no-source ctors are deferred.)
 
 // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-output-stream]
@@ -124,7 +122,7 @@ mod construction_io {
     // AREA: construction-io  (bodies for TropicalWeightTransducer.{h,cc})
     //
     // Extra imports needed beyond the skeleton header (integrator: merge/dedupe):
-    use std::io::{BufRead, Read, Write};
+    use std::io::{BufRead, BufReader, Read, Write};
     use std::sync::Arc;
 
     // 'HfstFatalException' is referenced by the (deferred) read_transducer path.
@@ -313,7 +311,7 @@ mod construction_io {
             // C++ reads from std::cin; own a stdin reader.
             TropicalWeightInputStream {
                 filename: String::new(),
-                input_stream: IStream::new_owned(std::io::stdin()),
+                input_stream: Box::new(BufReader::new(std::io::stdin())),
             }
         }
 
@@ -322,23 +320,15 @@ mod construction_io {
         // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-input-stream.tropical-weight-input-stream-fn]
         pub fn new_filename(filename: &str) -> Self {
             // C++ opens an ifstream in binary mode; own the opened file. A failed
-            // open yields an empty reader, leaving the stream in the not-good
-            // state the C++ would also be in.
-            let reader: Box<dyn std::io::Read> = match std::fs::File::open(filename) {
-                Ok(f) => Box::new(f),
+            // open yields an empty reader, so every read reports end of stream
+            // exactly as the C++ not-good stream would.
+            let reader: Box<dyn BufRead + 'a> = match std::fs::File::open(filename) {
+                Ok(f) => Box::new(BufReader::new(f)),
                 Err(_) => Box::new(std::io::empty()),
             };
             TropicalWeightInputStream {
                 filename: filename.to_string(),
-                input_stream: IStream::new_owned(reader),
-            }
-        }
-
-        /// 'TropicalWeightInputStream(std::istream &is)'.
-        pub fn new_istream(is: IStream<'a>) -> Self {
-            TropicalWeightInputStream {
-                filename: String::new(),
-                input_stream: is,
+                input_stream: reader,
             }
         }
 
@@ -359,59 +349,48 @@ mod construction_io {
         // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-input-stream.close-fn]
         pub fn close(&mut self) {
             if !self.filename.is_empty() {
-                // The underlying reader is borrowed (owned by the caller); there is
-                // nothing to close on our side.
+                // The owned reader is closed when this stream is dropped, so
+                // there is nothing to do here.
             }
-        }
-
-        // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-input-stream.is-eof-fn]
-        // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-input-stream.is-eof-fn]
-        pub fn is_eof(&self) -> bool {
-            // C++ tests 'input_stream.peek() == EOF'; 'IStream' has no peek, so we
-            // approximate with the good/fail flag (set once a read hits EOF).
-            !self.input_stream.good()
-        }
-
-        // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-input-stream.is-bad-fn]
-        // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-input-stream.is-bad-fn]
-        pub fn is_bad(&self) -> bool {
-            !self.input_stream.good()
-        }
-
-        // Also 'bool operator() (void) const' — the stream-good predicate.
-        // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-input-stream.is-good-fn]
-        // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-input-stream.is-good-fn]
-        // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-input-stream.operator-fn]
-        // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-input-stream.operator-fn]
-        pub fn is_good(&self) -> bool {
-            if self.is_eof() {
-                return false;
-            }
-            self.input_stream.good()
         }
 
         pub fn is_fst(&mut self) -> bool {
             // C++ 'is_fst()' routes to the static 'is_fst(input_stream)'.
-            Self::is_fst_istream(&mut self.input_stream)
+            Self::is_fst_stream(&mut *self.input_stream)
         }
 
         // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-input-stream.ignore-fn]
         // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-input-stream.ignore-fn]
         pub fn ignore(&mut self, n: u32) {
-            let mut buf = vec![0u8; n as usize];
-            self.input_stream.read(&mut buf);
+            let mut sink = std::io::sink();
+            let mut head = Read::take(&mut self.input_stream, n as u64);
+            let _ = std::io::copy(&mut head, &mut sink);
         }
 
         // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-input-stream.read-transducer-fn]
         // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-input-stream.read-transducer-fn]
         pub fn read_transducer(&mut self) -> crate::error::Result<StdVectorFst> {
-            if self.is_eof() {
+            // C++ 'if (is_eof()) HFST_THROW(StreamIsClosedException)', where
+            // 'is_eof' peeks for EOF; an empty fill is that same peek.
+            if self
+                .input_stream
+                .fill_buf()
+                .map(|b| b.is_empty())
+                .unwrap_or(true)
+            {
                 crate::bail!(StreamIsClosed);
             }
             // rustfst has no streaming istream read, so read the remaining bytes
             // and 'load_prefix' one FST from the front (it reports how many bytes
-            // it consumed); put the unused remainder back for the next read.
-            let bytes = self.input_stream.read_to_end();
+            // it consumed); the unused remainder goes back in front of the reader
+            // for the next read.
+            let mut bytes: Vec<u8> = Vec::new();
+            if self.input_stream.read_to_end(&mut bytes).is_err() {
+                crate::bail!(
+                    TransducerHasWrongType,
+                    "could not read TROPICAL_OPENFST transducer payload"
+                );
+            }
             let (fst, consumed) = match StdVectorFst::load_prefix(&bytes) {
                 Ok(x) => x,
                 Err(_) => {
@@ -421,8 +400,14 @@ mod construction_io {
                     )
                 }
             };
-            for &b in bytes[consumed..].iter().rev() {
-                self.input_stream.putback(b);
+            if consumed < bytes.len() {
+                let rest = bytes.split_off(consumed);
+                let drained = std::mem::replace(
+                    &mut self.input_stream,
+                    Box::new(std::io::empty()) as Box<dyn BufRead + 'a>,
+                );
+                self.input_stream =
+                    Box::new(BufReader::new(std::io::Cursor::new(rest).chain(drained)));
             }
             Ok(fst)
         }
@@ -431,7 +416,7 @@ mod construction_io {
         // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-input-stream.stream-get-fn]
         pub fn stream_get(&mut self) -> char {
             let mut b = [0u8; 1];
-            self.input_stream.read(&mut b);
+            let _ = Read::read_exact(&mut self.input_stream, &mut b);
             b[0] as char
         }
 
@@ -439,34 +424,15 @@ mod construction_io {
         // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-input-stream.stream-get-short-fn]
         pub fn stream_get_short(&mut self) -> i16 {
             let mut b = [0u8; 2];
-            self.input_stream.read(&mut b);
+            let _ = Read::read_exact(&mut self.input_stream, &mut b);
             i16::from_ne_bytes(b)
-        }
-
-        // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-input-stream.stream-unget-fn]
-        // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-input-stream.stream-unget-fn]
-        pub fn stream_unget(&mut self, c: char) {
-            self.input_stream.putback(c as u8);
         }
 
         /// 'static bool is_fst(...)' — peek the reader's first byte without consuming it.
         // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-input-stream.is-fst-fn]
         // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-input-stream.is-fst-fn]
-        pub fn is_fst_file(is: &mut dyn std::io::BufRead) -> bool {
+        pub fn is_fst_stream(is: &mut dyn BufRead) -> bool {
             is.fill_buf().ok().and_then(|b| b.first().copied()) == Some(0xd6)
-        }
-
-        /// 'static bool is_fst(std::istream &s);'
-        pub fn is_fst_istream(s: &mut IStream<'_>) -> bool {
-            // C++ 's.good() && s.peek() == 0xd6'. peek = get then put the byte back.
-            if !s.good() {
-                return false;
-            }
-            let c = s.get();
-            if c >= 0 {
-                s.putback(c as u8);
-            }
-            c == 0xd6
         }
     }
 

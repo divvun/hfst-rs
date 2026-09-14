@@ -249,9 +249,7 @@ impl PmatchContainer {
 
     // [spec:hfst:def:pmatch.hfst-ol.pmatch-container.pmatch-container-fn]
     // [spec:hfst:sem:pmatch.hfst-ol.pmatch-container.pmatch-container-fn]
-    pub fn new_from_stream(
-        is: &mut crate::transducer::IStream<'_>,
-    ) -> crate::error::Result<PmatchContainer> {
+    pub fn new_from_stream(is: &mut dyn std::io::BufRead) -> crate::error::Result<PmatchContainer> {
         Ok(PmatchContainer::from_core(Arc::new(
             PmatchCore::from_stream(is)?,
         )))
@@ -935,65 +933,54 @@ impl PmatchContainer {
     // [spec:hfst:def:pmatch.hfst-ol.pmatch-container.parse-hfst3-header-fn]
     // [spec:hfst:sem:pmatch.hfst-ol.pmatch-container.parse-hfst3-header-fn]
     pub fn parse_hfst3_header(
-        f: &mut crate::transducer::IStream<'_>,
+        f: &mut dyn std::io::BufRead,
     ) -> crate::error::Result<BTreeMap<String, String>> {
-        let mut properties: BTreeMap<String, String> = BTreeMap::new();
-        let header1 = b"HFST";
-        let total = header1.len() + 1; // 'HFST' plus the C-string NUL = 5
-        // how much of the header has been found
-        let mut matched: Vec<u8> = Vec::new();
-        let mut mismatch: i32 = -2; // sentinel for 'no mismatch char read'
-        let mut header_loc = 0usize;
-        while header_loc < total {
-            let c = f.get();
-            let expected: i32 = if header_loc < header1.len() {
-                header1[header_loc] as i32
-            } else {
-                0 // header1[4] is the terminating '\0'
-            };
-            if c != expected {
-                mismatch = c;
-                break;
-            }
-            matched.push(c as u8);
-            header_loc += 1;
-        }
-        if header_loc == total {
-            let mut len_bytes = [0u8; 2];
-            f.read(&mut len_bytes);
-            let remaining_header_len = u16::from_ne_bytes(len_bytes) as usize;
-            if f.get() != 0 {
-                crate::bail!(TransducerHeader);
-            }
-            let mut headervalue = vec![0u8; remaining_header_len];
-            f.read(&mut headervalue);
-            if remaining_header_len == 0 || headervalue[remaining_header_len - 1] != 0 {
-                crate::bail!(TransducerHeader);
-            }
-            let cstrlen = |s: &[u8]| -> usize { s.iter().position(|&b| b == 0).unwrap_or(s.len()) };
-            let mut i = 0usize;
-            while i < remaining_header_len {
-                let length = cstrlen(&headervalue[i..]);
-                let property = String::from_utf8_lossy(&headervalue[i..i + length]).into_owned();
-                i += length + 1;
-                let length = cstrlen(&headervalue[i..]);
-                let value = String::from_utf8_lossy(&headervalue[i..i + length]).into_owned();
-                properties.insert(property, value);
-                i += length + 1;
-            }
-            Ok(properties)
-        } else {
-            // nope. put back what we've taken: the non-matching character first,
-            // then the characters that did match, so the next read sees them in
-            // their original order.
-            if mismatch >= 0 {
-                f.putback(mismatch as u8);
-            }
-            for &b in matched.iter().rev() {
-                f.putback(b);
-            }
+        // 'HFST' plus the C-string NUL.
+        const MAGIC: &[u8] = b"HFST\0";
+        // The C++ read the magic byte by byte and, on a mismatch, put every byte
+        // it had taken back, so a stream that turns out not to start a header is
+        // left exactly where the caller handed it over. Matching against the
+        // buffer and consuming only on success keeps that property; a reader
+        // that cannot serve five bytes from one fill has no header to offer.
+        let matched = match f.fill_buf() {
+            Ok(buf) => buf.starts_with(MAGIC),
+            Err(_) => false,
+        };
+        if !matched {
             crate::bail!(TransducerHeader);
         }
+        f.consume(MAGIC.len());
+
+        let mut len_bytes = [0u8; 2];
+        f.read_exact(&mut len_bytes)
+            .map_err(|_| crate::err!(TransducerHeader))?;
+        let remaining_header_len = u16::from_ne_bytes(len_bytes) as usize;
+        let mut nul = [0u8; 1];
+        f.read_exact(&mut nul)
+            .map_err(|_| crate::err!(TransducerHeader))?;
+        if nul[0] != 0 {
+            crate::bail!(TransducerHeader);
+        }
+        let mut headervalue = vec![0u8; remaining_header_len];
+        f.read_exact(&mut headervalue)
+            .map_err(|_| crate::err!(TransducerHeader))?;
+        if remaining_header_len == 0 || headervalue[remaining_header_len - 1] != 0 {
+            crate::bail!(TransducerHeader);
+        }
+
+        let mut properties: BTreeMap<String, String> = BTreeMap::new();
+        let cstrlen = |s: &[u8]| -> usize { s.iter().position(|&b| b == 0).unwrap_or(s.len()) };
+        let mut i = 0usize;
+        while i < remaining_header_len {
+            let length = cstrlen(&headervalue[i..]);
+            let property = String::from_utf8_lossy(&headervalue[i..i + length]).into_owned();
+            i += length + 1;
+            let length = cstrlen(&headervalue[i..]);
+            let value = String::from_utf8_lossy(&headervalue[i..i + length]).into_owned();
+            properties.insert(property, value);
+            i += length + 1;
+        }
+        Ok(properties)
     }
 
     // [spec:hfst:def:pmatch.hfst-ol.pmatch-container.set-verbose-fn]

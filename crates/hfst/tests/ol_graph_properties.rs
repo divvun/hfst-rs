@@ -24,7 +24,7 @@ use hfst::backend_thfst::ThfstTransducer;
 use hfst::convert_transducer_format::ConversionFunctions;
 use hfst::hfst_basic_transducer::HfstBasicTransducer;
 use hfst::hfst_basic_transition::HfstBasicTransition;
-use hfst::transducer::{HeaderFlag, IStream, Transducer, WeightedTables};
+use hfst::transducer::{HeaderFlag, Transducer, WeightedTables};
 
 const EPSILON: &str = "@_EPSILON_SYMBOL_@";
 const FLAG: &str = "@U.FEAT.VAL@";
@@ -117,8 +117,7 @@ fn round_trip(t: &Transducer<WeightedTables>) -> Transducer<WeightedTables> {
     let mut bytes: Vec<u8> = Vec::new();
     t.write(&mut bytes);
     let mut cursor = std::io::Cursor::new(bytes);
-    let mut is = IStream::new(&mut cursor);
-    Transducer::<WeightedTables>::new_istream(&mut is).expect("round-tripped OL bytes are valid")
+    Transducer::<WeightedTables>::read_from(&mut cursor).expect("round-tripped OL bytes are valid")
 }
 
 // ---------------------------------------------------------------------------
