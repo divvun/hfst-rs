@@ -665,3 +665,178 @@ fn substitute_keeps_a_foma_transducer_foma() {
         "substitute converted a foma transducer to another type: {summary}"
     );
 }
+
+/// hfst-binary-tool on a pair of foma transducers must stay foma.
+///
+/// The skeleton tool kept its own read loop rather than the shared binary
+/// driver, and that loop dispatched only a tropical pair; a foma pair fell
+/// through to the mismatch arm and the tool exited 1 without writing, even
+/// though its output stream had been opened in the first input's type.
+#[test]
+fn binary_tool_keeps_a_foma_pair_foma() {
+    let dir = scratch("binary-tool-foma");
+    let first = dir.join("first.hfst");
+    let second = dir.join("second.hfst");
+    let out = dir.join("out.hfst");
+
+    for (path, text) in [(&first, "cat\n"), (&second, "dog\n")] {
+        let (ok, _) = run(
+            &[
+                "strings2fst",
+                "-f",
+                "foma",
+                "-o",
+                path.to_str().expect("utf8 path"),
+            ],
+            text.as_bytes(),
+        );
+        assert!(ok, "could not build the foma fixture {}", path.display());
+    }
+
+    let (ok, _, err) = run_captured(
+        &[
+            "binary-tool",
+            first.to_str().expect("utf8 path"),
+            second.to_str().expect("utf8 path"),
+            "-o",
+            out.to_str().expect("utf8 path"),
+        ],
+        b"",
+    );
+    assert!(ok, "binary-tool failed on a foma pair: {err}");
+
+    let (ok, summary) = run(&["summarize", out.to_str().expect("utf8 path")], b"");
+    assert!(ok, "summarize failed on the combined transducer");
+    assert!(
+        summary.contains("fst type: foma"),
+        "binary-tool converted a foma pair to another type: {summary}"
+    );
+
+    let (ok, strings) = run(&["expand", out.to_str().expect("utf8 path")], b"");
+    assert!(ok, "expand failed on the combined transducer");
+    assert_eq!(strings, "catdog\n", "the foma pair was not concatenated");
+}
+
+/// hfst-insert-freely must report an unusable -a argument, not abort.
+///
+/// Upstream parsed the label into a nullable pair and then dereferenced it in
+/// process_stream, so a -a argument with no delimiting colon — and -a left off
+/// altogether — crashed. The port inherited that as a panic partway through the
+/// run, after the output file had already been created.
+#[test]
+fn insert_freely_rejects_an_unpaired_symbol_argument() {
+    let dir = scratch("insert-freely-unpaired");
+    let input = dir.join("in.hfst");
+    let out = dir.join("out.hfst");
+
+    let (ok, _) = run(
+        &[
+            "strings2fst",
+            "-f",
+            "foma",
+            "-o",
+            input.to_str().expect("utf8 path"),
+        ],
+        b"cat\n",
+    );
+    assert!(ok, "could not build the foma fixture");
+
+    for arg in ["x", "@0@"] {
+        let (ok, _, err) = run_captured(
+            &[
+                "insert-freely",
+                "-a",
+                arg,
+                input.to_str().expect("utf8 path"),
+                "-o",
+                out.to_str().expect("utf8 path"),
+            ],
+            b"",
+        );
+        assert!(!ok, "insert-freely -a {arg} should fail");
+        assert!(
+            !err.contains("panicked"),
+            "insert-freely -a {arg} panicked instead of reporting: {err}"
+        );
+        assert!(
+            err.contains("has no colon"),
+            "insert-freely -a {arg} did not name the problem: {err}"
+        );
+    }
+
+    let (ok, _, err) = run_captured(
+        &[
+            "insert-freely",
+            input.to_str().expect("utf8 path"),
+            "-o",
+            out.to_str().expect("utf8 path"),
+        ],
+        b"",
+    );
+    assert!(!ok, "insert-freely without -a should fail");
+    assert!(
+        !err.contains("panicked"),
+        "insert-freely without -a panicked instead of reporting: {err}"
+    );
+    assert!(
+        err.contains("no symbol pair given"),
+        "insert-freely without -a did not name the problem: {err}"
+    );
+
+    let (ok, _, err) = run_captured(
+        &[
+            "insert-freely",
+            "-a",
+            "x:y",
+            input.to_str().expect("utf8 path"),
+            "-o",
+            out.to_str().expect("utf8 path"),
+        ],
+        b"",
+    );
+    assert!(
+        ok,
+        "insert-freely -a x:y failed on a foma transducer: {err}"
+    );
+    let (ok, summary) = run(&["summarize", out.to_str().expect("utf8 path")], b"");
+    assert!(ok, "summarize failed on the inserted-into transducer");
+    assert!(
+        summary.contains("fst type: foma"),
+        "insert-freely converted a foma transducer to another type: {summary}"
+    );
+}
+
+/// hfst-traverse must advance when a listed arc label is typed.
+///
+/// The interactive line reader returned the line with its terminator still
+/// attached, so the label never equalled an arc symbol and every step answered
+/// "could not advance"; the "quit" and "XYZZY" branches were dead for the same
+/// reason. Upstream links GNU readline, which strips.
+#[test]
+fn traverse_advances_along_a_typed_arc_label() {
+    let dir = scratch("traverse-advance");
+    let input = dir.join("in.hfst");
+
+    let (ok, _) = run(
+        &[
+            "strings2fst",
+            "-j",
+            "-f",
+            "foma",
+            "-o",
+            input.to_str().expect("utf8 path"),
+        ],
+        b"cat\n",
+    );
+    assert!(ok, "could not build the traverse fixture");
+
+    let (ok, _, err) = run_captured(
+        &["traverse", "-i", input.to_str().expect("utf8 path")],
+        b"c\na\n",
+    );
+    assert!(ok, "traverse failed on a foma transducer: {err}");
+    assert!(
+        err.contains("On path `c:c a:a '"),
+        "traverse could not advance along its own listed labels: {err}"
+    );
+}

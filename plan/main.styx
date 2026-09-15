@@ -7036,4 +7036,19 @@ children (
             }
         )
     }
+
+    {
+        id foma-audit-sweep
+        title "Foma audit across all 75 CLI subcommands (three parallel behavioural sweeps, foma fixtures through every tool, checking both hard type-mismatch failures and SILENT conversions). The dispatch class did not generalise — binary-tool was the only other instance beyond substitute. Four defects fixed: binary-tool tropical-only pair dispatch; insert-freely panicking on an unpaired -a argument after creating the output file; traverse unable to advance on any label on any backend (readline terminator kept, tool 100 percent non-functional); and the real prize, FomaTransducer::define_transducer_symbol_pair routing reserved symbols through fsm_cross_product so IDENTITY:IDENTITY became ?-cross-? and grew a spurious UNKNOWN:UNKNOWN arc — expand-equivalences returned 1637 strings where tropical returned 5, silently. Also closes the instantiation gap that hid it: the generic transducer-function tests only ever ran at the tropical backend"
+        kind @fix
+        sealed true
+        log (
+            {
+                at 2026-09-15T12:25:07.87621Z
+                author "brendan@necessary.nu"
+                kind @status
+                text "Todo → Done (nplan complete)"
+            }
+        )
+    }
 )

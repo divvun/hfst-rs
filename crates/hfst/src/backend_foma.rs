@@ -921,6 +921,19 @@ impl AlgebraBackend for FomaTransducer {
     }
     fn define_transducer_symbol_pair(isymbol: &str, osymbol: &str) -> Self {
         let opts = FomaOptions::default();
+        // A reserved symbol names an arc label, not a language: foma reads
+        // IDENTITY as `?`, so crossing the two sides yields `? .x. ?` — an
+        // UNKNOWN:UNKNOWN arc beside the intended one, which then expands
+        // independently on each side as the alphabet grows. Build the single
+        // arc directly instead.
+        if is_reserved_symbol(isymbol) || is_reserved_symbol(osymbol) {
+            let mut handle = foma::dynarray::fsm_construct_init("");
+            foma::dynarray::fsm_construct_set_initial(&mut handle, 0);
+            foma::dynarray::fsm_construct_set_final(&mut handle, 1);
+            foma::dynarray::fsm_construct_add_arc(&mut handle, 0, 1, isymbol, osymbol);
+            let net = foma::dynarray::fsm_construct_done(handle);
+            return FomaTransducer { net, opts };
+        }
         let net = foma::constructions::fsm_cross_product(
             &opts,
             foma::constructions::fsm_symbol(isymbol),

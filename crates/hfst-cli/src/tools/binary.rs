@@ -21,7 +21,7 @@ pub mod binary_tool {
 
     use crate::cli::{self, BinaryIo, CommonArgs, ToolArgs, ToolResult};
     use crate::globals::CommonOptions;
-    use crate::hfst_commandline::{hfst_set_program_name, verbose_print, warning};
+    use crate::hfst_commandline::{hfst_set_program_name, hfst_strformat, verbose_print, warning};
     use hfst::hfst_input_stream::HfstInputStream;
     use hfst::hfst_output_stream::HfstOutputStream;
     use hfst::hfst_transducer::HfstTransducer;
@@ -116,14 +116,24 @@ Examples:
             };
             // one dispatch per pair ([dec:hfst:monomorphic-backends]); the
             // C++ concatenate threw TransducerTypeMismatch for mixed operands
-            // at runtime, which is now the boundary's mismatch arm.
+            // at runtime, which is now the boundary's mismatch arm. The output
+            // stream was opened in the first stream's type, so every algebra
+            // backend needs an arm of its own or the write cannot match it.
             use hfst::hfst_transducer::AnyTransducer;
             let code = match (first, second) {
                 (AnyTransducer::Tropical(f), AnyTransducer::Tropical(s)) => {
                     concatenate_pair(f, s, outstream)
                 }
-                _ => {
-                    eprintln!("hfst-binary-tool: {}", hfst::err!(TransducerTypeMismatch));
+                #[cfg(feature = "foma")]
+                (AnyTransducer::Foma(f), AnyTransducer::Foma(s)) => {
+                    concatenate_pair(f, s, outstream)
+                }
+                (f, s) => {
+                    eprintln!(
+                        "hfst-binary-tool: the formats {} and {} are not compatible",
+                        hfst_strformat(f.get_type()),
+                        hfst_strformat(s.get_type())
+                    );
                     return 1;
                 }
             };

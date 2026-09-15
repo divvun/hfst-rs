@@ -841,6 +841,35 @@ fn binary_operations_tropical() -> Result<(), hfst::error::Error> {
     Ok(())
 }
 
+// The generic bodies above are written against the backend trait but were only
+// ever instantiated at the tropical backend, so a foma-only construction bug
+// could not fail any of them: `new_symbol_pair` on the reserved symbols built
+// an extra UNKNOWN:UNKNOWN arc there, and expand-equivalences returned
+// hundreds of spurious strings before anything noticed.
+#[cfg(feature = "foma")]
+#[test]
+fn binary_operations_foma() -> Result<(), hfst::error::Error> {
+    let _g = serialized();
+    function_binary_operations::<hfst::backend_foma::FomaTransducer>()?;
+    Ok(())
+}
+
+#[cfg(feature = "foma")]
+#[test]
+fn compare_foma() -> Result<(), hfst::error::Error> {
+    let _g = serialized();
+    function_compare::<hfst::backend_foma::FomaTransducer>()?;
+    Ok(())
+}
+
+#[cfg(feature = "foma")]
+#[test]
+fn compose_foma() -> Result<(), hfst::error::Error> {
+    let _g = serialized();
+    function_compose::<hfst::backend_foma::FomaTransducer>()?;
+    Ok(())
+}
+
 // librarify regression (not a C++ port block): HfstTransducer::kill_paths facade
 // round-trips through the basic-transducer conversion. Build the disjunction
 // {a, x}, kill "x", and confirm the converted-back result keeps an "a" arc and

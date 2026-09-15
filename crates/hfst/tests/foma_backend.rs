@@ -1617,3 +1617,26 @@ fn replace_rule_leaves_no_markers_in_the_alphabet() -> Result<(), hfst::error::E
     );
     Ok(())
 }
+
+/// A reserved symbol pair is one arc on foma, not two.
+///
+/// `fsm_symbol` reads IDENTITY as foma's `?`, so crossing the two sides gave
+/// `? .x. ?` — an UNKNOWN:UNKNOWN arc beside the intended IDENTITY:IDENTITY
+/// one. Both sides then expanded independently as the alphabet grew, and
+/// `expand-equivalences` over three words returned 1637 strings where the
+/// tropical backend returned 5.
+#[test]
+fn a_reserved_symbol_pair_is_one_arc() -> Result<(), hfst::error::Error> {
+    let id2id = FomaTransducer::define_transducer_symbol_pair(IDENTITY, IDENTITY);
+    assert_eq!(
+        arc_count(&id2id),
+        1,
+        "the identity pair must be a single arc: {:?}",
+        id2id.to_basic()?.states_and_transitions()
+    );
+
+    // The ordinary path still goes through the cross product.
+    let a2b = FomaTransducer::define_transducer_symbol_pair("a", "b");
+    assert_eq!(arc_count(&a2b), 1, "an ordinary pair is a single arc");
+    Ok(())
+}

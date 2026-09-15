@@ -708,8 +708,11 @@ pub fn hfst_strformat(format: ImplementationType) -> &'static str {
 // [spec:hfst:def:hfst-commandline.hfst-readline-fn]
 // [spec:hfst:sem:hfst-commandline.hfst-readline-fn]
 //
-// The non-readline fallback (the real readline-library path is #if'd out): print
-// the prompt, then read a line (trailing '\n' kept, as getline did). None at EOF.
+// Print the prompt, then read a line; None at EOF. The line terminator is
+// stripped: callers compare the result against arc labels and against literal
+// commands ("quit", "XYZZY", "YES"), so a retained '\n' makes every one of
+// those comparisons unreachable. The C fallback kept it, but the configuration
+// upstream actually ships links GNU readline, which strips.
 pub fn hfst_readline(opts: &CommonOptions, prompt: &str) -> Option<String> {
     {
         let mut mw = opts.message_writer();
@@ -719,7 +722,11 @@ pub fn hfst_readline(opts: &CommonOptions, prompt: &str) -> Option<String> {
     let mut line = String::new();
     match std::io::stdin().read_line(&mut line) {
         Ok(0) | Err(_) => None,
-        Ok(_) => Some(line),
+        Ok(_) => {
+            let trimmed = line.trim_end_matches('\n').trim_end_matches('\r');
+            line.truncate(trimmed.len());
+            Some(line)
+        }
     }
 }
 

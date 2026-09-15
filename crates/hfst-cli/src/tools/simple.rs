@@ -590,7 +590,7 @@ pub mod insert_freely {
     // [spec:hfst:sem:hfst-insert-freely.process-stream-fn]
     fn process_stream(
         common: &CommonOptions,
-        symbol_pair: Option<&StringPair>,
+        symbol_pair: &StringPair,
         harmonise_flags: bool,
         instream: &mut HfstInputStream<'_>,
         outstream: &mut HfstOutputStream,
@@ -613,8 +613,7 @@ pub mod insert_freely {
                     // If harmonize is true, then identity and unknown symbols in the
                     // transducer will be expanded by the symbols in symbol pair.
                     // Otherwise they aren't.
-                    let pair = symbol_pair.expect("symbol pair must be set");
-                    if let Err(e) = trans.insert_freely_pair(pair, harmonise_flags) {
+                    if let Err(e) = trans.insert_freely_pair(symbol_pair, harmonise_flags) {
                         error(common, 1, 0, &format!("{e}"));
                         return 1;
                     }
@@ -655,7 +654,18 @@ pub mod insert_freely {
 
         let common = hfst_set_program_name(&argv0, "0.1", "HfstPush");
         let (common, args) = cli::parse::<Args>(common, args)?;
-        let symbol_pair = args.label(&common);
+        // The C dereferenced a null pair in process_stream when -a was absent
+        // or its argument carried no delimiting colon; name what is missing.
+        let Some(symbol_pair) = args.label(&common) else {
+            let msg = match args.symbol_pair.as_deref() {
+                None => String::from("no symbol pair given; use -a SYM:SYM"),
+                Some(label) => {
+                    format!("symbol pair '{label}' has no colon; give it as SYM:SYM")
+                }
+            };
+            error(&common, 1, 0, &msg);
+            return Err(1);
+        };
 
         // close buffers, we use streams
         let input_opened = common.input_filename != "<stdin>";
@@ -703,7 +713,7 @@ pub mod insert_freely {
 
         cli::from_code(process_stream(
             &common,
-            symbol_pair.as_ref(),
+            &symbol_pair,
             args.harmonise_flags(),
             &mut instream,
             &mut outstream,
