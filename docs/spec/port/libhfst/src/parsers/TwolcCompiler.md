@@ -73,13 +73,23 @@
 > [spec:hfst:def:twolc-compiler.hfst.twolcpre2.complete-alphabet-fn]
 > void complete_alphabet(void)
 
-> [spec:hfst:sem:twolc-compiler.hfst.twolcpre2.complete-alphabet-fn]
+> [spec:hfst:sem:twolc-compiler.hfst.twolcpre2.complete-alphabet-fn+1]
 > `hfst::twolcpre2::complete_alphabet()` collects every symbol pair occurring anywhere in the grammar (Alphabet section and elsewhere) and appends them, as a full Alphabet section, to `total_alphabet_symbol_queue`. Steps:
 > - Creates a local `HandySet<SymbolPair> symbol_pair_set`.
 > - Calls helper `insert_alphabet_pairs(htwolcpre2_alphabet_symbol_queue, symbol_pair_set)` then `insert_alphabet_pairs(htwolcpre2_non_alphabet_symbol_queue, symbol_pair_set)`. The helper scans each queue and, for every position where the current element is a valid symbol (one of `__HFST_TWOLC_0`, `__HFST_TWOLC_.#.`, `__HFST_TWOLC_#`, `__HFST_TWOLC_SPACE`, `__HFST_TWOLC_TAB`, or any string not containing `__HFST_TWOLC_`), the next element equals `__HFST_TWOLC_:`, and the element after that is likewise a valid symbol, inserts a `SymbolPair(input,output)` into the set; here `__HFST_TWOLC_#` is mapped to literal `#` for both input and output. The helper finally always inserts `SymbolPair("__HFST_TWOLC_.#.","__HFST_TWOLC_.#.")`.
 > - Pushes `"__HFST_TWOLC_Alphabet"` onto `total_alphabet_symbol_queue`.
 > - For each `SymbolPair` in `symbol_pair_set` (iterated in the set's order), pushes three elements onto `total_alphabet_symbol_queue`: `it->first`, `"__HFST_TWOLC_:"`, `it->second`.
 > No return value; it mutates the module-level `total_alphabet_symbol_queue`.
+>
+> In the Rust AST walk, completion likewise includes concrete pairs from rule
+> centers, contexts, and definitions even when their symbols were not declared
+> in `Alphabet`. Bare symbols contribute identity pairs; variable assignments
+> are expanded before collection. Set names and wildcard sides do not introduce
+> literal pairs. An undeclared ordinary symbol produces a warning at its first
+> source expression (or containing rule for a pair center), suppressed in silent
+> mode, and compilation continues with that literal symbol. Names remain case-sensitive (`vow` does not mean `Vow`).
+> Bare `#` is a built-in boundary and does not produce an undeclared-symbol
+> warning. An opening comment is not a fallback location for these warnings.
 
 > [spec:hfst:def:twolc-compiler.hfst.twolcpre2.parse-fn]
 > int parse()
@@ -157,4 +167,3 @@
 
 > [spec:hfst:sem:twolc-compiler.hfst.twolcpre3.set-verbose-fn]
 > `hfst::twolcpre3::set_verbose(val)` stores the boolean argument into the module-level `bool verbose_` (`verbose_ = val`), controlling whether the pass-3 parser emits verbose output. No return value.
-

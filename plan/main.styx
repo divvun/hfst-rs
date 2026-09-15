@@ -3250,8 +3250,11 @@ children (
 
                     {
                         id upstream-bugs.t3.i334
-                        title "hfst#334: non-existent multichar symbols in twol rules generate nondeterministic garbage instead of an error — nfst-twolc symbol validation against the declared alphabet; verify + test"
+                        title "hfst#334: warn on undeclared twolc symbols at their source locations while preserving upstream alphabet completion"
                         priority 3
+                        implements {
+                            target-impl ([spec:hfst:sem:twolc-compiler.hfst.twolcpre2.complete-alphabet-fn+1])
+                        }
                         log (
                             {
                                 at 2026-07-17T14:17:27.45035Z
@@ -3265,6 +3268,22 @@ children (
                                 author "brendan@necessary.nu"
                                 kind @status
                                 text "Doing → Done (nplan_complete)"
+                            }
+
+                            {
+                                at 2026-09-15T19:41:51.588226Z
+                                author "brendan@necessary.nu"
+                                kind @errata
+                                text "2026-09-15 lang-fao regression: treating undeclared symbols as fatal rejects an upstream-compatible grammar (# boundary and literal vow), and the aggregate diagnostic wrongly points to the opening comment at 1:1. Correct the original fix by restoring complete_alphabet's automatic pair completion, warning at the actual source occurrence for undeclared ordinary symbols, and recognizing bare # as built-in. Preserve literal vow (not a case-insensitive alias of Vow). Validate full Faroese rule archive against local C++ and replace strict-rejection tests with completion/equivalence and diagnostic regressions."
+                                after_done true
+                            }
+
+                            {
+                                at 2026-09-15T19:46:58.837077Z
+                                author "brendan@necessary.nu"
+                                kind @note
+                                text "Validated 2026-09-15: unchanged lang-fao phonology.twolc now compiles; warning points to literal vow at 215:9, with no complaint about bare # or the opening comment. /opt/hfst/bin/hfst-compare reports 48/48 rule transducers equivalent to a fresh C++ compilation. Six completion cases cover centers, explicit/bare contexts, definitions, except contexts, and where expansion; CLI regressions cover UTF-8 source spans and silent-mode archive identity. cargo nextest run --workspace: 588 passed; cargo clippy --workspace --all-targets and cargo fmt --check pass. nplan lint and MCP audit have no violations/proposals. Standalone nplan spec validate still reports pre-existing pmatch epsilon-visit-key orphan and nine doc-comment annotations, unrelated to this change. Unscoped nplan check also invokes obsolete C++/Python config checks; staged Rust check is the applicable gate."
+                                after_done true
                             }
                         )
                     }

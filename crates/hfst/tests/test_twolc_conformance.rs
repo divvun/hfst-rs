@@ -1,6 +1,5 @@
 // Regression locks for three upstream hfst-twolc (nfst-twolc parser) conformance
-// issues. The port is a SUCCESSOR project: where upstream/Xerox silently
-// produces garbage, the port MUST error cleanly instead.
+// issues: preserve grammar semantics and diagnose malformed or suspicious input.
 //
 //   hfst#189 — a symbol pair whose side is (or contains) a space. Upstream
 //              mis-handled the PAIR tokenization; the port tokenizes the
@@ -11,12 +10,9 @@
 //              `"` as a rule-name opener, so a stray/unbalanced `"` is a hard
 //              lex error and `compile` fails (returns None) rather than
 //              mis-compiling.
-//   hfst#334 — a NON-EXISTENT multichar symbol used in a rule. Upstream's
-//              `complete_alphabet` auto-declared every grammar symbol, so a typo
-//              became nondeterministic garbage with no error. The port validates
-//              every rule/context/definition pair side against the declared
-//              Alphabet vocabulary and errors on undeclared symbols instead of
-//              auto-declaring them.
+//   hfst#334 — an undeclared symbol used in a rule may be a typo. Warn about
+//              it while retaining upstream alphabet completion; rejecting such
+//              grammars broke lang-fao. Names remain case-sensitive literals.
 //
 // The compiler builds TROPICAL_OPENFST transducers, whose transition-data symbol
 // coding lives in process-global statics behind Mutexes; cargo runs every #[test]
@@ -140,59 +136,39 @@ fn hfst570_percent_escaped_quote_is_an_ordinary_symbol() {
 }
 
 // ───────────────────────────── hfst#334 ─────────────────────────────
-// A symbol used in a rule but never declared in the Alphabet must be an error,
-// not silently auto-declared into nondeterministic garbage.
+// Completion must give the same relation as explicitly declaring the missing
+// pairs, wherever they occur. Diagnostics are exercised through the CLI below.
 
+// [spec:hfst:sem:twolc-compiler.hfst.twolcpre2.complete-alphabet-fn+1/test]
 #[test]
-fn hfst334_undeclared_pair_in_center_errors() {
+fn hfst334_undeclared_pairs_complete_like_explicit_declarations() {
     let _g = serialized();
-    // FOO and BAR are never declared; upstream auto-declared FOO:BAR and
-    // produced garbage. The port must reject it.
-    let src = "Alphabet a b c ;\nRules\n\"R1\"\nFOO:BAR <=> a _ b ;\n";
-    assert!(
-        compile(src).is_none(),
-        "an undeclared pair in a rule center must fail compilation (hfst#334)"
-    );
+    for (extra_pairs, body) in [
+        ("FOO:BAR", "Rules\n\"R1\"\nFOO:BAR <=> a _ b ;"),
+        ("b:ZZZ", "Rules\n\"R1\"\na:b <=> _ b:ZZZ ;"),
+        ("NOPE", "Rules\n\"R1\"\na:b <=> _ NOPE ;"),
+        (
+            "GHOST:a",
+            "Definitions\nD = GHOST:a ;\nRules\n\"R1\"\na:b <=> D _ ;",
+        ),
+        ("NOPE", "Rules\n\"R1\"\na:b <=> _ ; except NOPE _ ;"),
+        (
+            "FOO:BAR",
+            "Rules\n\"R1\"\nX:Y <=> _ ; where X in (FOO) Y in (BAR) matched ;",
+        ),
+    ] {
+        let implicit = compile(&format!("Alphabet a b c ;\n{body}\n"))
+            .unwrap_or_else(|| panic!("grammar pairs must be completed: {body}"));
+        let explicit = compile(&format!("Alphabet a b c {extra_pairs} ;\n{body}\n"))
+            .expect("explicit pair declaration compiles");
+        assert!(
+            implicit
+                .compare_default(&explicit)
+                .expect("compare compiled rules"),
+            "completion must match explicit declarations: {body}"
+        );
+    }
 }
-
-#[test]
-fn hfst334_undeclared_pair_in_context_errors() {
-    let _g = serialized();
-    // ZZZ is undeclared, used only as the lower side of a context pair.
-    let src = "Alphabet a b ;\nRules\n\"R1\"\na:b <=> _ b:ZZZ ;\n";
-    assert!(
-        compile(src).is_none(),
-        "an undeclared symbol in a context pair must fail compilation (hfst#334)"
-    );
-}
-
-#[test]
-fn hfst334_undeclared_symbol_in_context_errors() {
-    let _g = serialized();
-    // A bare undeclared symbol NOTDECLARED in a context (an implicit X:X pair).
-    let src = "Alphabet a b c ;\nRules\n\"R1\"\na:b <=> _ NOTDECLARED ;\n";
-    assert!(
-        compile(src).is_none(),
-        "an undeclared bare symbol in a context must fail compilation (hfst#334)"
-    );
-}
-
-#[test]
-fn hfst334_undeclared_symbol_in_definition_errors() {
-    let _g = serialized();
-    // GHOST is undeclared, hidden inside a definition body that a rule uses.
-    let src = "Alphabet a b ;\nDefinitions\nD = GHOST:a ;\nRules\n\"R1\"\na:b <=> D _ ;\n";
-    assert!(
-        compile(src).is_none(),
-        "an undeclared symbol in a definition body must fail compilation (hfst#334)"
-    );
-}
-
-// A control: a grammar that uses ONLY declared symbols — plus the legitimate
-// alphabet-completion cases the fix must NOT break — still compiles. This proves
-// the #334 validation rejects undeclared symbols WITHOUT rejecting valid
-// grammars (pairings such as `e:0` completed from the declared vocabulary, set
-// members, and definition bodies).
 
 #[test]
 fn hfst334_fully_declared_grammar_still_compiles() {
@@ -310,8 +286,8 @@ fn escaped_question_mark_centre_is_a_literal() {
     let _g = serialized();
     // `%?` is the literal question-mark symbol, `?` is the wildcard. Upstream's
     // pre1 lexer keeps them apart (a bare `?` becomes the `__HFST_TWOLC_?`
-    // marker, an escaped one stays an ordinary symbol), so a `%?` centre is
-    // subject to the usual declaration check.
+    // marker, an escaped one stays an ordinary symbol). Completion must
+    // preserve the literal rather than expanding it as a wildcard.
     let declared = compile("Alphabet %?:a %? a ;\nRules\n\"R1\"\n%?:a <= _ ;\n")
         .expect("a declared literal `?` symbol compiles");
     assert!(
@@ -319,21 +295,51 @@ fn escaped_question_mark_centre_is_a_literal() {
         "the literal `?` symbol must reach the compiled alphabet, got {:?}",
         alphabet(&declared)
     );
+    let implicit = compile("Alphabet a b ;\nRules\n\"R1\"\n%?:a <= _ ;\n")
+        .expect("an undeclared literal `?` is completed");
+    let explicit = compile("Alphabet a b %?:a ;\nRules\n\"R1\"\n%?:a <= _ ;\n")
+        .expect("the explicit literal pair compiles");
     assert!(
-        compile("Alphabet a b ;\nRules\n\"R1\"\n%?:a <= _ ;\n").is_none(),
-        "an undeclared literal `?` must still fail (hfst#334), not pass as the wildcard"
+        implicit
+            .compare_default(&explicit)
+            .expect("compare literal pairs")
     );
 }
 
+// [spec:hfst:sem:twolc-compiler.hfst.twolcpre2.complete-alphabet-fn+1/test]
 #[test]
-fn bare_symbol_identity_pair_still_checks_declaration() {
+fn fao_comments_boundary_and_case_sensitive_literal_compile() {
     let _g = serialized();
-    // The counterpart: collecting bare symbols must not auto-declare them.
-    // `NOPE` is in no section at all, so hfst#334 still rejects the grammar.
-    let src = "Alphabet a b ;\nSets\nV = a ;\nRules\n\"R1\"\na:b <=> _ NOPE ;\n";
+    let body = "Sets\nVow = a ;\nRules\n\"R1\"\na:b <=> vow _ # ;\n";
+    let implicit = compile(&format!(
+        "!! # Faroese comment with æ and NOT_A_SYMBOL\nAlphabet a b ;\n{body}"
+    ))
+    .expect("comments, implicit #, and undeclared vow must compile");
+    let explicit =
+        compile(&format!("Alphabet a b vow # ;\n{body}")).expect("explicit grammar compiles");
     assert!(
-        compile(src).is_none(),
-        "a bare symbol declared nowhere must still fail compilation (hfst#334)"
+        implicit
+            .compare_default(&explicit)
+            .expect("compare grammar relations")
+    );
+    let alpha = alphabet(&implicit);
+    assert!(
+        alpha.iter().any(|s| s == "vow"),
+        "vow stays a literal: {alpha:?}"
+    );
+    assert!(
+        !alpha.iter().any(|s| s == "NOT_A_SYMBOL"),
+        "comments add no symbols"
+    );
+    let with_set = compile(&format!(
+        "Alphabet a b vow # ;\n{}",
+        body.replace("vow _", "Vow _")
+    ))
+    .expect("set-reference grammar compiles");
+    assert!(
+        !implicit
+            .compare_default(&with_set)
+            .expect("compare set and literal")
     );
 }
 

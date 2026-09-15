@@ -1,18 +1,31 @@
 schema_version 7
 
-last_sync_at 2026-08-24T19:58:10.172058Z
+last_sync_at 2026-09-15T19:49:38.312413Z
 
 rule_versions (
     {id determinize-envelope.bounded-strategies, version 0}
+    {id determinize-envelope.input-scaled-floors, version 0}
     {id determinize-envelope.relation-preserved, version 0}
     {id determinize-envelope.transition-axis, version 0}
     {id flag-encode-symbol-tables.table-parity, version 0}
     {id foma-transducer.hfst.implementations.foma-transducer.resource-controlled-compose, version 0}
+    {id general-lookup-termination.enumeration-divergence, version 0}
+    {id general-lookup-termination.no-cycle-count-termination, version 0}
+    {id general-lookup-termination.non-progressing-cycle, version 0}
+    {id general-lookup-termination.progress-resets-the-trap, version 0}
+    {id lookup-run-state.caller-owned-scratch, version 0}
+    {id lookup-run-state.immutable-core, version 0}
+    {id lookup-run-state.out-of-alphabet-overlay, version 0}
+    {id lookup-run-state.pmatch-shared-core, version 0}
     {id ol-lookup-enumeration.meta-arc-output, version 0}
     {id ol-lookup-enumeration.meta-arc-restriction, version 0}
     {id ol-lookup-enumeration.no-internal-work-cap, version 0}
     {id ol-lookup-enumeration.out-of-alphabet-input, version 0}
     {id ol-lookup-enumeration.representation-independence, version 0}
+    {id table-residency.single-copy-load, version 0}
+    {id table-residency.untrusted-size-fields, version 0}
+    {id table-residency.views-not-copies, version 0}
+    {id twolc-compiler.hfst.twolcpre2.complete-alphabet-fn, version 1}
     {id virtual-flag-algebra.backend-core, version 0}
     {id virtual-flag-algebra.frontend-compose, version 0}
     {id virtual-flag-algebra.intersection, version 0}
@@ -27,12 +40,16 @@ derived_priorities (
     {id c-names, priority 0, derived_at 2026-07-11T20:19:58.119495Z}
     {id clap-migration, priority 3, derived_at 2026-08-21T21:18:14.374864Z}
     {id cli-alias-shadowing, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
+    {id cli-gpl-license, priority 0, derived_at 2026-09-15T19:46:58.963189Z}
+    {id cli-invocation-timing, priority 0, derived_at 2026-09-15T19:46:58.963189Z}
     {id cli-residual-fixes, priority 0, derived_at 2026-08-21T21:18:14.374864Z}
+    {id cli-timing-as-info, priority 0, derived_at 2026-09-15T19:46:58.963189Z}
     {id clippy-deny-gate, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
     {id compose-facade-nativize, priority 3, derived_at 2026-08-18T11:19:03.814367Z}
     {id compose-intersect-product-memory, priority 2, derived_at 2026-08-21T21:18:14.374864Z}
     {id conversion-churn, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
     {id determinize-intermediate, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
+    {id determinize-scaled-floors, priority 3, derived_at 2026-09-15T19:46:58.963189Z}
     {id determinize-transition-budget, priority 2, derived_at 2026-08-21T21:18:14.374864Z}
     {id diag-parse-error-spans, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
     {id divvun-hfst-branding, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
@@ -42,6 +59,8 @@ derived_priorities (
     {id flag-complement.fix, priority 0, derived_at 2026-07-11T20:19:58.119495Z}
     {id flag-encode-diverge, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
     {id flag-encode-table-parity, priority 0, derived_at 2026-08-24T19:58:10.172058Z}
+    {id foma-alphabet-specials, priority 0, derived_at 2026-09-15T19:46:58.963189Z}
+    {id foma-audit-sweep, priority 0, derived_at 2026-09-15T19:46:58.963189Z}
     {id foma-backend.algebra, priority 3, derived_at 2026-07-11T20:19:58.119495Z}
     {id foma-backend.cli, priority 0, derived_at 2026-07-11T20:19:58.119495Z}
     {id foma-backend.convert, priority 2, derived_at 2026-07-11T20:19:58.119495Z}
@@ -56,7 +75,9 @@ derived_priorities (
     {id foma-compose-resource-integration, priority 1, derived_at 2026-08-18T11:19:03.814367Z}
     {id foma-tokeniser-build, priority 1, derived_at 2026-08-18T11:19:03.814367Z}
     {id fork-property-propagation, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
+    {id format-labels-grep-flag, priority 0, derived_at 2026-09-15T19:46:58.963189Z}
     {id function-key-normalise, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
+    {id general-lookup-cycle-trap, priority 0, derived_at 2026-09-15T19:46:58.963189Z}
     {id giella-tools, priority 0, derived_at 2026-07-11T20:19:58.119495Z}
     {id hfst-info-compat-version, priority 0, derived_at 2026-08-21T21:18:14.374864Z}
     {id hfst-write-rename, priority 0, derived_at 2026-07-11T20:19:58.119495Z}
@@ -84,9 +105,11 @@ derived_priorities (
     {id idiom9.parsers, priority 1, derived_at 2026-07-11T20:19:58.119495Z}
     {id idiom9.sentinels, priority 2, derived_at 2026-07-11T20:19:58.119495Z}
     {id idiom9.signatures, priority 1, derived_at 2026-07-11T20:19:58.119495Z}
+    {id istream-retirement, priority 3, derived_at 2026-09-15T19:46:58.963189Z}
     {id lexc-diagnostic-accuracy, priority 1, derived_at 2026-08-21T21:18:14.374864Z}
     {id lexc-morphotax-memory, priority 1, derived_at 2026-08-21T21:18:14.374864Z}
     {id librarify2, priority 2, derived_at 2026-08-21T21:18:14.374864Z}
+    {id lookup-state-split, priority 1, derived_at 2026-09-15T19:46:58.963189Z}
     {id minimize-consume-input, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
     {id mono.backend-traits, priority 0, derived_at 2026-07-11T20:19:58.119495Z}
     {id mono.cli, priority 3, derived_at 2026-07-11T20:19:58.119495Z}
@@ -100,11 +123,13 @@ derived_priorities (
     {id ol-lookup-unknown-identity, priority 0, derived_at 2026-08-21T21:18:14.374864Z}
     {id olw-direct-conversion, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
     {id olw-flat-groups, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
+    {id oov-four-byte-tests, priority 0, derived_at 2026-09-15T19:46:58.963189Z}
     {id perf-ol-epsilon-guard, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
     {id performance-language-gates, priority 0, derived_at 2026-08-21T21:18:14.374864Z}
     {id plan-node-kinds, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
     {id pmatch-encode-weights, priority 1, derived_at 2026-08-18T11:19:03.814367Z}
     {id pmatch-epsilon-guard-performance, priority 1, derived_at 2026-08-21T21:18:14.374864Z}
+    {id pmatch-shared-core, priority 2, derived_at 2026-09-15T19:46:58.963189Z}
     {id rustfst-determinize-table, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
     {id rustfst-lazy-demutex, priority 1, derived_at 2026-08-18T11:19:03.814367Z}
     {id rustfst-lazy-direct-materialize, priority 2, derived_at 2026-08-18T11:19:03.814367Z}
@@ -116,6 +141,8 @@ derived_priorities (
     {id smolstr, priority 0, derived_at 2026-07-11T20:19:58.119495Z}
     {id spec-rewrite, priority 3, derived_at 2026-08-21T21:18:14.374864Z}
     {id strtoweight-strtod-semantics, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
+    {id substitute-foma-dispatch, priority 0, derived_at 2026-09-15T19:46:58.963189Z}
+    {id table-copy-elimination, priority 0, derived_at 2026-09-15T19:46:58.963189Z}
     {id test-health.census-scanner, priority 0, derived_at 2026-08-24T19:58:10.172058Z}
     {id test-health.delete-ignored, priority 0, derived_at 2026-08-24T19:58:10.172058Z}
     {id test-health.foma-subtract, priority 0, derived_at 2026-08-24T19:58:10.172058Z}
@@ -425,6 +452,13 @@ assertions (
 )
 
 impl_evidence (
+    {id determinize-scaled-floors, covered_rules (
+        determinize-envelope.input-scaled-floors
+    ), covered_claims (
+        {impl_name target-impl, rule determinize-envelope.input-scaled-floors}
+    ), rule_versions_seen (
+        {id determinize-envelope.input-scaled-floors, version 0}
+    )}
     {id determinize-transition-budget, covered_rules (
         determinize-envelope.bounded-strategies
         determinize-envelope.relation-preserved
@@ -452,6 +486,40 @@ impl_evidence (
     ), rule_versions_seen (
         {id foma-transducer.hfst.implementations.foma-transducer.resource-controlled-compose, version 0}
     )}
+    {id general-lookup-cycle-trap, covered_rules (
+        general-lookup-termination.enumeration-divergence
+        general-lookup-termination.no-cycle-count-termination
+        general-lookup-termination.non-progressing-cycle
+        general-lookup-termination.progress-resets-the-trap
+    ), covered_claims (
+        {impl_name target-impl, rule general-lookup-termination.enumeration-divergence}
+        {impl_name target-impl, rule general-lookup-termination.no-cycle-count-termination}
+        {impl_name target-impl, rule general-lookup-termination.non-progressing-cycle}
+        {impl_name target-impl, rule general-lookup-termination.progress-resets-the-trap}
+    ), rule_versions_seen (
+        {id general-lookup-termination.enumeration-divergence, version 0}
+        {id general-lookup-termination.no-cycle-count-termination, version 0}
+        {id general-lookup-termination.non-progressing-cycle, version 0}
+        {id general-lookup-termination.progress-resets-the-trap, version 0}
+    )}
+    {id lookup-state-split, covered_rules (
+        lookup-run-state.caller-owned-scratch
+        lookup-run-state.immutable-core
+        lookup-run-state.out-of-alphabet-overlay
+    ), covered_claims (
+        {impl_name target-impl, rule lookup-run-state.caller-owned-scratch}
+        {impl_name target-impl, rule lookup-run-state.immutable-core}
+        {impl_name target-impl, rule lookup-run-state.out-of-alphabet-overlay}
+    ), rule_versions_seen (
+        {id lookup-run-state.caller-owned-scratch, version 0}
+        {id lookup-run-state.immutable-core, version 0}
+        {id lookup-run-state.out-of-alphabet-overlay, version 0}
+        {id ol-lookup-enumeration.meta-arc-output, version 0}
+        {id ol-lookup-enumeration.meta-arc-restriction, version 0}
+        {id ol-lookup-enumeration.no-internal-work-cap, version 0}
+        {id ol-lookup-enumeration.out-of-alphabet-input, version 0}
+        {id ol-lookup-enumeration.representation-independence, version 0}
+    )}
     {id ol-lookup-unknown-identity, covered_rules (
         ol-lookup-enumeration.meta-arc-output
         ol-lookup-enumeration.meta-arc-restriction
@@ -470,6 +538,27 @@ impl_evidence (
         {id ol-lookup-enumeration.no-internal-work-cap, version 0}
         {id ol-lookup-enumeration.out-of-alphabet-input, version 0}
         {id ol-lookup-enumeration.representation-independence, version 0}
+    )}
+    {id pmatch-shared-core, covered_rules (
+        lookup-run-state.pmatch-shared-core
+    ), covered_claims (
+        {impl_name target-impl, rule lookup-run-state.pmatch-shared-core}
+    ), rule_versions_seen (
+        {id lookup-run-state.pmatch-shared-core, version 0}
+        {id table-residency.single-copy-load, version 0}
+    )}
+    {id table-copy-elimination, covered_rules (
+        table-residency.single-copy-load
+        table-residency.untrusted-size-fields
+        table-residency.views-not-copies
+    ), covered_claims (
+        {impl_name target-impl, rule table-residency.single-copy-load}
+        {impl_name target-impl, rule table-residency.untrusted-size-fields}
+        {impl_name target-impl, rule table-residency.views-not-copies}
+    ), rule_versions_seen (
+        {id table-residency.single-copy-load, version 0}
+        {id table-residency.untrusted-size-fields, version 0}
+        {id table-residency.views-not-copies, version 0}
     )}
     {id virtual-flag-core, covered_rules (
         virtual-flag-algebra.backend-core
@@ -516,43 +605,9 @@ impl_evidence (
     ), rule_versions_seen (
         {id xre-finalization.root-optimize, version 0}
     )}
-    {id general-lookup-cycle-trap, covered_rules (
-        general-lookup-termination.enumeration-divergence
-        general-lookup-termination.no-cycle-count-termination
-        general-lookup-termination.non-progressing-cycle
-        general-lookup-termination.progress-resets-the-trap
+    {id upstream-bugs.t3.i334, covered_rules (
+        twolc-compiler.hfst.twolcpre2.complete-alphabet-fn
     ), covered_claims (
-        {impl_name target-impl, rule general-lookup-termination.enumeration-divergence}
-        {impl_name target-impl, rule general-lookup-termination.no-cycle-count-termination}
-        {impl_name target-impl, rule general-lookup-termination.non-progressing-cycle}
-        {impl_name target-impl, rule general-lookup-termination.progress-resets-the-trap}
-    )}
-    {id determinize-scaled-floors, covered_rules (
-        determinize-envelope.input-scaled-floors
-    ), covered_claims (
-        {impl_name target-impl, rule determinize-envelope.input-scaled-floors}
-    )}
-    {id table-copy-elimination, covered_rules (
-        table-residency.single-copy-load
-        table-residency.untrusted-size-fields
-        table-residency.views-not-copies
-    ), covered_claims (
-        {impl_name target-impl, rule table-residency.single-copy-load}
-        {impl_name target-impl, rule table-residency.untrusted-size-fields}
-        {impl_name target-impl, rule table-residency.views-not-copies}
-    )}
-    {id lookup-state-split, covered_rules (
-        lookup-run-state.caller-owned-scratch
-        lookup-run-state.immutable-core
-        lookup-run-state.out-of-alphabet-overlay
-    ), covered_claims (
-        {impl_name target-impl, rule lookup-run-state.caller-owned-scratch}
-        {impl_name target-impl, rule lookup-run-state.immutable-core}
-        {impl_name target-impl, rule lookup-run-state.out-of-alphabet-overlay}
-    )}
-    {id pmatch-shared-core, covered_rules (
-        lookup-run-state.pmatch-shared-core
-    ), covered_claims (
-        {impl_name target-impl, rule lookup-run-state.pmatch-shared-core}
+        {impl_name target-impl, rule twolc-compiler.hfst.twolcpre2.complete-alphabet-fn}
     )}
 )
