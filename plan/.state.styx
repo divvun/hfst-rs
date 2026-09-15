@@ -418,6 +418,7 @@ assertions (
     {id oov-four-byte-tests, kind @complete, author "brendan@necessary.nu", at 2026-09-14T20:12:50.098996Z}
     {id substitute-foma-dispatch, kind @complete, author "brendan@necessary.nu", at 2026-09-15T11:48:23.712566Z}
     {id foma-audit-sweep, kind @complete, author "brendan@necessary.nu", at 2026-09-15T12:25:07.87621Z}
+    {id format-labels-grep-flag, kind @complete, author "brendan@necessary.nu", at 2026-09-15T12:32:09.208617Z}
 )
 
 impl_evidence (

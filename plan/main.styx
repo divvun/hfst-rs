@@ -7051,4 +7051,19 @@ children (
             }
         )
     }
+
+    {
+        id format-labels-grep-flag
+        title "Two of the three oddities the foma audit parked: hfst format -l printed the optimized-lookup weighted/unweighted labels swapped (an upstream defect pinned verbatim by a port spec rule, so the rule had to be rewritten with a PORT DIVERGENCE note before the code could be fixed), and hfst grep accepted -9/--format and discarded it silently — matching is weight-independent so answers were never wrong, but a flag that quietly does nothing is the pattern that cost three weeks on the sma speller, so it now says so under -v"
+        kind @fix
+        sealed true
+        log (
+            {
+                at 2026-09-15T12:32:09.208617Z
+                author "brendan@necessary.nu"
+                kind @status
+                text "Todo → Done (nplan complete)"
+            }
+        )
+    }
 )

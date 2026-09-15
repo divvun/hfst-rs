@@ -762,9 +762,15 @@ fn read_matcher(
     state: &mut MatcherState,
     expression: &str,
 ) {
-    // (FORMAT is parsed for option compatibility; the matcher runs on
-    // the tropical backend regardless — matching is weight-independent.)
-    let _ = options.format;
+    // Accepted for option compatibility only. Matching is weight-independent
+    // and grep emits text, so the answers do not depend on the backend, but a
+    // flag that quietly does nothing is worth saying out loud.
+    if options.format != ImplementationType::UNSPECIFIED_TYPE {
+        verbose_print(
+            common,
+            "--format does not affect matching; grep always matches on the tropical backend\n",
+        );
+    }
     state.matcher = HfstTransducer::new();
     if options.dialect_xerox {
         let mut comp = XreCompiler::<hfst_openfst::StdVectorFst>::new();

@@ -66,9 +66,15 @@
 >        TROPICAL_OPENFST_TYPE  -> " OpenFst (tropical weights)      openfst-tropical, openfst, ofst, ofst-tropical\n"
 >        LOG_OPENFST_TYPE       -> " OpenFst (logarithmic weights)   openfst-log, ofst-log\n"
 >        FOMA_TYPE              -> " foma                            foma\n"
->        HFST_OL_TYPE           -> " Optimized lookup (weighted)     optimized-lookup-unweighted, olu\n"
->        HFST_OLW_TYPE          -> " Optimized lookup (unweighted)   optimized-lookup-weighted, olw, optimized-lookup, ol\n"
+>        HFST_OL_TYPE           -> " Optimized lookup (unweighted)   optimized-lookup-unweighted, olu\n"
+>        HFST_OLW_TYPE          -> " Optimized lookup (weighted)     optimized-lookup-weighted, olw, optimized-lookup, ol\n"
 >      then exit(0).
+>
+> PORT DIVERGENCE (upstream defect, deliberate): upstream labelled
+> HFST_OL_TYPE "(weighted)" and HFST_OLW_TYPE "(unweighted)", which is
+> backwards — OL is the unweighted optimized-lookup format and OLW the
+> weighted one, as the format names on the same lines say. The labels are
+> swapped back here.
 >   3. Otherwise determine the input type. Wrapped in a try/catch on
 >      HfstException: if inputfilename is still null, then with (argc - optind)
 >      arguments remaining: if 0, set inputfilename = strdup("<stdin>"), open an

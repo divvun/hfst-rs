@@ -538,12 +538,12 @@ pub mod format {
             }
 
             if is_implementation_type_available(ImplementationType::HFST_OL_TYPE) {
-                fput_stdout(" Optimized lookup (weighted)     optimized-lookup-unweighted, olu\n");
+                fput_stdout(" Optimized lookup (unweighted)   optimized-lookup-unweighted, olu\n");
             }
 
             if is_implementation_type_available(ImplementationType::HFST_OLW_TYPE) {
                 fput_stdout(
-                    " Optimized lookup (unweighted)   optimized-lookup-weighted, olw, optimized-lookup, ol\n",
+                    " Optimized lookup (weighted)     optimized-lookup-weighted, olw, optimized-lookup, ol\n",
                 );
             }
 
