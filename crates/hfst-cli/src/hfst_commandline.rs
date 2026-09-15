@@ -77,6 +77,43 @@ There is NO WARRANTY, to the extent permitted by law.
 ";
 
 // ---------------------------------------------------------------------------
+// invocation timing
+// ---------------------------------------------------------------------------
+
+static TIMING_START: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+static TIMING_NAME: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+static TIMING_PRINTED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Start this invocation's clock, under the name its line will carry.
+pub fn start_timing(name: &str) {
+    let _ = TIMING_START.set(std::time::Instant::now());
+    let _ = TIMING_NAME.set(name.to_string());
+}
+
+/// Report wall-clock for this invocation, once.
+///
+/// stderr, because stdout carries transducer bytes down a pipe. Tab-separated
+/// behind a fixed prefix so a build log aggregates: `grep '^hfst-time'`.
+/// Reported whatever the exit status — a failed run still cost time. Called
+/// explicitly at each exit, since `process::exit` runs no destructors, and
+/// idempotent because the tool and the dispatcher both reach for it.
+pub fn print_elapsed() {
+    if TIMING_PRINTED.swap(true, std::sync::atomic::Ordering::Relaxed) {
+        return;
+    }
+    let Some(start) = TIMING_START.get() else {
+        return;
+    };
+    let name = TIMING_NAME.get().map(String::as_str).unwrap_or("hfst");
+    let _ = writeln!(
+        std::io::stderr(),
+        "hfst-time\t{}\t{:.3}",
+        name,
+        start.elapsed().as_secs_f64()
+    );
+}
+
+// ---------------------------------------------------------------------------
 // internal helpers
 // ---------------------------------------------------------------------------
 
@@ -104,6 +141,7 @@ pub fn error_at_line(status: i32, errnum: i32, filename: &str, linenum: u32, msg
     }
     let _ = writeln!(f);
     if status != 0 {
+        print_elapsed();
         std::process::exit(status);
     }
 }
@@ -131,6 +169,7 @@ pub fn hfst_error_at_line(
         maybe_print_colour(opts, f, COLOUR_RESET);
     }
     if status != 0 {
+        print_elapsed();
         std::process::exit(status);
     }
 }
@@ -158,6 +197,7 @@ pub fn hfst_warning_at_line(
         maybe_print_colour(opts, f, COLOUR_RESET);
     }
     if status != 0 {
+        print_elapsed();
         std::process::exit(status);
     }
 }
@@ -172,6 +212,7 @@ pub fn error(opts: &CommonOptions, status: i32, errnum: i32, msg: &str) {
     }
     let _ = writeln!(f);
     if status != 0 {
+        print_elapsed();
         std::process::exit(status);
     }
 }
@@ -193,6 +234,7 @@ pub fn hfst_error(opts: &CommonOptions, status: i32, errnum: i32, msg: &str) {
     }
     let _ = writeln!(f);
     if status != 0 {
+        print_elapsed();
         std::process::exit(status);
     }
 }
@@ -207,6 +249,7 @@ pub fn warning(opts: &CommonOptions, status: i32, errnum: i32, msg: &str) {
     }
     let _ = writeln!(f);
     if status != 0 {
+        print_elapsed();
         std::process::exit(status);
     }
 }
@@ -228,6 +271,7 @@ pub fn hfst_warning(opts: &CommonOptions, status: i32, errnum: i32, msg: &str) {
     }
     let _ = writeln!(f);
     if status != 0 {
+        print_elapsed();
         std::process::exit(status);
     }
 }

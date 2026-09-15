@@ -20,7 +20,9 @@
 //! HFST-shaped error reporting).
 
 use clap::{Arg, ArgAction, Command};
-use hfst_cli::hfst_commandline::{VERSION_COPYRIGHT_BLOCK, extend_options_from_env, version_line};
+use hfst_cli::hfst_commandline::{
+    VERSION_COPYRIGHT_BLOCK, extend_options_from_env, print_elapsed, start_timing, version_line,
+};
 use hfst_cli::tools::TOOLS;
 
 // The FST algorithms are allocation-heavy; mimalloc beats the system
@@ -234,7 +236,10 @@ fn run_main() {
         // the tools' own parsers no longer each reach for the environment.
         // [spec:hfst:req:cli.arg-parse]
         extend_options_from_env(&mut argv);
-        std::process::exit(run(argv));
+        start_timing(&basename);
+        let code = run(argv);
+        print_elapsed();
+        std::process::exit(code);
     }
     // Unknown basename: fall through to the subcommand interface.
 
@@ -248,10 +253,15 @@ fn run_main() {
         // to every tool's.
         if sub == "--version" || sub == "-V" {
             print!("{}", *LONG_VERSION);
+            start_timing("hfst");
+            print_elapsed();
             std::process::exit(0);
         }
         if sub == "install-symlinks" {
-            std::process::exit(install_symlinks(&argv[2..]));
+            start_timing("hfst-install-symlinks");
+            let code = install_symlinks(&argv[2..]);
+            print_elapsed();
+            std::process::exit(code);
         }
         if !sub.starts_with('-')
             && let Some(run) = find_tool(&format!("hfst-{sub}"))
@@ -263,10 +273,12 @@ fn run_main() {
             extend_options_from_env(&mut tool_argv);
             #[cfg(feature = "dhat-heap")]
             let profiler = dhat::Profiler::new_heap();
+            start_timing(&format!("hfst-{sub}"));
             let code = run(tool_argv);
             // Flush dhat-heap.json before process::exit skips destructors.
             #[cfg(feature = "dhat-heap")]
             drop(profiler);
+            print_elapsed();
             std::process::exit(code);
         }
     }
@@ -275,5 +287,7 @@ fn run_main() {
     // listing, or the unknown-subcommand error. Every real subcommand was
     // already dispatched above, so this only returns for clap's own paths
     // (e.g. 'hfst help <sub>' exits inside get_matches_from).
+    start_timing("hfst");
     build_cli().get_matches_from(argv);
+    print_elapsed();
 }

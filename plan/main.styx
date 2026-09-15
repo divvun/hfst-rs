@@ -7081,4 +7081,19 @@ children (
             }
         )
     }
+
+    {
+        id cli-invocation-timing
+        title "Every hfst invocation reports its wall clock on stderr so a language build can be profiled: one tab-separated line behind a fixed hfst-time prefix, carrying the tool name and seconds, emitted on success and failure alike and exactly once. The clock lives in the shared CLI module rather than the dispatcher because tools exit inside hfst_error and process::exit runs no destructors, so a dispatcher-only guard would have missed every failing run. stderr because stdout carries transducer bytes down a pipe"
+        kind @feat
+        sealed true
+        log (
+            {
+                at 2026-09-15T16:33:21.133561Z
+                author "brendan@necessary.nu"
+                kind @status
+                text "Todo → Done (nplan complete)"
+            }
+        )
+    }
 )
