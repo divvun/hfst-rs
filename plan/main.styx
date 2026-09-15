@@ -7021,4 +7021,19 @@ children (
             }
         )
     }
+
+    {
+        id substitute-foma-dispatch
+        title "hfst-substitute sent every output type into the tropical backend, so a foma input was converted on read while its output stream was already open as foma — the write then failed on the type mismatch, breaking the tokeniser relabel step (-T over foma analysers) of every TTS build. Dispatch a foma arm like compose-intersect does; also retire the C++ operator&lt;&lt; name from the user-facing mismatch error, which now names both formats"
+        kind @fix
+        sealed true
+        log (
+            {
+                at 2026-09-15T11:48:23.712566Z
+                author "brendan@necessary.nu"
+                kind @status
+                text "Todo → Done (nplan complete)"
+            }
+        )
+    }
 )

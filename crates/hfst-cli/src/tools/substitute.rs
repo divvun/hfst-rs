@@ -351,16 +351,15 @@ fn process_stream(
     // type parameter ([dec:hfst:monomorphic-backends]); OL streams were
     // rejected before this point.
     match output_type {
-        ImplementationType::SFST_TYPE
-        | ImplementationType::TROPICAL_OPENFST_TYPE
-        | ImplementationType::FOMA_TYPE
-        | ImplementationType::XFSM_TYPE
-        | ImplementationType::HFST_OL_TYPE
-        | ImplementationType::HFST_OLW_TYPE
-        | ImplementationType::THFST_TYPE
-        | ImplementationType::HFST2_TYPE
-        | ImplementationType::UNSPECIFIED_TYPE
-        | ImplementationType::ERROR_TYPE => process_loop::<hfst_openfst::StdVectorFst>(
+        #[cfg(feature = "foma")]
+        ImplementationType::FOMA_TYPE => process_loop::<hfst::backend_foma::FomaTransducer>(
+            common,
+            options,
+            instream,
+            &mut outstream,
+            to_any,
+        ),
+        _ => process_loop::<hfst_openfst::StdVectorFst>(
             common,
             options,
             instream,

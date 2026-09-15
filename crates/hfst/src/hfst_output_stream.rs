@@ -267,7 +267,7 @@ impl HfstOutputStream {
         Ok(self)
     }
 
-    /// An alias for 'operator<<'.
+    /// An alias for [`Self::write`].
     pub fn redirect<B: Backend>(
         &mut self,
         transducer: &mut HfstTransducer<B>,
@@ -275,7 +275,7 @@ impl HfstOutputStream {
         self.write(transducer)
     }
 
-    /// 'HfstOutputStream &operator<< (HfstTransducer &transducer)'.
+    /// Write `transducer` to this stream.
     pub fn write<B: Backend>(
         &mut self,
         transducer: &mut HfstTransducer<B>,
@@ -287,7 +287,13 @@ impl HfstOutputStream {
         if self.ty != transducer.fst.stream_type() {
             crate::bail!(
                 TransducerTypeMismatch,
-                "operator<<: HfstOutputStream and HfstTransducer do not have the same type"
+                format!(
+                    "cannot write a {} transducer to a {} output stream",
+                    crate::hfst_data_types::implementation_type_to_format(
+                        transducer.fst.stream_type()
+                    ),
+                    crate::hfst_data_types::implementation_type_to_format(self.ty)
+                )
             );
         }
 

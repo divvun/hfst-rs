@@ -207,7 +207,7 @@ fn snapshot(net: &HfstBasicTransducer) -> Snapshot {
 // Test 1: .foma round-trip through the real HfstInputStream.
 // ---------------------------------------------------------------------------
 
-/// Build the HFST framing `HfstOutputStream::operator<<` would prepend for a
+/// Build the HFST framing `HfstOutputStream::write` would prepend for a
 /// FOMA_TYPE payload (the deferred `FomaOutputStream` makes the real stream
 /// panic, so the header is assembled here byte-for-byte the way the C++/facade
 /// writer does). Feeding this to `HfstInputStream` routes to the FOMA_TYPE read

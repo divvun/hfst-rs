@@ -612,3 +612,56 @@ fn tokenize_cg_cohort_matches_cpp_readings_and_weights() {
         "cg weights print as fixed(10), matching the C++ stream setting"
     );
 }
+
+/// hfst-substitute on a foma transducer must stay foma.
+///
+/// Every output type dispatched into the tropical backend, so a foma input was
+/// converted on read while the output stream had already been opened as foma,
+/// and the write failed on the type mismatch. It broke the tokeniser relabel
+/// step of every TTS build, which runs `-T` over foma analysers.
+#[test]
+fn substitute_keeps_a_foma_transducer_foma() {
+    let dir = scratch("substitute-foma");
+    let input = dir.join("in.hfst");
+    let relabel = dir.join("relabel.hfst");
+    let out = dir.join("out.hfst");
+
+    for (path, text) in [
+        (&input, "a@P.Pmatch.Backtrack@b\n"),
+        (&relabel, "@P.Pmatch.Backtrack@:X\n"),
+    ] {
+        let (ok, _) = run(
+            &[
+                "strings2fst",
+                "-f",
+                "foma",
+                "-o",
+                path.to_str().expect("utf8 path"),
+            ],
+            text.as_bytes(),
+        );
+        assert!(ok, "could not build the foma fixture {}", path.display());
+    }
+
+    let (ok, _, err) = run_captured(
+        &[
+            "substitute",
+            "-f",
+            "@P.Pmatch.Backtrack@",
+            "-T",
+            relabel.to_str().expect("utf8 path"),
+            input.to_str().expect("utf8 path"),
+            "-o",
+            out.to_str().expect("utf8 path"),
+        ],
+        b"",
+    );
+    assert!(ok, "substitute failed on a foma transducer: {err}");
+
+    let (ok, summary) = run(&["summarize", out.to_str().expect("utf8 path")], b"");
+    assert!(ok, "summarize failed on the substituted transducer");
+    assert!(
+        summary.contains("fst type: foma"),
+        "substitute converted a foma transducer to another type: {summary}"
+    );
+}
