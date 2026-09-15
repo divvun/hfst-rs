@@ -6,8 +6,8 @@ use foma::types::{Fsm, Sigma};
 use std::collections::BTreeSet;
 
 /// The HFST special-symbol strings for Foma's three reserved sigma numbers.
-const EPSILON_SYMBOL: &str = "@_EPSILON_SYMBOL_@";
-const UNKNOWN_SYMBOL: &str = "@_UNKNOWN_SYMBOL_@";
+pub(crate) const EPSILON_SYMBOL: &str = "@_EPSILON_SYMBOL_@";
+pub(crate) const UNKNOWN_SYMBOL: &str = "@_UNKNOWN_SYMBOL_@";
 pub(crate) const IDENTITY_SYMBOL: &str = "@_IDENTITY_SYMBOL_@";
 
 /// Whether `symbol` is one of the three HFST special strings Foma represents

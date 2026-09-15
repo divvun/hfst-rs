@@ -419,6 +419,7 @@ assertions (
     {id substitute-foma-dispatch, kind @complete, author "brendan@necessary.nu", at 2026-09-15T11:48:23.712566Z}
     {id foma-audit-sweep, kind @complete, author "brendan@necessary.nu", at 2026-09-15T12:25:07.87621Z}
     {id format-labels-grep-flag, kind @complete, author "brendan@necessary.nu", at 2026-09-15T12:32:09.208617Z}
+    {id foma-alphabet-specials, kind @complete, author "brendan@necessary.nu", at 2026-09-15T12:42:55.562522Z}
 )
 
 impl_evidence (

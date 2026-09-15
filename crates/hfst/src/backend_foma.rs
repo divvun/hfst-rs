@@ -11,7 +11,8 @@
 
 use crate::backend::{AlgebraBackend, Backend, FlagDiacriticOperation, LookupBackend};
 use crate::backend_foma_sigma::{
-    IDENTITY_SYMBOL, is_reserved_symbol, sigma_declare, sym, transducing_pairs,
+    EPSILON_SYMBOL, IDENTITY_SYMBOL, UNKNOWN_SYMBOL, is_reserved_symbol, sigma_declare, sym,
+    transducing_pairs,
 };
 use crate::hfst_basic_transducer::HfstBasicTransducer;
 use crate::hfst_basic_transition::HfstBasicTransition;
@@ -161,13 +162,22 @@ impl Backend for FomaTransducer {
     }
 
     fn get_alphabet(&self) -> StringSet {
-        // The sigma's non-reserved symbols (numbers > IDENTITY).
+        // The sigma's non-reserved symbols (numbers > IDENTITY), plus the three
+        // special strings unconditionally: foma tracks them as reserved numbers
+        // instead of sigma entries, but an HFST alphabet always contains them
+        // (HfstBasicTransducer seeds them; the SymbolTable backends carry them
+        // at labels 0/1/2). Callers that build one arc per alphabet member —
+        // hfst-affix-guessify's guess state, for one — otherwise construct a
+        // strictly smaller relation here than on every other backend.
         let mut out = StringSet::new();
         for n in &self.net.sigma {
             if n.number > foma::types::IDENTITY {
                 out.insert(SymbolType::from(n.symbol.as_str()));
             }
         }
+        out.insert(SymbolType::from(EPSILON_SYMBOL));
+        out.insert(SymbolType::from(UNKNOWN_SYMBOL));
+        out.insert(SymbolType::from(IDENTITY_SYMBOL));
         out
     }
 

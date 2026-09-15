@@ -643,8 +643,14 @@ fn foma_removal_spares_a_live_arc_label() {
     b.insert_to_alphabet("quokka").expect("insert_to_alphabet");
     b.remove_from_alphabet("quokka")
         .expect("remove_from_alphabet");
+    // Every alphabet carries the three special strings whatever the sigma
+    // holds, so only the ordinary entries are the removal's business.
+    let ordinary: BTreeSet<String> = alphabet_of(&b)
+        .into_iter()
+        .filter(|s| !s.starts_with("@_"))
+        .collect();
     assert_eq!(
-        alphabet_of(&b),
+        ordinary,
         BTreeSet::from(["a".to_string(), "b".to_string()]),
         "foma removal took the wrong entries"
     );

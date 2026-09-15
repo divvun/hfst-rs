@@ -90,7 +90,12 @@ those ops in foma instead of round-tripping through openfst.
 > [spec:hfst:def:foma-backend.backend-impl]
 > `impl Backend for FomaTransducer`: `empty` = an empty foma net
 > (`fsm_empty_set`); `copy` = `fsm_copy`; `get_alphabet` = the sigma's
-> non-reserved symbols as a `StringSet`; `is_cyclic` = negation of
+> non-reserved symbols as a `StringSet`, plus the three special strings
+> unconditionally — foma holds them as reserved sigma NUMBERS rather
+> than sigma entries, while every other backend and the interchange
+> graph carry them as alphabet members, and a caller that builds one arc
+> per alphabet member must not get a smaller relation here than there;
+> `is_cyclic` = negation of
 > foma's acyclicity (via `fsm_topsort`'s loop-free flag);
 > `is_infinitely_ambiguous` derived
 > from cyclicity on the input projection. `write` (foma-backend.io)

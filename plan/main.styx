@@ -7066,4 +7066,19 @@ children (
             }
         )
     }
+
+    {
+        id foma-alphabet-specials
+        title "FomaTransducer::get_alphabet walked only the sigma's ordinary entries, but foma tracks epsilon, unknown and identity as reserved sigma NUMBERS rather than sigma entries, so every foma alphabet came back three symbols short while every other backend carries them. Any caller that builds one arc per alphabet member therefore built three fewer arc families on foma: affix-guessify lost its epsilon and unknown guess arcs and produced a strictly smaller language than the tropical guesser (not merely an unweighted one). 87 call sites across 12 library files read this, including harmonization and compose-intersect, so the repair is wider than the tool that exposed it. Upstream C++ appends the three specials explicitly; the greenfield foma-backend spec had restated the sigma walk without that step, encoding the bug as a rule — rule corrected in the same change"
+        kind @fix
+        sealed true
+        log (
+            {
+                at 2026-09-15T12:42:55.562522Z
+                author "brendan@necessary.nu"
+                kind @status
+                text "Todo → Done (nplan complete)"
+            }
+        )
+    }
 )

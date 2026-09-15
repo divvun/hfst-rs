@@ -18,6 +18,7 @@ use std::collections::BTreeSet;
 use hfst::backend::{AlgebraBackend, Backend, LookupBackend};
 use hfst::backend_foma::FomaTransducer;
 use hfst::backend_thfst::ThfstTransducer;
+use hfst::guessify_fst::{GuessDirection, affix_guessify};
 use hfst::hfst_basic_transducer::HfstBasicTransducer;
 use hfst::hfst_basic_transition::HfstBasicTransition;
 use hfst::hfst_data_types::{HfstTwoLevelPath, HfstTwoLevelPaths, Symbol};
@@ -1582,10 +1583,14 @@ fn replace_rule_leaves_no_markers_in_the_alphabet() -> Result<(), hfst::error::E
     let replace_tr = xr::replace_rule(&rule, false)?;
 
     let alphabet = replace_tr.get_alphabet()?;
+    // The three special strings belong to every alphabet; a leftover is a
+    // marker the rule compiler minted and failed to strip.
     let leftovers: BTreeSet<String> = alphabet
         .iter()
         .map(|s| s.to_string())
-        .filter(|s| s.starts_with('@') && s.ends_with('@') && s != EPSILON)
+        .filter(|s| {
+            s.starts_with('@') && s.ends_with('@') && ![EPSILON, UNKNOWN, IDENTITY].contains(&&**s)
+        })
         .collect();
     assert!(
         leftovers.is_empty(),
@@ -1638,5 +1643,57 @@ fn a_reserved_symbol_pair_is_one_arc() -> Result<(), hfst::error::Error> {
     // The ordinary path still goes through the cross product.
     let a2b = FomaTransducer::define_transducer_symbol_pair("a", "b");
     assert_eq!(arc_count(&a2b), 1, "an ordinary pair is a single arc");
+    Ok(())
+}
+
+/// An alphabet always contains the three special symbols.
+///
+/// Foma tracks them as reserved sigma NUMBERS rather than sigma entries, so a
+/// sigma walk alone under-reports the alphabet by exactly those three. Callers
+/// that build one arc per alphabet member then construct a smaller relation on
+/// foma than on any other backend — `affix_guessify` lost its epsilon and
+/// unknown guess arcs that way.
+// [spec:hfst:sem:foma-backend.backend-impl/test]
+#[test]
+fn foma_alphabet_carries_the_special_symbols() -> Result<(), hfst::error::Error> {
+    let alpha = foma_of(&basic_acceptor("cat")).get_alphabet();
+    for special in [EPSILON, UNKNOWN, IDENTITY] {
+        assert!(
+            alpha.contains(&sym(special)),
+            "{special} missing from the foma alphabet: {alpha:?}"
+        );
+    }
+    Ok(())
+}
+
+/// The affix guesser accepts the same language on foma as on tropical.
+// [spec:hfst:sem:hfst-affix-guessify.process-stream-fn/test]
+#[test]
+fn affix_guesser_language_matches_tropical() -> Result<(), hfst::error::Error> {
+    let _guard = serialized();
+
+    let words = ["cat", "cats", "dog"];
+    for direction in [GuessDirection::GuessSuffix, GuessDirection::GuessPrefix] {
+        let mut f = fac_foma(&basic_acceptor(words[0]));
+        let mut t = fac_trop(&basic_acceptor(words[0]));
+        for w in &words[1..] {
+            f.disjunct(&fac_foma(&basic_acceptor(w)), true)?;
+            t.disjunct(&fac_trop(&basic_acceptor(w)), true)?;
+        }
+        f.minimize()?;
+        t.minimize()?;
+
+        let foma_guesser = affix_guessify(&f, direction, 1.0)?;
+        // foma is unweighted, so only the LANGUAGE can be compared: routing the
+        // tropical guesser through the interchange graph into foma is what
+        // drops the affix-length ranking weights without touching the relation.
+        let tropical_guesser: HfstTransducer<FomaTransducer> = HfstTransducer::from_basic(
+            &HfstBasicTransducer::from_transducer(&affix_guessify(&t, direction, 1.0)?),
+        );
+        assert!(
+            foma_guesser.compare(&tropical_guesser, true)?,
+            "affix guesser diverges between foma and tropical"
+        );
+    }
     Ok(())
 }
