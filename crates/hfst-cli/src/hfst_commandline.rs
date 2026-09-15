@@ -76,6 +76,42 @@ This is free software: you are free to change and redistribute it.
 There is NO WARRANTY, to the extent permitted by law.
 ";
 
+/// Install the shared `tracing` subscriber, idempotently.
+///
+/// Library diagnostics are already gated at their call sites (silent /
+/// verbose), so a permissive (TRACE) subscriber renders exactly what the code
+/// chooses to emit. Foreign crates do NOT gate at their call sites, so the
+/// known-noisy third-party targets are clamped to WARN: serde-xml-rs / xml-rs
+/// (log records, bridged by tracing-log) and box-format (native tracing) would
+/// otherwise flood hfst-bhfst's stderr with parser/archive traces.
+///
+/// The dispatcher calls this before any tool runs, so paths that never reach
+/// [`hfst_set_program_name`] still have somewhere to log.
+pub fn init_logging() {
+    use tracing::level_filters::LevelFilter;
+    use tracing_subscriber::layer::SubscriberExt;
+    use tracing_subscriber::util::SubscriberInitExt;
+    let _ = tracing_subscriber::registry()
+        .with(
+            tracing_subscriber::fmt::layer()
+                .with_writer(std::io::stderr)
+                .without_time()
+                .with_target(false)
+                // Colour only for a terminal: escape sequences land inside
+                // field names in a redirected build log, where they defeat the
+                // grep the timing line exists for.
+                .with_ansi(std::io::stderr().is_terminal()),
+        )
+        .with(
+            tracing_subscriber::filter::Targets::new()
+                .with_default(LevelFilter::TRACE)
+                .with_target("serde_xml_rs", LevelFilter::WARN)
+                .with_target("xml", LevelFilter::WARN)
+                .with_target("box_format", LevelFilter::WARN),
+        )
+        .try_init();
+}
+
 // ---------------------------------------------------------------------------
 // invocation timing
 // ---------------------------------------------------------------------------
@@ -92,11 +128,13 @@ pub fn start_timing(name: &str) {
 
 /// Report wall-clock for this invocation, once.
 ///
-/// stderr, because stdout carries transducer bytes down a pipe. Tab-separated
-/// behind a fixed prefix so a build log aggregates: `grep '^hfst-time'`.
-/// Reported whatever the exit status — a failed run still cost time. Called
-/// explicitly at each exit, since `process::exit` runs no destructors, and
-/// idempotent because the tool and the dispatcher both reach for it.
+/// Goes out as an ordinary INFO record, so it reads like every other line the
+/// tools log and lands on stderr with them — stdout carries transducer bytes
+/// down a pipe. The `hfst-time` message keeps a build log greppable and the
+/// fields keep it parseable. Reported whatever the exit status: a failed run
+/// still cost time. Called explicitly at each exit, since `process::exit` runs
+/// no destructors, and idempotent because the tool's error path and the
+/// dispatcher both reach for it.
 pub fn print_elapsed() {
     if TIMING_PRINTED.swap(true, std::sync::atomic::Ordering::Relaxed) {
         return;
@@ -105,12 +143,10 @@ pub fn print_elapsed() {
         return;
     };
     let name = TIMING_NAME.get().map(String::as_str).unwrap_or("hfst");
-    let _ = writeln!(
-        std::io::stderr(),
-        "hfst-time\t{}\t{:.3}",
-        name,
-        start.elapsed().as_secs_f64()
-    );
+    // Rounded to a millisecond rather than formatted, so the field stays a
+    // number in the log rather than a quoted string.
+    let seconds = (start.elapsed().as_secs_f64() * 1000.0).round() / 1000.0;
+    tracing::info!(tool = name, seconds, "hfst-time");
 }
 
 // ---------------------------------------------------------------------------
@@ -817,26 +853,7 @@ pub fn hfst_set_program_name(argv0: &str, version_vector: &str, wikiname: &str) 
     // third-party targets are clamped to WARN: serde-xml-rs / xml-rs (log
     // records, bridged by tracing-log) and box-format (native tracing) would
     // otherwise flood hfst-bhfst's stderr with parser/archive traces.
-    {
-        use tracing::level_filters::LevelFilter;
-        use tracing_subscriber::layer::SubscriberExt;
-        use tracing_subscriber::util::SubscriberInitExt;
-        let _ = tracing_subscriber::registry()
-            .with(
-                tracing_subscriber::fmt::layer()
-                    .with_writer(std::io::stderr)
-                    .without_time()
-                    .with_target(false),
-            )
-            .with(
-                tracing_subscriber::filter::Targets::new()
-                    .with_default(LevelFilter::TRACE)
-                    .with_target("serde_xml_rs", LevelFilter::WARN)
-                    .with_target("xml", LevelFilter::WARN)
-                    .with_target("box_format", LevelFilter::WARN),
-            )
-            .try_init();
-    }
+    init_logging();
     // Seed the tool's CommonOptions with its identity; parse_options fills the
     // rest. The idiomatic replacement for the former program-name/version
     // globals.

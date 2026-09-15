@@ -841,13 +841,14 @@ fn traverse_advances_along_a_typed_arc_label() {
     );
 }
 
-/// Every invocation reports its wall clock, so a build log can be profiled.
+/// Every tool run reports its wall clock, so a build log can be profiled.
 ///
-/// On stderr, because stdout carries transducer bytes down a pipe. Reported on
-/// failure too, and exactly once even though the tool's error path and the
-/// dispatcher both reach for it.
+/// An ordinary INFO record, so it reads like the rest of the tools' output and
+/// lands on stderr with it — stdout carries transducer bytes down a pipe.
+/// Reported on failure too, and exactly once even though the tool's error path
+/// and the dispatcher both reach for it.
 #[test]
-fn every_invocation_reports_its_wall_clock() {
+fn every_tool_run_reports_its_wall_clock() {
     let dir = scratch("timing");
     let fst = dir.join("t.hfst");
     let (ok, _) = run(
@@ -858,23 +859,17 @@ fn every_invocation_reports_its_wall_clock() {
 
     let (ok, out, err) = run_captured(&["summarize", fst.to_str().expect("utf8 path")], b"");
     assert!(ok, "summarize failed");
-    let lines: Vec<&str> = err
-        .lines()
-        .filter(|l| l.starts_with("hfst-time\t"))
-        .collect();
+    let lines: Vec<&str> = err.lines().filter(|l| l.contains("hfst-time")).collect();
     assert_eq!(lines.len(), 1, "expected one timing line, got: {err:?}");
-    let fields: Vec<&str> = lines[0].split('\t').collect();
-    assert_eq!(
-        fields.len(),
-        3,
-        "timing line must be three tab-separated fields: {:?}",
+    assert!(
+        lines[0].contains("INFO"),
+        "timing must be an INFO record: {:?}",
         lines[0]
     );
-    assert_eq!(fields[1], "hfst-summarize");
     assert!(
-        fields[2].parse::<f64>().is_ok(),
-        "third field must be seconds: {:?}",
-        fields[2]
+        lines[0].contains("tool=") && lines[0].contains("seconds="),
+        "timing must carry the tool and the seconds: {:?}",
+        lines[0]
     );
     assert!(
         !out.contains("hfst-time"),
@@ -885,7 +880,7 @@ fn every_invocation_reports_its_wall_clock() {
     let (ok, _, err) = run_captured(&["summarize", "/nonexistent"], b"");
     assert!(!ok, "summarize of a missing file should fail");
     assert_eq!(
-        err.lines().filter(|l| l.starts_with("hfst-time\t")).count(),
+        err.lines().filter(|l| l.contains("hfst-time")).count(),
         1,
         "a failed run must report exactly one timing line: {err:?}"
     );

@@ -7096,4 +7096,19 @@ children (
             }
         )
     }
+
+    {
+        id cli-timing-as-info
+        title "Emit the invocation timing as an ordinary INFO record instead of a bare stderr write, so it reads like the rest of the tools' output; drop it from the early-exit paths, which never run a tool and never mattered. Fixes a real greppability defect found on the way: the tracing layer emitted ANSI colour even into a redirected build log, putting escape sequences inside the field names the timing line exists to be grepped for — colour is now terminal-only"
+        kind @refactor
+        sealed true
+        log (
+            {
+                at 2026-09-15T17:03:30.995247Z
+                author "brendan@necessary.nu"
+                kind @status
+                text "Todo → Done (nplan complete)"
+            }
+        )
+    }
 )

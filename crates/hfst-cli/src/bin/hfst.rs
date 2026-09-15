@@ -253,15 +253,10 @@ fn run_main() {
         // to every tool's.
         if sub == "--version" || sub == "-V" {
             print!("{}", *LONG_VERSION);
-            start_timing("hfst");
-            print_elapsed();
             std::process::exit(0);
         }
         if sub == "install-symlinks" {
-            start_timing("hfst-install-symlinks");
-            let code = install_symlinks(&argv[2..]);
-            print_elapsed();
-            std::process::exit(code);
+            std::process::exit(install_symlinks(&argv[2..]));
         }
         if !sub.starts_with('-')
             && let Some(run) = find_tool(&format!("hfst-{sub}"))
@@ -287,7 +282,5 @@ fn run_main() {
     // listing, or the unknown-subcommand error. Every real subcommand was
     // already dispatched above, so this only returns for clap's own paths
     // (e.g. 'hfst help <sub>' exits inside get_matches_from).
-    start_timing("hfst");
     build_cli().get_matches_from(argv);
-    print_elapsed();
 }
