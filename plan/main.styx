@@ -7285,6 +7285,15 @@ children (
                 id quality-burndown.split-tropical
                 title "Split tropical_weight_transducer.rs (131 fns) into submodules"
                 deps (quality-burndown.lib-api)
+                sealed true
+                log (
+                    {
+                        at 2026-09-24T16:25:14.83917Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Done (nplan complete)"
+                    }
+                )
             }
 
             {
