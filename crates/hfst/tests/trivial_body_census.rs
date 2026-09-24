@@ -25,7 +25,7 @@ use std::path::{Path, PathBuf};
 /// `(file, method, body, why this constant is the honest answer)`.
 const SANCTIONED: &[(&str, &str, &str, &str)] = &[
     (
-        "crates/hfst/src/backend.rs",
+        "crates/hfst/src/backend/tropical_algebra.rs",
         "substitute_symbol_fast",
         "None",
         "The C++ fast path is dead code ('if (false && ...)'), so declining sends \
@@ -39,34 +39,34 @@ const SANCTIONED: &[(&str, &str, &str, &str)] = &[
          weight. Stated in its own body rather than inherited from the trait.",
     ),
     (
-        "crates/hfst/src/backend_foma.rs",
+        "crates/hfst/src/backend_foma/algebra.rs",
         "n_best",
         "self.clone()",
         "Unweighted: with every path at weight 0.0 the n best paths are all of \
          them, so there is no shortest-path pruning to do.",
     ),
     (
-        "crates/hfst/src/backend_foma.rs",
+        "crates/hfst/src/backend_foma/algebra.rs",
         "set_final_weights",
         "self.clone()",
         "Unweighted: there is nowhere to put the weight. Diverges from tropical \
          by design, and `has_weights` above says so.",
     ),
     (
-        "crates/hfst/src/backend_foma.rs",
+        "crates/hfst/src/backend_foma/algebra.rs",
         "push_labels",
         "self.clone()",
         "Unweighted: label pushing moves weight mass toward one end, and there \
          is none to move.",
     ),
     (
-        "crates/hfst/src/backend_foma.rs",
+        "crates/hfst/src/backend_foma/algebra.rs",
         "push_weights",
         "self.clone()",
         "Unweighted: as push_labels.",
     ),
     (
-        "crates/hfst/src/backend_foma.rs",
+        "crates/hfst/src/backend_foma/algebra.rs",
         "transform_weights",
         "self.clone()",
         "Unweighted: the transform has no weights to apply itself to.",

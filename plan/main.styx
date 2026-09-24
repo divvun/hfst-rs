@@ -7330,6 +7330,15 @@ children (
                 id quality-burndown.split-backends
                 title "Split backend.rs (73 fns) and backend_foma.rs (73 fns) into submodules"
                 deps (quality-burndown.lib-api)
+                sealed true
+                log (
+                    {
+                        at 2026-09-24T16:27:53.475744Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Done (nplan complete)"
+                    }
+                )
             }
 
             {
