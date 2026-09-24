@@ -7204,6 +7204,15 @@ children (
                 id quality-burndown.split-pmatch-compiler
                 title "Split pmatch_compiler.rs (6051 lines, 277 fns) into submodules; break up build_object (110), PmatchUnaryOperation::evaluate (66), compile (52)"
                 deps (quality-burndown.lib-api)
+                sealed true
+                log (
+                    {
+                        at 2026-09-24T16:25:32.440991Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Done (nplan complete)"
+                    }
+                )
             }
 
             {
