@@ -7453,4 +7453,33 @@ children (
             }
         )
     }
+
+    {
+        id twolc-set-centre-declares-pairs
+        title "A twolc rule centre naming a set declares its member pairs (Xerox semantics, like the where-variable form), with a soft warning; contexts still only filter declared pairs"
+        kind @fix
+        sealed true
+        log (
+            {
+                at 2026-09-24T19:22:52.501699Z
+                author "brendan@necessary.nu"
+                kind @decision
+                text "2026-09-24, from Sjur Moshagen (relayed by the operator): Xerox twolc implicitly declared pairs not explicitly declared; having to list every pair in a large grammar is unnecessary; HFST C++ not doing so is an upstream bug; prefer implicit declaration with a soft warning. Checked against Beesley & Karttunen, Finite-State Morphology ch. 5: symbols/pairs are declared overtly or implicitly via their use in rules (even a pair only in a context is added); Sets are documented for contexts and rule-scoped variables, and the where-variable form (Cx:0 ... where Cx in Set) declares its concrete pairs. So: a set-naming centre now declares its member pairs exactly as the where form would (diacritics pair only with themselves). Contexts NOT changed: there a set pair filters the declared alphabet ('Cns:' = declared pairs with a consonant on top), and implicit declaration from contexts is the book's own over-generation trap (z: _ %+Pl adds %+Pl:%+Pl). Supersedes the morning's hard-error outcome for lang-slh; the error remains for a centre with no possible pair."
+            }
+
+            {
+                at 2026-09-24T19:22:52.547157Z
+                author "brendan@necessary.nu"
+                kind @note
+                text "Verified: lang-slh phonology.twolc (515e81a) compiles with one warning (CnsNoGlotOrD:0 declares 46 pairs); output is byte-identical to the same grammar with those 46 pairs written into the Alphabet, and hfst-compare reports 76/76 stored rules equivalent to C++ hfst-twolc compiling the hand-declared version (same byte size). Cns:0 compiles equal to 'Cx:0 ... where Cx in Cns'. All 18 other local lang-* grammars byte-identical (none uses a set as a centre). 600 tests, 0 gate breaches."
+            }
+
+            {
+                at 2026-09-24T19:23:12.786528Z
+                author "brendan@necessary.nu"
+                kind @status
+                text "Todo → Done (nplan complete)"
+            }
+        )
+    }
 )

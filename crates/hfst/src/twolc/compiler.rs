@@ -192,12 +192,80 @@ impl<B: AlgebraBackend> TwolcCompiler<B> {
         for (symbol, span) in in_source_order {
             self.report_undeclared_symbol(symbol.as_str(), span, &declared, &definitions);
         }
+        for implied in self.declare_set_centre_pairs(twolc_file, &mut symbol_pairs)? {
+            self.report_implied_pairs(&implied);
+        }
         symbol_pairs.insert((
             Symbol::new_static("__HFST_TWOLC_.#."),
             Symbol::new_static("__HFST_TWOLC_.#."),
         ));
         OtherSymbolTransducer::<B>::set_symbol_pairs(cfg, &symbol_pairs);
         Ok(())
+    }
+
+    /// A rule centre naming a set, as in 'Cns:0 <=> ...', controls one pair
+    /// per member, the same as 'Cx:0 <=> ... where Cx in Cns'. Xerox twolc
+    /// declares every pair a rule mentions, the where-variable form's included,
+    /// so the centre declares its member pairs too. Upstream HFST declared none
+    /// and then dropped the rule. Only centres declare: a set pair in a context
+    /// filters the pairs already declared ('Cns:' is any declared pair with a
+    /// consonant on top), and declaring from contexts is how a stray '%+Pl'
+    /// silently adds '%+Pl:%+Pl' and the grammar over-generates. Returns what
+    /// each centre added, for a warning; runs after ordinary completion so a
+    /// pair the grammar spells out elsewhere is not reported.
+    fn declare_set_centre_pairs(
+        &self,
+        file: &TwolcFile,
+        pairs: &mut BTreeSet<SymbolPair>,
+    ) -> crate::error::Result<Vec<ImpliedPairs>> {
+        let diacritics: BTreeSet<Symbol> = file
+            .diacritics
+            .iter()
+            .map(|d| declared_symbol(&d.value))
+            .collect();
+        let mut implied = Vec::new();
+        for rule in &file.rules {
+            let RuleCenter::Pair(centre) = &rule.value.center else {
+                continue;
+            };
+            for vvm in self.variable_assignments(&rule.value)? {
+                for p in centre {
+                    let (CenterSide::Symbol(u), CenterSide::Symbol(l)) =
+                        (&p.value.upper.value, &p.value.lower.value)
+                    else {
+                        continue;
+                    };
+                    let (upper, lower) = (substitute_symbol(u, &vvm), substitute_symbol(l, &vvm));
+                    if !self.sets.contains_key(upper.as_str())
+                        && !self.sets.contains_key(lower.as_str())
+                    {
+                        continue;
+                    }
+                    let mut added = Vec::new();
+                    for x in self.set_of(&upper) {
+                        for y in self.set_of(&lower) {
+                            // A diacritic pairs only with itself.
+                            if diacritics.contains(&x) && x != y {
+                                continue;
+                            }
+                            let pair = (declared_symbol(&x), declared_symbol(&y));
+                            if pairs.insert(pair.clone()) {
+                                added.push(pair);
+                            }
+                        }
+                    }
+                    if !added.is_empty() {
+                        implied.push(ImpliedPairs {
+                            span: p.span.range.clone(),
+                            upper,
+                            lower,
+                            added,
+                        });
+                    }
+                }
+            }
+        }
+        Ok(implied)
     }
 
     /// The set of symbols the grammar DECLARES: every symbol named on either

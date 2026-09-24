@@ -343,6 +343,6 @@ mod rule_variables;
 mod rules;
 
 pub use compiler::{CenterEval, ConcreteRule};
-use diagnostics::{PairSite, PairUse};
+use diagnostics::{ImpliedPairs, PairSite, PairUse};
 pub use rule_variables::RuleVariablesConstIterator;
 pub use rules::{get_wb_fst, replace_substr, unescape_name, wbize};

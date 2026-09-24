@@ -437,13 +437,32 @@ fn set_named_centre_expands_to_declared_pairs() {
 }
 
 #[test]
-fn set_centre_naming_no_pair_is_an_error() {
+fn set_centre_equals_its_where_variable_form() {
     let _g = serialized();
-    // Neither a:0 nor b:0 is declared, so Cns:0 names no pair. Upstream drops
-    // the rule without a word; the port refuses the grammar.
-    let src = "Alphabet a b c a:b ;\nSets\nCns = a b ;\nRules\n\"R1\"\nCns:0 <=> _ c ;\n";
+    // Neither a:0 nor b:0 is declared. Upstream dropped this rule without a
+    // word. Xerox twolc declares every pair a rule mentions, and a set centre
+    // is the where-variable form written short, so it declares a:0 and b:0.
+    let head = "Alphabet a b c a:b ;\nSets\nCns = a b ;\nRules\n\"R1\"\n";
+    let set_centre = compile(&format!("{head}Cns:0 <=> _ c ;\n"))
+        .expect("a set centre declares the pairs it stands for");
+    let where_form = compile(&format!("{head}Cx:0 <=> _ c ;\n  where Cx in Cns ;\n"))
+        .expect("the where-variable form compiles");
+    assert!(
+        set_centre
+            .compare_default(&where_form)
+            .expect("compare the set centre with the where-variable form"),
+        "Cns:0 must mean what 'Cx:0 where Cx in Cns' means"
+    );
+}
+
+#[test]
+fn impossible_set_centre_pairs_are_an_error() {
+    let _g = serialized();
+    // A diacritic pairs only with itself, so Dia:a stands for no pair at all.
+    let src = "Alphabet a b @P.x.on@ ;\nDiacritics @P.x.on@ ;\nSets\nDia = @P.x.on@ ;\n\
+               Rules\n\"R1\"\nDia:a <=> _ b ;\n";
     assert!(
         compile(src).is_none(),
-        "a set centre that names no declared pair must fail the grammar"
+        "a set centre with no possible pair must fail the grammar"
     );
 }

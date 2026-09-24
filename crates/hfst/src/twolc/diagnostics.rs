@@ -26,6 +26,14 @@ impl PairSite {
     }
 }
 
+/// The pairs a set-naming rule centre declared because the Alphabet did not.
+pub(super) struct ImpliedPairs {
+    pub(super) span: Range<usize>,
+    pub(super) upper: Symbol,
+    pub(super) lower: Symbol,
+    pub(super) added: Vec<SymbolPair>,
+}
+
 /// Where the empty pair set was used. A rule centre gets one more note: C++
 /// hfst-twolc dropped such a rule silently, so a grammar that built there
 /// fails here for the first time.
@@ -79,19 +87,59 @@ impl<B: AlgebraBackend> TwolcCompiler<B> {
                 break;
             }
         }
-        d = d.note(format!(
-            "{} A set in a pair stands for the declared pairs it covers; it \
-             does not declare any. A pair written out in full anywhere in the \
-             grammar is declared automatically.",
-            self.why_empty(input, output)
-        ));
-        if used == PairUse::Centre {
-            d = d.note(
-                "C++ hfst-twolc dropped a rule like this without a word, so it \
-                 has never had any effect.",
-            );
-        }
+        d = match used {
+            // A centre declares its own pairs, so it is empty only when none
+            // of them can exist.
+            PairUse::Centre => d
+                .note(
+                    "None of its pairs can exist: a diacritic pairs only with \
+                     itself, and an empty set has no members.",
+                )
+                .note(
+                    "C++ hfst-twolc dropped a rule like this without a word, so \
+                     it has never had any effect.",
+                ),
+            PairUse::Context => d.note(format!(
+                "{} A set in a context stands for the declared pairs it covers; \
+                 it does not declare any. A pair written out in full anywhere \
+                 in the grammar is declared automatically.",
+                self.why_empty(input, output)
+            )),
+        };
         self.emit(d.help(self.help_for_empty(cfg, input, output)));
+    }
+
+    /// Warn that a set-naming rule centre declared pairs the Alphabet lacks.
+    pub(super) fn report_implied_pairs(&self, implied: &ImpliedPairs) {
+        let shown = format!(
+            "{}:{}",
+            Rule::<B>::get_print_name(&implied.upper),
+            Rule::<B>::get_print_name(&implied.lower)
+        );
+        let listed = example_list(implied.added.iter().map(|(x, y)| {
+            format!(
+                "{}:{}",
+                Rule::<B>::get_print_name(x),
+                Rule::<B>::get_print_name(y)
+            )
+        }));
+        let count = match implied.added.len() {
+            1 => "1 pair".to_string(),
+            n => format!("{n} pairs"),
+        };
+        self.emit(
+            Diagnostic::warning(format!(
+                "The rule centre {shown} declares {count} the Alphabet does not list."
+            ))
+            .label(implied.span.clone(), format!("declares {count}"))
+            .note(
+                "A set in a rule centre stands for one subrule per pair, like a \
+                 where-variable, and a rule declares the pairs it controls.",
+            )
+            .help(format!(
+                "List them in the Alphabet to silence this warning: {listed}"
+            )),
+        );
     }
 
     fn why_empty(&self, input: &str, output: &str) -> String {
@@ -170,11 +218,10 @@ impl<B: AlgebraBackend> TwolcCompiler<B> {
         if examples.is_empty() {
             return format!("{generic} A diacritic pairs only with itself.");
         }
-        let mut shown = examples[..examples.len().min(EXAMPLE_PAIRS)].join(" ");
-        if examples.len() > EXAMPLE_PAIRS {
-            shown.push_str(&format!(" and {} more", examples.len() - EXAMPLE_PAIRS));
-        }
-        format!("Declare the pairs it should cover in the Alphabet: {shown}")
+        format!(
+            "Declare the pairs it should cover in the Alphabet: {}",
+            example_list(examples.into_iter())
+        )
     }
 
     /// Warn that a diacritic's partner in a pair is ignored.
@@ -242,6 +289,16 @@ impl<B: AlgebraBackend> TwolcCompiler<B> {
             self.emit(d);
         }
     }
+}
+
+/// The first few pairs, then a count of the rest.
+fn example_list(pairs: impl Iterator<Item = String>) -> String {
+    let pairs: Vec<String> = pairs.collect();
+    let mut shown = pairs[..pairs.len().min(EXAMPLE_PAIRS)].join(" ");
+    if pairs.len() > EXAMPLE_PAIRS {
+        shown.push_str(&format!(" and {} more", pairs.len() - EXAMPLE_PAIRS));
+    }
+    shown
 }
 
 fn symbols(n: usize) -> String {

@@ -59,7 +59,7 @@ fn silent_completion_writes_same_archive() {
     assert!(!stderr.contains("is not declared"), "{stderr}");
 }
 
-const EMPTY_CENTRE: &str = concat!(
+const SET_CENTRE: &str = concat!(
     "Alphabet a b c a:b ;\n",
     "Sets\n",
     "Cns = a b ;\n",
@@ -68,27 +68,76 @@ const EMPTY_CENTRE: &str = concat!(
     "Cns:0 <=> _ c ;\n",
 );
 
+const EMPTY_CONTEXT: &str = concat!(
+    "Alphabet a b c a:b ;\n",
+    "Sets\n",
+    "Cns = a b ;\n",
+    "Rules\n",
+    "\"R1\"\n",
+    "a:b <=> _ Cns:c ;\n",
+);
+
 #[test]
-fn empty_set_centre_points_at_pair_and_set() {
-    let output = run_twolc(&[], EMPTY_CENTRE);
+fn set_centre_declares_its_pairs_with_a_warning() {
+    let output = run_twolc(&[], SET_CENTRE);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(output.status.success(), "{stderr}");
+    assert!(
+        output.stdout.starts_with(b"HFST"),
+        "expected a rule archive"
+    );
+    assert!(
+        stderr.contains("The rule centre Cns:0 declares 2 pairs the Alphabet does not list."),
+        "{stderr}"
+    );
+    // Anchored at the centre pair, not the rule name above it.
+    assert!(stderr.contains(":6:1"), "{stderr}");
+    assert!(
+        stderr.contains("List them in the Alphabet to silence this warning: a:0 b:0"),
+        "{stderr}"
+    );
+}
+
+#[test]
+fn empty_context_set_points_at_pair_and_set() {
+    let output = run_twolc(&[], EMPTY_CONTEXT);
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(!output.status.success(), "{stderr}");
     assert!(output.stdout.is_empty(), "no archive for a failed grammar");
-    assert!(stderr.contains("The pair set Cns:0 is empty."), "{stderr}");
-    // Anchored at the centre pair, not the rule name above it.
-    assert!(stderr.contains(":6:1"), "{stderr}");
+    assert!(stderr.contains("The pair set Cns:c is empty."), "{stderr}");
+    assert!(stderr.contains(":6:11"), "{stderr}");
     assert!(
         stderr.contains("Cns is defined here, with 2 symbols"),
         "{stderr}"
     );
     assert!(
-        stderr.contains("No symbol in Cns (2 symbols) is declared with 0 as its lower side."),
+        stderr.contains("No symbol in Cns (2 symbols) is declared with c as its lower side."),
         "{stderr}"
     );
     assert!(
-        stderr.contains("Declare the pairs it should cover in the Alphabet: a:0 b:0"),
+        stderr.contains("Declare the pairs it should cover in the Alphabet: a:c b:c"),
         "{stderr}"
     );
+    // A context was an error in C++ too, so no note about it being dropped.
+    assert!(!stderr.contains("C++ hfst-twolc dropped"), "{stderr}");
+}
+
+#[test]
+fn impossible_set_centre_pairs_are_an_error() {
+    let source = concat!(
+        "Alphabet a b @P.x.on@ ;\n",
+        "Diacritics @P.x.on@ ;\n",
+        "Sets\n",
+        "Dia = @P.x.on@ ;\n",
+        "Rules\n",
+        "\"R1\"\n",
+        "Dia:a <=> _ b ;\n",
+    );
+    let output = run_twolc(&[], source);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(!output.status.success(), "{stderr}");
+    assert!(stderr.contains("The pair set Dia:a is empty."), "{stderr}");
+    assert!(stderr.contains("None of its pairs can exist"), "{stderr}");
     assert!(
         stderr.contains("C++ hfst-twolc dropped a rule like this"),
         "{stderr}"
@@ -96,16 +145,21 @@ fn empty_set_centre_points_at_pair_and_set() {
 }
 
 #[test]
-fn silent_mode_still_reports_errors() {
-    let output = run_twolc(&["-q"], EMPTY_CENTRE);
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(!output.status.success());
-    assert!(stderr.contains("The pair set Cns:0 is empty."), "{stderr}");
+fn silent_mode_hides_warnings_but_not_errors() {
+    let warned = run_twolc(&["-q"], SET_CENTRE);
+    assert!(warned.status.success());
+    let stderr = String::from_utf8_lossy(&warned.stderr);
+    assert!(!stderr.contains("declares 2 pairs"), "{stderr}");
+
+    let failed = run_twolc(&["-q"], EMPTY_CONTEXT);
+    let stderr = String::from_utf8_lossy(&failed.stderr);
+    assert!(!failed.status.success());
+    assert!(stderr.contains("The pair set Cns:c is empty."), "{stderr}");
 }
 
 #[test]
 fn redirected_diagnostics_carry_no_colour_codes() {
-    let output = run_twolc(&[], EMPTY_CENTRE);
+    let output = run_twolc(&[], EMPTY_CONTEXT);
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("is empty"), "{stderr}");
     assert!(!stderr.contains('\u{1b}'), "{stderr:?}");
@@ -118,23 +172,17 @@ fn every_bad_rule_is_reported_in_one_run() {
         "Sets\n",
         "Cns = a b ;\n",
         "Rules\n",
-        "\"centre\"\n",
-        "Cns:0 <=> _ c ;\n",
-        "\"context\"\n",
+        "\"first\"\n",
         "a:b <=> _ Cns:c ;\n",
+        "\"second\"\n",
+        "a:b <=> Cns:0 _ ;\n",
     );
     let output = run_twolc(&[], source);
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(!output.status.success(), "{stderr}");
-    assert!(stderr.contains("The pair set Cns:0 is empty."), "{stderr}");
     assert!(stderr.contains("The pair set Cns:c is empty."), "{stderr}");
-    assert!(stderr.contains(":8:11"), "{stderr}");
-    // Only a centre was silently dropped by C++; a context was an error there.
-    assert_eq!(
-        stderr.matches("C++ hfst-twolc dropped").count(),
-        1,
-        "{stderr}"
-    );
+    assert!(stderr.contains("The pair set Cns:0 is empty."), "{stderr}");
+    assert!(stderr.contains(":8:9"), "{stderr}");
 }
 
 #[test]
