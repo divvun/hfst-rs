@@ -5,7 +5,7 @@ elements (
         kind @module
         lifecycle @active
         owns ()
-        exposes ("crates/hfst/src/hfst_transducer.rs")
+        exposes ("crates/hfst/src/hfst_transducer.rs" "crates/hfst/src/hfst_transducer/*.rs")
         depends_on ()
         composed_of ()
         decisions ([dec:hfst:idiomatize-staging])

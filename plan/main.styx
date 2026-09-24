@@ -7234,6 +7234,15 @@ children (
                 id quality-burndown.split-hfst-transducer
                 title "Split hfst_transducer.rs (211 fns) into submodules; break up flag_build (88); extend [arch:hfst:backend-dispatch] exposes to the new directory"
                 deps (quality-burndown.lib-api)
+                sealed true
+                log (
+                    {
+                        at 2026-09-24T16:10:35.025993Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Done (nplan complete)"
+                    }
+                )
             }
 
             {
@@ -7270,6 +7279,25 @@ children (
                 id quality-burndown.split-cli-tools
                 title "Split hfst-cli tools/simple.rs (146 fns), tools/inspect.rs (77) and tools/binary.rs (65) into per-tool modules"
                 deps (quality-burndown.cli-api quality-burndown.lib-api)
+            }
+
+            {
+                id quality-burndown.alias-sweep
+                title "Delete the multi-line duplicate-name aliases the trivial-function gate misses (e.g. HfstTransducer new_from/new_from_transducer, from_basic/from_basic_transducer/new_from_basic_transducer, insert_to_alphabet/_symbol, remove_from_alphabet/_symbol), callers pointed at one name"
+                deps (
+                    quality-burndown.split-pmatch-compiler
+                    quality-burndown.split-xfst-compiler
+                    quality-burndown.split-basic-transducer
+                    quality-burndown.split-twolc
+                    quality-burndown.split-ol-transducer
+                    quality-burndown.split-hfst-transducer
+                    quality-burndown.split-tropical
+                    quality-burndown.split-pmatch-runtime
+                    quality-burndown.split-parsers
+                    quality-burndown.split-backends
+                    quality-burndown.split-lib-tests
+                    quality-burndown.split-cli-tools
+                )
             }
         )
     }
