@@ -28,7 +28,7 @@ fn main() {
     TopSort(&mut a);
 
     let mut inv = a.clone();
-    Invert(&mut inv);
+    invert(&mut inv);
 
     // determinize then minimize
     let mut det = StdVectorFst::new();

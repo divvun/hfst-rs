@@ -287,7 +287,7 @@ fn do_reweight<B: hfst::backend::AlgebraBackend>(
 ) -> hfst::error::Result<()> {
     // [spec:hfst:def:hfst-reweight.original-fn]
     // [spec:hfst:sem:hfst-reweight.original-fn]
-    let original = HfstBasicTransducer::from_hfst_transducer(trans);
+    let original = HfstBasicTransducer::from_transducer(trans);
     let replication = original.transform_weights(|w, i, o| reweight(options, w, i, o));
     *trans = HfstTransducer::new_from_basic(&replication)?;
     Ok(())

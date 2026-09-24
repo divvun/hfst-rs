@@ -7175,6 +7175,15 @@ children (
             {
                 id quality-burndown.lib-api
                 title "Library API cleanup: delete the trivial alias/pass-through functions in hfst + hfst-openfst (callers updated), shorten the over-cap names, dedupe hfst_rules.rs"
+                sealed true
+                log (
+                    {
+                        at 2026-09-24T15:54:02.502712Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Done (nplan complete)"
+                    }
+                )
             }
 
             {

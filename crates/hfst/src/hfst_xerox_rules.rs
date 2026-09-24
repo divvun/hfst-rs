@@ -2901,10 +2901,8 @@ pub fn restriction<B: AlgebraBackend>(
     tok.add_multichar_symbol(&restriction_mark);
     tok.add_multichar_symbol("@_EPSILON_SYMBOL_@");
 
-    let mark: HfstTransducer<B> =
-        HfstTransducer::new_string_tokenizer_type(&restriction_mark, &tok)?;
-    let epsilon: HfstTransducer<B> =
-        HfstTransducer::new_string_tokenizer_type("@_EPSILON_SYMBOL_@", &tok)?;
+    let mark: HfstTransducer<B> = HfstTransducer::new_tokenized(&restriction_mark, &tok)?;
+    let epsilon: HfstTransducer<B> = HfstTransducer::new_tokenized("@_EPSILON_SYMBOL_@", &tok)?;
 
     // Identity
     let identity_pair: HfstTransducer<B> = HfstTransducer::identity_pair();
@@ -2917,22 +2915,16 @@ pub fn restriction<B: AlgebraBackend>(
     universal_without_d_star.repeat_star()?.optimize()?;
 
     // NODU
-    let mut no_d_upper: HfstTransducer<B> = HfstTransducer::new_string_string_tokenizer_type(
-        "@_EPSILON_SYMBOL_@",
-        &restriction_mark,
-        &tok,
-    )?;
+    let mut no_d_upper: HfstTransducer<B> =
+        HfstTransducer::new_tokenized_pair("@_EPSILON_SYMBOL_@", &restriction_mark, &tok)?;
     no_d_upper
         .disjunct(&universal_without_d, true)?
         .repeat_star()?
         .optimize()?;
 
     // NODL
-    let mut no_d_lower: HfstTransducer<B> = HfstTransducer::new_string_string_tokenizer_type(
-        &restriction_mark,
-        "@_EPSILON_SYMBOL_@",
-        &tok,
-    )?;
+    let mut no_d_lower: HfstTransducer<B> =
+        HfstTransducer::new_tokenized_pair(&restriction_mark, "@_EPSILON_SYMBOL_@", &tok)?;
     no_d_lower
         .disjunct(&universal_without_d, true)?
         .repeat_star()?

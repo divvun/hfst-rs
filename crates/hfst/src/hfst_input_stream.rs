@@ -1172,7 +1172,7 @@ mod input_impl {
                     )
                 );
             }
-            let t = crate::backend_thfst::ThfstTransducer::read_dir(dir)?;
+            let t = crate::backend_thfst::ThfstTransducer(crate::thfst_io::read_dir(dir)?);
             Ok(HfstInputStream {
                 implementation: StreamImplementation::default(),
                 ty: ImplementationType::THFST_TYPE,

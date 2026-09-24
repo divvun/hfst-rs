@@ -322,7 +322,7 @@ fn process_stream_typed<B: hfst::backend::AlgebraBackend>(
                     common,
                     "Checking if the transducer has epsilon cycles with a negative weight...\n",
                 );
-                let fsm = HfstBasicTransducer::new_from_transducer(&t);
+                let fsm = HfstBasicTransducer::from_transducer(&t);
                 if fsm.has_negative_epsilon_cycles() {
                     if !common.silent {
                         hfst_warning(

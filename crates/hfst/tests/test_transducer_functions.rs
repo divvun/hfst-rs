@@ -969,7 +969,7 @@ fn substitute_by_composition_matches_direct() -> Result<(), hfst::error::Error> 
 // "guess" state to the input, and the guesser carries an identity self-loop
 // (the "guess any symbol" arc). Input is the "ab" acceptor: 0 -a-> 1 -b-> 2*.
 #[test]
-fn affix_guessify_adds_one_guess_state_with_identity_loop() -> Result<(), hfst::error::Error> {
+fn affix_guessify_adds_guess_state_with_identity_loop() -> Result<(), hfst::error::Error> {
     let _g = serialized();
 
     let build_input = || -> Result<HfstTransducer<StdVectorFst>, hfst::error::Error> {

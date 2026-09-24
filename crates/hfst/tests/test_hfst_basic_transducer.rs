@@ -425,7 +425,7 @@ fn pair_target_state_with_identity_fallback() {
 // — (w, None, None) for a final weight, (w, Some, Some) for an arc — so it can
 // reweight conditionally on the symbols.
 #[test]
-fn transform_weights_applies_per_arc_and_final_symbol_aware() -> Result<(), hfst::error::Error> {
+fn transform_weights_per_arc_and_final_symbol_aware() -> Result<(), hfst::error::Error> {
     let _g = serialized();
     verbose_print("HfstBasicTransducer: transform_weights");
 

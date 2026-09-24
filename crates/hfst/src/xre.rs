@@ -1650,8 +1650,12 @@ fn parse_quoted(s: &str, length: &mut u32) -> String {
     // interior nul left by a '\u'/'\x'/end-of-line escape.
     let end = rv.iter().position(|&c| c == 0).unwrap_or(rv.len());
     let result = String::from_utf8_lossy(&rv[..end]).into_owned();
-    *length =
-        crate::hfst_tokenizer::HfstTokenizer::check_utf8_correctness_and_calculate_length(&result);
+    // [spec:hfst:def:hfst-tokenizer.hfst.hfst-tokenizer.check-utf8-correctness-and-calculate-length-fn]
+    // [spec:hfst:sem:hfst-tokenizer.hfst.hfst-tokenizer.check-utf8-correctness-and-calculate-length-fn]
+    //
+    // A Rust 'String' is always valid UTF-8, so the check cannot fail; the
+    // length is the UTF-16 code-unit count, as 'u_strFromUTF8' measured.
+    *length = result.encode_utf16().count() as u32;
     result
 }
 

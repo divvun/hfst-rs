@@ -270,7 +270,7 @@ fn process_stream(
     inputstream: &mut HfstInputStream<'_>,
     outstream: &mut dyn std::io::Write,
 ) -> i32 {
-    let mut grammar = PairTestGrammar::new();
+    let mut grammar = PairTestGrammar::default();
 
     // Read transducers in rule file.
     let mut transducer_n: usize = 0;
@@ -293,7 +293,7 @@ fn process_stream(
         };
         // one dispatch per read: the rules only feed the basic-transducer
         // grammar ([dec:hfst:monomorphic-backends]).
-        let basic = crate::for_any!(&trans, t => HfstBasicTransducer::new_from_transducer(t));
+        let basic = crate::for_any!(&trans, t => HfstBasicTransducer::from_transducer(t));
         grammar.push_rule(basic, trans.get_name());
     }
 

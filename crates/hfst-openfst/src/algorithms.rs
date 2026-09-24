@@ -52,11 +52,6 @@ where
     tr_sort(fst, OLabelCompare {});
 }
 
-// [fst::Invert]
-pub fn Invert<W: Semiring, F: MutableFst<W>>(fst: &mut F) {
-    invert(fst);
-}
-
 // [fst::Connect]
 pub fn Connect<W, F>(fst: &mut F)
 where

@@ -46,7 +46,7 @@ fn compile(expr: &str) -> HfstTransducer<StdVectorFst> {
 
 // A single-symbol transducer accepting exactly `sym`.
 fn symbol<B: AlgebraBackend>(sym: &str) -> HfstTransducer<B> {
-    HfstTransducer::new_from_symbol(sym).expect("single-symbol transducer")
+    HfstTransducer::new_symbol(sym).expect("single-symbol transducer")
 }
 
 // `regex flag`: the 2-state net accepting exactly the flag string, treated as
@@ -214,8 +214,8 @@ fn plain_symbol_unchanged() {
 
     // \a == [?] - a.
     let term_a = compile("\\a");
-    let mut expected_term = HfstTransducer::<StdVectorFst>::new_from_symbol("@_IDENTITY_SYMBOL_@")
-        .expect("identity symbol");
+    let mut expected_term =
+        HfstTransducer::<StdVectorFst>::new_symbol("@_IDENTITY_SYMBOL_@").expect("identity symbol");
     expected_term
         .subtract(&symbol::<StdVectorFst>("a"), true)
         .expect("subtract");

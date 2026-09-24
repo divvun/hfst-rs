@@ -181,7 +181,10 @@ impl<B: AlgebraBackend> TwolcRule<B> {
     // [spec:hfst:def:rule.rule.compile-fn]
     pub fn compile(&mut self, cfg: &OstConfig) -> crate::error::Result<OtherSymbolTransducer<B>> {
         match self {
-            TwolcRule::Result(r) => r.compile(cfg),
+            // A 'ResultRule' (from 'Rule::new_from_vector') compiles like the
+            // C++ base 'Rule::compile()': to an empty OtherSymbolTransducer.
+            // [spec:hfst:sem:rule.rule.compile-fn]
+            TwolcRule::Result(_) => OtherSymbolTransducer::new(cfg),
             TwolcRule::RightArrow(r) => r.compile(cfg),
             TwolcRule::LeftArrow(r) => r.compile(cfg),
             TwolcRule::LeftRestrictionArrow(r) => r.compile(cfg),
@@ -626,11 +629,6 @@ impl<B: AlgebraBackend> OtherSymbolTransducer<B> {
     // minimizes (exactly as the C++ 'CALL_MEMBER_FN(...); minimize();').
     // -------------------------------------------------------------------------
 
-    /// True iff the configured symbol-pair set is empty.
-    fn config_symbol_pairs_empty(cfg: &OstConfig) -> bool {
-        cfg.symbol_pairs.is_empty()
-    }
-
     /// True iff there are configured diacritics.
     fn config_has_diacritics(cfg: &OstConfig) -> bool {
         !cfg.diacritics.is_empty()
@@ -642,7 +640,7 @@ impl<B: AlgebraBackend> OtherSymbolTransducer<B> {
     where
         F: FnOnce(&mut HfstTransducer<B>) -> crate::error::Result<()>,
     {
-        if Self::config_symbol_pairs_empty(cfg) {
+        if cfg.symbol_pairs.is_empty() {
             crate::bail!(EmptySymbolPairSet);
         }
         if self.is_broken {
@@ -668,7 +666,7 @@ impl<B: AlgebraBackend> OtherSymbolTransducer<B> {
     where
         F: FnOnce(&mut HfstTransducer<B>, &HfstTransducer<B>) -> crate::error::Result<()>,
     {
-        if Self::config_symbol_pairs_empty(cfg) {
+        if cfg.symbol_pairs.is_empty() {
             crate::bail!(EmptySymbolPairSet);
         }
         if self.is_broken {
@@ -702,7 +700,7 @@ impl<B: AlgebraBackend> OtherSymbolTransducer<B> {
     where
         F: FnOnce(&mut HfstTransducer<B>, &HfstTransducer<B>, bool) -> crate::error::Result<()>,
     {
-        if Self::config_symbol_pairs_empty(cfg) {
+        if cfg.symbol_pairs.is_empty() {
             crate::bail!(EmptySymbolPairSet);
         }
         if self.is_broken {
@@ -737,7 +735,7 @@ impl<B: AlgebraBackend> OtherSymbolTransducer<B> {
     where
         F: FnOnce(&mut HfstTransducer<B>, &HfstTransducer<B>) -> bool,
     {
-        if Self::config_symbol_pairs_empty(cfg) {
+        if cfg.symbol_pairs.is_empty() {
             crate::bail!(EmptySymbolPairSet);
         }
         if self.is_broken {
@@ -761,7 +759,7 @@ impl<B: AlgebraBackend> OtherSymbolTransducer<B> {
     where
         F: FnOnce(&mut HfstTransducer<B>, u32) -> crate::error::Result<()>,
     {
-        if Self::config_symbol_pairs_empty(cfg) {
+        if cfg.symbol_pairs.is_empty() {
             crate::bail!(EmptySymbolPairSet);
         }
         if self.is_broken {
@@ -783,7 +781,7 @@ impl<B: AlgebraBackend> OtherSymbolTransducer<B> {
     where
         F: FnOnce(&mut HfstTransducer<B>, u32, u32) -> crate::error::Result<()>,
     {
-        if Self::config_symbol_pairs_empty(cfg) {
+        if cfg.symbol_pairs.is_empty() {
             crate::bail!(EmptySymbolPairSet);
         }
         if self.is_broken {
@@ -804,7 +802,7 @@ impl<B: AlgebraBackend> OtherSymbolTransducer<B> {
     where
         F: FnOnce(&mut HfstTransducer<B>, &SymbolPair) -> crate::error::Result<()>,
     {
-        if Self::config_symbol_pairs_empty(cfg) {
+        if cfg.symbol_pairs.is_empty() {
             crate::bail!(EmptySymbolPairSet);
         }
         if self.is_broken {
@@ -827,7 +825,7 @@ impl<B: AlgebraBackend> OtherSymbolTransducer<B> {
     where
         F: FnOnce(&mut HfstTransducer<B>, &SymbolPair, bool) -> crate::error::Result<()>,
     {
-        if Self::config_symbol_pairs_empty(cfg) {
+        if cfg.symbol_pairs.is_empty() {
             crate::bail!(EmptySymbolPairSet);
         }
         if self.is_broken {
@@ -848,7 +846,7 @@ impl<B: AlgebraBackend> OtherSymbolTransducer<B> {
         b1: bool,
         b2: bool,
     ) -> crate::error::Result<&mut Self> {
-        if Self::config_symbol_pairs_empty(cfg) {
+        if cfg.symbol_pairs.is_empty() {
             crate::bail!(EmptySymbolPairSet);
         }
         if self.is_broken {
@@ -867,7 +865,7 @@ impl<B: AlgebraBackend> OtherSymbolTransducer<B> {
         p1: &SymbolPair,
         p2: &SymbolPair,
     ) -> crate::error::Result<&mut Self> {
-        if Self::config_symbol_pairs_empty(cfg) {
+        if cfg.symbol_pairs.is_empty() {
             crate::bail!(EmptySymbolPairSet);
         }
         if self.is_broken {
@@ -890,7 +888,7 @@ impl<B: AlgebraBackend> OtherSymbolTransducer<B> {
         t: &OtherSymbolTransducer<B>,
         b: bool,
     ) -> crate::error::Result<&mut Self> {
-        if Self::config_symbol_pairs_empty(cfg) {
+        if cfg.symbol_pairs.is_empty() {
             crate::bail!(EmptySymbolPairSet);
         }
         if self.is_broken {
@@ -1295,14 +1293,6 @@ impl<B: AlgebraBackend> OtherSymbolTransducer<B> {
         center_t.add_transition(source_state as HfstState, &tr, true);
     }
 
-    /// 'static bool has_symbol(const HfstBasicTransducer &t,
-    ///  const std::string &sym)'.
-    // [spec:hfst:def:other-symbol-transducer.other-symbol-transducer.has-symbol-fn]
-    // [spec:hfst:sem:other-symbol-transducer.other-symbol-transducer.has-symbol-fn]
-    pub fn has_symbol(t: &HfstBasicTransducer, sym: &str) -> bool {
-        t.get_alphabet().contains(sym)
-    }
-
     /// 'static void set_final(HfstBasicTransducer &center_t, size_t state)'.
     // [spec:hfst:def:other-symbol-transducer.other-symbol-transducer.set-final-fn]
     // [spec:hfst:sem:other-symbol-transducer.other-symbol-transducer.set-final-fn]
@@ -1349,7 +1339,9 @@ impl<B: AlgebraBackend> OtherSymbolTransducer<B> {
                         HFST_UNKNOWN,
                     );
                     for kt in output_symbols.iter() {
-                        if Self::has_symbol(&fst, kt) {
+                        // [spec:hfst:def:other-symbol-transducer.other-symbol-transducer.has-symbol-fn]
+                        // [spec:hfst:sem:other-symbol-transducer.other-symbol-transducer.has-symbol-fn]
+                        if fst.get_alphabet().contains(kt.as_str()) {
                             Self::add_transition(
                                 &mut new_fst,
                                 state,
@@ -1362,7 +1354,7 @@ impl<B: AlgebraBackend> OtherSymbolTransducer<B> {
                 } else {
                     Self::add_transition(&mut new_fst, state, target as usize, &input, &output);
                     for kt in symbol_pairs.iter() {
-                        if kt.0 == input && Self::has_symbol(&fst, &kt.1) {
+                        if kt.0 == input && fst.get_alphabet().contains(kt.1.as_str()) {
                             Self::add_transition(
                                 &mut new_fst,
                                 state,
@@ -1855,19 +1847,6 @@ impl<B: AlgebraBackend> Rule<B> {
             }
         }
         Ok(())
-    }
-}
-
-// ---------------------------------------------------------------------------
-// ResultRule — produced by 'Rule::new_from_vector'; its compile() is a no-op
-// (the C++ base 'Rule::compile()' returns an empty OtherSymbolTransducer).
-// ---------------------------------------------------------------------------
-
-impl<B: AlgebraBackend> ResultRule<B> {
-    // [spec:hfst:def:rule.rule.compile-fn]
-    // [spec:hfst:sem:rule.rule.compile-fn]
-    pub fn compile(&mut self, cfg: &OstConfig) -> crate::error::Result<OtherSymbolTransducer<B>> {
-        OtherSymbolTransducer::new(cfg)
     }
 }
 
@@ -2380,7 +2359,7 @@ impl<B: AlgebraBackend> RightArrowRuleContainer<B> {
     // append) is the 'ConflictResolvingRightArrowRule::resolve_conflict' body,
     // applied here through the base 'Rule' data so the owned ['TwolcRule']
     // need not be matched back to its concrete variant.
-    pub fn add_rule_and_display_and_resolve_conflicts(
+    pub fn add_rule_resolving_conflicts(
         &mut self,
         cfg: &OstConfig,
         mut rule: ConflictResolvingRightArrowRule<B>,
@@ -2484,7 +2463,7 @@ impl<B: AlgebraBackend> LeftArrowRuleContainer<B> {
     // 'wbize' helper, so they are applied here through the base 'Rule' data
     // without downcasting. The incoming rule is then filed under its input
     // symbol and pushed into 'rule_vector'.
-    pub fn add_rule_and_display_and_resolve_conflicts(
+    pub fn add_rule_resolving_conflicts(
         &mut self,
         cfg: &OstConfig,
         mut rule: ConflictResolvingLeftArrowRule<B>,
@@ -2696,7 +2675,7 @@ impl<B: AlgebraBackend> TwolCGrammar<B> {
                 let rule = ConflictResolvingRightArrowRule::new(cfg, name, center, contexts)?;
                 let index = self
                     .right_arrow_rule_container
-                    .add_rule_and_display_and_resolve_conflicts(cfg, rule)?;
+                    .add_rule_resolving_conflicts(cfg, rule)?;
                 self.insert_subcase(
                     name,
                     RuleHandle {
@@ -2709,7 +2688,7 @@ impl<B: AlgebraBackend> TwolCGrammar<B> {
                 let rule = ConflictResolvingLeftArrowRule::new(cfg, name, center, contexts)?;
                 let index = self
                     .left_arrow_rule_container
-                    .add_rule_and_display_and_resolve_conflicts(cfg, rule)?;
+                    .add_rule_resolving_conflicts(cfg, rule)?;
                 self.insert_subcase(
                     name,
                     RuleHandle {
@@ -2722,7 +2701,7 @@ impl<B: AlgebraBackend> TwolCGrammar<B> {
                 let right_rule = ConflictResolvingRightArrowRule::new(cfg, name, center, contexts)?;
                 let right_index = self
                     .right_arrow_rule_container
-                    .add_rule_and_display_and_resolve_conflicts(cfg, right_rule)?;
+                    .add_rule_resolving_conflicts(cfg, right_rule)?;
                 self.insert_subcase(
                     name,
                     RuleHandle {
@@ -2733,7 +2712,7 @@ impl<B: AlgebraBackend> TwolCGrammar<B> {
                 let left_rule = ConflictResolvingLeftArrowRule::new(cfg, name, center, contexts)?;
                 let left_index = self
                     .left_arrow_rule_container
-                    .add_rule_and_display_and_resolve_conflicts(cfg, left_rule)?;
+                    .add_rule_resolving_conflicts(cfg, left_rule)?;
                 self.insert_subcase(
                     name,
                     RuleHandle {
@@ -2871,7 +2850,7 @@ impl<B: AlgebraBackend> TwolCGrammar<B> {
                         ConflictResolvingRightArrowRule::new(cfg, &center_name, pair, contexts)?;
                     let index = self
                         .right_arrow_rule_container
-                        .add_rule_and_display_and_resolve_conflicts(cfg, rule)?;
+                        .add_rule_resolving_conflicts(cfg, rule)?;
                     self.insert_subcase(
                         &center_name,
                         RuleHandle {
@@ -2885,7 +2864,7 @@ impl<B: AlgebraBackend> TwolCGrammar<B> {
                         ConflictResolvingLeftArrowRule::new(cfg, &center_name, pair, contexts)?;
                     let index = self
                         .left_arrow_rule_container
-                        .add_rule_and_display_and_resolve_conflicts(cfg, rule)?;
+                        .add_rule_resolving_conflicts(cfg, rule)?;
                     self.insert_subcase(
                         &center_name,
                         RuleHandle {
@@ -2899,7 +2878,7 @@ impl<B: AlgebraBackend> TwolCGrammar<B> {
                         ConflictResolvingRightArrowRule::new(cfg, &center_name, pair, contexts)?;
                     let right_index = self
                         .right_arrow_rule_container
-                        .add_rule_and_display_and_resolve_conflicts(cfg, right_rule)?;
+                        .add_rule_resolving_conflicts(cfg, right_rule)?;
                     self.insert_subcase(
                         &center_name,
                         RuleHandle {
@@ -2911,7 +2890,7 @@ impl<B: AlgebraBackend> TwolCGrammar<B> {
                         ConflictResolvingLeftArrowRule::new(cfg, &center_name, pair, contexts)?;
                     let left_index = self
                         .left_arrow_rule_container
-                        .add_rule_and_display_and_resolve_conflicts(cfg, left_rule)?;
+                        .add_rule_resolving_conflicts(cfg, left_rule)?;
                     self.insert_subcase(
                         &center_name,
                         RuleHandle {

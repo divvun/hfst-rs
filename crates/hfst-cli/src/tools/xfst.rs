@@ -496,7 +496,7 @@ fn run_compiler<B: hfst::backend::AlgebraBackend + hfst::hfst_transducer::FromAn
     common: &CommonOptions,
     options: &Options,
 ) -> i32 {
-    let mut comp = XfstCompiler::<B>::new_with_impl();
+    let mut comp = XfstCompiler::<B>::new();
     // HAVE_READLINE is not defined in this port.
     comp.set_readline(false);
     comp.set_verbosity(!common.silent);

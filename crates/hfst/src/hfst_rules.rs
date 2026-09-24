@@ -78,7 +78,7 @@ pub fn replace<B: AlgebraBackend>(
         crate::bail!(Fatal, "impossible replace type");
     }
 
-    let pi_star = HfstTransducer::from_string_pair_set(alphabet, true)?;
+    let pi_star = HfstTransducer::new_string_pair_set(alphabet, true)?;
 
     // tc = ( .* t_proj .* )
     let mut tc = pi_star.clone();
@@ -119,8 +119,8 @@ pub fn replace_transducer<B: AlgebraBackend>(
     let mut tc = t.clone();
     tc.insert_freely_pair(&(rm.clone(), rm.clone()), true)?;
     tc.insert_freely_pair(&(lm.clone(), lm.clone()), true)?;
-    let mut tm = HfstTransducer::from_symbol(&lm)?;
-    let rmtr = HfstTransducer::from_symbol(&rm)?;
+    let mut tm = HfstTransducer::new_symbol(&lm)?;
+    let rmtr = HfstTransducer::new_symbol(&rm)?;
     tm.concatenate(&tc, true)?;
     tm.concatenate(&rmtr, true)?;
 
@@ -149,7 +149,7 @@ pub fn replace_context<B: AlgebraBackend>(
     t_copy.insert_freely_pair(&(m1.clone(), m1.clone()), true)?;
     t_copy.insert_freely_pair(&(m2.clone(), m2.clone()), true)?;
 
-    let pi_star = HfstTransducer::from_string_pair_set(alphabet, true)?;
+    let pi_star = HfstTransducer::new_string_pair_set(alphabet, true)?;
 
     // arg1 = .* ( m1 >> ( m2 >> t ))
     let mut arg1 = pi_star.clone();
@@ -157,7 +157,7 @@ pub fn replace_context<B: AlgebraBackend>(
     arg1.concatenate(&t_copy, true)?;
 
     // arg2 = !(.* m1)
-    let m1_tr = HfstTransducer::from_symbol(&m1)?;
+    let m1_tr = HfstTransducer::new_symbol(&m1)?;
     let mut tmp = pi_star.clone();
     tmp.concatenate(&m1_tr, true)?;
     let mut arg2 = pi_star.clone();
@@ -167,7 +167,7 @@ pub fn replace_context<B: AlgebraBackend>(
     let ct = arg1.compose(&arg2, true)?.clone();
 
     // mt = m2* m1 .*
-    let mut mt = HfstTransducer::from_symbol(&m2)?;
+    let mut mt = HfstTransducer::new_symbol(&m2)?;
     mt.repeat_star()?;
     mt.concatenate(&m1_tr, true)?;
     mt.concatenate(&pi_star, true)?;
@@ -221,25 +221,25 @@ pub fn two_level_if<B: AlgebraBackend>(
     }
 
     // center == [ a:. ]
-    let mut center = HfstTransducer::from_string_pair_set(&input_to_any, false)?;
+    let mut center = HfstTransducer::new_string_pair_set(&input_to_any, false)?;
 
     // calculate [ .* - a:b ]
-    let mut neg_mappings = HfstTransducer::from_string_pair_set(alphabet, true)?;
+    let mut neg_mappings = HfstTransducer::new_string_pair_set(alphabet, true)?;
     //neg_mappings.repeat_star();
 
-    let mappings_tr = HfstTransducer::from_string_pair_set(mappings, false)?;
+    let mappings_tr = HfstTransducer::new_string_pair_set(mappings, false)?;
     neg_mappings.subtract(&mappings_tr, true)?;
 
     // center == [ a:. & !a:b ]
     center.intersect(&neg_mappings, true)?;
 
     // left context == [ .* l ]
-    let mut left_context = HfstTransducer::from_string_pair_set(alphabet, true)?;
+    let mut left_context = HfstTransducer::new_string_pair_set(alphabet, true)?;
     left_context.concatenate(&context.0, true)?;
 
     // right_context == [ r .* ]
     let mut right_context = context.1.clone();
-    let universal = HfstTransducer::from_string_pair_set(alphabet, true)?;
+    let universal = HfstTransducer::new_string_pair_set(alphabet, true)?;
     right_context.concatenate(&universal, true)?;
 
     let inside = left_context
@@ -267,19 +267,19 @@ pub fn two_level_only_if<B: AlgebraBackend>(
     // HfstTransducer<B>.
 
     // center = a:b
-    let center = HfstTransducer::from_string_pair_set(mappings, false)?;
+    let center = HfstTransducer::new_string_pair_set(mappings, false)?;
 
     // left_neg = !(.* l)
-    let mut left = HfstTransducer::from_string_pair_set(alphabet, true)?;
+    let mut left = HfstTransducer::new_string_pair_set(alphabet, true)?;
     left.concatenate(&context.0, true)?;
-    let mut left_neg = HfstTransducer::from_string_pair_set(alphabet, true)?;
+    let mut left_neg = HfstTransducer::new_string_pair_set(alphabet, true)?;
     left_neg.subtract(&left, true)?;
 
     // right_neg = !(r .*)
-    let universal = HfstTransducer::from_string_pair_set(alphabet, true)?;
+    let universal = HfstTransducer::new_string_pair_set(alphabet, true)?;
     let mut right = context.1.clone();
     right.concatenate(&universal, true)?;
-    let mut right_neg = HfstTransducer::from_string_pair_set(alphabet, true)?;
+    let mut right_neg = HfstTransducer::new_string_pair_set(alphabet, true)?;
     right_neg.subtract(&right, true)?;
 
     // left_neg + center + universal  |  universal + center + right_neg
@@ -291,7 +291,7 @@ pub fn two_level_only_if<B: AlgebraBackend>(
     rule_right.concatenate(&right_neg, true)?;
     rule.disjunct(&rule_right, true)?;
 
-    let mut rule_neg = HfstTransducer::from_string_pair_set(alphabet, true)?;
+    let mut rule_neg = HfstTransducer::new_string_pair_set(alphabet, true)?;
     rule_neg.subtract(&rule, true)?;
 
     Ok(rule_neg)
@@ -346,23 +346,23 @@ pub fn replace_in_context<B: AlgebraBackend>(
     let mut pi1 = alphabet.clone();
     pi1.insert((Symbol::new_static(internal_epsilon), leftm.clone()));
     pi1.insert((Symbol::new_static(internal_epsilon), rightm.clone()));
-    let ibt = HfstTransducer::from_string_pair_set(&pi1, true)?;
+    let ibt = HfstTransducer::new_string_pair_set(&pi1, true)?;
 
     // Create the remove boundary transducer (.|<L>:<>|<R>:<>)*
     let mut pi2 = alphabet.clone();
     pi2.insert((leftm.clone(), Symbol::new_static(internal_epsilon)));
     pi2.insert((rightm.clone(), Symbol::new_static(internal_epsilon)));
-    let rbt = HfstTransducer::from_string_pair_set(&pi2, true)?;
+    let rbt = HfstTransducer::new_string_pair_set(&pi2, true)?;
 
     // Add the markers to the alphabet
     alphabet.insert((leftm.clone(), leftm.clone()));
     alphabet.insert((rightm.clone(), rightm.clone()));
 
-    let pi_star = HfstTransducer::from_string_pair_set(&*alphabet, true)?;
+    let pi_star = HfstTransducer::new_string_pair_set(&*alphabet, true)?;
 
     // Create the constrain boundary transducer !(.*<L><R>.*)
-    let leftm_to_leftm = HfstTransducer::from_isymbol_osymbol(&leftm, &leftm)?;
-    let rightm_to_rightm = HfstTransducer::from_isymbol_osymbol(&rightm, &rightm)?;
+    let leftm_to_leftm = HfstTransducer::new_symbol_pair(&leftm, &leftm)?;
+    let rightm_to_rightm = HfstTransducer::new_symbol_pair(&rightm, &rightm)?;
     let mut tmp = pi_star.clone();
     tmp.concatenate(&leftm_to_leftm, true)?;
     tmp.concatenate(&rightm_to_rightm, true)?;
@@ -453,7 +453,7 @@ pub fn replace_in_context<B: AlgebraBackend>(
     alphabet.remove(&(rightm.clone(), rightm.clone()));
 
     if optional {
-        let pi_star = HfstTransducer::from_string_pair_set(&*alphabet, true)?;
+        let pi_star = HfstTransducer::new_string_pair_set(&*alphabet, true)?;
         result.disjunct(&pi_star, true)?;
     }
 
@@ -564,15 +564,9 @@ pub fn left_replace_up_mapping<B: AlgebraBackend>(
     optional: bool,
     alphabet: &StringPairSet,
 ) -> crate::error::Result<HfstTransducer<B>> {
-    if optional {
-        Ok(replace_up_mapping(mapping, true, alphabet)?
-            .invert()?
-            .clone())
-    } else {
-        Ok(replace_up_mapping(mapping, false, alphabet)?
-            .invert()?
-            .clone())
-    }
+    Ok(replace_up_mapping(mapping, optional, alphabet)?
+        .invert()?
+        .clone())
 }
 
 // Left arrow replace up
@@ -582,15 +576,9 @@ pub fn left_replace_up<B: AlgebraBackend>(
     optional: bool,
     alphabet: &mut StringPairSet,
 ) -> crate::error::Result<HfstTransducer<B>> {
-    if optional {
-        Ok(replace_up(context, mapping, true, alphabet)?
-            .invert()?
-            .clone())
-    } else {
-        Ok(replace_up(context, mapping, false, alphabet)?
-            .invert()?
-            .clone())
-    }
+    Ok(replace_up(context, mapping, optional, alphabet)?
+        .invert()?
+        .clone())
 }
 
 // Left arrow replace down (XFST's version)
@@ -604,15 +592,11 @@ pub fn left_replace_down_karttunen<B: AlgebraBackend>(
     optional: bool,
     alphabet: &mut StringPairSet,
 ) -> crate::error::Result<HfstTransducer<B>> {
-    if optional {
-        Ok(replace_down_karttunen(context, mapping, true, alphabet)?
+    Ok(
+        replace_down_karttunen(context, mapping, optional, alphabet)?
             .invert()?
-            .clone())
-    } else {
-        Ok(replace_down_karttunen(context, mapping, false, alphabet)?
-            .invert()?
-            .clone())
-    }
+            .clone(),
+    )
 }
 
 // Left arrow replace down (SFST's version)
@@ -626,15 +610,9 @@ pub fn left_replace_down<B: AlgebraBackend>(
     optional: bool,
     alphabet: &mut StringPairSet,
 ) -> crate::error::Result<HfstTransducer<B>> {
-    if optional {
-        Ok(replace_down(context, mapping, true, alphabet)?
-            .invert()?
-            .clone())
-    } else {
-        Ok(replace_down(context, mapping, false, alphabet)?
-            .invert()?
-            .clone())
-    }
+    Ok(replace_down(context, mapping, optional, alphabet)?
+        .invert()?
+        .clone())
 }
 
 // Left arrow replace left
@@ -648,15 +626,9 @@ pub fn left_replace_left<B: AlgebraBackend>(
     optional: bool,
     alphabet: &mut StringPairSet,
 ) -> crate::error::Result<HfstTransducer<B>> {
-    if optional {
-        Ok(replace_left(context, mapping, true, alphabet)?
-            .invert()?
-            .clone())
-    } else {
-        Ok(replace_left(context, mapping, false, alphabet)?
-            .invert()?
-            .clone())
-    }
+    Ok(replace_left(context, mapping, optional, alphabet)?
+        .invert()?
+        .clone())
 }
 
 // Left arrow replace right
@@ -670,15 +642,9 @@ pub fn left_replace_right<B: AlgebraBackend>(
     optional: bool,
     alphabet: &mut StringPairSet,
 ) -> crate::error::Result<HfstTransducer<B>> {
-    if optional {
-        Ok(replace_right(context, mapping, true, alphabet)?
-            .invert()?
-            .clone())
-    } else {
-        Ok(replace_right(context, mapping, false, alphabet)?
-            .invert()?
-            .clone())
-    }
+    Ok(replace_right(context, mapping, optional, alphabet)?
+        .invert()?
+        .clone())
 }
 
 // [spec:hfst:def:hfst-rules.hfst.rules.restriction-fn]
@@ -701,11 +667,11 @@ pub fn restriction<B: AlgebraBackend>(
     }
 
     let marker: String = "@_MARKER_@".to_string();
-    let mt = HfstTransducer::from_symbol(&marker)?;
-    let pi_star = HfstTransducer::from_string_pair_set(alphabet, true)?;
+    let mt = HfstTransducer::new_symbol(&marker)?;
+    let pi_star = HfstTransducer::new_string_pair_set(alphabet, true)?;
 
     // center transducer
-    let mut l1 = HfstTransducer::from_symbol(internal_epsilon)?;
+    let mut l1 = HfstTransducer::new_symbol(internal_epsilon)?;
     l1.concatenate(&pi_star, true)?;
     l1.concatenate(&mt, true)?;
     l1.concatenate(&*mapping, true)?;
@@ -726,7 +692,7 @@ pub fn restriction<B: AlgebraBackend>(
     // pi_star + left[i] + mt + tmp + mt + + right[i] + pi_star
     let mut l2 = HfstTransducer::new();
     for it in contexts.iter() {
-        let mut ct = HfstTransducer::from_symbol(internal_epsilon)?;
+        let mut ct = HfstTransducer::new_symbol(internal_epsilon)?;
         ct.concatenate(&pi_star, true)?;
         ct.concatenate(&it.0, true)?;
         ct.concatenate(&mt, true)?;
@@ -741,7 +707,7 @@ pub fn restriction<B: AlgebraBackend>(
 
     if twol_type == TwolType::twol_right {
         // TheAlphabet - ( l1 - l2 ).substitute(marker,epsilon, true, true)
-        let mut retval = HfstTransducer::from_string_pair_set(alphabet, true)?;
+        let mut retval = HfstTransducer::new_string_pair_set(alphabet, true)?;
         let mut tmp1 = l1.clone();
         tmp1.subtract(&l2, true)?;
         tmp1.substitute(&marker, internal_epsilon, true, true)?;
@@ -749,7 +715,7 @@ pub fn restriction<B: AlgebraBackend>(
         Ok(retval)
     } else if twol_type == TwolType::twol_left {
         // TheAlphabet - ( l2 - l1 ).substitute(marker,epsilon, true, true)
-        let mut retval = HfstTransducer::from_string_pair_set(alphabet, true)?;
+        let mut retval = HfstTransducer::new_string_pair_set(alphabet, true)?;
         let mut tmp1 = l2.clone();
         tmp1.subtract(&l1, true)?;
         tmp1.substitute(&marker, internal_epsilon, true, true)?;
@@ -759,13 +725,13 @@ pub fn restriction<B: AlgebraBackend>(
         // TheAlphabet - ( l1 - l2 ).substitute(marker,epsilon, true, true)
         // TheAlphabet - ( l2 - l1 ).substitute(marker,epsilon, true, true)
         // intersect
-        let mut retval1 = HfstTransducer::from_string_pair_set(alphabet, true)?;
+        let mut retval1 = HfstTransducer::new_string_pair_set(alphabet, true)?;
         let mut tmp1 = l1.clone();
         tmp1.subtract(&l2, true)?;
         tmp1.substitute(&marker, internal_epsilon, true, true)?;
         retval1.subtract(&tmp1, true)?;
 
-        let mut retval2 = HfstTransducer::from_string_pair_set(alphabet, true)?;
+        let mut retval2 = HfstTransducer::new_string_pair_set(alphabet, true)?;
         let mut tmp2 = l2.clone();
         tmp2.subtract(&l1, true)?;
         tmp2.substitute(&marker, internal_epsilon, true, true)?;

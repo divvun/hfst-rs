@@ -416,7 +416,6 @@ impl<B: Backend> HfstTransducer<B> {
     // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.set-property-fn]
     // [spec:hfst:sem:hfst-transducer.hfst.hfst-transducer.set-property-fn]
     pub fn set_property(&mut self, property: &str, name: &str) {
-        HfstTokenizer::check_utf8_correctness(name);
         self.props.insert(property.to_string(), name.to_string());
         if property == "name" {
             self.name = name.to_string();
@@ -498,8 +497,6 @@ impl<B: Backend> HfstTransducer<B> {
     // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.insert-to-alphabet-fn]
     // [spec:hfst:sem:hfst-transducer.hfst.hfst-transducer.insert-to-alphabet-fn]
     pub fn insert_to_alphabet_string(&mut self, symbol: &str) -> crate::error::Result<()> {
-        HfstTokenizer::check_utf8_correctness(symbol);
-
         if symbol.is_empty() {
             crate::bail!(EmptyString, "insert_to_alphabet");
         }
@@ -514,7 +511,6 @@ impl<B: Backend> HfstTransducer<B> {
         symbols: &StringSet,
     ) -> crate::error::Result<()> {
         for symbol in symbols.iter() {
-            HfstTokenizer::check_utf8_correctness(symbol);
             if symbol.is_empty() {
                 crate::bail!(EmptyString, "insert_to_alphabet");
             }
@@ -526,8 +522,6 @@ impl<B: Backend> HfstTransducer<B> {
     // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.remove-from-alphabet-fn]
     // [spec:hfst:sem:hfst-transducer.hfst.hfst-transducer.remove-from-alphabet-fn]
     pub fn remove_from_alphabet_string(&mut self, symbol: &str) -> crate::error::Result<()> {
-        HfstTokenizer::check_utf8_correctness(symbol);
-
         if symbol.is_empty() {
             crate::bail!(EmptyString, "remove_from_alphabet");
         }
@@ -563,8 +557,8 @@ impl<B: Backend> HfstTransducer<B> {
     // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.harmonize-symbol-encodings-fn]
     // [spec:hfst:sem:hfst-transducer.hfst.hfst-transducer.harmonize-symbol-encodings-fn]
     pub fn harmonize_symbol_encodings(&mut self, another: &HfstTransducer<B>) -> HfstTransducer<B> {
-        let another_basic = HfstBasicTransducer::from_hfst_transducer(another);
-        let this_basic = HfstBasicTransducer::from_hfst_transducer(&*self);
+        let another_basic = HfstBasicTransducer::from_transducer(another);
+        let this_basic = HfstBasicTransducer::from_transducer(&*self);
         *self = HfstTransducer::from_basic_transducer(&this_basic);
         HfstTransducer::from_basic_transducer(&another_basic)
     }
@@ -943,7 +937,7 @@ impl<B: Backend> HfstTransducer<B> {
     // -------------------------------------------------------------------------
     // 'HfstBasicTransducer net(*this)' is the conversion constructor
     // 'HfstBasicTransducer(const HfstTransducer&)' — ported as the assoc-fn
-    // 'HfstBasicTransducer::new_from_hfst_transducer(&self)'.
+    // 'HfstBasicTransducer::from_transducer(&self)'.
 
     // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.write-in-att-format-fn]
     // [spec:hfst:sem:hfst-transducer.hfst.hfst-transducer.write-in-att-format-fn]
@@ -973,7 +967,7 @@ impl<B: Backend> HfstTransducer<B> {
         ofile: &mut dyn std::io::Write,
         print_weights: bool,
     ) -> std::io::Result<()> {
-        let net = HfstBasicTransducer::new_from_hfst_transducer(self);
+        let net = HfstBasicTransducer::from_transducer(self);
         net.write_in_att_format_number_file(ofile, print_weights)
     }
 
@@ -983,7 +977,7 @@ impl<B: Backend> HfstTransducer<B> {
         print_weights: bool,
     ) -> std::io::Result<()> {
         // Implemented only for internal transducer format.
-        let net = HfstBasicTransducer::new_from_hfst_transducer(self);
+        let net = HfstBasicTransducer::from_transducer(self);
         net.write_in_att_format_file(ofile, print_weights)
     }
 
@@ -995,7 +989,7 @@ impl<B: Backend> HfstTransducer<B> {
         name: &str,
         write_weights: bool,
     ) -> crate::error::Result<()> {
-        let fsm = HfstBasicTransducer::new_from_hfst_transducer(self);
+        let fsm = HfstBasicTransducer::from_transducer(self);
         fsm.write_in_prolog_format_file(file, name, write_weights)
     }
 
@@ -1015,7 +1009,6 @@ impl<B: Backend> HfstTransducer<B> {
                 crate::bail!(StreamNotReadable, filename);
             }
         };
-        HfstTokenizer::check_utf8_correctness(epsilon_symbol);
 
         let mut reader = std::io::BufReader::new(ifile);
         Self::read_in_att_format_file(&mut reader, epsilon_symbol, warn_negs)
@@ -1028,8 +1021,6 @@ impl<B: Backend> HfstTransducer<B> {
         epsilon_symbol: &str,
         warn_negs: bool,
     ) -> crate::error::Result<HfstTransducer<B>> {
-        HfstTokenizer::check_utf8_correctness(epsilon_symbol);
-
         let mut linecount: u32 = 0;
         let net = HfstBasicTransducer::read_in_att_format_file(
             ifile,
@@ -1107,7 +1098,7 @@ impl<B: Backend> HfstTransducer<B> {
         let mut tok = HfstTokenizer::new();
 
         // (the SFST 'get_symbol_pairs' branch is compiled out with the backend)
-        let mut t = HfstBasicTransducer::new_from_hfst_transducer(self);
+        let mut t = HfstBasicTransducer::from_transducer(self);
         t.prune_alphabet(true);
         let alpha = t.get_alphabet();
         for it in alpha.iter() {
@@ -1373,7 +1364,6 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
     ///
     /// 'HfstTransducer(const std::string &symbol, type)'.
     pub fn new_symbol(symbol: &str) -> crate::error::Result<Self> {
-        HfstTokenizer::check_utf8_correctness(symbol);
         if symbol.is_empty() {
             crate::bail!(
                 EmptyString,
@@ -1389,8 +1379,6 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
     ///
     /// 'HfstTransducer(const std::string &isymbol, const std::string &osymbol, type)'.
     pub fn new_symbol_pair(isymbol: &str, osymbol: &str) -> crate::error::Result<Self> {
-        HfstTokenizer::check_utf8_correctness(isymbol);
-        HfstTokenizer::check_utf8_correctness(osymbol);
         if isymbol.is_empty() || osymbol.is_empty() {
             crate::bail!(
                 EmptyString,
@@ -1653,7 +1641,7 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
     // -------------------------------------------------------------------------
 
     pub fn eliminate_flags(&mut self) -> crate::error::Result<&mut HfstTransducer<B>> {
-        let basic = crate::hfst_basic_transducer::HfstBasicTransducer::new_from_transducer(self);
+        let basic = crate::hfst_basic_transducer::HfstBasicTransducer::from_transducer(self);
         let flags = basic.get_flags();
         let filter = get_flag_filter(self, &flags, "")?;
 
@@ -1681,7 +1669,7 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
     }
 
     pub fn eliminate_flag(&mut self, flag: &str) -> crate::error::Result<&mut HfstTransducer<B>> {
-        let basic = crate::hfst_basic_transducer::HfstBasicTransducer::new_from_transducer(self);
+        let basic = crate::hfst_basic_transducer::HfstBasicTransducer::from_transducer(self);
         let flags = basic.get_flags();
         let feature_found = flags
             .iter()
@@ -1883,11 +1871,11 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
     pub fn identity_with_flags_of(
         other: &HfstTransducer<B>,
     ) -> crate::error::Result<HfstTransducer<B>> {
-        let mut universe = HfstTransducer::new_from_symbol("@_IDENTITY_SYMBOL_@")?;
+        let mut universe = HfstTransducer::new_symbol("@_IDENTITY_SYMBOL_@")?;
         // diacritics will not be harmonized in subtract
         let flags = universe.insert_missing_diacritics_to_alphabet_from(other)?;
         for flag in flags.iter() {
-            let tr = HfstTransducer::new_from_symbol(flag)?;
+            let tr = HfstTransducer::new_symbol(flag)?;
             universe.disjunct(&tr, true)?;
         }
         Ok(universe)
@@ -1919,7 +1907,7 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
         }
 
         if !obey_flags {
-            let net = HfstBasicTransducer::new_from_transducer(self);
+            let net = HfstBasicTransducer::from_transducer(self);
             return Ok(net.longest_path_size());
         }
 
@@ -1948,7 +1936,7 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
             crate::bail!(TransducerIsCyclic);
         }
 
-        let net = HfstBasicTransducer::new_from_transducer(self);
+        let net = HfstBasicTransducer::from_transducer(self);
         let path_lengths = net.path_sizes();
         if path_lengths.is_empty() {
             return Ok(false);
@@ -2017,14 +2005,11 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
         symbol_pair: &StringPair,
         harmonize: bool,
     ) -> crate::error::Result<&mut HfstTransducer<B>> {
-        HfstTokenizer::check_utf8_correctness(&symbol_pair.0);
-        HfstTokenizer::check_utf8_correctness(&symbol_pair.1);
-
         if symbol_pair.0.is_empty() || symbol_pair.1.is_empty() {
             crate::bail!(EmptyString, "insert_freely(const StringPair&)");
         }
 
-        let tr = HfstTransducer::new_from_symbol_pair(&symbol_pair.0, &symbol_pair.1)?;
+        let tr = HfstTransducer::new_symbol_pair(&symbol_pair.0, &symbol_pair.1)?;
         self.insert_freely(&tr, harmonize)
     }
 
@@ -2233,8 +2218,7 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
             );
         }
 
-        let mut pair_transducer =
-            HfstTransducer::new_from_symbol_pair(&symbol_pair.0, &symbol_pair.1)?;
+        let mut pair_transducer = HfstTransducer::new_symbol_pair(&symbol_pair.0, &symbol_pair.1)?;
         if !harmonize {
             self.insert_missing_symbols_to_alphabet_from(&pair_transducer, false)?;
             pair_transducer.insert_missing_symbols_to_alphabet_from(self, false)?;
@@ -2560,7 +2544,7 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
         }
 
         if config.unknown_symbols_in_use {
-            self.substitute_with_func(substitute_single_identity_with_the_other_symbol)?;
+            self.substitute_with_func(substitute_one_sided_identity)?;
         }
 
         Ok(self)
@@ -2685,9 +2669,9 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
         // EpsilonToMark and MarkToEpsilon are paddings (if strings are not the
         // same size)
         let mut unknown_to_mark =
-            HfstTransducer::from_strings("@_UNKNOWN_SYMBOL_@", "@_MARK_@", &tok)?;
+            HfstTransducer::new_tokenized_pair("@_UNKNOWN_SYMBOL_@", "@_MARK_@", &tok)?;
         let mut epsilon_to_mark =
-            HfstTransducer::from_strings("@_EPSILON_SYMBOL_@", "@_MARK_@", &tok)?;
+            HfstTransducer::new_tokenized_pair("@_EPSILON_SYMBOL_@", "@_MARK_@", &tok)?;
 
         // [spec:hfst:def:hfst-transducer.hfst.mark-to-unknown-fn]
         // [spec:hfst:sem:hfst-transducer.hfst.mark-to-unknown-fn]
@@ -2930,7 +2914,7 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
             let mut tokenizer = HfstTokenizer::new();
             tokenizer.add_multichar_symbol("@#@");
             tokenizer.add_multichar_symbol(internal_epsilon);
-            let mut wb = HfstTransducer::from_strings(internal_epsilon, "@#@", &tokenizer)?;
+            let mut wb = HfstTransducer::new_tokenized_pair(internal_epsilon, "@#@", &tokenizer)?;
             // [spec:hfst:def:hfst-transducer.hfst.wb-copy-fn]
             // [spec:hfst:sem:hfst-transducer.hfst.wb-copy-fn]
             let wb_copy = wb.clone();
@@ -3246,45 +3230,6 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
     ) -> crate::error::Result<&mut HfstTransducer<B>> {
         self.subtract_with_flag_overlay(another, harmonize, None)
     }
-
-    // ----- integration shims (constructor-name aliases; the 'ty' parameter is
-    // the type parameter now) -----
-
-    pub fn from_symbol(symbol: &str) -> crate::error::Result<Self> {
-        HfstTransducer::new_symbol(symbol)
-    }
-    pub fn new_from_symbol(symbol: &str) -> crate::error::Result<Self> {
-        HfstTransducer::new_symbol(symbol)
-    }
-    pub fn from_isymbol_osymbol(isymbol: &str, osymbol: &str) -> crate::error::Result<Self> {
-        HfstTransducer::new_symbol_pair(isymbol, osymbol)
-    }
-    pub fn new_from_symbol_pair(isymbol: &str, osymbol: &str) -> crate::error::Result<Self> {
-        HfstTransducer::new_symbol_pair(isymbol, osymbol)
-    }
-    pub fn from_strings(
-        isymbol: &str,
-        osymbol: &str,
-        tokenizer: &HfstTokenizer,
-    ) -> crate::error::Result<Self> {
-        HfstTransducer::new_tokenized_pair(isymbol, osymbol, tokenizer)
-    }
-    pub fn new_string_tokenizer_type(
-        utf8_str: &str,
-        tokenizer: &HfstTokenizer,
-    ) -> crate::error::Result<Self> {
-        HfstTransducer::new_tokenized(utf8_str, tokenizer)
-    }
-    pub fn new_string_string_tokenizer_type(
-        upper: &str,
-        lower: &str,
-        tokenizer: &HfstTokenizer,
-    ) -> crate::error::Result<Self> {
-        HfstTransducer::new_tokenized_pair(upper, lower, tokenizer)
-    }
-    pub fn from_string_pair_set(sps: &StringPairSet, cyclic: bool) -> crate::error::Result<Self> {
-        HfstTransducer::new_string_pair_set(sps, cyclic)
-    }
 }
 
 // -----------------------------------------------------------------------------
@@ -3420,7 +3365,7 @@ impl HfstTransducer<Transducer<WeightedTables>> {
     // [spec:hfst:def:thfst-backend.olw-moves]
     // [spec:hfst:sem:thfst-backend.olw-moves]
     pub fn into_thfst(self) -> HfstTransducer<crate::backend_thfst::ThfstTransducer> {
-        rewrap_facade(self, crate::backend_thfst::ThfstTransducer::from_ol)
+        rewrap_facade(self, crate::backend_thfst::ThfstTransducer)
     }
 }
 
@@ -3671,7 +3616,7 @@ fn get_flag_filter<B: AlgebraBackend>(
     let mut filter: Option<HfstTransducer<B>> = None;
 
     for f in flags.iter() {
-        let this = HfstTransducer::new_from_symbol(&format!("_{}", f))?; // escape flags
+        let this = HfstTransducer::new_symbol(&format!("_{}", f))?; // escape flags
         let mut succeed_flags = HfstTransducer::new();
         let mut fail_flags = HfstTransducer::new();
 
@@ -3684,16 +3629,12 @@ fn get_flag_filter<B: AlgebraBackend>(
                 let fstatus = is_valid_flag_combination(f, flag2);
 
                 if fstatus == 1 {
-                    fail_flags.disjunct(
-                        &HfstTransducer::new_from_symbol(&format!("_{}", flag2))?,
-                        true,
-                    )?;
+                    fail_flags
+                        .disjunct(&HfstTransducer::new_symbol(&format!("_{}", flag2))?, true)?;
                     flag_found = true;
                 } else if fstatus == 2 {
-                    succeed_flags.disjunct(
-                        &HfstTransducer::new_from_symbol(&format!("_{}", flag2))?,
-                        true,
-                    )?;
+                    succeed_flags
+                        .disjunct(&HfstTransducer::new_symbol(&format!("_{}", flag2))?, true)?;
                     flag_found = true;
                 }
             }
@@ -3735,8 +3676,7 @@ fn flag_purge<B: Backend>(
     transducer: &mut HfstTransducer<B>,
     flag: &str,
 ) -> crate::error::Result<()> {
-    let mut net =
-        crate::hfst_basic_transducer::HfstBasicTransducer::new_from_transducer(transducer);
+    let mut net = crate::hfst_basic_transducer::HfstBasicTransducer::from_transducer(transducer);
     net.flag_purge(flag);
     *transducer = HfstTransducer::new_from_basic(&net)?;
     Ok(())
@@ -3800,10 +3740,7 @@ impl<'a> ExtractStringsCb for ExtractStringsCb_<'a> {
 
 // [spec:hfst:def:hfst-transducer.hfst.substitute-single-identity-with-the-other-symbol-fn]
 // [spec:hfst:sem:hfst-transducer.hfst.substitute-single-identity-with-the-other-symbol-fn]
-pub fn substitute_single_identity_with_the_other_symbol(
-    sp: &StringPair,
-    sps: &mut StringPairSet,
-) -> bool {
+pub fn substitute_one_sided_identity(sp: &StringPair, sps: &mut StringPairSet) -> bool {
     let mut isymbol: Symbol = sp.0.clone();
     let mut osymbol: Symbol = sp.1.clone();
 
@@ -4070,12 +4007,6 @@ impl Default for EngineConfig {
     }
 }
 
-impl EngineConfig {
-    pub fn new() -> Self {
-        Self::default()
-    }
-}
-
 // C++ 'enum MinimizationAlgorithm { HOPCROFT, BRZOZOWSKI }' (HfstTransducer.h:130).
 // [spec:hfst:def:hfst-transducer.hfst.minimization-algorithm]
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -4102,15 +4033,6 @@ impl HfstBasicTransducer {
         t: &HfstTransducer<B>,
     ) -> crate::error::Result<HfstBasicTransducer> {
         crate::convert_transducer_format::ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(t)
-    }
-    pub fn new_from_transducer<B: Backend>(t: &HfstTransducer<B>) -> HfstBasicTransducer {
-        HfstBasicTransducer::from_transducer(t)
-    }
-    pub fn new_from_hfst_transducer<B: Backend>(t: &HfstTransducer<B>) -> HfstBasicTransducer {
-        HfstBasicTransducer::from_transducer(t)
-    }
-    pub fn from_hfst_transducer<B: Backend>(t: &HfstTransducer<B>) -> HfstBasicTransducer {
-        HfstBasicTransducer::from_transducer(t)
     }
 }
 
@@ -4326,10 +4248,7 @@ impl FromAnyTransducer for crate::backend_thfst::ThfstTransducer {
             // THFST <-> OLW is an O(1) table MOVE: transfer the inner engine
             // and rewrap the facade metadata unchanged.
             // [spec:hfst:sem:thfst-backend.olw-moves]
-            AnyTransducer::OlW(t) => Ok(rewrap_facade(
-                t,
-                crate::backend_thfst::ThfstTransducer::from_ol,
-            )),
+            AnyTransducer::OlW(t) => Ok(rewrap_facade(t, crate::backend_thfst::ThfstTransducer)),
             other @ AnyTransducer::Tropical(_) | other @ AnyTransducer::OlU(_) => {
                 any_into_backend_via_basic(other)
             }

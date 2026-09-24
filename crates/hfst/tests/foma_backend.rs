@@ -306,7 +306,7 @@ fn foma_stream_round_trip_through_hfst_input_stream() {
 // parsed a single gzip member, so downstream a 46-rule twolc phonology came back
 // as 1 rule. The fix reads exactly one gzip member and ungets the leftover.
 #[test]
-fn foma_stream_reads_every_transducer_in_a_multi_stream() {
+fn foma_stream_reads_every_transducer_in_multi_stream() {
     let pairs = [("a", "b"), ("c", "d"), ("e", "f")];
     let mut bytes: Vec<u8> = Vec::new();
     for (i, o) in pairs {
@@ -1320,7 +1320,7 @@ fn optimized_lookup_and_thfst_report_real_counts() {
 
         // THFST is the same engine under a different stream identity, so it must
         // report the same counts rather than fall back to a stub.
-        let thfst = ThfstTransducer::from_ol(ol);
+        let thfst = ThfstTransducer::from(ol);
         assert_eq!(
             (thfst.number_of_states(), thfst.number_of_arcs()),
             reported,
@@ -1337,7 +1337,7 @@ fn xfst_net_size_under_foma_is_nonzero() {
 
     let script = "regex [a:b | c:d | e:f];\n";
 
-    let mut foma_c = XfstCompiler::<FomaTransducer>::new_with_impl();
+    let mut foma_c = XfstCompiler::<FomaTransducer>::new();
     foma_c.parse(script);
     let foma_top = *foma_c.get_stack().last().expect("foma stack non-empty");
     let foma_size = (
@@ -1345,7 +1345,7 @@ fn xfst_net_size_under_foma_is_nonzero() {
         foma_c.net(foma_top).number_of_arcs(),
     );
 
-    let mut trop_c = XfstCompiler::<StdVectorFst>::new_with_impl();
+    let mut trop_c = XfstCompiler::<StdVectorFst>::new();
     trop_c.parse(script);
     let trop_top = *trop_c.get_stack().last().expect("tropical stack non-empty");
     let trop_size = (
@@ -1419,7 +1419,7 @@ fn foma_and_thfst_report_weights_honestly() {
 
         let ol: Transducer<WeightedTables> =
             <Transducer<WeightedTables> as Backend>::from_basic(&net).expect("OL from_basic");
-        let thfst = ThfstTransducer::from_ol(ol);
+        let thfst = ThfstTransducer::from(ol);
         assert_eq!(thfst.has_weights(), want, "THFST has_weights({name})");
     }
 }

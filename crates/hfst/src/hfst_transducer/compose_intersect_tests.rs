@@ -1,7 +1,7 @@
 use super::*;
 
 fn pair(input: &str, output: &str) -> HfstTransducer<StdVectorFst> {
-    HfstTransducer::from_strings(input, output, &HfstTokenizer::new()).unwrap()
+    HfstTransducer::new_tokenized_pair(input, output, &HfstTokenizer::new()).unwrap()
 }
 
 #[test]

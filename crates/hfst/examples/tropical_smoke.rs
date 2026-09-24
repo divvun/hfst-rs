@@ -9,7 +9,7 @@ fn main() {
     assert!(TWT::number_of_states(&ab) >= 1);
 
     // copy preserves state count
-    let c = TWT::copy(&ab);
+    let c = ab.clone();
     assert_eq!(TWT::number_of_states(&c), TWT::number_of_states(&ab));
 
     // the OpenFST-algorithm wrappers run end to end

@@ -156,9 +156,7 @@ impl<W: Clone + PartialEq + PartialOrd + std::ops::Add<Output = W> + std::fmt::D
 
     // [spec:hfst:def:hfst-extract-strings.hfst.weighted-paths.cat-fn]
     // [spec:hfst:sem:hfst-extract-strings.hfst.weighted-paths.cat-fn]
-    pub fn cat(v: &mut Vec<WeightedPath<W>>, another_v: &[WeightedPath<W>]) {
-        v.extend(another_v.iter().cloned());
-    }
+    // (cat -> 'Vec::extend_from_slice' on the Vec that stands in for Vector.)
 
     // [spec:hfst:def:hfst-extract-strings.hfst.weighted-paths.reverse-strings-fn]
     // [spec:hfst:sem:hfst-extract-strings.hfst.weighted-paths.reverse-strings-fn]

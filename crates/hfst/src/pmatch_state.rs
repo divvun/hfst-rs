@@ -460,14 +460,11 @@ impl PmatchContainer {
 
     // [spec:hfst:def:pmatch.hfst-ol.pmatch-container.has-unsatisfied-rtns-fn]
     // [spec:hfst:sem:pmatch.hfst-ol.pmatch-container.has-unsatisfied-rtns-fn]
-    pub fn has_unsatisfied_rtns(&self) -> bool {
-        false
-    }
-
     // [spec:hfst:def:pmatch.hfst-ol.pmatch-container.get-unsatisfied-rtn-name-fn]
     // [spec:hfst:sem:pmatch.hfst-ol.pmatch-container.get-unsatisfied-rtn-name-fn]
-    pub fn get_unsatisfied_rtn_name(&self) -> String {
-        String::new()
+    // Never true, so there is never an unsatisfied RTN name to report either.
+    pub fn has_unsatisfied_rtns(&self) -> bool {
+        false
     }
 
     // [spec:hfst:def:pmatch.hfst-ol.pmatch-container.process-fn]

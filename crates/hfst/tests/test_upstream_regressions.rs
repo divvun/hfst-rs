@@ -67,7 +67,7 @@ fn compile(expr: &str) -> HfstTransducer<StdVectorFst> {
 
 // A single-symbol acceptor.
 fn symbol(sym: &str) -> HfstTransducer<StdVectorFst> {
-    HfstTransducer::new_from_symbol(sym).expect("single-symbol transducer")
+    HfstTransducer::new_symbol(sym).expect("single-symbol transducer")
 }
 
 // Concatenate the given symbols into one string acceptor (>=1 symbol).

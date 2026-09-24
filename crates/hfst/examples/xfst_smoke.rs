@@ -12,7 +12,7 @@ union net
 ";
 
 fn main() {
-    let mut c = XfstCompiler::<StdVectorFst>::new_with_impl();
+    let mut c = XfstCompiler::<StdVectorFst>::new();
     c.parse(SRC);
 
     let stack = c.get_stack();

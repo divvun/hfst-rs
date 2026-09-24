@@ -53,7 +53,7 @@ fn alphabet(t: &hfst::hfst_transducer::HfstTransducer<StdVectorFst>) -> Vec<Stri
 // literal space symbol is carried through into the rule transducer's alphabet.
 
 #[test]
-fn hfst189_escaped_space_pair_side_compiles_and_preserves_space() {
+fn hfst189_escaped_space_pair_compiles_and_keeps_space() {
     let _g = serialized();
     // Alphabet declares the escaped-space symbol `% ` (percent then a space);
     // the rule maps that space symbol to `a`.

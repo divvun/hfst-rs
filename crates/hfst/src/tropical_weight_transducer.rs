@@ -797,12 +797,6 @@ mod construction_io {
             t
         }
 
-        // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.copy-fn]
-        // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.copy-fn]
-        pub fn copy(t: &StdVectorFst) -> StdVectorFst {
-            t.clone()
-        }
-
         // ---- weight properties / setters ----
 
         // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.add-to-weights-fn]
@@ -1833,7 +1827,7 @@ mod construction_io {
 
         // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.represent-empty-transducer-as-having-one-state-fn]
         // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.represent-empty-transducer-as-having-one-state-fn]
-        pub fn represent_empty_transducer_as_having_one_state(t: &mut StdVectorFst) {
+        pub fn represent_empty_as_one_state(t: &mut StdVectorFst) {
             if t.start().is_none() || t.num_states() == 0 {
                 // BUG PRESERVED: the C++ does 'delete t; t = create_empty_transducer();',
                 // assigning a LOCAL pointer — the caller's transducer is unchanged.
@@ -2071,8 +2065,8 @@ mod operations {
         // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.invert-fn]
         // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.invert-fn]
         pub fn invert(t: &StdVectorFst) -> StdVectorFst {
-            let mut inverse = TropicalWeightTransducer::copy(t);
-            algorithms::Invert(&mut inverse);
+            let mut inverse = t.clone();
+            hfst_openfst::rustfst::algorithms::invert(&mut inverse);
             copy_input_symbol_table(t, &mut inverse);
             inverse
         }
@@ -2256,7 +2250,7 @@ mod operations {
             algorithms::ArcSortInput(&mut t2);
 
             // Remove weights from t2, is this really needed?
-            let mut t2_copy = TropicalWeightTransducer::copy(&t2);
+            let mut t2_copy = t2.clone();
 
             for s in 0..t2_copy.num_states() as StateId {
                 let ntrs = t2_copy
@@ -2308,8 +2302,8 @@ mod operations {
             another: &StdVectorFst,
             encode_weights: bool,
         ) -> bool {
-            let mut a = TropicalWeightTransducer::copy(one);
-            let mut b = TropicalWeightTransducer::copy(another);
+            let mut a = one.clone();
+            let mut b = another.clone();
 
             check_epsilon_cycles(&a, "are_equivalent");
             check_epsilon_cycles(&b, "are_equivalent");
@@ -2474,7 +2468,7 @@ mod lookup_extract_misc {
     use crate::hfst_flag_diacritics::{FdOperation, FdState};
     use crate::hfst_lookup_flag_diacritics::FlagDiacriticTable;
     use crate::hfst_symbol_defs::symbols::{
-        collect_unknown_sets, remove_flags_two_level_path, to_string_vector_from_two_level_path,
+        collect_unknown_sets, remove_flags_two_level_path, to_string_vector_from_path,
     };
 
     // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.label-pair]
@@ -3041,7 +3035,7 @@ mod lookup_extract_misc {
                     break;
                 }
                 let mut path = it.clone();
-                let sv = to_string_vector_from_two_level_path(&path);
+                let sv = to_string_vector_from_path(&path);
 
                 if fdt.is_valid_string(&sv) {
                     if filter_fd {

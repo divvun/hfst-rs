@@ -138,7 +138,7 @@ fn thfst_conversion_matches_olw_lookup() {
 
 // [spec:hfst:sem:thfst-backend.olw-moves/test]
 #[test]
-fn olw_thfst_olw_round_trip_preserves_lookup_and_name() {
+fn olw_thfst_round_trip_preserves_lookup_and_name() {
     let _guard = serialized();
     let animals = build_animals().expect("build animals");
 
@@ -232,7 +232,7 @@ fn thfst_roundtrip_lookup_parity() {
     // Write, then read back into a fresh THFST transducer.
     let dir = unique_tmp("roundtrip").join("animals.thfst");
     thfst.write_dir(&dir).expect("write_dir");
-    let mut reread = ThfstTransducer::read_dir(&dir).expect("read_dir");
+    let mut reread = ThfstTransducer::from(hfst::thfst_io::read_dir(&dir).expect("read_dir"));
 
     // Lookup on the re-read engine must match the pre-write references exactly.
     for (word, want) in words.iter().zip(refs.iter()) {
@@ -480,7 +480,7 @@ fn thfst_reader_rejects() {
     let dir_a = unique_tmp("reject-missing").join("ab.thfst");
     thfst.write_dir(&dir_a).expect("write_dir");
     std::fs::remove_file(dir_a.join("transition")).expect("remove transition");
-    let err_a = ThfstTransducer::read_dir(&dir_a)
+    let err_a = hfst::thfst_io::read_dir(&dir_a)
         .err()
         .expect("missing transition rejected");
     assert_eq!(
@@ -501,7 +501,7 @@ fn thfst_reader_rejects() {
             .expect("open index");
         f.write_all(&[0u8]).expect("append stray byte");
     }
-    let err_b = ThfstTransducer::read_dir(&dir_b)
+    let err_b = hfst::thfst_io::read_dir(&dir_b)
         .err()
         .expect("bad index length rejected");
     assert_eq!(

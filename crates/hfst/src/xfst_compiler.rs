@@ -224,14 +224,9 @@ impl<B: AlgebraBackend> XfstCompiler<B> {
 impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     // [spec:hfst:def:xfst-compiler.hfst.xfst.xfst-compiler.xfst-compiler-fn]
     // [spec:hfst:sem:xfst-compiler.hfst.xfst.xfst-compiler.xfst-compiler-fn]
-    // @brief Construct compiler for unknown format transducers.
-    pub fn new() -> Self {
-        Self::new_with_impl()
-    }
-
     // @brief Create compiler for transducers of the backend type 'B'
     // (the 'impl' format argument is the type parameter now).
-    pub fn new_with_impl() -> Self {
+    pub fn new() -> Self {
         let mut c = XfstCompiler {
             use_readline: false,
             has_lexc_been_read: false,
@@ -2244,7 +2239,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         tr: &HfstTransducer<B>,
     ) -> &mut Self {
         let mut label_set: BTreeSet<(Symbol, Symbol)> = BTreeSet::new();
-        let fsm = HfstBasicTransducer::new_from_transducer(tr);
+        let fsm = HfstBasicTransducer::from_transducer(tr);
 
         for it in fsm.iter() {
             for tr_it in it.iter() {
@@ -2308,7 +2303,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         };
 
         let mut label_map: BTreeMap<(Symbol, Symbol), u32> = BTreeMap::new();
-        let fsm = HfstBasicTransducer::new_from_transducer(self.net(topmost));
+        let fsm = HfstBasicTransducer::from_transducer(self.net(topmost));
 
         for it in fsm.iter() {
             for tr_it in it.iter() {
@@ -2705,7 +2700,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             self.xfst_lesser_fail();
             return Ok(self);
         };
-        let basic = HfstBasicTransducer::new_from_transducer(self.net(tmp));
+        let basic = HfstBasicTransducer::from_transducer(self.net(tmp));
         basic.write_in_xfst_format(oss, self.variables["print-weight"] == "ON");
         self.flush();
         self.prompt();
@@ -2730,7 +2725,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
                     self.print_sigma(oss, false /*do not prompt*/)?;
                     self.stack.pop();
                 }
-                let basic = HfstBasicTransducer::new_from_transducer(self.net(it));
+                let basic = HfstBasicTransducer::from_transducer(self.net(it));
                 basic.write_in_xfst_format(oss, self.variables["print-weight"] == "ON");
                 self.flush();
                 self.prompt();
@@ -2752,7 +2747,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         let alpha = self.net(t).get_alphabet()?;
 
         // find out whether unknown or identity is used in transitions
-        let (unknown, identity) = is_unknown_or_identity_used_in_transducer(self.net(t));
+        let (unknown, identity) = uses_unknown_or_identity(self.net(t));
 
         self.print_alphabet(&alpha, unknown, identity, oss);
         if prompt {
@@ -2791,7 +2786,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             self.xfst_lesser_fail();
             return self;
         };
-        let fsm = HfstBasicTransducer::new_from_transducer(self.net(tmp));
+        let fsm = HfstBasicTransducer::from_transducer(self.net(tmp));
         fsm.write_in_att_format_os(oss, self.variables["print-weight"] == "ON");
         self.flush();
         self.prompt();
@@ -3040,10 +3035,9 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             let mut something_printed = false; // to control printing spaces
 
             if self.variables["obey-flags"] == "ON" {
-                let path_input =
-                    crate::hfst_symbol_defs::symbols::to_string_vector_from_string_pair_vector(
-                        &path, true, /*input side*/
-                    );
+                let path_input = crate::hfst_symbol_defs::symbols::to_string_vector_from_pairs(
+                    &path, true, /*input side*/
+                );
                 if !is_valid_string(&path_input) {
                     continue;
                 }
@@ -3427,11 +3421,11 @@ fn is_special_symbol(s: &str) -> bool {
 // [spec:hfst:def:xfst-compiler.hfst.xfst.is-unknown-or-identity-used-in-transducer-fn]
 // [spec:hfst:sem:xfst-compiler.hfst.xfst.is-unknown-or-identity-used-in-transducer-fn]
 // Returns (unknown used, identity used).
-fn is_unknown_or_identity_used_in_transducer<B: Backend>(t: &HfstTransducer<B>) -> (bool, bool) {
+fn uses_unknown_or_identity<B: Backend>(t: &HfstTransducer<B>) -> (bool, bool) {
     let mut unknown = false;
     let mut identity = false;
 
-    let fsm = HfstBasicTransducer::new_from_transducer(t);
+    let fsm = HfstBasicTransducer::from_transducer(t);
     for it in fsm.iter() {
         for tr_it in it.iter() {
             let istr = tr_it.get_input_symbol(fsm.coder());
@@ -4634,7 +4628,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             self.xfst_lesser_fail();
             return Ok(self);
         };
-        let mut fsm = HfstBasicTransducer::new_from_transducer(self.net(topmost));
+        let mut fsm = HfstBasicTransducer::from_transducer(self.net(topmost));
         fsm.complete()?;
         let result: NetId = self.alloc_net(HfstTransducer::from_basic_transducer(&fsm));
         self.stack.pop();
@@ -4670,7 +4664,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         };
         let result: NetId = self.alloc_net(HfstTransducer::new());
         let mut label_set: BTreeSet<(Symbol, Symbol)> = BTreeSet::new();
-        let fsm = HfstBasicTransducer::new_from_transducer(self.net(topmost));
+        let fsm = HfstBasicTransducer::from_transducer(self.net(topmost));
         for it in fsm.iter() {
             for tr_it in it.iter() {
                 label_set.insert((
@@ -4792,7 +4786,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             return Ok(self);
         };
 
-        let net = HfstBasicTransducer::new_from_transducer(self.net(t));
+        let net = HfstBasicTransducer::from_transducer(self.net(t));
 
         const INSPECT_NET_HELP_MSG: &str =
             "'N' transits arc N, '-N' returns to level N, '<' to previous level, '0' quits.\n";
@@ -4935,7 +4929,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         let retokenize_on = self.variables["retokenize"] == "ON";
         let cfg = self.engine_config;
 
-        let mut fsm = HfstBasicTransducer::new_from_transducer(self.net(tmp));
+        let mut fsm = HfstBasicTransducer::from_transducer(self.net(tmp));
         let mut early_return = false;
         // The C++ wrapped this block in try/catch (const char*) and demoted a
         // malformed compile-replace regexp to a diagnostic.
@@ -4975,7 +4969,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
                         };
 
                         let _ = replacement.optimize_with_config(&cfg);
-                        let repl = HfstBasicTransducer::new_from_transducer(&replacement);
+                        let repl = HfstBasicTransducer::from_transducer(&replacement);
                         fsm.insert_transducer(*start_state, *end_state, &repl);
                     }
                 }
@@ -5454,8 +5448,8 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             && work_type != ImplementationType::THFST_TYPE
         {
             fsm = Some(match &owned_t {
-                Some(c) => HfstBasicTransducer::new_from_transducer(c),
-                None => HfstBasicTransducer::new_from_transducer(self.net(top)),
+                Some(c) => HfstBasicTransducer::from_transducer(c),
+                None => HfstBasicTransducer::from_transducer(self.net(top)),
             });
         }
 
@@ -5585,7 +5579,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         let mut copy = HfstTransducer::new_copy(self.net(t))?;
         // the user has been warned for possible slow performance
         copy.invert()?.minimize_with_config(&self.engine_config)?;
-        let fsm = HfstBasicTransducer::new_from_transducer(&copy);
+        let fsm = HfstBasicTransducer::from_transducer(&copy);
         self.lookup_basic(line, &fsm);
         Ok(self)
     }
@@ -5605,7 +5599,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         // excludes the OL backends, so this non-OL branch is always taken.
         // hfst_fprintf(warnstream_, "lookup might be slow, consider
         // 'convert net'\n");
-        let fsm = HfstBasicTransducer::new_from_transducer(self.net(t));
+        let fsm = HfstBasicTransducer::from_transducer(self.net(t));
         Ok(self.lookup_basic(line, &fsm))
     }
 
@@ -5687,7 +5681,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             if name.is_empty() {
                 name = "NO_NAME".to_string();
             }
-            let fsm = HfstBasicTransducer::new_from_transducer(self.net(*tr));
+            let fsm = HfstBasicTransducer::from_transducer(self.net(*tr));
             let write_weights = self.variables["print-weight"] == "ON";
             fsm.write_in_prolog_format_os(oss, &name, write_weights)?;
             if i + 1 != self.stack.len() {
@@ -6105,7 +6099,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             return Ok(self);
         }
 
-        let fsm = HfstBasicTransducer::new_from_transducer(self.net(top));
+        let fsm = HfstBasicTransducer::from_transducer(self.net(top));
 
         for it in fsm.iter() {
             for tr_it in it {
@@ -6188,7 +6182,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         let target_vector = Self::tokenize_string(target, ':');
         match Self::symbol_vector_to_symbol_pair(&target_vector) {
             Some(target_label) => {
-                let fsm = HfstBasicTransducer::new_from_transducer(self.net(top));
+                let fsm = HfstBasicTransducer::from_transducer(self.net(top));
                 let mut target_label_found = false;
 
                 for it in fsm.iter() {

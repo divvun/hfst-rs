@@ -500,8 +500,10 @@ impl Backend for StdVectorFst {
     fn empty() -> Self {
         TropicalWeightTransducer::create_empty_transducer()
     }
+    // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.copy-fn]
+    // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.copy-fn]
     fn copy(&self) -> crate::error::Result<Self> {
-        Ok(TropicalWeightTransducer::copy(self))
+        Ok(self.clone())
     }
     fn to_basic(&self) -> crate::error::Result<HfstBasicTransducer> {
         ConversionFunctions::tropical_ofst_to_hfst_basic_transducer(self, true)

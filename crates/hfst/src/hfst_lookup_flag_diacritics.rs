@@ -133,8 +133,8 @@ impl FlagDiacriticTable {
     // Decompose a flag diacritic '@[PNDRCU].FEATURE(.VALUE)?@' into (operator,
     // feature, value). This is exactly the parse the C++ 'split_diacritic'
     // performed once into the global maps; it is recomputed on demand instead.
-    // For a non-diacritic string the accessors below never see it (callers gate
-    // on 'is_diacritic' first), but it returns inert defaults rather than panic.
+    // Callers gate on 'is_diacritic' first, but for a non-diacritic string it
+    // returns inert defaults rather than panic.
     fn parse_diacritic(symbol: &str) -> (DiacriticOperator, String, Option<String>) {
         let bytes = symbol.as_bytes();
         if symbol.len() < 5 || bytes[2] != b'.' {
@@ -167,20 +167,6 @@ impl FlagDiacriticTable {
                 Some(symbol[second_full_stop_pos + 1..last_char_pos].to_string()),
             ),
         }
-    }
-
-    // Accessors mirroring 'operator[]' on the (now-removed) static maps.
-    fn op_of(symbol: &str) -> DiacriticOperator {
-        Self::parse_diacritic(symbol).0
-    }
-    fn feature_of(symbol: &str) -> String {
-        Self::parse_diacritic(symbol).1
-    }
-    fn value_of(symbol: &str) -> String {
-        Self::parse_diacritic(symbol).2.unwrap_or_default()
-    }
-    fn has_value_of(symbol: &str) -> bool {
-        Self::parse_diacritic(symbol).2.is_some()
     }
 
     // [spec:hfst:def:hfst-lookup-flag-diacritics.flag-diacritic-table.is-genuine-diacritic-fn]
@@ -334,46 +320,20 @@ impl FlagDiacriticTable {
     // [spec:hfst:sem:hfst-lookup-flag-diacritics.flag-diacritic-table.insert-symbol-fn]
     pub fn insert_symbol(&mut self, symbol: &str) {
         if Self::is_diacritic(symbol) {
-            match Self::op_of(symbol) {
-                DiacriticOperator::Pop => {
-                    let f = Self::feature_of(symbol);
-                    let v = Self::value_of(symbol);
-                    self.set_positive_value(&f, &v);
-                }
-                DiacriticOperator::Nop => {
-                    let f = Self::feature_of(symbol);
-                    let v = Self::value_of(symbol);
-                    self.set_negative_value(&f, &v);
-                }
-                DiacriticOperator::Dop => {
-                    if !Self::has_value_of(symbol) {
-                        let f = Self::feature_of(symbol);
-                        self.disallow_feature(&f);
-                    } else {
-                        let f = Self::feature_of(symbol);
-                        let v = Self::value_of(symbol);
-                        self.disallow(&f, &v);
-                    }
-                }
-                DiacriticOperator::Rop => {
-                    if !Self::has_value_of(symbol) {
-                        let f = Self::feature_of(symbol);
-                        self.require_feature(&f);
-                    } else {
-                        let f = Self::feature_of(symbol);
-                        let v = Self::value_of(symbol);
-                        self.require(&f, &v);
-                    }
-                }
-                DiacriticOperator::Cop => {
-                    let f = Self::feature_of(symbol);
-                    self.clear(&f);
-                }
-                DiacriticOperator::Uop => {
-                    let f = Self::feature_of(symbol);
-                    let v = Self::value_of(symbol);
-                    self.unify(&f, &v);
-                }
+            let (op, f, v) = Self::parse_diacritic(symbol);
+            match op {
+                DiacriticOperator::Pop => self.set_positive_value(&f, &v.unwrap_or_default()),
+                DiacriticOperator::Nop => self.set_negative_value(&f, &v.unwrap_or_default()),
+                DiacriticOperator::Dop => match v {
+                    None => self.disallow_feature(&f),
+                    Some(v) => self.disallow(&f, &v),
+                },
+                DiacriticOperator::Rop => match v {
+                    None => self.require_feature(&f),
+                    Some(v) => self.require(&f, &v),
+                },
+                DiacriticOperator::Cop => self.clear(&f),
+                DiacriticOperator::Uop => self.unify(&f, &v.unwrap_or_default()),
             }
         }
     }
@@ -435,19 +395,15 @@ impl FlagDiacriticTable {
     // '#ifdef DEBUG' dead code: the original keyed the static maps by 'short'
     // (an old number-based API), so the 'short' key is looked up by its decimal
     // string. With the cache gone, "defined" is just "parses as a genuine
-    // diacritic"; the op/feature/value come from the on-demand accessors, and the
+    // diacritic"; the op/feature/value come from parsing it on demand, and the
     // unscoped C++ enum streams as its integer value (mirrored with 'as i32').
     pub fn display(diacritic: i16) {
         let key = diacritic.to_string();
         if !Self::is_genuine_diacritic(&key) {
             println!("{} not defined.", diacritic);
         } else {
-            println!(
-                "{} {} {}",
-                Self::op_of(&key) as i32,
-                Self::feature_of(&key),
-                Self::value_of(&key)
-            );
+            let (op, feature, value) = Self::parse_diacritic(&key);
+            println!("{} {} {}", op as i32, feature, value.unwrap_or_default());
         }
     }
 }

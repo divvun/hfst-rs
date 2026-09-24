@@ -1,7 +1,7 @@
 use hfst::convert::{FlagSymbolSet, IndexPlaceholders, StatePlaceholder, TransitionPlaceholder};
 
 fn main() -> hfst::error::Result<()> {
-    let flags = FlagSymbolSet::new();
+    let flags = FlagSymbolSet::default();
 
     // State 0 is always nonsimple; a later state starts empty (=> simple).
     let s0 = StatePlaceholder::new(0, false, 0, 0.0);

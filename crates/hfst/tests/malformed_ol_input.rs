@@ -105,7 +105,7 @@ fn empty_transducer_lookup_returns_no_analyses() {
 // whole alphabet as potential input and so probes even further past the
 // index-table padding.
 #[test]
-fn plain_optimized_lookup_transducer_in_pmatch_runtime_does_not_panic() {
+fn plain_ol_transducer_in_pmatch_does_not_panic() {
     let _guard = serialized();
     let mut container =
         PmatchContainer::new_from_transducer(one_arc_ol()).expect("container builds");
@@ -175,7 +175,7 @@ fn well_formed_optimized_lookup_bytes_still_load() {
 // symbol count. Claiming more input symbols than symbols sent the encoder off
 // the end of the symbol table while building its tokenization trie.
 #[test]
-fn header_claiming_more_input_symbols_than_symbols_is_rejected() {
+fn header_claiming_excess_input_symbols_is_rejected() {
     let _guard = serialized();
     let mut bytes = write_ol(&one_arc_ol());
     let symbols = u16::from_le_bytes([bytes[2], bytes[3]]);
@@ -246,7 +246,7 @@ fn alphabet_end(bytes: &[u8], symbols: usize) -> usize {
 // is trivially craftable and used to panic while the encoder built its trie
 // over a buffer holding only the terminator.
 #[test]
-fn empty_symbol_string_in_the_alphabet_does_not_panic() {
+fn empty_symbol_string_in_alphabet_does_not_panic() {
     let _guard = serialized();
     let transducer = one_arc_ol();
     let symbols = transducer.get_header().symbol_count() as usize;

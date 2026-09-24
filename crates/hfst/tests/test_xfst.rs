@@ -24,11 +24,11 @@ fn top_arcs(c: &XfstCompiler<StdVectorFst>) -> u32 {
 // Both figures are what C++ hfst-xfst 3.17.1 prints for the same script.
 #[test]
 fn minimal_off_leaves_the_result_unminimized() {
-    let mut on = XfstCompiler::<StdVectorFst>::new_with_impl();
+    let mut on = XfstCompiler::<StdVectorFst>::new();
     on.parse("set minimal ON\nregex [a b c | x b c] ;\n");
     assert_eq!((top_states(&on), top_arcs(&on)), (4, 4));
 
-    let mut off = XfstCompiler::<StdVectorFst>::new_with_impl();
+    let mut off = XfstCompiler::<StdVectorFst>::new();
     off.parse("set minimal OFF\nregex [a b c | x b c] ;\n");
     assert_eq!((top_states(&off), top_arcs(&off)), (7, 6));
 }
@@ -36,7 +36,7 @@ fn minimal_off_leaves_the_result_unminimized() {
 // Turning it back ON has to restore minimization, not latch OFF.
 #[test]
 fn minimal_on_restores_minimization_after_off() {
-    let mut c = XfstCompiler::<StdVectorFst>::new_with_impl();
+    let mut c = XfstCompiler::<StdVectorFst>::new();
     c.parse("set minimal OFF\nset minimal ON\nregex [a b c | x b c] ;\n");
     assert_eq!((top_states(&c), top_arcs(&c)), (4, 4));
 }
@@ -46,11 +46,11 @@ fn minimal_on_restores_minimization_after_off() {
 fn minimal_governs_stack_operations_as_well() {
     let script = "regex [a b c] ;\nregex [x b c] ;\nunion net\n";
 
-    let mut off = XfstCompiler::<StdVectorFst>::new_with_impl();
+    let mut off = XfstCompiler::<StdVectorFst>::new();
     off.parse(&format!("set minimal OFF\n{script}"));
     assert_eq!((top_states(&off), top_arcs(&off)), (7, 6));
 
-    let mut on = XfstCompiler::<StdVectorFst>::new_with_impl();
+    let mut on = XfstCompiler::<StdVectorFst>::new();
     on.parse(&format!("set minimal ON\n{script}"));
     assert_eq!((top_states(&on), top_arcs(&on)), (4, 4));
 }
@@ -59,7 +59,7 @@ fn minimal_governs_stack_operations_as_well() {
 // recorded the variable and never consulted it.
 #[test]
 fn set_verbose_reaches_the_verbosity_flag() {
-    let mut c = XfstCompiler::<StdVectorFst>::new_with_impl();
+    let mut c = XfstCompiler::<StdVectorFst>::new();
     c.set_verbosity(true);
     c.parse("set verbose OFF\n");
     assert!(!c.verbose);
@@ -69,7 +69,7 @@ fn set_verbose_reaches_the_verbosity_flag() {
 
 #[test]
 fn regex_pushes_and_union_combines() {
-    let mut c = XfstCompiler::<StdVectorFst>::new_with_impl();
+    let mut c = XfstCompiler::<StdVectorFst>::new();
     c.parse("regex a:b ;\nregex c:d ;\nunion net\n");
     // two pushes then a binary stack op -> a single combined transducer.
     assert_eq!(c.get_stack().len(), 1);
@@ -78,7 +78,7 @@ fn regex_pushes_and_union_combines() {
 
 #[test]
 fn name_then_print_name_finds_it() {
-    let mut c = XfstCompiler::<StdVectorFst>::new_with_impl();
+    let mut c = XfstCompiler::<StdVectorFst>::new();
     c.parse("regex a:b ;\n");
     assert_eq!(c.get_stack().len(), 1);
     // name_net aliases the stack-top transducer into names; print_name finds
@@ -92,7 +92,7 @@ fn name_then_print_name_finds_it() {
 
 #[test]
 fn define_then_reference_pushes_definition() {
-    let mut c = XfstCompiler::<StdVectorFst>::new_with_impl();
+    let mut c = XfstCompiler::<StdVectorFst>::new();
     c.parse("define V [ a | b | c ] ;\n");
     // referencing the definition in a later regex pushes an equivalent net.
     c.parse("regex V ;\n");
@@ -107,7 +107,7 @@ fn define_then_reference_pushes_definition() {
 // hfst-xfst, which lists both names with their bodies.
 #[test]
 fn print_defined_lists_definitions_made_with_a_body() {
-    let mut c = XfstCompiler::<StdVectorFst>::new_with_impl();
+    let mut c = XfstCompiler::<StdVectorFst>::new();
     c.parse("define foo a ;\ndefine bar [ a b ]* ;\n");
     let mut buf: Vec<u8> = Vec::new();
     c.print_defined(&mut buf);
@@ -133,7 +133,7 @@ fn print_defined_lists_definitions_made_with_a_body() {
 // Expectations verified against C++ hfst-xfst 3.17.1.
 #[test]
 fn function_arguments_substitute_including_compound_ones() {
-    let mut c = XfstCompiler::<StdVectorFst>::new_with_impl();
+    let mut c = XfstCompiler::<StdVectorFst>::new();
     c.parse("define Concat(x, y) x y ;\nregex Concat([ a | b ], c) ;\n");
     assert_eq!(c.get_stack().len(), 1);
     // [a|b] c: 3 states, 3 arcs. Substitution failure yielded 2 arcs.
@@ -148,7 +148,7 @@ fn function_arguments_substitute_including_compound_ones() {
 // A parameter is a whole NAMETOKEN: `x` must not be substituted inside `xy`.
 #[test]
 fn function_argument_substitution_respects_token_boundaries() {
-    let mut c = XfstCompiler::<StdVectorFst>::new_with_impl();
+    let mut c = XfstCompiler::<StdVectorFst>::new();
     c.parse("define Fn(x) x xy ;\nregex Fn(a) ;\n");
     assert_eq!(c.get_stack().len(), 1);
     // a xy — two arcs, the second being the untouched symbol `xy`.

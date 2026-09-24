@@ -174,7 +174,8 @@ pub fn add_word_boundaries(tokenized_pair_string: &mut StringPairVector) {
 
 /// A compiled twolc grammar to test pair strings against: the rule
 /// transducers, their demangled names, and the symbol set that decides when an
-/// identity arc may stand in for an unlisted symbol.
+/// identity arc may stand in for an unlisted symbol. The default grammar is
+/// empty, to be filled with [`PairTestGrammar::push_rule`].
 #[derive(Default)]
 pub struct PairTestGrammar {
     transducers: BasicTransducerVector,
@@ -183,11 +184,6 @@ pub struct PairTestGrammar {
 }
 
 impl PairTestGrammar {
-    /// An empty grammar, to be filled with [`PairTestGrammar::push_rule`].
-    pub fn new() -> PairTestGrammar {
-        PairTestGrammar::default()
-    }
-
     /// Add one compiled rule under `name`, which is demangled on the way in.
     pub fn push_rule(&mut self, rule: HfstBasicTransducer, name: String) {
         self.transducers.push(rule);
@@ -282,7 +278,7 @@ impl PairTestGrammar {
         str_transducer.input_project()?;
         str_transducer.compose(&rule, true)?;
         str_transducer.minimize()?;
-        let recognizer = HfstBasicTransducer::new_from_transducer(&str_transducer);
+        let recognizer = HfstBasicTransducer::from_transducer(&str_transducer);
 
         let mut s: HfstState = 0;
         let mut idx = 0;

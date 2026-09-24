@@ -33,7 +33,7 @@ use crate::convert::HfstOlToBasicStateMap;
 /* An auxiliary function. */
 // [spec:hfst:def:convert-ol-transducer.hfst.implementations.hfst-ol-to-hfst-basic-add-state-fn]
 // [spec:hfst:sem:convert-ol-transducer.hfst.implementations.hfst-ol-to-hfst-basic-add-state-fn]
-pub fn hfst_ol_to_hfst_basic_add_state<T: crate::transducer::TransducerTablesInterface>(
+pub fn add_ol_state_to_basic<T: crate::transducer::TransducerTablesInterface>(
     t: &Transducer<T>,
     basic: &mut HfstBasicTransducer,
     state_map: &mut HfstOlToBasicStateMap,
@@ -102,7 +102,7 @@ pub(crate) fn harmonizer_numbering(
     let symbol_table = harmonizer.get_symbol_table().clone();
     let string_symbol_map = harmonizer.get_alphabet().build_string_symbol_map();
     let seen_input_symbols = harmonizer.get_header().input_symbol_count();
-    let mut flag_symbols = FlagSymbolSet::new();
+    let mut flag_symbols = FlagSymbolSet::default();
     for (i, symbol) in symbol_table.iter().enumerate() {
         if harmonizer.get_alphabet().is_flag_diacritic(i as u16)
             || PmatchAlphabet::is_insertion(symbol)
@@ -334,7 +334,7 @@ impl ConversionFunctions {
         let mut state_map: HfstOlToBasicStateMap = BTreeMap::new();
         let mut state_number: u32 = 0;
 
-        hfst_ol_to_hfst_basic_add_state(t, &mut basic, &mut state_map, weighted, 0, state_number);
+        add_ol_state_to_basic(t, &mut basic, &mut state_map, weighted, 0, state_number);
         agenda.push(0);
         while let Some(current_index) = agenda.pop() {
             let current_state = state_map[&current_index];
@@ -352,7 +352,7 @@ impl ConversionFunctions {
 
                 if !state_map.contains_key(&target) {
                     state_number += 1;
-                    hfst_ol_to_hfst_basic_add_state(
+                    add_ol_state_to_basic(
                         t,
                         &mut basic,
                         &mut state_map,
@@ -395,7 +395,7 @@ impl ConversionFunctions {
         let mut state_placeholders: Vec<StatePlaceholder> = Vec::new();
         let mut symbol_table: SymbolTable = SymbolTable::new();
         let mut seen_input_symbols: SymbolNumber = 1; // We always have epsilon
-        let mut flag_symbols = FlagSymbolSet::new();
+        let mut flag_symbols = FlagSymbolSet::default();
         get_states_and_symbols(
             t,
             &mut state_placeholders,

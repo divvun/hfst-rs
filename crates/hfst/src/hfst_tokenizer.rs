@@ -5,9 +5,9 @@
 //! - grapheme-cluster segmentation uses the 'icu' crate
 //!   ('GraphemeClusterSegmenter'), constructed per call as the C++ opened a new
 //!   'UBreakIterator' per call;
-//! - UTF-8 *validation* collapses to a no-op, because a Rust '&str' is valid
-//!   UTF-8 by construction (so 'check_utf8_correctness' never throws and the
-//!   "split a single UTF-8 char" path is just the next 'char''s byte length).
+//! - UTF-8 *validation* has no counterpart, because a Rust '&str' is valid
+//!   UTF-8 by construction (so the "split a single UTF-8 char" path is just
+//!   the next 'char''s byte length).
 //!
 //! 'MultiCharSymbolTrie' keeps the C++ algorithm verbatim, walking the input by
 //! byte index (mirroring the 'const char*' pointer arithmetic, with "past end"
@@ -225,8 +225,10 @@ impl HfstTokenizer {
         self.skip_symbol_set.insert(Symbol::new(symbol));
     }
 
+    // [spec:hfst:def:hfst-tokenizer.hfst.hfst-tokenizer.check-utf8-correctness-fn]
+    // [spec:hfst:sem:hfst-tokenizer.hfst.hfst-tokenizer.check-utf8-correctness-fn]
+    // A '&str' input is valid UTF-8 by construction, so there is nothing to check.
     pub fn tokenize(&self, input_string: &str, split_characters: bool) -> StringPairVector {
-        Self::check_utf8_correctness(input_string);
         let mut spv = StringPairVector::new();
         let bytes = input_string.as_bytes();
         let mut s: usize = 0;
@@ -245,8 +247,6 @@ impl HfstTokenizer {
     // [spec:hfst:def:hfst-tokenizer.hfst.hfst-tokenizer.tokenize-one-level-fn]
     // [spec:hfst:sem:hfst-tokenizer.hfst.hfst-tokenizer.tokenize-one-level-fn]
     pub fn tokenize_one_level(&self, input_string: &str, split_characters: bool) -> StringVector {
-        Self::check_utf8_correctness(input_string);
-
         let mut sv = StringVector::new();
         let bytes = input_string.as_bytes();
         let mut s: usize = 0;
@@ -265,8 +265,6 @@ impl HfstTokenizer {
     // [spec:hfst:def:hfst-tokenizer.hfst.hfst-tokenizer.tokenize-space-separated-fn]
     // [spec:hfst:sem:hfst-tokenizer.hfst.hfst-tokenizer.tokenize-space-separated-fn]
     pub fn tokenize_space_separated(str: &str) -> StringPairVector {
-        Self::check_utf8_correctness(str);
-
         let mut retval = StringPairVector::new();
         let bytes = str.as_bytes();
         let mut pos: usize = 0;
@@ -302,9 +300,6 @@ impl HfstTokenizer {
         output_string: &str,
         split_characters: bool,
     ) -> StringPairVector {
-        Self::check_utf8_correctness(input_string);
-        Self::check_utf8_correctness(output_string);
-
         let mut spv = StringPairVector::new();
 
         let input_spv = self.tokenize(input_string, split_characters);
@@ -341,9 +336,6 @@ impl HfstTokenizer {
         split_characters: bool,
         warn_about_pair: fn(&StringPair),
     ) -> StringPairVector {
-        Self::check_utf8_correctness(input_string);
-        Self::check_utf8_correctness(output_string);
-
         let mut spv = StringPairVector::new();
 
         let input_spv = self.tokenize(input_string, split_characters);
@@ -388,9 +380,6 @@ impl HfstTokenizer {
         split_characters: bool,
         warn_about_pair: fn(&StringPair),
     ) -> StringPairVector {
-        Self::check_utf8_correctness(input_string);
-        Self::check_utf8_correctness(output_string);
-
         let mut spv = StringPairVector::new();
 
         let input_spv = self.tokenize(input_string, split_characters);
@@ -458,22 +447,6 @@ impl HfstTokenizer {
         }
 
         spv
-    }
-
-    // [spec:hfst:def:hfst-tokenizer.hfst.hfst-tokenizer.check-utf8-correctness-fn]
-    // [spec:hfst:sem:hfst-tokenizer.hfst.hfst-tokenizer.check-utf8-correctness-fn]
-    pub fn check_utf8_correctness(input_string: &str) {
-        let _ = Self::check_utf8_correctness_and_calculate_length(input_string);
-    }
-
-    // [spec:hfst:def:hfst-tokenizer.hfst.hfst-tokenizer.check-utf8-correctness-and-calculate-length-fn]
-    // [spec:hfst:sem:hfst-tokenizer.hfst.hfst-tokenizer.check-utf8-correctness-and-calculate-length-fn]
-    //
-    // A Rust '&str' is always valid UTF-8, so the original ICU validity check
-    // can never fail (no 'IncorrectUtf8CodingException'). The return value is the
-    // UTF-16 code-unit length, as 'u_strFromUTF8' measured.
-    pub fn check_utf8_correctness_and_calculate_length(input_string: &str) -> u32 {
-        input_string.encode_utf16().count() as u32
     }
 }
 

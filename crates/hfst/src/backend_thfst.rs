@@ -25,13 +25,15 @@ use crate::transducer::{Transducer, WeightedTables};
 // [spec:hfst:sem:thfst-backend.thfst-transducer]
 pub struct ThfstTransducer(pub(crate) Transducer<WeightedTables>);
 
-impl ThfstTransducer {
-    /// Wrap an optimized-lookup (weighted) engine as a THFST handle — the O(1)
-    /// table move behind `into_thfst()` / the OLW->THFST `from_any` arm.
-    pub fn from_ol(t: Transducer<WeightedTables>) -> Self {
+/// Wrap an optimized-lookup (weighted) engine as a THFST handle — the O(1)
+/// table move behind `into_thfst()` / the OLW->THFST `from_any` arm.
+impl From<Transducer<WeightedTables>> for ThfstTransducer {
+    fn from(t: Transducer<WeightedTables>) -> Self {
         ThfstTransducer(t)
     }
+}
 
+impl ThfstTransducer {
     /// Recover the inner optimized-lookup engine — the O(1) table move behind
     /// `into_olw()` / the THFST->OLW `from_any` arm.
     pub fn into_ol(self) -> Transducer<WeightedTables> {
@@ -48,17 +50,6 @@ impl ThfstTransducer {
     // [spec:hfst:sem:thfst-backend.write-dir-fn]
     pub fn write_dir(&self, dir: &std::path::Path) -> crate::error::Result<()> {
         crate::thfst_io::write_dir(&self.0, dir)
-    }
-
-    /// Load a THFST transducer from a `X.thfst/` directory — a thin wrapper
-    /// over [`crate::thfst_io::read_dir`]. The directory must contain all three
-    /// member files (else `NotTransducerStream`); the OL header THFST does not
-    /// store is synthesized (both symbol counts = key_table length, table sizes
-    /// = the exact record counts, weighted = true, all property flags false).
-    // [spec:hfst:def:thfst-backend.read-dir-fn]
-    // [spec:hfst:sem:thfst-backend.read-dir-fn]
-    pub fn read_dir(dir: &std::path::Path) -> crate::error::Result<Self> {
-        Ok(ThfstTransducer(crate::thfst_io::read_dir(dir)?))
     }
 }
 

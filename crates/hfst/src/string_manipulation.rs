@@ -58,6 +58,9 @@ pub fn compare_unescaped(str1: &str, str2: &str) -> crate::error::Result<i32> {
 
 // [spec:hfst:def:string-manipulation.remove-white-space-fn]
 // [spec:hfst:sem:string-manipulation.remove-white-space-fn]
+// [spec:hfst:def:string-manipulation.unescape-and-remove-white-space-fn]
+// [spec:hfst:sem:string-manipulation.unescape-and-remove-white-space-fn]
+// (unescape_and_remove_white_space is 'unescape(&remove_white_space(s)?)'.)
 pub fn remove_white_space(str: &str) -> crate::error::Result<String> {
     if str.contains('\n') {
         crate::bail!(
@@ -89,12 +92,6 @@ pub fn remove_white_space(str: &str) -> crate::error::Result<String> {
         "__HFST_TWOLC_\\n",
     );
     Ok(str)
-}
-
-// [spec:hfst:def:string-manipulation.unescape-and-remove-white-space-fn]
-// [spec:hfst:sem:string-manipulation.unescape-and-remove-white-space-fn]
-pub fn unescape_and_remove_white_space(str: &str) -> crate::error::Result<String> {
-    unescape(&remove_white_space(str)?)
 }
 
 // [spec:hfst:def:string-manipulation.unquote-fn]

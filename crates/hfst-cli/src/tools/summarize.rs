@@ -152,7 +152,7 @@ fn process_stream(
             None
         };
         crate::for_any!(any, trans => {
-            let mutt = HfstBasicTransducer::new_from_transducer(&trans);
+            let mutt = HfstBasicTransducer::from_transducer(&trans);
             let initial_state: u32 = 0; // mutt.get_initial_state();
             let transducer_alphabet: StringSet = match trans.get_alphabet() {
                 Ok(a) => a,

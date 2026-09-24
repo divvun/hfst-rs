@@ -475,8 +475,9 @@ pub trait PmatchObject<B: AlgebraBackend + 'static> {
     }
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-object.as-string-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-object.as-string-fn]
-    fn as_string(&self, ctx: &mut PmatchEvalContext<B>) -> String {
-        String::new()
+    // None for an object with no string form, where the C++ base returned "".
+    fn as_string(&self, ctx: &mut PmatchEvalContext<B>) -> Option<String> {
+        None
     }
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-object.as-string-pair-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-object.as-string-pair-fn]
@@ -1488,19 +1489,15 @@ pub fn acceptor_from_cstr<B: AlgebraBackend>(
 ) -> crate::error::Result<HfstTransducer<B>> {
     let mut retval: HfstTransducer<B> = HfstTransducer::new();
     let mut i = 0;
-    while i < array_len(strings) {
+    // [spec:hfst:def:pmatch-utils.hfst.pmatch.array-len-fn]
+    // [spec:hfst:sem:pmatch-utils.hfst.pmatch.array-len-fn]
+    while i < strings.len() {
         let tmp = HfstTransducer::new_symbol(strings[i])?;
         retval.disjunct(&tmp, true)?;
         i += 1;
     }
     retval.minimize()?;
     Ok(retval)
-}
-
-// [spec:hfst:def:pmatch-utils.hfst.pmatch.array-len-fn]
-// [spec:hfst:sem:pmatch-utils.hfst.pmatch.array-len-fn]
-pub fn array_len(strings: &[&str]) -> usize {
-    strings.len()
 }
 
 /// Facade mirroring the C++ 'hfst::pmatch::compile': construct the
@@ -1642,7 +1639,7 @@ impl<B: AlgebraBackend> PmatchUtilityTransducers<B> {
         let mut retval: HfstTransducer<B> = HfstTransducer::new();
         let tok: HfstTokenizer = HfstTokenizer::new();
         let mut i: usize = 0;
-        while i < array_len(latin1_upper) {
+        while i < latin1_upper.len() {
             retval.disjunct(
                 &HfstTransducer::new_tokenized_pair(latin1_lower[i], latin1_upper[i], &tok)?,
                 true,
@@ -1665,7 +1662,7 @@ impl<B: AlgebraBackend> PmatchUtilityTransducers<B> {
         let mut retval: HfstTransducer<B> = HfstTransducer::new();
         let tok: HfstTokenizer = HfstTokenizer::new();
         let mut i: usize = 0;
-        while i < array_len(latin1_upper) {
+        while i < latin1_upper.len() {
             retval.disjunct(
                 &HfstTransducer::new_tokenized_pair(latin1_upper[i], latin1_lower[i], &tok)?,
                 true,
@@ -2294,11 +2291,6 @@ pub fn get_delimited_lr(s: &str, delim_left: char, delim_right: char) -> String 
         s[start..end].to_string()
     }
 }
-// [spec:hfst:def:pmatch-utils.hfst.pmatch.get-delimited-fn]
-// [spec:hfst:sem:pmatch-utils.hfst.pmatch.get-delimited-fn]
-pub fn get_delimited(s: &str, delim: char) -> String {
-    get_delimited_lr(s, delim, delim)
-}
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.codepoint-to-utf8-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.codepoint-to-utf8-fn]
 pub fn codepoint_to_utf8(codepoint: u32) -> String {
@@ -2337,7 +2329,7 @@ pub fn parse_range<B: AlgebraBackend + 'static>(
             ch as u32
         }
     }
-    let quoted = get_delimited(s, '"');
+    let quoted = get_delimited_lr(s, '"', '"');
     let bytes = quoted.as_bytes();
     let mut i = 0usize;
     let mut retval = HfstTransducer::new();
@@ -3180,8 +3172,8 @@ impl<B: AlgebraBackend + 'static> PmatchObject<B> for PmatchBinaryOperation<B> {
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-binary-operation.as-string-pair-fn]
     fn as_string_pair(&self, ctx: &mut PmatchEvalContext<B>) -> StringPair {
         if self.op == PmatchBinaryOp::CrossProduct {
-            let left_string: String = self.left.as_string(ctx);
-            let right_string: String = self.right.as_string(ctx);
+            let left_string: String = self.left.as_string(ctx).unwrap_or_default();
+            let right_string: String = self.right.as_string(ctx).unwrap_or_default();
             return (Symbol::from(left_string), Symbol::from(right_string));
         }
         (Symbol::new_static(""), Symbol::new_static(""))
@@ -3831,8 +3823,8 @@ impl<B: AlgebraBackend + 'static> PmatchObject<B> for PmatchSymbol<B> {
     }
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-symbol.as-string-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-symbol.as-string-fn]
-    fn as_string(&self, ctx: &mut PmatchEvalContext<B>) -> String {
-        self.sym.to_string()
+    fn as_string(&self, ctx: &mut PmatchEvalContext<B>) -> Option<String> {
+        Some(self.sym.to_string())
     }
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch-string.evaluate-fn]
@@ -3891,8 +3883,8 @@ impl<B: AlgebraBackend + 'static> PmatchObject<B> for PmatchString<B> {
     }
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-string.as-string-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-string.as-string-fn]
-    fn as_string(&self, ctx: &mut PmatchEvalContext<B>) -> String {
-        self.string.to_string()
+    fn as_string(&self, ctx: &mut PmatchEvalContext<B>) -> Option<String> {
+        Some(self.string.to_string())
     }
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-string.as-string-pair-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-string.as-string-pair-fn]
@@ -3922,8 +3914,8 @@ impl<B: AlgebraBackend + 'static> PmatchObject<B> for PmatchQuestionMark<B> {
 
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-question-mark.as-string-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-question-mark.as-string-fn]
-    fn as_string(&self, ctx: &mut PmatchEvalContext<B>) -> String {
-        internal_unknown.to_string()
+    fn as_string(&self, ctx: &mut PmatchEvalContext<B>) -> Option<String> {
+        Some(internal_unknown.to_string())
     }
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-question-mark.as-string-pair-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-question-mark.as-string-pair-fn]
@@ -4020,8 +4012,8 @@ impl<B: AlgebraBackend + 'static> PmatchObject<B> for PmatchEpsilonArc<B> {
 
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-epsilon-arc.as-string-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-epsilon-arc.as-string-fn]
-    fn as_string(&self, ctx: &mut PmatchEvalContext<B>) -> String {
-        internal_epsilon.to_string()
+    fn as_string(&self, ctx: &mut PmatchEvalContext<B>) -> Option<String> {
+        Some(internal_epsilon.to_string())
     }
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-transducer-container.evaluate-fn]
@@ -4213,7 +4205,9 @@ pub fn get_top_n_transformed<B: AlgebraBackend + 'static>(
 ) -> Vec<(WordVector, WordVecFloat)> {
     let mut retval: Vec<(WordVector, WordVecFloat)> = Vec::new();
     let plane_vec_square_sum: WordVecFloat = square_sum(plane_vec.clone());
-    let comparison_point_norm: WordVecFloat = norm(comparison_point.clone());
+    // [spec:hfst:def:pmatch-utils.hfst.pmatch.norm-fn]
+    // [spec:hfst:sem:pmatch-utils.hfst.pmatch.norm-fn]
+    let comparison_point_norm: WordVecFloat = square_sum(comparison_point.clone()).sqrt();
     for it in vecs.iter() {
         let mut transformed_vec: WordVector = it.clone();
 
@@ -4238,7 +4232,7 @@ pub fn get_top_n_transformed<B: AlgebraBackend + 'static>(
                 pointwise_multiplication(transformed_vec_scaler, plane_vec.clone()),
             );
         }
-        transformed_vec.norm = norm(transformed_vec.vector.clone());
+        transformed_vec.norm = square_sum(transformed_vec.vector.clone()).sqrt();
         let cosdist: WordVecFloat = 1.0
             - dot_product(transformed_vec.vector.clone(), comparison_point.clone())
                 / (transformed_vec.norm * comparison_point_norm);
@@ -4313,11 +4307,6 @@ pub fn square_sum(v: Vec<WordVecFloat>) -> WordVecFloat {
     }
     ret
 }
-// [spec:hfst:def:pmatch-utils.hfst.pmatch.norm-fn]
-// [spec:hfst:sem:pmatch-utils.hfst.pmatch.norm-fn]
-pub fn norm(v: Vec<WordVecFloat>) -> WordVecFloat {
-    square_sum(v).sqrt()
-}
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.cosine-distance-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.cosine-distance-fn]
 pub fn cosine_distance(left: WordVector, right: WordVector) -> WordVecFloat {
@@ -4330,8 +4319,9 @@ pub fn cosine_distance(left: WordVector, right: WordVector) -> WordVecFloat {
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.cosine-distance-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.cosine-distance-fn]
 pub fn cosine_distance_vec(left: Vec<WordVecFloat>, right: Vec<WordVecFloat>) -> WordVecFloat {
-    let retval: WordVecFloat =
-        1.0 - dot_product(left.clone(), right.clone()) / (norm(left) * norm(right));
+    let retval: WordVecFloat = 1.0
+        - dot_product(left.clone(), right.clone())
+            / (square_sum(left).sqrt() * square_sum(right).sqrt());
     (0.0 as WordVecFloat).max(retval)
 }
 // the general case
@@ -4707,7 +4697,7 @@ pub fn read_vec<B: AlgebraBackend + 'static>(ctx: &mut PmatchEvalContext<B>, fil
             }
             let wv = WordVector {
                 word: line,
-                norm: norm(comps.clone()),
+                norm: square_sum(comps.clone()).sqrt(),
                 vector: comps,
             };
             ctx.word_vectors_push(wv);
@@ -4787,7 +4777,7 @@ space-separated\n  (reading line {})",
             let wv = WordVector {
                 word,
                 vector: components.clone(),
-                norm: norm(components),
+                norm: square_sum(components).sqrt(),
             };
             ctx.word_vectors_push(wv);
         }
@@ -5570,12 +5560,6 @@ fn pmb_tc<B: AlgebraBackend + 'static>(t: HfstTransducer<B>) -> Rc<PmatchTransdu
 // Small build helpers
 // ===========================================================================
 
-fn ins_transition(name: &str) -> String {
-    get_Ins_transition(name)
-}
-fn path_of<B: AlgebraBackend + 'static>(ctx: &mut PmatchEvalContext<B>, path: &str) -> String {
-    path_from_filename(ctx, path)
-}
 // STRINGLIKE: QUOTED_LITERAL -> PmatchString, CURLY_LITERAL -> PmatchString
 // (multichar), SYMBOL -> PmatchSymbol (no used_definitions / empty-check).
 fn build_stringlike<B: AlgebraBackend + FromAnyTransducer + 'static>(
@@ -5668,7 +5652,7 @@ fn build_read_file<B: AlgebraBackend + FromAnyTransducer + 'static>(
     path: &str,
 ) -> crate::error::Result<ObjRef<B>> {
     use nfst_pmatch::ReadKind as RK;
-    let filepath = path_of(ctx, path);
+    let filepath = path_from_filename(ctx, path);
     match kind {
         RK::Binary => {
             let mut instream = crate::hfst_input_stream::HfstInputStream::new_filename(&filepath)?;
@@ -5994,7 +5978,7 @@ pub fn build_object<B: AlgebraBackend + FromAnyTransducer + 'static>(
                 if !ctx.definitions_contains(name) {
                     ctx.unsatisfied_insertions_insert(name.clone());
                 }
-                let retval = pmb_string(Symbol::from(ins_transition(name)), false);
+                let retval = pmb_string(Symbol::from(get_Ins_transition(name)), false);
                 ctx.inserted_names_insert(name.clone());
                 ctx.used_definitions_insert(name.clone());
                 retval
@@ -6112,10 +6096,10 @@ pub fn build_object<B: AlgebraBackend + FromAnyTransducer + 'static>(
             let left = build_stringlike(ctx, a)?;
             let middle = build_stringlike(ctx, b)?;
             let right = build_stringlike(ctx, c)?;
-            let middle_str = Symbol::from(middle.as_string(ctx));
+            let middle_str = Symbol::from(middle.as_string(ctx).unwrap_or_default());
             ctx.uncomposed_insert(middle_str.clone());
             ctx.used_definitions_insert(middle_str);
-            let right_str = Symbol::from(right.as_string(ctx));
+            let right_str = Symbol::from(right.as_string(ctx).unwrap_or_default());
             ctx.uncomposed_insert(right_str.clone());
             ctx.used_definitions_insert(right_str);
             pmb_ternary(PmatchTernaryOp::Uncompose, left, middle, right)
@@ -6199,11 +6183,11 @@ pub fn build_object<B: AlgebraBackend + FromAnyTransducer + 'static>(
         // ---- file references -----------------------------------------------
         PE::ReadFile { kind, path } => build_read_file(ctx, *kind, path)?,
         PE::ReadLexc(path) => {
-            let filepath = path_of(ctx, path);
+            let filepath = path_from_filename(ctx, path);
             as_obj(pmb_tc(HfstTransducer::read_lexc(&filepath, ctx.verbose)?))
         }
         PE::ReadVec(path) => {
-            let filepath = path_of(ctx, path);
+            let filepath = path_from_filename(ctx, path);
             read_vec(ctx, filepath);
             pmb_empty()
         }
@@ -6298,7 +6282,7 @@ pub fn build_statement<B: AlgebraBackend + FromAnyTransducer + 'static>(
                 .expect("freshly built node is uniquely owned")
                 .set_name(name.to_string());
             ctx.def_insed_expressions_insert(name.to_string(), body_obj);
-            let def_value = pmb_string(Symbol::from(ins_transition(name)), false);
+            let def_value = pmb_string(Symbol::from(get_Ins_transition(name)), false);
             report_defined(ctx, name);
             insert_definition(ctx, name.to_string(), def_value);
         }
@@ -6329,7 +6313,7 @@ pub fn build_statement<B: AlgebraBackend + FromAnyTransducer + 'static>(
             insert_definition(ctx, name.to_string(), value);
         }
         PS::ReadVec { path } => {
-            let filepath = path_of(ctx, path);
+            let filepath = path_from_filename(ctx, path);
             read_vec(ctx, filepath);
         }
     }

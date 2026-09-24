@@ -234,10 +234,7 @@ pub mod symbols {
     // [spec:hfst:sem:hfst-symbol-defs.hfst.symbols.to-string-vector-fn]
     //
     // 'to_string_vector(const StringPairVector &, bool input_side)'.
-    pub fn to_string_vector_from_string_pair_vector(
-        spv: &StringPairVector,
-        input_side: bool,
-    ) -> StringVector {
+    pub fn to_string_vector_from_pairs(spv: &StringPairVector, input_side: bool) -> StringVector {
         let mut result = StringVector::new();
         for it in spv.iter() {
             if input_side {
@@ -253,7 +250,7 @@ pub mod symbols {
     // [spec:hfst:sem:hfst-symbol-defs.hfst.symbols.string-vector-to-string-vector-fn]
     //
     // 'to_string_vector(const HfstTwoLevelPath & path)'.
-    pub fn to_string_vector_from_two_level_path(path: &HfstTwoLevelPath) -> StringVector {
+    pub fn to_string_vector_from_path(path: &HfstTwoLevelPath) -> StringVector {
         let mut result = StringVector::new();
         let spv = path.second.clone();
         for it in spv.iter() {

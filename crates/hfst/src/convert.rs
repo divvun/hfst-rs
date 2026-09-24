@@ -63,10 +63,6 @@ pub struct FlagSymbolSet {
 }
 
 impl FlagSymbolSet {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
     pub fn insert(&mut self, symbol: SymbolNumber) {
         if self.mask.len() <= symbol as usize {
             self.mask.resize(symbol as usize + 1, false);

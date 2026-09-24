@@ -204,7 +204,7 @@ pub(super) fn ol_counts<T: TransducerTablesInterface>(t: &Transducer<T>) -> (u32
 }
 
 /// The final weight of an optimized-lookup state index, 0.0 when non-final —
-/// the two index-space arms of `hfst_ol_to_hfst_basic_add_state`.
+/// the two index-space arms of `add_ol_state_to_basic`.
 pub(super) fn ol_final_weight<T: TransducerTablesInterface>(
     t: &Transducer<T>,
     state: TransitionTableIndex,

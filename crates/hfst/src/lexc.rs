@@ -341,11 +341,11 @@ fn weight_from_gloss(gloss: Option<&str>) -> f64 {
 // ==========================================================================
 
 impl<B: AlgebraBackend> LexcCompiler<B> {
-    /// Common body of the 'LexcCompiler(impl)' and
-    /// 'LexcCompiler(impl, withFlags, alignStrings)' constructors: seeds the
-    /// tokenizer with the epsilon/zero multichars + the '#' joiner, registers
-    /// '#' as a lexicon name, and configures 'xre'.
-    fn seeded() -> LexcCompiler<B> {
+    /// Port of 'LexcCompiler(ImplementationType impl)' (unannotated in the .cc),
+    /// also the common body of 'LexcCompiler(impl, withFlags, alignStrings)':
+    /// seeds the tokenizer with the epsilon/zero multichars + the '#' joiner,
+    /// registers '#' as a lexicon name, and configures 'xre'.
+    pub fn new() -> LexcCompiler<B> {
         let mut compiler = LexcCompiler {
             tokenizer: HfstTokenizer::new(),
             xre: XreCompiler::new(),
@@ -400,16 +400,11 @@ impl<B: AlgebraBackend> LexcCompiler<B> {
         compiler
     }
 
-    /// Port of 'LexcCompiler(ImplementationType impl)' (unannotated in the .cc).
-    pub fn new() -> LexcCompiler<B> {
-        LexcCompiler::seeded()
-    }
-
     // [spec:hfst:def:lexc-compiler.hfst.lexc.lexc-compiler.lexc-compiler-fn]
     // [spec:hfst:sem:lexc-compiler.hfst.lexc.lexc-compiler.lexc-compiler-fn]
     /// Port of 'LexcCompiler(impl, withFlags, alignStrings)'.
     pub fn new_with_flags(with_flags: bool, align_strings: bool) -> LexcCompiler<B> {
-        let mut compiler = LexcCompiler::seeded();
+        let mut compiler = LexcCompiler::new();
         compiler.align_strings = align_strings;
         compiler.with_flags = with_flags;
         compiler
