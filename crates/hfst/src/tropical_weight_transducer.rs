@@ -10,8 +10,9 @@
 //! own structs, and the 'StdArcLessThan' comparator becomes a small struct.
 //!
 //! 'using namespace fst;' in the C++ header is mapped onto the
-//! 'hfst-openfst' adapter: 'StdVectorFst', 'StdTransition' (= 'fst::StdArc'),
-//! 'TropicalWeight', 'SymbolTable', 'StateId', and the 'algorithms::' module.
+//! 'hfst-openfst' adapter ('StdVectorFst', 'StdTransition' (= 'fst::StdArc'),
+//! 'TropicalWeight', 'SymbolTable', 'StateId') and rustfst's algorithms, whose
+//! errors propagate as ['crate::error::Error'].
 //!
 //! Ownership mapping for the C++ 'StdVectorFst*' signatures:
 //! - factory / unary-op methods that the C++ 'new's a result and returns
@@ -20,10 +21,26 @@
 //! - methods that take a 'StdVectorFst*' and mutate it in place (state/arc
 //!   builders, 'add_to_weights', symbol-table setters, ...) -> '&mut StdVectorFst'.
 //! - 'delete_transducer(StdVectorFst*)' -> dropping the owned 'StdVectorFst'.
+//! - the per-state accessors 'set_final_weight', 'get_final_weight', 'is_final'
+//!   and 'get_initial_state' -> rustfst's own 'set_final', 'final_weight',
+//!   'is_final' and 'start'.
+//! - 'represent_empty_transducer_as_having_one_state' -> nothing: the C++
+//!   reassigned only its local pointer, so the caller's transducer was never
+//!   changed.
 //!
 //! The C++ 'int64' typedef is 'i64' here.
 // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.delete-transducer-fn]
 // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.delete-transducer-fn]
+// [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.set-final-weight-fn]
+// [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.set-final-weight-fn]
+// [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.get-final-weight-fn]
+// [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.get-final-weight-fn]
+// [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.is-final-fn]
+// [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.is-final-fn]
+// [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.get-initial-state-fn]
+// [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.get-initial-state-fn]
+// [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.represent-empty-transducer-as-having-one-state-fn]
+// [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.represent-empty-transducer-as-having-one-state-fn]
 
 #![allow(non_snake_case)]
 #![allow(dead_code)] // many ported ops are only reached once the facade lands
@@ -32,6 +49,10 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use hfst_openfst::algorithms;
 use hfst_openfst::prelude::*;
+use hfst_openfst::rustfst::algorithms::encode::{
+    EncodeTable, EncodeType, decode, encode, encode_into,
+};
+use hfst_openfst::rustfst::algorithms::rm_epsilon::rm_epsilon;
 use hfst_openfst::{StdTransition, StdVectorFst, SymbolTable, TropicalWeight};
 
 use crate::hfst_data_types::{
@@ -108,6 +129,24 @@ pub type StateMap = BTreeMap<i32, StateId>;
 
 // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer]
 pub struct TropicalWeightTransducer;
+
+/// Map a failed rustfst algorithm to an error naming the operation.
+fn openfst_error<E: std::fmt::Display>(operation: &str) -> impl FnOnce(E) -> crate::error::Error {
+    move |error| crate::err!(Hfst, format!("OpenFst {operation}: {error}"))
+}
+
+/// Re-attach 'source''s symbol tables to 'target', which rustfst built fresh
+/// and may have left without them (an empty composition carries none). HFST
+/// reads the table back as the symbol-number map, so every result must carry
+/// it.
+fn carry_symbol_tables(source: &StdVectorFst, target: &mut StdVectorFst) {
+    if let Some(symbols) = source.input_symbols() {
+        target.set_input_symbols(std::sync::Arc::clone(symbols));
+    }
+    if let Some(symbols) = source.output_symbols() {
+        target.set_output_symbols(std::sync::Arc::clone(symbols));
+    }
+}
 
 mod alphabet;
 mod compose;

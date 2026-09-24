@@ -26,7 +26,7 @@ impl Backend for StdVectorFst {
     fn get_alphabet(&self) -> StringSet {
         TropicalWeightTransducer::get_alphabet(self)
     }
-    fn is_cyclic(&self) -> bool {
+    fn is_cyclic(&self) -> crate::error::Result<bool> {
         TropicalWeightTransducer::is_cyclic(self)
     }
     fn number_of_states(&self) -> u32 {

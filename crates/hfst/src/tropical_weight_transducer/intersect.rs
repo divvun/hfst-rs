@@ -3,13 +3,15 @@
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
+use hfst_openfst::rustfst::algorithms::compose::compose;
+
 use super::*;
 use crate::hfst_transducer::FlagDiacriticOverlay;
 
 impl TropicalWeightTransducer {
     // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.intersect-fn]
     // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.intersect-fn]
-    pub fn intersect(t1: &StdVectorFst, t2: &StdVectorFst) -> StdVectorFst {
+    pub fn intersect(t1: &StdVectorFst, t2: &StdVectorFst) -> crate::error::Result<StdVectorFst> {
         let owned_t1 = t1.clone();
         let owned_t2 = t2.clone();
         Self::intersect_owned(owned_t1, owned_t2)
@@ -24,7 +26,7 @@ impl TropicalWeightTransducer {
         memory_limit_bytes: Option<u64>,
     ) -> crate::error::Result<StdVectorFst> {
         if flag_overlay.is_none() && memory_limit_bytes.is_none() {
-            return Ok(Self::intersect_owned(t1, t2));
+            return Self::intersect_owned(t1, t2);
         }
         super::operations::check_epsilon_cycles(&t1, "intersect");
         super::operations::check_epsilon_cycles(&t2, "intersect");
@@ -35,8 +37,8 @@ impl TropicalWeightTransducer {
             .ok_or_else(|| crate::err!(MissingOpenFstInputSymbolTable))?;
         let output_symbols = t1.output_symbols().map(Arc::clone);
 
-        algorithms::RmEpsilon(&mut t1);
-        algorithms::RmEpsilon(&mut t2);
+        rm_epsilon(&mut t1).map_err(openfst_error("rm_epsilon"))?;
+        rm_epsilon(&mut t2).map_err(openfst_error("rm_epsilon"))?;
 
         let ordering_epsilon_inputs =
             if flag_overlay.is_some_and(|overlay| overlay.enforce_left_before_right) {
@@ -58,8 +60,8 @@ impl TropicalWeightTransducer {
         // Intersection is OpenFST composition after each input/output pair is
         // encoded as one acceptor label. Weights deliberately remain outside
         // the encoding so matching paths retain normal tropical multiplication.
-        let encoder = algorithms::Encode(&mut t1, algorithms::EncodeType::EncodeLabels);
-        let encoder = algorithms::EncodeInto(&mut t2, encoder);
+        let encoder = encode(&mut t1, EncodeType::EncodeLabels).map_err(openfst_error("encode"))?;
+        let encoder = encode_into(&mut t2, encoder).map_err(openfst_error("encode"))?;
         let (encoder, overlay) = encode_overlay(
             encoder,
             flag_overlay,
@@ -91,7 +93,7 @@ impl TropicalWeightTransducer {
             "intersect",
             super::compose::ProductPruning::Sequence,
         )?;
-        algorithms::Decode(&mut result, encoder);
+        decode(&mut result, encoder).map_err(openfst_error("decode"))?;
         result.set_input_symbols(input_symbols);
         if let Some(symbols) = output_symbols {
             result.set_output_symbols(symbols);
@@ -101,35 +103,39 @@ impl TropicalWeightTransducer {
         Ok(result)
     }
 
-    fn intersect_owned(mut t1: StdVectorFst, mut t2: StdVectorFst) -> StdVectorFst {
+    fn intersect_owned(
+        mut t1: StdVectorFst,
+        mut t2: StdVectorFst,
+    ) -> crate::error::Result<StdVectorFst> {
         super::operations::check_epsilon_cycles(&t1, "intersect");
         super::operations::check_epsilon_cycles(&t2, "intersect");
-        algorithms::RmEpsilon(&mut t1);
-        algorithms::RmEpsilon(&mut t2);
-        algorithms::ArcSortOutput(&mut t1);
-        algorithms::ArcSortInput(&mut t2);
+        rm_epsilon(&mut t1).map_err(openfst_error("rm_epsilon"))?;
+        rm_epsilon(&mut t2).map_err(openfst_error("rm_epsilon"))?;
+        tr_sort(&mut t1, OLabelCompare {});
+        tr_sort(&mut t2, ILabelCompare {});
 
         // Weights deliberately remain outside the shared label encoder: paths
         // with the same pair labels but different weights must still match.
-        let encoder = algorithms::Encode(&mut t1, algorithms::EncodeType::EncodeLabels);
-        let encoder = algorithms::EncodeInto(&mut t2, encoder);
-        algorithms::ArcSortOutput(&mut t1);
-        algorithms::ArcSortInput(&mut t2);
+        let encoder = encode(&mut t1, EncodeType::EncodeLabels).map_err(openfst_error("encode"))?;
+        let encoder = encode_into(&mut t2, encoder).map_err(openfst_error("encode"))?;
+        tr_sort(&mut t1, OLabelCompare {});
+        tr_sort(&mut t2, ILabelCompare {});
 
-        let mut result = StdVectorFst::new();
-        algorithms::Intersect(&t1, &t2, &mut result);
-        algorithms::Decode(&mut result, encoder);
-        result
+        // Intersection of the encoded acceptors is their composition.
+        let mut result: StdVectorFst = compose(&t1, &t2).map_err(openfst_error("intersect"))?;
+        carry_symbol_tables(&t1, &mut result);
+        decode(&mut result, encoder).map_err(openfst_error("decode"))?;
+        Ok(result)
     }
 }
 
 pub(super) fn encode_overlay(
-    mut encoder: algorithms::EncodeTable<TropicalWeight>,
+    mut encoder: EncodeTable<TropicalWeight>,
     overlay: Option<&FlagDiacriticOverlay>,
     symbols: &SymbolTable,
     ordering_epsilon_inputs: &BTreeSet<Label>,
 ) -> crate::error::Result<(
-    algorithms::EncodeTable<TropicalWeight>,
+    EncodeTable<TropicalWeight>,
     hfst_openfst::flag_overlay_compose::FlagOverlay,
 )> {
     let Some(overlay) = overlay else {
@@ -170,7 +176,7 @@ pub(super) fn encode_overlay(
             )
             .expect("fresh state is valid");
     }
-    encoder = algorithms::EncodeInto(&mut labels, encoder);
+    encoder = encode_into(&mut labels, encoder).map_err(openfst_error("encode"))?;
 
     let encoded_transitions = labels.get_trs(state).expect("fresh state is valid");
     let encoded = encoded_transitions.trs();

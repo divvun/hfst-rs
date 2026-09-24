@@ -106,7 +106,7 @@ pub trait Backend: Sized {
     fn get_alphabet(&self) -> StringSet;
 
     /// 'is_cyclic' (every backend had a real arm).
-    fn is_cyclic(&self) -> bool;
+    fn is_cyclic(&self) -> crate::error::Result<bool>;
 
     /// 'number_of_states'. Deliberately undefaulted: a count is a fact the
     /// caller prints as one, and a stubbed 0 is indistinguishable at the call
@@ -369,11 +369,8 @@ pub trait Backend: Sized {
 /// backend (the C++ freed the old one and stored the new — the facade's
 /// assignment does that implicitly).
 pub trait AlgebraBackend: Backend {
-    /// Legacy capability name for virtual flag composition.
-    const SUPPORTS_FLAG_OVERLAY: bool = false;
-
     /// Whether this backend consumes virtual flag loops during composition.
-    const SUPPORTS_VIRTUAL_FLAG_COMPOSE: bool = Self::SUPPORTS_FLAG_OVERLAY;
+    const SUPPORTS_VIRTUAL_FLAG_COMPOSE: bool = false;
 
     /// Whether this backend can reject composition pairs using future-label
     /// reachability before those pairs enter the product-state table.
@@ -386,28 +383,28 @@ pub trait AlgebraBackend: Backend {
     const SUPPORTS_VIRTUAL_FLAG_SUBTRACTION: bool = false;
 
     // ----- unary (apply) -----
-    fn remove_epsilons(&self) -> Self;
+    fn remove_epsilons(&self) -> crate::error::Result<Self>;
     // determinize/minimize consume the input: the facade always overwrites its
     // stored fst with the result and drops the old one, so cloning it (a full
     // O(states) copy on the ~1M-state lang-sma intermediate) is pure waste.
-    fn determinize(self, encode_weights: bool) -> Self;
-    fn minimize(self, encode_weights: bool) -> Self;
+    fn determinize(self, encode_weights: bool) -> crate::error::Result<Self>;
+    fn minimize(self, encode_weights: bool) -> crate::error::Result<Self>;
     fn repeat_star(&self) -> Self;
     fn repeat_plus(&self) -> Self;
-    fn repeat_n(&self, n: u32) -> Self;
-    fn repeat_le_n(&self, n: u32) -> Self;
-    fn optionalize(&self) -> Self;
+    fn repeat_n(&self, n: u32) -> crate::error::Result<Self>;
+    fn repeat_le_n(&self, n: u32) -> crate::error::Result<Self>;
+    fn optionalize(&self) -> crate::error::Result<Self>;
     fn invert(&self) -> Self;
-    fn reverse(&self) -> Self;
+    fn reverse(&self) -> crate::error::Result<Self>;
     fn extract_input_language(&self) -> Self;
     fn extract_output_language(&self) -> Self;
 
     // ----- binary (apply_binary / apply_another) -----
-    fn concatenate(&self, another: &Self) -> Self;
-    fn disjunct(&self, another: &Self) -> Self;
-    fn intersect(&self, another: &Self) -> Self;
-    fn subtract(&self, another: &Self) -> Self;
-    fn compose(&self, another: &Self) -> Self;
+    fn concatenate(&self, another: &Self) -> crate::error::Result<Self>;
+    fn disjunct(&self, another: &Self) -> crate::error::Result<Self>;
+    fn intersect(&self, another: &Self) -> crate::error::Result<Self>;
+    fn subtract(&self, another: &Self) -> crate::error::Result<Self>;
+    fn compose(&self, another: &Self) -> crate::error::Result<Self>;
 
     /// Fallible, consuming entry for operations with an optional virtual flag
     /// overlay. Backends may retain their borrowed implementation when no
@@ -434,13 +431,13 @@ pub trait AlgebraBackend: Backend {
                 format!("this backend does not support virtual flag {operation}")
             );
         }
-        Ok(match operation {
+        match operation {
             FlagDiacriticOperation::Compose | FlagDiacriticOperation::ComposeFlagsAsEpsilon => {
                 self.compose(&another)
             }
             FlagDiacriticOperation::Intersect => self.intersect(&another),
             FlagDiacriticOperation::Subtract => self.subtract(&another),
-        })
+        }
     }
 
     /// Fallible consuming composition with product-state lookahead. The
@@ -469,18 +466,18 @@ pub trait AlgebraBackend: Backend {
 
     // ----- queries -----
     /// 'compare' backend arm.
-    fn are_equivalent(&self, another: &Self, encode_weights: bool) -> bool;
+    fn are_equivalent(&self, another: &Self, encode_weights: bool) -> crate::error::Result<bool>;
     fn is_automaton(&self) -> bool;
     fn get_initial_input_symbols(&self) -> StringSet;
     fn get_first_input_symbols(&self) -> StringSet;
 
     // ----- paths and weights -----
-    fn n_best(&self, n: u32) -> Self;
+    fn n_best(&self, n: u32) -> crate::error::Result<Self>;
     fn extract_random_paths(&self, results: &mut HfstTwoLevelPaths, max_num: i32);
     /// 'set_final_weights'.
     fn set_final_weights(&self, weight: f32, increment: bool) -> Self;
-    fn push_labels(&self, to_initial_state: bool) -> Self;
-    fn push_weights(&self, to_initial_state: bool) -> Self;
+    fn push_labels(&self, to_initial_state: bool) -> crate::error::Result<Self>;
+    fn push_weights(&self, to_initial_state: bool) -> crate::error::Result<Self>;
     fn transform_weights(&self, func: fn(f32) -> f32) -> Self;
 
     // ----- substitution -----

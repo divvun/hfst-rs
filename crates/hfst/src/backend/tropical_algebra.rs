@@ -3,18 +3,18 @@
 use super::*;
 
 impl AlgebraBackend for StdVectorFst {
-    const SUPPORTS_FLAG_OVERLAY: bool = true;
+    const SUPPORTS_VIRTUAL_FLAG_COMPOSE: bool = true;
     const SUPPORTS_COMPOSE_LOOKAHEAD: bool = true;
     const SUPPORTS_VIRTUAL_FLAG_INTERSECTION: bool = true;
     const SUPPORTS_VIRTUAL_FLAG_SUBTRACTION: bool = true;
 
-    fn remove_epsilons(&self) -> Self {
+    fn remove_epsilons(&self) -> crate::error::Result<Self> {
         TropicalWeightTransducer::remove_epsilons(self)
     }
-    fn determinize(self, encode_weights: bool) -> Self {
+    fn determinize(self, encode_weights: bool) -> crate::error::Result<Self> {
         TropicalWeightTransducer::determinize(self, encode_weights)
     }
-    fn minimize(self, encode_weights: bool) -> Self {
+    fn minimize(self, encode_weights: bool) -> crate::error::Result<Self> {
         TropicalWeightTransducer::minimize(self, encode_weights)
     }
     fn repeat_star(&self) -> Self {
@@ -23,19 +23,19 @@ impl AlgebraBackend for StdVectorFst {
     fn repeat_plus(&self) -> Self {
         TropicalWeightTransducer::repeat_plus(self)
     }
-    fn repeat_n(&self, n: u32) -> Self {
+    fn repeat_n(&self, n: u32) -> crate::error::Result<Self> {
         TropicalWeightTransducer::repeat_n(self, n)
     }
-    fn repeat_le_n(&self, n: u32) -> Self {
+    fn repeat_le_n(&self, n: u32) -> crate::error::Result<Self> {
         TropicalWeightTransducer::repeat_le_n(self, n)
     }
-    fn optionalize(&self) -> Self {
+    fn optionalize(&self) -> crate::error::Result<Self> {
         TropicalWeightTransducer::optionalize(self)
     }
     fn invert(&self) -> Self {
         TropicalWeightTransducer::invert(self)
     }
-    fn reverse(&self) -> Self {
+    fn reverse(&self) -> crate::error::Result<Self> {
         TropicalWeightTransducer::reverse(self)
     }
     fn extract_input_language(&self) -> Self {
@@ -45,20 +45,22 @@ impl AlgebraBackend for StdVectorFst {
         TropicalWeightTransducer::extract_output_language(self)
     }
 
-    fn concatenate(&self, another: &Self) -> Self {
+    fn concatenate(&self, another: &Self) -> crate::error::Result<Self> {
         TropicalWeightTransducer::concatenate(self, another)
     }
-    fn disjunct(&self, another: &Self) -> Self {
+    fn disjunct(&self, another: &Self) -> crate::error::Result<Self> {
         TropicalWeightTransducer::disjunct(self, another)
     }
-    fn intersect(&self, another: &Self) -> Self {
+    fn intersect(&self, another: &Self) -> crate::error::Result<Self> {
         TropicalWeightTransducer::intersect(self, another)
     }
-    fn subtract(&self, another: &Self) -> Self {
+    fn subtract(&self, another: &Self) -> crate::error::Result<Self> {
         TropicalWeightTransducer::subtract(self, another)
     }
-    fn compose(&self, another: &Self) -> Self {
-        TropicalWeightTransducer::compose(self, another)
+    // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.compose-fn]
+    // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.compose-fn]
+    fn compose(&self, another: &Self) -> crate::error::Result<Self> {
+        TropicalWeightTransducer::try_compose_owned(self.clone(), another.clone(), None, None)
     }
     fn try_flag_operation_owned(
         self,
@@ -128,7 +130,7 @@ impl AlgebraBackend for StdVectorFst {
         TropicalWeightTransducer::define_transducer_symbol_pair(isymbol, osymbol)
     }
 
-    fn are_equivalent(&self, another: &Self, encode_weights: bool) -> bool {
+    fn are_equivalent(&self, another: &Self, encode_weights: bool) -> crate::error::Result<bool> {
         TropicalWeightTransducer::are_equivalent(self, another, encode_weights)
     }
     fn is_automaton(&self) -> bool {
@@ -141,7 +143,7 @@ impl AlgebraBackend for StdVectorFst {
         TropicalWeightTransducer::get_first_input_symbols(self)
     }
 
-    fn n_best(&self, n: u32) -> Self {
+    fn n_best(&self, n: u32) -> crate::error::Result<Self> {
         TropicalWeightTransducer::n_best(self, n)
     }
     fn extract_random_paths(&self, results: &mut HfstTwoLevelPaths, max_num: i32) {
@@ -150,10 +152,10 @@ impl AlgebraBackend for StdVectorFst {
     fn set_final_weights(&self, weight: f32, increment: bool) -> Self {
         TropicalWeightTransducer::set_final_weights(self, weight, increment)
     }
-    fn push_labels(&self, to_initial_state: bool) -> Self {
+    fn push_labels(&self, to_initial_state: bool) -> crate::error::Result<Self> {
         TropicalWeightTransducer::push_labels(self, to_initial_state)
     }
-    fn push_weights(&self, to_initial_state: bool) -> Self {
+    fn push_weights(&self, to_initial_state: bool) -> crate::error::Result<Self> {
         TropicalWeightTransducer::push_weights(self, to_initial_state)
     }
     fn transform_weights(&self, func: fn(f32) -> f32) -> Self {

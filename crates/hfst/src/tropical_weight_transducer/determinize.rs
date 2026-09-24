@@ -1,10 +1,10 @@
 //! Bounded weighted determinization and minimization fallbacks.
 
-use super::operations::check_epsilon_cycles;
+use super::operations::{check_epsilon_cycles, reverse_swapping_tables};
 use super::*;
 
 pub(super) enum AdaptiveDeterminize {
-    Determinized(algorithms::EncodeTable<TropicalWeight>),
+    Determinized(EncodeTable<TropicalWeight>),
     SubsetLimit,
 }
 
@@ -24,7 +24,7 @@ impl TropicalWeightTransducer {
     // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.minimize-fn]
     // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.minimize-fn]
     // [spec:hfst:req:determinize-envelope.bounded-strategies]
-    pub fn minimize(t: StdVectorFst, encode_weights: bool) -> StdVectorFst {
+    pub fn minimize(t: StdVectorFst, encode_weights: bool) -> crate::error::Result<StdVectorFst> {
         Self::minimize_with_reverse_fallback(t, encode_weights, true, None)
     }
 
@@ -34,11 +34,11 @@ impl TropicalWeightTransducer {
         encode_weights: bool,
         allow_reverse_fallback: bool,
         budget_override: Option<DeterminizeBudget>,
-    ) -> StdVectorFst {
+    ) -> crate::error::Result<StdVectorFst> {
         check_epsilon_cycles(&t, "minimize");
 
         // (USE_FOMA_EPSILON_REMOVAL && HAVE_FOMA) path is not configured here.
-        algorithms::RmEpsilon(&mut t);
+        rm_epsilon(&mut t).map_err(openfst_error("rm_epsilon"))?;
 
         let w = TropicalWeightTransducer::get_smallest_weight(&t);
         if w < 0.0 {
@@ -48,21 +48,20 @@ impl TropicalWeightTransducer {
         let budget = budget_override.unwrap_or_else(|| Self::determinize_budget(&t));
         let mut det = StdVectorFst::new();
         let outcome =
-            Self::determinize_adaptive(&mut t, encode_weights, budget, "minimize", &mut det, true);
+            Self::determinize_adaptive(&mut t, encode_weights, budget, "minimize", &mut det, true)?;
         match outcome {
             AdaptiveDeterminize::Determinized(encode_mapper) => {
-                algorithms::Minimize(&mut det);
-                algorithms::Decode(&mut det, encode_mapper);
+                minimize(&mut det).map_err(openfst_error("minimize"))?;
+                decode(&mut det, encode_mapper).map_err(openfst_error("decode"))?;
             }
             AdaptiveDeterminize::SubsetLimit if allow_reverse_fallback => {
                 tracing::warn!(
                     "determinization budget exceeded; minimizing in the reverse orientation"
                 );
-                let mut reversed = StdVectorFst::new();
-                algorithms::Reverse(&t, &mut reversed);
+                let reversed = reverse_swapping_tables(&t)?;
                 let reversed =
-                    Self::minimize_with_reverse_fallback(reversed, encode_weights, false, None);
-                algorithms::Reverse(&reversed, &mut det);
+                    Self::minimize_with_reverse_fallback(reversed, encode_weights, false, None)?;
+                det = reverse_swapping_tables(&reversed)?;
             }
             AdaptiveDeterminize::SubsetLimit => {
                 tracing::warn!(
@@ -76,7 +75,7 @@ impl TropicalWeightTransducer {
             TropicalWeightTransducer::add_to_weights(&mut det, w);
         }
 
-        det
+        Ok(det)
     }
 
     // Bounds all three axes of weighted determinization. A state cap catches
@@ -153,7 +152,7 @@ impl TropicalWeightTransducer {
         caller: &str,
         det: &mut StdVectorFst,
         preserve_on_subset_limit: bool,
-    ) -> AdaptiveDeterminize {
+    ) -> crate::error::Result<AdaptiveDeterminize> {
         if encode_weights {
             // Weight encoding is the last determinization strategy available;
             // there is nothing left to fall back to but the input itself, so
@@ -162,17 +161,20 @@ impl TropicalWeightTransducer {
             // merged, so this strategy can produce MORE states than that one,
             // never fewer.
             let encode_mapper =
-                algorithms::Encode(t, algorithms::EncodeType::EncodeWeightsAndLabels);
-            return match algorithms::DeterminizeBounded(&*t, det, budget_config(budget)) {
-                Ok(()) => AdaptiveDeterminize::Determinized(encode_mapper),
+                encode(t, EncodeType::EncodeWeightsAndLabels).map_err(openfst_error("encode"))?;
+            return match algorithms::determinize_bounded(&*t, budget_config(budget)) {
+                Ok(determinized) => {
+                    *det = determinized;
+                    Ok(AdaptiveDeterminize::Determinized(encode_mapper))
+                }
                 Err(err) => {
                     tracing::info!(
                         caller,
                         %err,
                         "weight-encoded determinization exceeded its budget"
                     );
-                    algorithms::Decode(t, encode_mapper);
-                    AdaptiveDeterminize::SubsetLimit
+                    decode(t, encode_mapper).map_err(openfst_error("decode"))?;
+                    Ok(AdaptiveDeterminize::SubsetLimit)
                 }
             };
         }
@@ -186,9 +188,12 @@ impl TropicalWeightTransducer {
         // was a full second copy at peak). On the rare budget overrun the
         // machine is Decoded back to its original labels/weights before the
         // weighted retry, so that path's result is unchanged.
-        let label_mapper = algorithms::Encode(t, algorithms::EncodeType::EncodeLabels);
-        match algorithms::DeterminizeBounded(&*t, det, budget_config(budget)) {
-            Ok(()) => AdaptiveDeterminize::Determinized(label_mapper),
+        let label_mapper = encode(t, EncodeType::EncodeLabels).map_err(openfst_error("encode"))?;
+        match algorithms::determinize_bounded(&*t, budget_config(budget)) {
+            Ok(determinized) => {
+                *det = determinized;
+                Ok(AdaptiveDeterminize::Determinized(label_mapper))
+            }
             // A subset overrun is about the search, a transition overrun about
             // the result. Weight encoding only ever splits paths further, so it
             // cannot shrink a result that is already too large: retrying it
@@ -205,8 +210,8 @@ impl TropicalWeightTransducer {
                     %err,
                     "label-only determinization exceeded its budget; skipping the weight-encoded retry"
                 );
-                algorithms::Decode(t, label_mapper);
-                AdaptiveDeterminize::SubsetLimit
+                decode(t, label_mapper).map_err(openfst_error("decode"))?;
+                Ok(AdaptiveDeterminize::SubsetLimit)
             }
             Err(algorithms::DeterminizeBoundedError::Transitions { limit, attempted }) => {
                 tracing::info!(
@@ -215,8 +220,8 @@ impl TropicalWeightTransducer {
                     attempted,
                     "label-only determinization exceeded its transition budget"
                 );
-                algorithms::Decode(t, label_mapper);
-                AdaptiveDeterminize::SubsetLimit
+                decode(t, label_mapper).map_err(openfst_error("decode"))?;
+                Ok(AdaptiveDeterminize::SubsetLimit)
             }
             Err(_) => {
                 tracing::info!(
@@ -225,7 +230,7 @@ impl TropicalWeightTransducer {
                     "label-only determinization exceeded resource budget; \
                      retrying with weight encoding (hfst/hfst#435)"
                 );
-                algorithms::Decode(t, label_mapper);
+                decode(t, label_mapper).map_err(openfst_error("decode"))?;
                 Self::determinize_adaptive(t, true, budget, caller, det, preserve_on_subset_limit)
             }
         }
@@ -234,10 +239,13 @@ impl TropicalWeightTransducer {
     // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.determinize-fn]
     // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.determinize-fn]
     // [spec:hfst:req:determinize-envelope.relation-preserved]
-    pub fn determinize(mut t: StdVectorFst, encode_weights: bool) -> StdVectorFst {
+    pub fn determinize(
+        mut t: StdVectorFst,
+        encode_weights: bool,
+    ) -> crate::error::Result<StdVectorFst> {
         check_epsilon_cycles(&t, "determinize");
 
-        algorithms::RmEpsilon(&mut t);
+        rm_epsilon(&mut t).map_err(openfst_error("rm_epsilon"))?;
 
         let w = TropicalWeightTransducer::get_smallest_weight(&t);
         if w < 0.0 {
@@ -253,10 +261,10 @@ impl TropicalWeightTransducer {
             "determinize",
             &mut det,
             false,
-        );
+        )?;
         match outcome {
             AdaptiveDeterminize::Determinized(encode_mapper) => {
-                algorithms::Decode(&mut det, encode_mapper);
+                decode(&mut det, encode_mapper).map_err(openfst_error("decode"))?;
             }
             // Every strategy is budget-bounded, so an input whose subset
             // construction runs away has no determinized form to return within
@@ -277,7 +285,7 @@ impl TropicalWeightTransducer {
             TropicalWeightTransducer::add_to_weights(&mut det, w);
         }
 
-        det
+        Ok(det)
     }
 }
 

@@ -16,7 +16,7 @@ impl TropicalWeightTransducer {
         memory_limit_bytes: Option<u64>,
     ) -> crate::error::Result<StdVectorFst> {
         if flag_overlay.is_none() && memory_limit_bytes.is_none() {
-            return Ok(Self::subtract(&t1, &t2));
+            return Self::subtract(&t1, &t2);
         }
 
         if t1.output_symbols().is_none()
@@ -39,8 +39,8 @@ impl TropicalWeightTransducer {
             .ok_or_else(|| crate::err!(MissingOpenFstInputSymbolTable))?;
         let output_symbols = t1.output_symbols().map(Arc::clone);
 
-        algorithms::RmEpsilon(&mut t1);
-        algorithms::RmEpsilon(&mut t2);
+        rm_epsilon(&mut t1).map_err(openfst_error("rm_epsilon"))?;
+        rm_epsilon(&mut t2).map_err(openfst_error("rm_epsilon"))?;
 
         for state in 0..t2.num_states() as StateId {
             let transition_count = t2.get_trs(state).expect("state comes from this FST").len();
@@ -73,8 +73,8 @@ impl TropicalWeightTransducer {
                 BTreeSet::new()
             };
 
-        let encoder = algorithms::Encode(&mut t1, algorithms::EncodeType::EncodeLabels);
-        let encoder = algorithms::EncodeInto(&mut t2, encoder);
+        let encoder = encode(&mut t1, EncodeType::EncodeLabels).map_err(openfst_error("encode"))?;
+        let encoder = encode_into(&mut t2, encoder).map_err(openfst_error("encode"))?;
         let (encoder, overlay) = super::intersect::encode_overlay(
             encoder,
             flag_overlay,
@@ -86,8 +86,8 @@ impl TropicalWeightTransducer {
         // those labels from complement completion prevents them from being
         // sent to the accepting sink; the lazy product supplies a self-loop
         // at every complement state instead, which is complement(B + loops).
-        let mut sigma = algorithms::Labels(&t1);
-        sigma.append(&mut algorithms::Labels(&t2));
+        let mut sigma = algorithms::input_labels(&t1);
+        sigma.append(&mut algorithms::input_labels(&t2));
         // A left-side virtual loop is an actual transition in the eager
         // minuend, so Difference includes its label in the complement
         // alphabet even when the corresponding right-side flag exists only
@@ -98,7 +98,8 @@ impl TropicalWeightTransducer {
         for label in overlay.right_self_loops() {
             sigma.remove(label);
         }
-        let complement = algorithms::ComplementAcceptor(&t2, &sigma);
+        let complement =
+            algorithms::complement_acceptor(&t2, &sigma).map_err(openfst_error("complement"))?;
 
         let memory_plan =
             hfst_openfst::compose_storage::ComposeMemoryPlan::from_allowance(memory_limit_bytes);
@@ -124,7 +125,7 @@ impl TropicalWeightTransducer {
             "subtract",
             super::compose::ProductPruning::Sequence,
         )?;
-        algorithms::Decode(&mut result, encoder);
+        decode(&mut result, encoder).map_err(openfst_error("decode"))?;
         result.set_input_symbols(input_symbols);
         if let Some(symbols) = output_symbols {
             result.set_output_symbols(symbols);

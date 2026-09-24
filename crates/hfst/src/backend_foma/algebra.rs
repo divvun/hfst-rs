@@ -50,18 +50,18 @@ fn pair_complement(
 // the weight-transform ops are no-ops (foma is a boolean/unweighted algebra).
 // Inputs are cloned into owned `Box<Fsm>` (foma's ops consume their arguments).
 impl AlgebraBackend for FomaTransducer {
-    const SUPPORTS_FLAG_OVERLAY: bool = true;
+    const SUPPORTS_VIRTUAL_FLAG_COMPOSE: bool = true;
     const SUPPORTS_VIRTUAL_FLAG_INTERSECTION: bool = true;
     const SUPPORTS_VIRTUAL_FLAG_SUBTRACTION: bool = true;
 
-    fn remove_epsilons(&self) -> Self {
-        self.wrap_with(foma::determinize::fsm_epsilon_remove(self.net.clone()))
+    fn remove_epsilons(&self) -> crate::error::Result<Self> {
+        Ok(self.wrap_with(foma::determinize::fsm_epsilon_remove(self.net.clone())))
     }
-    fn determinize(self, _encode_weights: bool) -> Self {
-        self.wrap_with(foma::determinize::fsm_determinize(self.net.clone()))
+    fn determinize(self, _encode_weights: bool) -> crate::error::Result<Self> {
+        Ok(self.wrap_with(foma::determinize::fsm_determinize(self.net.clone())))
     }
-    fn minimize(self, _encode_weights: bool) -> Self {
-        self.wrap_with(foma::minimize::fsm_minimize(&self.opts, self.net.clone()))
+    fn minimize(self, _encode_weights: bool) -> crate::error::Result<Self> {
+        Ok(self.wrap_with(foma::minimize::fsm_minimize(&self.opts, self.net.clone())))
     }
     fn repeat_star(&self) -> Self {
         self.wrap_with(foma::constructions::fsm_kleene_star(
@@ -75,32 +75,32 @@ impl AlgebraBackend for FomaTransducer {
             self.net.clone(),
         ))
     }
-    fn repeat_n(&self, n: u32) -> Self {
-        self.wrap_with(foma::constructions::fsm_concat_n(
+    fn repeat_n(&self, n: u32) -> crate::error::Result<Self> {
+        Ok(self.wrap_with(foma::constructions::fsm_concat_n(
             &self.opts,
             self.net.clone(),
             n as i32,
-        ))
+        )))
     }
-    fn repeat_le_n(&self, n: u32) -> Self {
-        self.wrap_with(foma::constructions::fsm_concat_m_n(
+    fn repeat_le_n(&self, n: u32) -> crate::error::Result<Self> {
+        Ok(self.wrap_with(foma::constructions::fsm_concat_m_n(
             &self.opts,
             self.net.clone(),
             0,
             n as i32,
-        ))
+        )))
     }
-    fn optionalize(&self) -> Self {
-        self.wrap_with(foma::constructions::fsm_optionality(
+    fn optionalize(&self) -> crate::error::Result<Self> {
+        Ok(self.wrap_with(foma::constructions::fsm_optionality(
             &self.opts,
             self.net.clone(),
-        ))
+        )))
     }
     fn invert(&self) -> Self {
         self.wrap_with(foma::constructions::fsm_invert(self.net.clone()))
     }
-    fn reverse(&self) -> Self {
-        self.wrap_with(foma::reverse::fsm_reverse(self.net.clone()))
+    fn reverse(&self) -> crate::error::Result<Self> {
+        Ok(self.wrap_with(foma::reverse::fsm_reverse(self.net.clone())))
     }
     fn extract_input_language(&self) -> Self {
         self.wrap_with(foma::extract::fsm_upper(self.net.clone()))
@@ -109,40 +109,40 @@ impl AlgebraBackend for FomaTransducer {
         self.wrap_with(foma::extract::fsm_lower(self.net.clone()))
     }
 
-    fn concatenate(&self, another: &Self) -> Self {
-        self.wrap_with(foma::constructions::fsm_concat(
+    fn concatenate(&self, another: &Self) -> crate::error::Result<Self> {
+        Ok(self.wrap_with(foma::constructions::fsm_concat(
             &self.opts,
             self.net.clone(),
             another.net.clone(),
-        ))
+        )))
     }
-    fn disjunct(&self, another: &Self) -> Self {
-        self.wrap_with(foma::constructions::fsm_union(
+    fn disjunct(&self, another: &Self) -> crate::error::Result<Self> {
+        Ok(self.wrap_with(foma::constructions::fsm_union(
             &self.opts,
             self.net.clone(),
             another.net.clone(),
-        ))
+        )))
     }
-    fn intersect(&self, another: &Self) -> Self {
-        self.wrap_with(foma::constructions::fsm_intersect(
+    fn intersect(&self, another: &Self) -> crate::error::Result<Self> {
+        Ok(self.wrap_with(foma::constructions::fsm_intersect(
             &self.opts,
             self.net.clone(),
             another.net.clone(),
-        ))
+        )))
     }
-    fn subtract(&self, another: &Self) -> Self {
-        self.wrap_with(foma::constructions::fsm_minus(
+    fn subtract(&self, another: &Self) -> crate::error::Result<Self> {
+        Ok(self.wrap_with(foma::constructions::fsm_minus(
             &self.opts,
             self.net.clone(),
             another.net.clone(),
-        ))
+        )))
     }
-    fn compose(&self, another: &Self) -> Self {
-        self.wrap_with(foma::constructions::fsm_compose(
+    fn compose(&self, another: &Self) -> crate::error::Result<Self> {
+        Ok(self.wrap_with(foma::constructions::fsm_compose(
             &self.opts,
             self.net.clone(),
             another.net.clone(),
-        ))
+        )))
     }
 
     // [spec:hfst:req:foma-transducer.hfst.implementations.foma-transducer.resource-controlled-compose]
@@ -336,14 +336,14 @@ impl AlgebraBackend for FomaTransducer {
         FomaTransducer { net, opts }
     }
 
-    fn are_equivalent(&self, another: &Self, _encode_weights: bool) -> bool {
+    fn are_equivalent(&self, another: &Self, _encode_weights: bool) -> crate::error::Result<bool> {
         // `fsm_equivalent` does a parallel deterministic traversal that assumes
         // both inputs are deterministic and trim, so canonicalize each with
         // `fsm_minimize` first (it determinizes + coaccessible-prunes internally;
         // foma is unweighted, so this is a cheap boolean minimization).
         let lhs = foma::minimize::fsm_minimize(&self.opts, self.net.clone());
         let rhs = foma::minimize::fsm_minimize(&another.opts, another.net.clone());
-        foma::constructions::fsm_equivalent(&self.opts, lhs, rhs)
+        Ok(foma::constructions::fsm_equivalent(&self.opts, lhs, rhs))
     }
     fn is_automaton(&self) -> bool {
         // An acceptor: every arc has input == output. IDENTITY/UNKNOWN arcs have
@@ -414,9 +414,9 @@ impl AlgebraBackend for FomaTransducer {
         out
     }
 
-    fn n_best(&self, _n: u32) -> Self {
+    fn n_best(&self, _n: u32) -> crate::error::Result<Self> {
         // unweighted: no shortest-path pruning; return an identity copy.
-        self.clone()
+        Ok(self.clone())
     }
     fn extract_random_paths(&self, results: &mut HfstTwoLevelPaths, max_num: i32) {
         // Best-effort (unweighted): the first `max_num` complete paths of a
@@ -434,13 +434,13 @@ impl AlgebraBackend for FomaTransducer {
         // unweighted: no-op copy.
         self.clone()
     }
-    fn push_labels(&self, _to_initial_state: bool) -> Self {
+    fn push_labels(&self, _to_initial_state: bool) -> crate::error::Result<Self> {
         // unweighted: no-op copy.
-        self.clone()
+        Ok(self.clone())
     }
-    fn push_weights(&self, _to_initial_state: bool) -> Self {
+    fn push_weights(&self, _to_initial_state: bool) -> crate::error::Result<Self> {
         // unweighted: no-op copy.
-        self.clone()
+        Ok(self.clone())
     }
     fn transform_weights(&self, _func: fn(f32) -> f32) -> Self {
         // unweighted: no weights to transform; no-op copy.

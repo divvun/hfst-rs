@@ -16,7 +16,7 @@
 //! list with a reason is the only check such a method can get.
 //!
 //! Scope is every trait impl under `crates/*/src`, and the whole workspace
-//! currently holds fourteen. A new entry means a reviewer had to think; that is
+//! currently holds seventeen. A new entry means a reviewer had to think; that is
 //! the point, and at this rate it is not a tax.
 
 use std::collections::BTreeSet;
@@ -24,6 +24,13 @@ use std::path::{Path, PathBuf};
 
 /// `(file, method, body, why this constant is the honest answer)`.
 const SANCTIONED: &[(&str, &str, &str, &str)] = &[
+    (
+        "crates/hfst/src/backend/tropical.rs",
+        "copy",
+        "Ok(self.clone())",
+        "Cloning a VectorFst copies its whole graph, which is the deep copy the \
+         C++ 'copy' returned. Nothing about it can fail.",
+    ),
     (
         "crates/hfst/src/backend/tropical_algebra.rs",
         "substitute_symbol_fast",
@@ -41,7 +48,7 @@ const SANCTIONED: &[(&str, &str, &str, &str)] = &[
     (
         "crates/hfst/src/backend_foma/algebra.rs",
         "n_best",
-        "self.clone()",
+        "Ok(self.clone())",
         "Unweighted: with every path at weight 0.0 the n best paths are all of \
          them, so there is no shortest-path pruning to do.",
     ),
@@ -55,14 +62,14 @@ const SANCTIONED: &[(&str, &str, &str, &str)] = &[
     (
         "crates/hfst/src/backend_foma/algebra.rs",
         "push_labels",
-        "self.clone()",
+        "Ok(self.clone())",
         "Unweighted: label pushing moves weight mass toward one end, and there \
          is none to move.",
     ),
     (
         "crates/hfst/src/backend_foma/algebra.rs",
         "push_weights",
-        "self.clone()",
+        "Ok(self.clone())",
         "Unweighted: as push_labels.",
     ),
     (
@@ -153,6 +160,7 @@ const EMPTY_BODY: &str = "{}";
 /// one-line delegations, which are the opposite of the defect.
 const CONSTANT_BODIES: &[&str] = &[
     "self.clone()",
+    "Ok(self.clone())",
     "Ok(())",
     "None",
     "true",

@@ -3,13 +3,6 @@
 use super::*;
 
 impl TropicalWeightTransducer {
-    // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.compose-fn]
-    // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.compose-fn]
-    pub fn compose(t1: &StdVectorFst, t2: &StdVectorFst) -> StdVectorFst {
-        Self::try_compose_owned(t1.clone(), t2.clone(), None, None)
-            .expect("OpenFst composition of valid tropical transducers")
-    }
-
     /// Consuming, fallible composition used by the bounded/spilling
     /// backend path. Both operand graphs are sorted in place and then held
     /// by the lazy FST, so there is no full operand clone at peak memory.
@@ -176,8 +169,8 @@ pub(super) fn try_flag_overlay_product_owned(
     operation: &str,
     pruning: ProductPruning,
 ) -> crate::error::Result<StdVectorFst> {
-    algorithms::ArcSortOutput(&mut t1);
-    algorithms::ArcSortInput(&mut t2);
+    tr_sort(&mut t1, OLabelCompare {});
+    tr_sort(&mut t2, ILabelCompare {});
 
     let (pair_store, storage) = match memory_plan {
         hfst_openfst::compose_storage::ComposeMemoryPlan::Unbounded => (

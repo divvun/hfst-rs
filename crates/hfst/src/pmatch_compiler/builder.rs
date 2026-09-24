@@ -87,10 +87,7 @@ fn map_caseop(op: nfst_pmatch::CaseOp, side: Option<nfst_pmatch::CaseSide>) -> P
     }
 }
 // ===========================================================================
-// PmatchObject node constructors (mirror the C++ 'new PmatchX(...)' calls; all
-// share the 'PmatchObject()' base-field initialisation: name="", weight=0.0,
-// line_defined=pmatchlineno (unavailable in the walk -> 0), my_timer=0,
-// cache=NULL).
+// Small build helpers
 // ===========================================================================
 
 pub(super) fn as_obj<B: AlgebraBackend + 'static, T: PmatchObject<B> + 'static>(
@@ -98,136 +95,6 @@ pub(super) fn as_obj<B: AlgebraBackend + 'static, T: PmatchObject<B> + 'static>(
 ) -> ObjRef<B> {
     p
 }
-fn pmb_symbol<B: AlgebraBackend + 'static>(sym: Symbol) -> ObjRef<B> {
-    Rc::new(PmatchSymbol {
-        name: String::new(),
-        weight: 0.0,
-        line_defined: 0,
-        sym,
-        _marker: std::marker::PhantomData,
-    })
-}
-fn pmb_string<B: AlgebraBackend + 'static>(string: Symbol, multichar: bool) -> ObjRef<B> {
-    Rc::new(PmatchString {
-        name: String::new(),
-        weight: 0.0,
-        line_defined: 0,
-        string,
-        multichar,
-        _marker: std::marker::PhantomData,
-    })
-}
-fn pmb_question_mark<B: AlgebraBackend + 'static>() -> ObjRef<B> {
-    Rc::new(PmatchQuestionMark {
-        name: String::new(),
-        weight: 0.0,
-        line_defined: 0,
-        _marker: std::marker::PhantomData,
-    })
-}
-fn pmb_empty<B: AlgebraBackend + 'static>() -> ObjRef<B> {
-    Rc::new(PmatchEmpty {
-        name: String::new(),
-        weight: 0.0,
-        line_defined: 0,
-        _marker: std::marker::PhantomData,
-    })
-}
-fn pmb_epsilon_arc<B: AlgebraBackend + 'static>() -> ObjRef<B> {
-    Rc::new(PmatchEpsilonArc {
-        name: String::new(),
-        weight: 0.0,
-        line_defined: 0,
-        _marker: std::marker::PhantomData,
-    })
-}
-fn pmb_acceptor<B: AlgebraBackend + 'static>(set: PmatchPredefined) -> ObjRef<B> {
-    Rc::new(PmatchAcceptor {
-        name: String::new(),
-        weight: 0.0,
-        line_defined: 0,
-        set,
-        _marker: std::marker::PhantomData,
-    })
-}
-fn pmb_unary<B: AlgebraBackend + 'static>(op: PmatchUnaryOp, root: ObjRef<B>) -> ObjRef<B> {
-    Rc::new(PmatchUnaryOperation {
-        name: String::new(),
-        weight: 0.0,
-        line_defined: 0,
-        op,
-        root,
-    })
-}
-fn pmb_binary<B: AlgebraBackend + 'static>(
-    op: PmatchBinaryOp,
-    left: ObjRef<B>,
-    right: ObjRef<B>,
-) -> ObjRef<B> {
-    Rc::new(PmatchBinaryOperation {
-        name: String::new(),
-        weight: 0.0,
-        line_defined: 0,
-        op,
-        left,
-        right,
-    })
-}
-fn pmb_ternary<B: AlgebraBackend + 'static>(
-    op: PmatchTernaryOp,
-    left: ObjRef<B>,
-    middle: ObjRef<B>,
-    right: ObjRef<B>,
-) -> ObjRef<B> {
-    Rc::new(PmatchTernaryOperation {
-        name: String::new(),
-        weight: 0.0,
-        line_defined: 0,
-        op,
-        left,
-        middle,
-        right,
-    })
-}
-fn pmb_numeric<B: AlgebraBackend + 'static>(
-    op: PmatchNumericOp,
-    root: ObjRef<B>,
-    values: Vec<i32>,
-) -> ObjRef<B> {
-    Rc::new(PmatchNumericOperation {
-        name: String::new(),
-        weight: 0.0,
-        line_defined: 0,
-        op,
-        root,
-        values,
-    })
-}
-fn pmb_object_pair<B: AlgebraBackend + 'static>(left: ObjRef<B>, right: ObjRef<B>) -> PairRef<B> {
-    Rc::new(PmatchObjectPair { left, right })
-}
-fn pmb_markup_container<B: AlgebraBackend + 'static>(
-    left_of_arrow: ObjRef<B>,
-    left: ObjRef<B>,
-    right: ObjRef<B>,
-) -> PairRef<B> {
-    Rc::new(PmatchMarkupContainer {
-        left,
-        right,
-        left_of_arrow,
-    })
-}
-fn pmb_tc<B: AlgebraBackend + 'static>(t: HfstTransducer<B>) -> Rc<PmatchTransducerContainer<B>> {
-    Rc::new(PmatchTransducerContainer {
-        name: String::new(),
-        weight: 0.0,
-        line_defined: 0,
-        t,
-    })
-}
-// ===========================================================================
-// Small build helpers
-// ===========================================================================
 
 // STRINGLIKE: QUOTED_LITERAL -> PmatchString, CURLY_LITERAL -> PmatchString
 // (multichar), SYMBOL -> PmatchSymbol (no used_definitions / empty-check).
@@ -237,9 +104,9 @@ fn build_stringlike<B: AlgebraBackend + FromAnyTransducer + 'static>(
 ) -> crate::error::Result<ObjRef<B>> {
     use nfst_pmatch::PmatchExpr as PE;
     Ok(match &e.value {
-        PE::QuotedLiteral(s) => pmb_string(s.clone(), false),
-        PE::CurlyLiteral(s) => pmb_string(s.clone(), true),
-        PE::Symbol(s) => pmb_symbol(s.clone()),
+        PE::QuotedLiteral(s) => as_obj(PmatchString::new(s.clone(), false)),
+        PE::CurlyLiteral(s) => as_obj(PmatchString::new(s.clone(), true)),
+        PE::Symbol(s) => as_obj(PmatchSymbol::new(s.clone())),
         PE::Literal(_)
         | PE::Epsilon
         | PE::Any
@@ -297,7 +164,11 @@ fn build_concatenated_string_list<B: AlgebraBackend + FromAnyTransducer + 'stati
     let last = iter.next().expect("non-empty string list");
     let mut acc = build_stringlike(ctx, last)?;
     for it in iter {
-        acc = pmb_binary(PmatchBinaryOp::Concatenate, build_stringlike(ctx, it)?, acc);
+        acc = as_obj(PmatchBinaryOperation::new(
+            PmatchBinaryOp::Concatenate,
+            build_stringlike(ctx, it)?,
+            acc,
+        ));
     }
     Ok(acc)
 }
@@ -310,7 +181,7 @@ fn side_to_obj<B: AlgebraBackend + FromAnyTransducer + 'static>(
     use nfst_pmatch::MappingSide as MS;
     Ok(match side {
         MS::Expr(e) => build_object(ctx, e)?,
-        MS::Dotted(None) => pmb_epsilon_arc(),
+        MS::Dotted(None) => as_obj(PmatchEpsilonArc::new()),
         MS::Dotted(Some(e)) => build_object(ctx, e)?,
     })
 }
@@ -327,14 +198,20 @@ fn build_read_file<B: AlgebraBackend + FromAnyTransducer + 'static>(
             let mut instream = crate::hfst_input_stream::HfstInputStream::new_filename(&filepath)?;
             let read = instream.read()?.into_typed::<B>()?;
             instream.close();
-            Ok(as_obj(pmb_tc(read)))
+            Ok(as_obj(PmatchTransducerContainer::new(read)))
         }
-        RK::Text => Ok(as_obj(pmb_tc(read_text(filepath, false)?))),
-        RK::Spaced => Ok(as_obj(pmb_tc(read_spaced_text(filepath)?))),
+        RK::Text => Ok(as_obj(PmatchTransducerContainer::new(read_text(
+            filepath, false,
+        )?))),
+        RK::Spaced => Ok(as_obj(PmatchTransducerContainer::new(read_spaced_text(
+            filepath,
+        )?))),
         RK::Prolog => match std::fs::File::open(&filepath) {
             Err(_) => {
                 error!("File cannot be opened.");
-                Ok(as_obj(pmb_tc(HfstTransducer::new())))
+                Ok(as_obj(
+                    PmatchTransducerContainer::new(HfstTransducer::new()),
+                ))
             }
             Ok(f) => {
                 let mut reader = std::io::BufReader::new(f);
@@ -345,7 +222,7 @@ fn build_read_file<B: AlgebraBackend + FromAnyTransducer + 'static>(
                 )?;
                 let mut t = Box::new(HfstTransducer::new_from_basic(&tmp)?);
                 t.minimize()?;
-                Ok(as_obj(pmb_tc(*t)))
+                Ok(as_obj(PmatchTransducerContainer::new(*t)))
             }
         },
         RK::Regex => {
@@ -360,7 +237,7 @@ fn build_read_file<B: AlgebraBackend + FromAnyTransducer + 'static>(
             }
             let mut xre_compiler = crate::xre::XreCompiler::new();
             let compiled = xre_compiler.compile(&regex).unwrap_or_default();
-            Ok(as_obj(pmb_tc(compiled)))
+            Ok(as_obj(PmatchTransducerContainer::new(compiled)))
         }
     }
 }
@@ -375,22 +252,22 @@ pub fn build_object<B: AlgebraBackend + FromAnyTransducer + 'static>(
         PE::Symbol(s) => {
             let sym = s.clone();
             if sym.is_empty() {
-                pmb_empty()
+                as_obj(PmatchEmpty::new())
             } else {
                 ctx.used_definitions_insert(sym.clone());
-                pmb_symbol(sym)
+                as_obj(PmatchSymbol::new(sym))
             }
         }
-        PE::Literal(s) => pmb_string(s.clone(), false),
-        PE::QuotedLiteral(s) => pmb_string(s.clone(), false),
-        PE::CurlyLiteral(s) => pmb_string(s.clone(), true),
-        PE::Epsilon => pmb_string(
+        PE::Literal(s) => as_obj(PmatchString::new(s.clone(), false)),
+        PE::QuotedLiteral(s) => as_obj(PmatchString::new(s.clone(), false)),
+        PE::CurlyLiteral(s) => as_obj(PmatchString::new(s.clone(), true)),
+        PE::Epsilon => as_obj(PmatchString::new(
             Symbol::from(crate::hfst_symbol_defs::internal_epsilon),
             false,
-        ),
-        PE::BoundaryMarker => pmb_string(Symbol::from("@BOUNDARY@"), false),
-        PE::Any => pmb_question_mark(),
-        PE::Acceptor(a) => pmb_acceptor(map_acceptor(*a)),
+        )),
+        PE::BoundaryMarker => as_obj(PmatchString::new(Symbol::from("@BOUNDARY@"), false)),
+        PE::Any => as_obj(PmatchQuestionMark::new()),
+        PE::Acceptor(a) => as_obj(PmatchAcceptor::new(map_acceptor(*a))),
         PE::CharacterRange { from, to } => {
             let raw = format!("\"{}-{}\"", from, to);
             as_obj(parse_range(ctx, &raw)?)
@@ -398,20 +275,26 @@ pub fn build_object<B: AlgebraBackend + FromAnyTransducer + 'static>(
 
         // ---- operators -----------------------------------------------------
         PE::Binary(op, l, r) => build_binary_object(ctx, *op, l, r)?,
-        PE::Unary(op, inner) => pmb_unary(map_unop(*op), build_object(ctx, inner)?),
+        PE::Unary(op, inner) => as_obj(PmatchUnaryOperation::new(
+            map_unop(*op),
+            build_object(ctx, inner)?,
+        )),
 
         // ---- grouping / weight / pair --------------------------------------
         PE::Group(inner) => build_object(ctx, inner)?,
-        PE::Optional(inner) => pmb_unary(PmatchUnaryOp::Optionalize, build_object(ctx, inner)?),
+        PE::Optional(inner) => as_obj(PmatchUnaryOperation::new(
+            PmatchUnaryOp::Optionalize,
+            build_object(ctx, inner)?,
+        )),
         PE::BracketedDotted(inner) => match inner {
             Some(b) => build_object(ctx, b)?,
-            None => pmb_epsilon_arc(),
+            None => as_obj(PmatchEpsilonArc::new()),
         },
-        PE::Pair { upper, lower } => pmb_binary(
+        PE::Pair { upper, lower } => as_obj(PmatchBinaryOperation::new(
             PmatchBinaryOp::CrossProduct,
             build_object(ctx, upper)?,
             build_object(ctx, lower)?,
-        ),
+        )),
         PE::Weighted { expr, weight } => {
             let mut obj = build_object(ctx, expr)?;
             let new_weight = obj.get_weight() + *weight;
@@ -422,26 +305,42 @@ pub fn build_object<B: AlgebraBackend + FromAnyTransducer + 'static>(
         }
 
         // ---- catenate N ----------------------------------------------------
-        PE::RepeatN(inner, n) => pmb_numeric(
-            PmatchNumericOp::RepeatN,
-            build_object(ctx, inner)?,
-            vec![*n as i32],
-        ),
-        PE::RepeatNPlus(inner, n) => pmb_numeric(
-            PmatchNumericOp::RepeatNPlus,
-            build_object(ctx, inner)?,
-            vec![*n as i32 + 1],
-        ),
-        PE::RepeatNMinus(inner, n) => pmb_numeric(
-            PmatchNumericOp::RepeatNMinus,
-            build_object(ctx, inner)?,
-            vec![*n as i32 - 1],
-        ),
-        PE::RepeatNToK(inner, n, k) => pmb_numeric(
-            PmatchNumericOp::RepeatNToK,
-            build_object(ctx, inner)?,
-            vec![*n as i32, *k as i32],
-        ),
+        PE::RepeatN(inner, n) => {
+            let mut repeat =
+                PmatchNumericOperation::new(PmatchNumericOp::RepeatN, build_object(ctx, inner)?);
+            Rc::get_mut(&mut repeat)
+                .expect("freshly built node is uniquely owned")
+                .values = vec![*n as i32];
+            as_obj(repeat)
+        }
+        PE::RepeatNPlus(inner, n) => {
+            let mut repeat = PmatchNumericOperation::new(
+                PmatchNumericOp::RepeatNPlus,
+                build_object(ctx, inner)?,
+            );
+            Rc::get_mut(&mut repeat)
+                .expect("freshly built node is uniquely owned")
+                .values = vec![*n as i32 + 1];
+            as_obj(repeat)
+        }
+        PE::RepeatNMinus(inner, n) => {
+            let mut repeat = PmatchNumericOperation::new(
+                PmatchNumericOp::RepeatNMinus,
+                build_object(ctx, inner)?,
+            );
+            Rc::get_mut(&mut repeat)
+                .expect("freshly built node is uniquely owned")
+                .values = vec![*n as i32 - 1];
+            as_obj(repeat)
+        }
+        PE::RepeatNToK(inner, n, k) => {
+            let mut repeat =
+                PmatchNumericOperation::new(PmatchNumericOp::RepeatNToK, build_object(ctx, inner)?);
+            Rc::get_mut(&mut repeat)
+                .expect("freshly built node is uniquely owned")
+                .values = vec![*n as i32, *k as i32];
+            as_obj(repeat)
+        }
 
         // ---- replacement / restriction -------------------------------------
         PE::Replace { arrow, rules } => build_replace(ctx, *arrow, rules)?,
@@ -486,100 +385,100 @@ fn build_binary_object<B: AlgebraBackend + FromAnyTransducer + 'static>(
 ) -> crate::error::Result<ObjRef<B>> {
     use nfst_pmatch::BinaryOp as NBinOp;
     Ok(match op {
-        NBinOp::Concatenate => pmb_binary(
+        NBinOp::Concatenate => as_obj(PmatchBinaryOperation::new(
             PmatchBinaryOp::Concatenate,
             build_object(ctx, l)?,
             build_object(ctx, r)?,
-        ),
-        NBinOp::Compose => pmb_binary(
+        )),
+        NBinOp::Compose => as_obj(PmatchBinaryOperation::new(
             PmatchBinaryOp::Compose,
             build_object(ctx, l)?,
             build_object(ctx, r)?,
-        ),
-        NBinOp::LenientCompose => pmb_binary(
+        )),
+        NBinOp::LenientCompose => as_obj(PmatchBinaryOperation::new(
             PmatchBinaryOp::LenientCompose,
             build_object(ctx, l)?,
             build_object(ctx, r)?,
-        ),
-        NBinOp::CrossProduct => pmb_binary(
+        )),
+        NBinOp::CrossProduct => as_obj(PmatchBinaryOperation::new(
             PmatchBinaryOp::CrossProduct,
             build_object(ctx, l)?,
             build_object(ctx, r)?,
-        ),
-        NBinOp::MergeRight => pmb_binary(
+        )),
+        NBinOp::MergeRight => as_obj(PmatchBinaryOperation::new(
             PmatchBinaryOp::Merge,
             build_object(ctx, l)?,
             build_object(ctx, r)?,
-        ),
+        )),
         NBinOp::MergeLeft => {
             // .<m. swaps the operands: Merge($3, $1).
             let lo = build_object(ctx, l)?;
             let ro = build_object(ctx, r)?;
-            pmb_binary(PmatchBinaryOp::Merge, ro, lo)
+            as_obj(PmatchBinaryOperation::new(PmatchBinaryOp::Merge, ro, lo))
         }
-        NBinOp::Before => pmb_binary(
+        NBinOp::Before => as_obj(PmatchBinaryOperation::new(
             PmatchBinaryOp::Before,
             build_object(ctx, l)?,
             build_object(ctx, r)?,
-        ),
-        NBinOp::After => pmb_binary(
+        )),
+        NBinOp::After => as_obj(PmatchBinaryOperation::new(
             PmatchBinaryOp::After,
             build_object(ctx, l)?,
             build_object(ctx, r)?,
-        ),
-        NBinOp::Shuffle => pmb_binary(
+        )),
+        NBinOp::Shuffle => as_obj(PmatchBinaryOperation::new(
             PmatchBinaryOp::Shuffle,
             build_object(ctx, l)?,
             build_object(ctx, r)?,
-        ),
-        NBinOp::Union => pmb_binary(
+        )),
+        NBinOp::Union => as_obj(PmatchBinaryOperation::new(
             PmatchBinaryOp::Disjunct,
             build_object(ctx, l)?,
             build_object(ctx, r)?,
-        ),
-        NBinOp::Intersect => pmb_binary(
+        )),
+        NBinOp::Intersect => as_obj(PmatchBinaryOperation::new(
             PmatchBinaryOp::Intersect,
             build_object(ctx, l)?,
             build_object(ctx, r)?,
-        ),
-        NBinOp::Subtract => pmb_binary(
+        )),
+        NBinOp::Subtract => as_obj(PmatchBinaryOperation::new(
             PmatchBinaryOp::Subtract,
             build_object(ctx, l)?,
             build_object(ctx, r)?,
-        ),
-        NBinOp::UpperSubtract => pmb_binary(
+        )),
+        NBinOp::UpperSubtract => as_obj(PmatchBinaryOperation::new(
             PmatchBinaryOp::UpperSubtract,
             build_object(ctx, l)?,
             build_object(ctx, r)?,
-        ),
-        NBinOp::LowerSubtract => pmb_binary(
+        )),
+        NBinOp::LowerSubtract => as_obj(PmatchBinaryOperation::new(
             PmatchBinaryOp::LowerSubtract,
             build_object(ctx, l)?,
             build_object(ctx, r)?,
-        ),
-        NBinOp::UpperPriorityUnion => pmb_binary(
+        )),
+        NBinOp::UpperPriorityUnion => as_obj(PmatchBinaryOperation::new(
             PmatchBinaryOp::UpperPriorityUnion,
             build_object(ctx, l)?,
             build_object(ctx, r)?,
-        ),
-        NBinOp::LowerPriorityUnion => pmb_binary(
+        )),
+        NBinOp::LowerPriorityUnion => as_obj(PmatchBinaryOperation::new(
             PmatchBinaryOp::LowerPriorityUnion,
             build_object(ctx, l)?,
             build_object(ctx, r)?,
-        ),
-        NBinOp::Ignoring => pmb_binary(
+        )),
+        NBinOp::Ignoring => as_obj(PmatchBinaryOperation::new(
             PmatchBinaryOp::InsertFreely,
             build_object(ctx, l)?,
             build_object(ctx, r)?,
-        ),
-        NBinOp::IgnoreInternally => pmb_binary(
+        )),
+        NBinOp::IgnoreInternally => as_obj(PmatchBinaryOperation::new(
             PmatchBinaryOp::IgnoreInternally,
             build_object(ctx, l)?,
             build_object(ctx, r)?,
-        ),
+        )),
         NBinOp::LeftQuotient => {
             warn!("Left quotient not implemented");
-            pmb_empty()
+            as_obj(PmatchEmpty::new())
         }
     })
 }
@@ -598,19 +497,19 @@ fn build_replace<B: AlgebraBackend + FromAnyTransducer + 'static>(
             use nfst_pmatch::MappingKind as MK;
             let pair: PairRef<B> = match &mp.kind {
                 MK::Plain { lower } => {
-                    pmb_object_pair(side_to_obj(ctx, &mp.upper)?, side_to_obj(ctx, lower)?)
+                    PmatchObjectPair::new(side_to_obj(ctx, &mp.upper)?, side_to_obj(ctx, lower)?)
                 }
                 MK::Markup { pre, post } => {
                     let loa = side_to_obj(ctx, &mp.upper)?;
                     let lom = match pre {
                         Some(s) => side_to_obj(ctx, s)?,
-                        None => pmb_epsilon_arc(),
+                        None => as_obj(PmatchEpsilonArc::new()),
                     };
                     let rom = match post {
                         Some(s) => side_to_obj(ctx, s)?,
-                        None => pmb_epsilon_arc(),
+                        None => as_obj(PmatchEpsilonArc::new()),
                     };
-                    pmb_markup_container(loa, lom, rom)
+                    PmatchMarkupContainer::new(loa, lom, rom)
                 }
             };
             mapping.push(pair);
@@ -622,27 +521,24 @@ fn build_replace<B: AlgebraBackend + FromAnyTransducer + 'static>(
                 for c in ctxs.items.iter() {
                     let l = match &c.left {
                         Some(e) => build_object(ctx, e)?,
-                        None => pmb_epsilon_arc(),
+                        None => as_obj(PmatchEpsilonArc::new()),
                     };
                     let r = match &c.right {
                         Some(e) => build_object(ctx, e)?,
-                        None => pmb_epsilon_arc(),
+                        None => as_obj(PmatchEpsilonArc::new()),
                     };
-                    context.push(pmb_object_pair(l, r));
+                    context.push(PmatchObjectPair::new(l, r));
                 }
                 (map_mark(ctxs.mark), context)
             }
             None => (ReplaceType::REPL_UP, Vec::new()),
         };
-        rule_ptrs.push(Rc::new(PmatchReplaceRuleContainer {
-            name: String::new(),
-            weight: 0.0,
-            line_defined: 0,
-            arrow: mapped_arrow,
-            ty: rtype,
+        rule_ptrs.push(PmatchReplaceRuleContainer::new(
+            mapped_arrow,
+            rtype,
             mapping,
             context,
-        }));
+        ));
     }
     Ok(as_obj(Rc::new(PmatchParallelRulesContainer {
         name: String::new(),
@@ -665,9 +561,9 @@ fn build_restriction<B: AlgebraBackend + FromAnyTransducer + 'static>(
             Some(e) => build_object(ctx, e)?,
             None => {
                 if rc.right.is_some() {
-                    pmb_epsilon_arc()
+                    as_obj(PmatchEpsilonArc::new())
                 } else {
-                    pmb_empty()
+                    as_obj(PmatchEmpty::new())
                 }
             }
         };
@@ -675,21 +571,15 @@ fn build_restriction<B: AlgebraBackend + FromAnyTransducer + 'static>(
             Some(e) => build_object(ctx, e)?,
             None => {
                 if rc.left.is_some() {
-                    pmb_epsilon_arc()
+                    as_obj(PmatchEpsilonArc::new())
                 } else {
-                    pmb_empty()
+                    as_obj(PmatchEmpty::new())
                 }
             }
         };
-        ctxs.push(pmb_object_pair(l, r));
+        ctxs.push(PmatchObjectPair::new(l, r));
     }
-    Ok(as_obj(Rc::new(PmatchRestrictionContainer {
-        name: String::new(),
-        weight: 0.0,
-        line_defined: 0,
-        left,
-        contexts: ctxs,
-    })))
+    Ok(as_obj(PmatchRestrictionContainer::new(left, ctxs)))
 }
 // The pmatch-specific constructs, context conditions, function calls and
 // file references. 'build_object' dispatches here and builds the rest.
@@ -721,43 +611,62 @@ fn build_pmatch_construct<B: AlgebraBackend + FromAnyTransducer + 'static>(
         }
         PE::Tag { body, name } => {
             // AddDelimiters(Concatenate(body, make_end_tag(ctx, name)))
-            let cat = pmb_binary(
+            let cat = as_obj(PmatchBinaryOperation::new(
                 PmatchBinaryOp::Concatenate,
                 build_object(ctx, body)?,
                 as_obj(make_end_tag(ctx, name.to_string())?),
-            );
-            pmb_unary(PmatchUnaryOp::AddDelimiters, cat)
+            ));
+            as_obj(PmatchUnaryOperation::new(PmatchUnaryOp::AddDelimiters, cat))
         }
         PE::With { body, name, value } => {
             // Concatenate(Concatenate(entry, body), exit)
             let entry = make_with_tag_entry(name.to_string(), value.to_string());
             let exit = make_with_tag_exit(name.to_string());
-            let inner = pmb_binary(PmatchBinaryOp::Concatenate, entry, build_object(ctx, body)?);
-            pmb_binary(PmatchBinaryOp::Concatenate, inner, exit)
+            let inner = as_obj(PmatchBinaryOperation::new(
+                PmatchBinaryOp::Concatenate,
+                entry,
+                build_object(ctx, body)?,
+            ));
+            as_obj(PmatchBinaryOperation::new(
+                PmatchBinaryOp::Concatenate,
+                inner,
+                exit,
+            ))
         }
         PE::Counter(name) => as_obj(make_counter(ctx, name.to_string())?),
-        PE::CaseOp { op, side, body } => {
-            pmb_unary(map_caseop(*op, *side), build_object(ctx, body)?)
-        }
-        PE::DefineWrapper(inner) => {
-            pmb_unary(PmatchUnaryOp::AddDelimiters, build_object(ctx, inner)?)
-        }
-        PE::Explode(items) => pmb_unary(
+        PE::CaseOp { op, side, body } => as_obj(PmatchUnaryOperation::new(
+            map_caseop(*op, *side),
+            build_object(ctx, body)?,
+        )),
+        PE::DefineWrapper(inner) => as_obj(PmatchUnaryOperation::new(
+            PmatchUnaryOp::AddDelimiters,
+            build_object(ctx, inner)?,
+        )),
+        PE::Explode(items) => as_obj(PmatchUnaryOperation::new(
             PmatchUnaryOp::Explode,
             build_concatenated_string_list(ctx, items)?,
-        ),
-        PE::Implode(items) => pmb_unary(
+        )),
+        PE::Implode(items) => as_obj(PmatchUnaryOperation::new(
             PmatchUnaryOp::Implode,
             build_concatenated_string_list(ctx, items)?,
-        ),
+        )),
         PE::Like {
             args,
             threshold,
             unlike,
         } => build_like(ctx, args, *threshold, *unlike)?,
-        PE::Lst(inner) => pmb_unary(PmatchUnaryOp::MakeList, build_object(ctx, inner)?),
-        PE::Exc(inner) => pmb_unary(PmatchUnaryOp::MakeExcList, build_object(ctx, inner)?),
-        PE::Sigma(inner) => pmb_unary(PmatchUnaryOp::MakeSigma, build_object(ctx, inner)?),
+        PE::Lst(inner) => as_obj(PmatchUnaryOperation::new(
+            PmatchUnaryOp::MakeList,
+            build_object(ctx, inner)?,
+        )),
+        PE::Exc(inner) => as_obj(PmatchUnaryOperation::new(
+            PmatchUnaryOp::MakeExcList,
+            build_object(ctx, inner)?,
+        )),
+        PE::Sigma(inner) => as_obj(PmatchUnaryOperation::new(
+            PmatchUnaryOp::MakeSigma,
+            build_object(ctx, inner)?,
+        )),
         PE::Interpolate(items) => {
             // FUNCALL_ARGLIST is in reverse source order; replicate.
             let argvec: Vec<ObjRef<B>> = items
@@ -765,20 +674,17 @@ fn build_pmatch_construct<B: AlgebraBackend + FromAnyTransducer + 'static>(
                 .rev()
                 .map(|it| build_object(ctx, it))
                 .collect::<crate::error::Result<_>>()?;
-            as_obj(Rc::new(PmatchBuiltinFunction {
-                name: String::new(),
-                weight: 0.0,
-                line_defined: 0,
-                args: argvec,
-                ty: PmatchBuiltin::Interpolate,
-            }))
+            as_obj(PmatchBuiltinFunction::new(
+                PmatchBuiltin::Interpolate,
+                argvec,
+            ))
         }
-        PE::Substitute(a, b, c) => pmb_ternary(
+        PE::Substitute(a, b, c) => as_obj(PmatchTernaryOperation::new(
             PmatchTernaryOp::Substitute,
             build_object(ctx, a)?,
             build_object(ctx, b)?,
             build_object(ctx, c)?,
-        ),
+        )),
         PE::Uncompose(a, b, c) => {
             let left = build_stringlike(ctx, a)?;
             let middle = build_stringlike(ctx, b)?;
@@ -789,27 +695,44 @@ fn build_pmatch_construct<B: AlgebraBackend + FromAnyTransducer + 'static>(
             let right_str = Symbol::from(right.as_string(ctx).unwrap_or_default());
             ctx.uncomposed_insert(right_str.clone());
             ctx.used_definitions_insert(right_str);
-            pmb_ternary(PmatchTernaryOp::Uncompose, left, middle, right)
+            as_obj(PmatchTernaryOperation::new(
+                PmatchTernaryOp::Uncompose,
+                left,
+                middle,
+                right,
+            ))
         }
 
         // ---- context conditions --------------------------------------------
         PE::Lc(inner) => {
-            let retval = pmb_unary(PmatchUnaryOp::LC, build_object(ctx, inner)?);
+            let retval = as_obj(PmatchUnaryOperation::new(
+                PmatchUnaryOp::LC,
+                build_object(ctx, inner)?,
+            ));
             ctx.need_delimiters = true;
             retval
         }
         PE::Rc(inner) => {
-            let retval = pmb_unary(PmatchUnaryOp::RC, build_object(ctx, inner)?);
+            let retval = as_obj(PmatchUnaryOperation::new(
+                PmatchUnaryOp::RC,
+                build_object(ctx, inner)?,
+            ));
             ctx.need_delimiters = true;
             retval
         }
         PE::Nlc(inner) => {
-            let retval = pmb_unary(PmatchUnaryOp::NLC, build_object(ctx, inner)?);
+            let retval = as_obj(PmatchUnaryOperation::new(
+                PmatchUnaryOp::NLC,
+                build_object(ctx, inner)?,
+            ));
             ctx.need_delimiters = true;
             retval
         }
         PE::Nrc(inner) => {
-            let retval = pmb_unary(PmatchUnaryOp::NRC, build_object(ctx, inner)?);
+            let retval = as_obj(PmatchUnaryOperation::new(
+                PmatchUnaryOp::NRC,
+                build_object(ctx, inner)?,
+            ));
             ctx.need_delimiters = true;
             retval
         }
@@ -819,14 +742,18 @@ fn build_pmatch_construct<B: AlgebraBackend + FromAnyTransducer + 'static>(
                 let obj = build_object(ctx, it)?;
                 result = match result {
                     None => Some(obj),
-                    Some(prev) => Some(pmb_binary(PmatchBinaryOp::Disjunct, prev, obj)),
+                    Some(prev) => Some(as_obj(PmatchBinaryOperation::new(
+                        PmatchBinaryOp::Disjunct,
+                        prev,
+                        obj,
+                    ))),
                 };
             }
             // Zero the counter for making minimization guards for disjuncted
             // negative contexts.
             ctx.zero_minimization_guard();
             ctx.need_delimiters = true;
-            result.unwrap_or_else(|| pmb_empty())
+            result.unwrap_or_else(|| as_obj(PmatchEmpty::new()))
         }
         PE::AndContext(items) => {
             let mut result: Option<ObjRef<B>> = None;
@@ -834,11 +761,15 @@ fn build_pmatch_construct<B: AlgebraBackend + FromAnyTransducer + 'static>(
                 let obj = build_object(ctx, it)?;
                 result = match result {
                     None => Some(obj),
-                    Some(prev) => Some(pmb_binary(PmatchBinaryOp::Concatenate, prev, obj)),
+                    Some(prev) => Some(as_obj(PmatchBinaryOperation::new(
+                        PmatchBinaryOp::Concatenate,
+                        prev,
+                        obj,
+                    ))),
                 };
             }
             ctx.need_delimiters = true;
-            result.unwrap_or_else(|| pmb_empty())
+            result.unwrap_or_else(|| as_obj(PmatchEmpty::new()))
         }
 
         // ---- function call -------------------------------------------------
@@ -846,7 +777,7 @@ fn build_pmatch_construct<B: AlgebraBackend + FromAnyTransducer + 'static>(
             let sym = name.clone();
             let result = if !ctx.function_names_contains(name) {
                 error!("Function {} hasn't been defined", sym);
-                pmb_string(Symbol::default(), false)
+                as_obj(PmatchString::new(Symbol::default(), false))
             } else {
                 let fun = symbol_from_global_context(ctx, &sym)
                     .expect("a defined function name is bound in global definitions");
@@ -855,13 +786,7 @@ fn build_pmatch_construct<B: AlgebraBackend + FromAnyTransducer + 'static>(
                     .rev()
                     .map(|a| build_object(ctx, a))
                     .collect::<crate::error::Result<_>>()?;
-                as_obj(Rc::new(PmatchFuncall {
-                    name: String::new(),
-                    weight: 0.0,
-                    line_defined: 0,
-                    args: argvec,
-                    fun,
-                }))
+                as_obj(PmatchFuncall::new(argvec, fun))
             };
             ctx.used_definitions_insert(sym);
             result
@@ -871,12 +796,15 @@ fn build_pmatch_construct<B: AlgebraBackend + FromAnyTransducer + 'static>(
         PE::ReadFile { kind, path } => build_read_file(ctx, *kind, path)?,
         PE::ReadLexc(path) => {
             let filepath = path_from_filename(ctx, path);
-            as_obj(pmb_tc(HfstTransducer::read_lexc(&filepath, ctx.verbose)?))
+            as_obj(PmatchTransducerContainer::new(HfstTransducer::read_lexc(
+                &filepath,
+                ctx.verbose,
+            )?))
         }
         PE::ReadVec(path) => {
             let filepath = path_from_filename(ctx, path);
             read_vec(ctx, filepath);
-            pmb_empty()
+            as_obj(PmatchEmpty::new())
         }
         PE::Symbol(_)
         | PE::Literal(_)
@@ -911,7 +839,10 @@ fn build_insertion<B: AlgebraBackend + 'static>(
         if !ctx.definitions_contains(name) {
             ctx.unsatisfied_insertions_insert(name.clone());
         }
-        let retval = pmb_string(Symbol::from(get_Ins_transition(name)), false);
+        let retval = as_obj(PmatchString::new(
+            Symbol::from(get_Ins_transition(name)),
+            false,
+        ));
         ctx.inserted_names_insert(name.clone());
         ctx.used_definitions_insert(name.clone());
         retval
@@ -923,7 +854,7 @@ fn build_insertion<B: AlgebraBackend + 'static>(
             "Insertion of {} is undefined and --ctx.flatten is in use",
             name
         );
-        pmb_empty()
+        as_obj(PmatchEmpty::new())
     }
 }
 // Like() and Unlike() over the loaded word vectors.
@@ -942,7 +873,7 @@ fn build_like<B: AlgebraBackend + 'static>(
                 "Unlike() operation takes exactly 2 arguments, got {}",
                 rargs.len()
             );
-            pmb_empty()
+            as_obj(PmatchEmpty::new())
         } else {
             compile_like_arc(ctx, rargs[1].clone(), rargs[0].clone(), nwords, true)?
         }
@@ -964,7 +895,7 @@ fn build_expression1<B: AlgebraBackend + FromAnyTransducer + 'static>(
 ) -> crate::error::Result<ObjRef<B>> {
     let obj = build_object(ctx, body)?;
     let result = if ctx.need_delimiters {
-        pmb_unary(PmatchUnaryOp::AddDelimiters, obj)
+        as_obj(PmatchUnaryOperation::new(PmatchUnaryOp::AddDelimiters, obj))
     } else {
         obj
     };
@@ -1022,13 +953,7 @@ pub fn build_statement<B: AlgebraBackend + FromAnyTransducer + 'static>(
             Some(args) => {
                 let root = build_expression1(ctx, body)?;
                 // The C++ ARGLIST is in reverse source order; replicate.
-                let mut fun = Rc::new(PmatchFunction {
-                    name: String::new(),
-                    weight: 0.0,
-                    line_defined: 0,
-                    args: args.iter().rev().cloned().collect(),
-                    root,
-                });
+                let mut fun = PmatchFunction::new(args.iter().rev().cloned().collect(), root);
                 Rc::get_mut(&mut fun)
                     .expect("freshly built node is uniquely owned")
                     .name = name.to_string();
@@ -1043,7 +968,10 @@ pub fn build_statement<B: AlgebraBackend + FromAnyTransducer + 'static>(
                 .expect("freshly built node is uniquely owned")
                 .set_name(name.to_string());
             ctx.def_insed_expressions_insert(name.to_string(), body_obj);
-            let def_value = pmb_string(Symbol::from(get_Ins_transition(name)), false);
+            let def_value = as_obj(PmatchString::new(
+                Symbol::from(get_Ins_transition(name)),
+                false,
+            ));
             report_defined(ctx, name);
             insert_definition(ctx, name.to_string(), def_value);
         }
@@ -1069,7 +997,7 @@ pub fn build_statement<B: AlgebraBackend + FromAnyTransducer + 'static>(
             Rc::get_mut(&mut inner)
                 .expect("freshly built node is uniquely owned")
                 .set_name(name.to_string());
-            let value = pmb_unary(PmatchUnaryOp::MakeSigma, inner);
+            let value = as_obj(PmatchUnaryOperation::new(PmatchUnaryOp::MakeSigma, inner));
             report_defined(ctx, name);
             insert_definition(ctx, name.to_string(), value);
         }

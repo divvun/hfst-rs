@@ -48,8 +48,8 @@ impl Backend for Transducer<WeightedTables> {
         HfstOlTransducer::get_alphabet(self)
     }
 
-    fn is_cyclic(&self) -> bool {
-        Transducer::is_cyclic(self)
+    fn is_cyclic(&self) -> crate::error::Result<bool> {
+        Ok(Transducer::is_cyclic(self))
     }
 
     fn number_of_states(&self) -> u32 {
@@ -120,8 +120,8 @@ impl Backend for Transducer<UnweightedTables> {
         HfstOlTransducer::get_alphabet(self)
     }
 
-    fn is_cyclic(&self) -> bool {
-        Transducer::is_cyclic(self)
+    fn is_cyclic(&self) -> crate::error::Result<bool> {
+        Ok(Transducer::is_cyclic(self))
     }
 
     fn number_of_states(&self) -> u32 {

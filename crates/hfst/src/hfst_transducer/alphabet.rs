@@ -195,7 +195,7 @@ impl<B: Backend> HfstTransducer<B> {
     // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.is-cyclic-fn]
     // [spec:hfst:sem:hfst-transducer.hfst.hfst-transducer.is-cyclic-fn]
     pub fn is_cyclic(&self) -> crate::error::Result<bool> {
-        Ok(self.fst.is_cyclic())
+        self.fst.is_cyclic()
     }
 
     // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.number-of-states-fn]
@@ -388,7 +388,7 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
 
         // No caller configures equivalence-checking, so the former global
         // 'encode_weights' is read at its C++ default (false) here.
-        Ok(one_copy.fst.are_equivalent(&another_copy.fst, false))
+        one_copy.fst.are_equivalent(&another_copy.fst, false)
     }
 
     pub fn compare_default(&self, another: &HfstTransducer<B>) -> crate::error::Result<bool> {

@@ -351,7 +351,7 @@ fn undecidable_properties_are_not_claimed() {
 
 /// THFST stores no header at all, so its answers can only come from the graph.
 #[test]
-fn thfst_answers_from_the_graph() {
+fn thfst_answers_from_the_graph() -> hfst::error::Result<()> {
     let _g = serialized();
     for (name, net, cyclic, ambiguous) in [
         ("a*", star(), true, false),
@@ -359,11 +359,12 @@ fn thfst_answers_from_the_graph() {
         ("ab:xy", straight_path(), false, false),
     ] {
         let t = ThfstTransducer::from_basic(&net).expect("thfst conversion");
-        assert_eq!(t.is_cyclic(), cyclic, "{name}: thfst is_cyclic");
+        assert_eq!(t.is_cyclic()?, cyclic, "{name}: thfst is_cyclic");
         assert_eq!(
             t.is_infinitely_ambiguous().expect("ambiguity query"),
             ambiguous,
             "{name}: thfst is_infinitely_ambiguous"
         );
     }
+    Ok(())
 }

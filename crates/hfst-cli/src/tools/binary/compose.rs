@@ -291,7 +291,7 @@ impl BinaryToolOp for ComposeOp {
                     );
                 }
             } else {
-                let prepared = if B::SUPPORTS_FLAG_OVERLAY {
+                let prepared = if B::SUPPORTS_VIRTUAL_FLAG_COMPOSE {
                     first
                         .prepare_flag_diacritics_for_operation(second)
                         .map(Some)

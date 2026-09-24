@@ -138,7 +138,7 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
         config: &EngineConfig,
         flag_overlay: Option<&FlagDiacriticComposeOverlay>,
     ) -> crate::error::Result<&mut HfstTransducer<B>> {
-        if flag_overlay.is_some() && !B::SUPPORTS_FLAG_OVERLAY {
+        if flag_overlay.is_some() && !B::SUPPORTS_VIRTUAL_FLAG_COMPOSE {
             crate::bail!(
                 Hfst,
                 "this backend does not support virtual flag composition"
@@ -828,7 +828,7 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
     ) -> crate::error::Result<&mut HfstTransducer<B>> {
         self.is_trie = false; // This could be done so that is_trie is preserved
         let another = self.harmonize_for_binary_op(another, harmonize)?;
-        self.fst = self.fst.concatenate(&another.fst);
+        self.fst = self.fst.concatenate(&another.fst)?;
         Ok(self)
     }
 
@@ -848,7 +848,7 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
     ) -> crate::error::Result<&mut HfstTransducer<B>> {
         self.is_trie = false;
         let another = self.harmonize_for_binary_op(another, harmonize)?;
-        self.fst = self.fst.disjunct(&another.fst);
+        self.fst = self.fst.disjunct(&another.fst)?;
         Ok(self)
     }
 

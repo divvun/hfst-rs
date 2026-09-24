@@ -29,7 +29,7 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
 
     pub fn remove_epsilons(&mut self) -> crate::error::Result<&mut HfstTransducer<B>> {
         self.is_trie = false;
-        self.fst = self.fst.remove_epsilons();
+        self.fst = self.fst.remove_epsilons()?;
         Ok(self)
     }
 
@@ -46,7 +46,7 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
     ) -> crate::error::Result<&mut HfstTransducer<B>> {
         self.is_trie = false;
         let fst = std::mem::replace(&mut self.fst, B::empty());
-        self.fst = fst.determinize(config.encode_weights);
+        self.fst = fst.determinize(config.encode_weights)?;
         Ok(self)
     }
 
@@ -62,7 +62,7 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
     ) -> crate::error::Result<&mut HfstTransducer<B>> {
         self.is_trie = false;
         let fst = std::mem::replace(&mut self.fst, B::empty());
-        self.fst = fst.minimize(config.encode_weights);
+        self.fst = fst.minimize(config.encode_weights)?;
         Ok(self)
     }
 
@@ -99,7 +99,7 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
 
     pub fn repeat_n(&mut self, n: u32) -> crate::error::Result<&mut HfstTransducer<B>> {
         self.is_trie = false; // This could be done so that is_trie is preserved
-        self.fst = self.fst.repeat_n(n);
+        self.fst = self.fst.repeat_n(n)?;
         Ok(self)
     }
 
@@ -112,7 +112,7 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
 
     pub fn repeat_n_minus(&mut self, n: u32) -> crate::error::Result<&mut HfstTransducer<B>> {
         self.is_trie = false; // This could be done so that is_trie is preserved
-        self.fst = self.fst.repeat_le_n(n);
+        self.fst = self.fst.repeat_le_n(n)?;
         Ok(self)
     }
 
@@ -133,7 +133,7 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
 
     pub fn optionalize(&mut self) -> crate::error::Result<&mut HfstTransducer<B>> {
         self.is_trie = false; // This could be done so that is_trie is preserved
-        self.fst = self.fst.optionalize();
+        self.fst = self.fst.optionalize()?;
         Ok(self)
     }
 
@@ -145,7 +145,7 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
 
     pub fn reverse(&mut self) -> crate::error::Result<&mut HfstTransducer<B>> {
         self.is_trie = false; // This could be done so that is_trie is preserved
-        self.fst = self.fst.reverse();
+        self.fst = self.fst.reverse()?;
         Ok(self)
     }
 
@@ -199,7 +199,7 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
     pub fn n_best(&mut self, n: u32) -> crate::error::Result<&mut HfstTransducer<B>> {
         // (Same C++ round-trip through TROPICAL_OPENFST_TYPE as
         // extract_random_paths; each backend answers for itself here.)
-        self.fst = self.fst.n_best(n);
+        self.fst = self.fst.n_best(n)?;
         Ok(self)
     }
 
@@ -263,7 +263,7 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
         push_type: PushType,
     ) -> crate::error::Result<&mut HfstTransducer<B>> {
         let to_initial_state = push_type == PushType::TO_INITIAL_STATE;
-        self.fst = self.fst.push_labels(to_initial_state);
+        self.fst = self.fst.push_labels(to_initial_state)?;
         Ok(self)
     }
 
@@ -283,7 +283,7 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
         push_type: PushType,
     ) -> crate::error::Result<&mut HfstTransducer<B>> {
         let to_initial_state = push_type == PushType::TO_INITIAL_STATE;
-        self.fst = self.fst.push_weights(to_initial_state);
+        self.fst = self.fst.push_weights(to_initial_state)?;
         Ok(self)
     }
 
@@ -304,8 +304,7 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
 
 impl HfstTransducer<StdVectorFst> {
     pub fn prune(&mut self) -> crate::error::Result<&mut HfstTransducer<StdVectorFst>> {
-        let temp = TropicalWeightTransducer::prune(&self.fst);
-        self.fst = temp;
+        self.fst = TropicalWeightTransducer::prune(&self.fst)?;
         Ok(self)
     }
 }

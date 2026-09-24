@@ -183,11 +183,11 @@ impl Backend for FomaTransducer {
         out
     }
 
-    fn is_cyclic(&self) -> bool {
+    fn is_cyclic(&self) -> crate::error::Result<bool> {
         // fsm_topsort sets is_loop_free (1 acyclic, 0 cyclic) on the net it
         // returns; run it on a copy so this query stays non-destructive.
         let sorted = foma::topsort::fsm_topsort(self.net.clone());
-        sorted.is_loop_free == foma::types::Tern::No
+        Ok(sorted.is_loop_free == foma::types::Tern::No)
     }
 
     /// C `FomaTransducer::number_of_states` counted the state-number runs of the

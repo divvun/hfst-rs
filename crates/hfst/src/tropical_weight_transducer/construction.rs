@@ -464,12 +464,12 @@ impl TropicalWeightTransducer {
 
     // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.is-cyclic-fn]
     // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.is-cyclic-fn]
-    pub fn is_cyclic(t: &StdVectorFst) -> bool {
+    pub fn is_cyclic(t: &StdVectorFst) -> crate::error::Result<bool> {
         // C++: return t->Properties(kCyclic, true) & kCyclic;
         let mut known = FstProperties::empty();
         let props = compute_fst_properties(t, FstProperties::CYCLIC, &mut known, true)
-            .expect("rustfst compute_fst_properties");
-        props.contains(FstProperties::CYCLIC)
+            .map_err(openfst_error("compute_fst_properties"))?;
+        Ok(props.contains(FstProperties::CYCLIC))
     }
 
     // ---- public low-level builders ----
@@ -483,13 +483,6 @@ impl TropicalWeightTransducer {
                 .expect("start state just created by add_state");
         }
         s
-    }
-
-    // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.set-final-weight-fn]
-    // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.set-final-weight-fn]
-    pub fn set_final_weight(t: &mut StdVectorFst, s: StateId, w: f32) {
-        t.set_final(s, w)
-            .expect("s is a valid state obtained from add_state");
     }
 
     // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.add-transition-fn]
@@ -512,38 +505,5 @@ impl TropicalWeightTransducer {
         t.add_tr(source, StdTransition::new(ilabel, olabel, w, target))
             .expect("source is a valid state of this fst");
         t.set_input_symbols(Arc::new(st));
-    }
-
-    // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.get-final-weight-fn]
-    // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.get-final-weight-fn]
-    pub fn get_final_weight(t: &StdVectorFst, s: StateId) -> f32 {
-        // C++ 't->Final(s).Value()' — Zero().Value() is +inf for a non-final state.
-        t.final_weight(s)
-            .expect("s is a valid state of this fst")
-            .map(|w| *w.value())
-            .unwrap_or(f32::INFINITY)
-    }
-
-    // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.is-final-fn]
-    // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.is-final-fn]
-    pub fn is_final(t: &StdVectorFst, s: StateId) -> bool {
-        // C++ declares 'float' but computes '(t->Final(s) != Zero())' — a bool.
-        t.is_final(s).expect("state id comes from the same fst")
-    }
-
-    // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.get-initial-state-fn]
-    // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.get-initial-state-fn]
-    pub fn get_initial_state(t: &StdVectorFst) -> StateId {
-        t.start().unwrap_or(NO_STATE_ID)
-    }
-
-    // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.represent-empty-transducer-as-having-one-state-fn]
-    // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.represent-empty-transducer-as-having-one-state-fn]
-    pub fn represent_empty_as_one_state(t: &mut StdVectorFst) {
-        if t.start().is_none() || t.num_states() == 0 {
-            // BUG PRESERVED: the C++ does 'delete t; t = create_empty_transducer();',
-            // assigning a LOCAL pointer — the caller's transducer is unchanged.
-            // We replicate the no-op (mutating *t here would change the caller).
-        }
     }
 }

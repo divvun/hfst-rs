@@ -1,4 +1,9 @@
-//! Algebraic operations and OpenFST-algorithm wrappers.
+//! Algebraic operations over rustfst's algorithms.
+
+use hfst_openfst::rustfst::algorithms::compose::compose;
+use hfst_openfst::rustfst::algorithms::concat::concat;
+use hfst_openfst::rustfst::algorithms::determinize::determinize;
+use hfst_openfst::rustfst::algorithms::union::union;
 
 use super::*;
 
@@ -26,6 +31,18 @@ pub(super) fn check_epsilon_cycles(x: &StdVectorFst, y: &str) {
     }
 }
 
+/// Reverse 'fst'. The two sides trade places, so its symbol tables do too.
+pub(super) fn reverse_swapping_tables(fst: &StdVectorFst) -> crate::error::Result<StdVectorFst> {
+    let mut reversed: StdVectorFst = reverse(fst).map_err(openfst_error("reverse"))?;
+    if let Some(symbols) = fst.output_symbols() {
+        reversed.set_input_symbols(std::sync::Arc::clone(symbols));
+    }
+    if let Some(symbols) = fst.input_symbols() {
+        reversed.set_output_symbols(std::sync::Arc::clone(symbols));
+    }
+    Ok(reversed)
+}
+
 /// 'dst->SetInputSymbols(src->InputSymbols())' — copy 'src''s input symbol table
 /// (as a shared 'Arc') onto 'dst'. No-op when 'src' has no input symbols.
 #[allow(dead_code)]
@@ -42,104 +59,89 @@ impl TropicalWeightTransducer {
     // yields a 'File too big' error.
     // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.push-labels-fn]
     // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.push-labels-fn]
-    pub fn push_labels(t: &StdVectorFst, to_initial_state: bool) -> StdVectorFst {
+    pub fn push_labels(
+        t: &StdVectorFst,
+        to_initial_state: bool,
+    ) -> crate::error::Result<StdVectorFst> {
         assert!(t.input_symbols().is_some());
 
         check_epsilon_cycles(t, "push_labels");
 
-        let mut retval = StdVectorFst::new();
-        if to_initial_state {
-            algorithms::Push(
-                t,
-                &mut retval,
-                algorithms::FstReweightType::ReweightToInitial,
-                algorithms::PushType::PUSH_LABELS,
-            );
+        let reweight_type = if to_initial_state {
+            ReweightType::ReweightToInitial
         } else {
-            algorithms::Push(
-                t,
-                &mut retval,
-                algorithms::FstReweightType::ReweightToFinal,
-                algorithms::PushType::PUSH_LABELS,
-            );
-        }
-        copy_input_symbol_table(t, &mut retval);
-        retval
+            ReweightType::ReweightToFinal
+        };
+        let mut retval: StdVectorFst =
+            push(t, reweight_type, PushType::PUSH_LABELS).map_err(openfst_error("push"))?;
+        carry_symbol_tables(t, &mut retval);
+        Ok(retval)
     }
 
     // This function can be moved to its own file if TropicalWeightTransducer.o
     // yields a 'File too big' error.
     // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.push-weights-fn]
     // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.push-weights-fn]
-    pub fn push_weights(t: &StdVectorFst, to_initial_state: bool) -> StdVectorFst {
+    pub fn push_weights(
+        t: &StdVectorFst,
+        to_initial_state: bool,
+    ) -> crate::error::Result<StdVectorFst> {
         assert!(t.input_symbols().is_some());
 
         check_epsilon_cycles(t, "push_weights");
 
-        let mut retval = StdVectorFst::new();
-        if to_initial_state {
-            algorithms::Push(
-                t,
-                &mut retval,
-                algorithms::FstReweightType::ReweightToInitial,
-                algorithms::PushType::PUSH_WEIGHTS,
-            );
+        let reweight_type = if to_initial_state {
+            ReweightType::ReweightToInitial
         } else {
-            algorithms::Push(
-                t,
-                &mut retval,
-                algorithms::FstReweightType::ReweightToFinal,
-                algorithms::PushType::PUSH_WEIGHTS,
-            );
-        }
-        copy_input_symbol_table(t, &mut retval);
-        retval
+            ReweightType::ReweightToFinal
+        };
+        let mut retval: StdVectorFst =
+            push(t, reweight_type, PushType::PUSH_WEIGHTS).map_err(openfst_error("push"))?;
+        carry_symbol_tables(t, &mut retval);
+        Ok(retval)
     }
 
     // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.remove-epsilons-fn]
     // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.remove-epsilons-fn]
-    pub fn remove_epsilons(t: &StdVectorFst) -> StdVectorFst {
+    pub fn remove_epsilons(t: &StdVectorFst) -> crate::error::Result<StdVectorFst> {
         check_epsilon_cycles(t, "remove_epsilons");
         // C++: return new StdVectorFst(RmEpsilonFst<StdArc>(*t));
         let mut retval = t.clone();
-        algorithms::RmEpsilon(&mut retval);
-        retval
+        rm_epsilon(&mut retval).map_err(openfst_error("rm_epsilon"))?;
+        Ok(retval)
     }
 
     // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.prune-fn]
     // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.prune-fn]
-    pub fn prune(t: &StdVectorFst) -> StdVectorFst {
+    pub fn prune(t: &StdVectorFst) -> crate::error::Result<StdVectorFst> {
         // C++: fst::Prune(*t, retval, TropicalWeight::One());
-        // The hfst-openfst adapter's Prune is in-place (rustfst gap), so we prune
-        // a clone with threshold One().
+        // rustfst's prune is in-place, so we prune a clone with threshold One().
         let mut retval = t.clone();
-        algorithms::Prune(&mut retval, TropicalWeight::one());
-        retval
+        prune(&mut retval, TropicalWeight::one()).map_err(openfst_error("prune"))?;
+        Ok(retval)
     }
 
     // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.n-best-fn]
     // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.n-best-fn]
-    pub fn n_best(t: &StdVectorFst, n: u32) -> StdVectorFst {
+    pub fn n_best(t: &StdVectorFst, n: u32) -> crate::error::Result<StdVectorFst> {
         check_epsilon_cycles(t, "n_best");
 
         let mut scaled = t.clone();
-        algorithms::RmEpsilon(&mut scaled);
+        rm_epsilon(&mut scaled).map_err(openfst_error("rm_epsilon"))?;
         let w = TropicalWeightTransducer::get_smallest_weight(&scaled);
         if w < 0.0 {
             TropicalWeightTransducer::add_to_weights(&mut scaled, -w);
         }
         // fst::ShortestPath(*scaled, n_best_fst, (size_t)n); the C++ bad_alloc
         // catch -> HfstFatalException is dropped (Rust aborts on OOM).
-        let config = hfst_openfst::rustfst::algorithms::ShortestPathConfig::default()
-            .with_nshortest(n as usize);
+        let config = ShortestPathConfig::default().with_nshortest(n as usize);
         let mut n_best_fst: StdVectorFst =
-            hfst_openfst::rustfst::algorithms::shortest_path_with_config(&scaled, config)
-                .expect("rustfst shortest_path");
-        algorithms::RmEpsilon(&mut n_best_fst);
+            shortest_path_with_config(&scaled, config).map_err(openfst_error("shortest_path"))?;
+        rm_epsilon(&mut n_best_fst).map_err(openfst_error("rm_epsilon"))?;
         if w < 0.0 {
             TropicalWeightTransducer::add_to_weights(&mut n_best_fst, w);
         }
-        n_best_fst
+        Ok(n_best_fst)
     }
 
     // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.repeat-star-fn]
@@ -168,49 +170,44 @@ impl TropicalWeightTransducer {
 
     // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.repeat-n-fn]
     // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.repeat-n-fn]
-    pub fn repeat_n(t: &StdVectorFst, n: u32) -> StdVectorFst {
+    pub fn repeat_n(t: &StdVectorFst, n: u32) -> crate::error::Result<StdVectorFst> {
         if n == 0 {
-            return TropicalWeightTransducer::create_epsilon_transducer();
+            return Ok(TropicalWeightTransducer::create_epsilon_transducer());
         }
 
         let mut repetition = TropicalWeightTransducer::create_epsilon_transducer();
         copy_input_symbol_table(t, &mut repetition);
         for _ in 0..n {
-            algorithms::Concat(&mut repetition, t);
+            concat(&mut repetition, t).map_err(openfst_error("concat"))?;
         }
-        repetition
+        Ok(repetition)
     }
 
     // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.repeat-le-n-fn]
     // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.repeat-le-n-fn]
-    pub fn repeat_le_n(t: &StdVectorFst, n: u32) -> StdVectorFst {
+    pub fn repeat_le_n(t: &StdVectorFst, n: u32) -> crate::error::Result<StdVectorFst> {
         if n == 0 {
-            return TropicalWeightTransducer::create_epsilon_transducer();
+            return Ok(TropicalWeightTransducer::create_epsilon_transducer());
         }
 
         let mut repetition = TropicalWeightTransducer::create_epsilon_transducer();
         copy_input_symbol_table(t, &mut repetition);
 
         for _ in 0..n {
-            let mut optional_t = TropicalWeightTransducer::optionalize(t);
+            let mut optional_t = TropicalWeightTransducer::optionalize(t)?;
             copy_input_symbol_table(t, &mut optional_t);
-            algorithms::Concat(&mut repetition, &optional_t);
+            concat(&mut repetition, &optional_t).map_err(openfst_error("concat"))?;
         }
-        repetition
+        Ok(repetition)
     }
 
     // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.optionalize-fn]
     // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.optionalize-fn]
-    pub fn optionalize(t: &StdVectorFst) -> StdVectorFst {
+    pub fn optionalize(t: &StdVectorFst) -> crate::error::Result<StdVectorFst> {
         let mut eps = TropicalWeightTransducer::create_epsilon_transducer();
-        if let Some(symt) = t.input_symbols().map(std::sync::Arc::clone) {
-            eps.set_input_symbols(symt);
-        }
-        if let Some(symt) = t.output_symbols().map(std::sync::Arc::clone) {
-            eps.set_output_symbols(symt);
-        }
-        algorithms::Union(&mut eps, t);
-        eps
+        carry_symbol_tables(t, &mut eps);
+        union(&mut eps, t).map_err(openfst_error("union"))?;
+        Ok(eps)
     }
 
     // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.invert-fn]
@@ -225,11 +222,10 @@ impl TropicalWeightTransducer {
     /* Makes valgrind angry... */
     // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.reverse-fn]
     // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.reverse-fn]
-    pub fn reverse(transducer: &StdVectorFst) -> StdVectorFst {
-        let mut reversed = StdVectorFst::new();
-        algorithms::Reverse(transducer, &mut reversed);
+    pub fn reverse(transducer: &StdVectorFst) -> crate::error::Result<StdVectorFst> {
+        let mut reversed = reverse_swapping_tables(transducer)?;
         copy_input_symbol_table(transducer, &mut reversed);
-        reversed
+        Ok(reversed)
     }
 
     // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.extract-input-language-fn]
@@ -237,7 +233,7 @@ impl TropicalWeightTransducer {
     pub fn extract_input_language(t: &StdVectorFst) -> StdVectorFst {
         // C++: new StdVectorFst(ProjectFst<StdArc>(*t, ProjectType::INPUT));
         let mut proj = t.clone();
-        algorithms::ProjectInput(&mut proj);
+        project(&mut proj, ProjectType::ProjectInput);
         // substitute unknown with identity
         let mut retval = TropicalWeightTransducer::substitute_number(&proj, 1, 2);
         copy_input_symbol_table(t, &mut retval);
@@ -249,7 +245,7 @@ impl TropicalWeightTransducer {
     pub fn extract_output_language(t: &StdVectorFst) -> StdVectorFst {
         // C++: new StdVectorFst(ProjectFst<StdArc>(*t, ProjectType::OUTPUT));
         let mut proj = t.clone();
-        algorithms::ProjectOutput(&mut proj);
+        project(&mut proj, ProjectType::ProjectOutput);
         // substitute unknown with identity
         let mut retval = TropicalWeightTransducer::substitute_number(&proj, 1, 2);
         copy_input_symbol_table(t, &mut retval);
@@ -258,18 +254,18 @@ impl TropicalWeightTransducer {
 
     // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.concatenate-fn]
     // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.concatenate-fn]
-    pub fn concatenate(t1: &StdVectorFst, t2: &StdVectorFst) -> StdVectorFst {
+    pub fn concatenate(t1: &StdVectorFst, t2: &StdVectorFst) -> crate::error::Result<StdVectorFst> {
         let mut result = t1.clone();
         copy_input_symbol_table(t1, &mut result);
-        algorithms::Concat(&mut result, t2);
-        result
+        concat(&mut result, t2).map_err(openfst_error("concat"))?;
+        Ok(result)
     }
 
-    pub fn disjunct(t1: &StdVectorFst, t2: &StdVectorFst) -> StdVectorFst {
+    pub fn disjunct(t1: &StdVectorFst, t2: &StdVectorFst) -> crate::error::Result<StdVectorFst> {
         let mut result = t1.clone();
         copy_input_symbol_table(t1, &mut result);
-        algorithms::Union(&mut result, t2);
-        result
+        union(&mut result, t2).map_err(openfst_error("union"))?;
+        Ok(result)
     }
 
     // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.disjunct-fn]
@@ -371,7 +367,7 @@ impl TropicalWeightTransducer {
 
     // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.subtract-fn]
     // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.subtract-fn]
-    pub fn subtract(t1: &StdVectorFst, t2: &StdVectorFst) -> StdVectorFst {
+    pub fn subtract(t1: &StdVectorFst, t2: &StdVectorFst) -> crate::error::Result<StdVectorFst> {
         // bool DEBUG = false; (debug printfs dropped)
 
         // C++ mutates t1/t2 in place; operate on local clones.
@@ -394,11 +390,11 @@ impl TropicalWeightTransducer {
         check_epsilon_cycles(&t1, "subtract");
         check_epsilon_cycles(&t2, "subtract");
 
-        algorithms::RmEpsilon(&mut t1);
-        algorithms::RmEpsilon(&mut t2);
+        rm_epsilon(&mut t1).map_err(openfst_error("rm_epsilon"))?;
+        rm_epsilon(&mut t2).map_err(openfst_error("rm_epsilon"))?;
 
-        algorithms::ArcSortOutput(&mut t1);
-        algorithms::ArcSortInput(&mut t2);
+        tr_sort(&mut t1, OLabelCompare {});
+        tr_sort(&mut t2, ILabelCompare {});
 
         // Remove weights from t2, is this really needed?
         let mut t2_copy = t2.clone();
@@ -427,23 +423,29 @@ impl TropicalWeightTransducer {
         }
 
         // EncodeMapper<StdArc> encoder(kEncodeLabels, ENCODE); shared by t1 AND t2.
-        let encoder = algorithms::Encode(&mut t1, algorithms::EncodeType::EncodeLabels);
-        let encoder = algorithms::EncodeInto(&mut t2_copy, encoder);
+        let encoder = encode(&mut t1, EncodeType::EncodeLabels).map_err(openfst_error("encode"))?;
+        let encoder = encode_into(&mut t2_copy, encoder).map_err(openfst_error("encode"))?;
 
-        algorithms::ArcSortOutput(&mut t1);
-        algorithms::ArcSortInput(&mut t2_copy);
+        tr_sort(&mut t1, OLabelCompare {});
+        tr_sort(&mut t2_copy, ILabelCompare {});
 
-        let mut det2 = StdVectorFst::new();
-        algorithms::Determinize(&t2_copy, &mut det2);
+        let det2: StdVectorFst = determinize(&t2_copy).map_err(openfst_error("determinize"))?;
 
-        let mut difference = StdVectorFst::new();
-        algorithms::Difference(&t1, &det2, &mut difference);
+        // Difference(t1, det2): t1 composed with the complement of det2 over
+        // the alphabet of both.
+        let mut sigma = algorithms::input_labels(&t1);
+        sigma.append(&mut algorithms::input_labels(&det2));
+        let complement =
+            algorithms::complement_acceptor(&det2, &sigma).map_err(openfst_error("complement"))?;
+        let mut difference: StdVectorFst =
+            compose(&t1, &complement).map_err(openfst_error("difference"))?;
+        carry_symbol_tables(&t1, &mut difference);
 
         // DecodeFst<StdArc> subtract(*difference, encoder);
-        algorithms::Decode(&mut difference, encoder);
+        decode(&mut difference, encoder).map_err(openfst_error("decode"))?;
 
         // t1->SetOutputSymbols(NULL); t2->SetOutputSymbols(NULL); (caller-side only)
-        difference
+        Ok(difference)
     }
 
     // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.are-equivalent-fn]
@@ -452,36 +454,33 @@ impl TropicalWeightTransducer {
         one: &StdVectorFst,
         another: &StdVectorFst,
         encode_weights: bool,
-    ) -> bool {
+    ) -> crate::error::Result<bool> {
         let mut a = one.clone();
         let mut b = another.clone();
 
         check_epsilon_cycles(&a, "are_equivalent");
         check_epsilon_cycles(&b, "are_equivalent");
 
-        algorithms::RmEpsilon(&mut a);
-        algorithms::RmEpsilon(&mut b);
+        rm_epsilon(&mut a).map_err(openfst_error("rm_epsilon"))?;
+        rm_epsilon(&mut b).map_err(openfst_error("rm_epsilon"))?;
 
         let encode_type = if encode_weights {
-            algorithms::EncodeType::EncodeWeightsAndLabels
+            EncodeType::EncodeWeightsAndLabels
         } else {
-            algorithms::EncodeType::EncodeLabels
+            EncodeType::EncodeLabels
         };
 
         // Encode both fsts through ONE shared table (OpenFST's
         // Encode(fst, &encoder)): the same (ilabel, olabel) pair then maps to
         // the same encoded label in both, so the subsequent Equivalent does
         // not depend on the order the global symbol table numbered the labels.
-        let table = algorithms::Encode(&mut a, encode_type);
-        let _table = algorithms::EncodeInto(&mut b, table);
+        let table = encode(&mut a, encode_type).map_err(openfst_error("encode"))?;
+        encode_into(&mut b, table).map_err(openfst_error("encode"))?;
 
-        let mut deta = StdVectorFst::new();
-        let mut detb = StdVectorFst::new();
+        let deta: StdVectorFst = determinize(&a).map_err(openfst_error("determinize"))?;
+        let detb: StdVectorFst = determinize(&b).map_err(openfst_error("determinize"))?;
 
-        algorithms::Determinize(&a, &mut deta);
-        algorithms::Determinize(&b, &mut detb);
-
-        algorithms::Equivalent(&deta, &detb)
+        algorithms::equivalent(&deta, &detb).map_err(openfst_error("equivalent"))
     }
 
     // ----- TRIE FUNCTIONS BEGINS -----

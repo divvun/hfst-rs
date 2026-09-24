@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
+use hfst_openfst::rustfst::algorithms::compose::compose;
 use hfst_openfst::rustfst::algorithms::isomorphic;
 
 static NEXT_SCRATCH_DIR: AtomicU64 = AtomicU64::new(0);
@@ -150,26 +151,28 @@ fn successful_and_dead_branches(symbols: Arc<SymbolTable>) -> (StdVectorFst, Std
     (left, right)
 }
 
-fn ordinary_reference(mut left: StdVectorFst, mut right: StdVectorFst) -> StdVectorFst {
+fn ordinary_reference(
+    mut left: StdVectorFst,
+    mut right: StdVectorFst,
+) -> crate::error::Result<StdVectorFst> {
     let input_symbols = Arc::clone(left.input_symbols().unwrap());
     left.set_output_symbols(Arc::clone(&input_symbols));
     right.set_input_symbols(Arc::clone(&input_symbols));
-    algorithms::ArcSortOutput(&mut left);
-    algorithms::ArcSortInput(&mut right);
+    tr_sort(&mut left, OLabelCompare {});
+    tr_sort(&mut right, ILabelCompare {});
 
-    let mut result = StdVectorFst::new();
-    algorithms::Compose(&left, &right, &mut result);
-    algorithms::Connect(&mut result);
+    let mut result: StdVectorFst = compose(&left, &right).map_err(openfst_error("compose"))?;
+    connect(&mut result).map_err(openfst_error("connect"))?;
     result.set_input_symbols(input_symbols);
-    result
+    Ok(result)
 }
 
 #[test]
-fn owned_compose_matches_all_memory_plans() {
+fn owned_compose_matches_all_memory_plans() -> crate::error::Result<()> {
     let symbols = symbol_table();
     let left = one_arc(Arc::clone(&symbols), "a", "b", 0.25, 0.5);
     let right = one_arc(Arc::clone(&symbols), "b", "c", 0.75, 1.0);
-    let expected = ordinary_reference(left.clone(), right.clone());
+    let expected = ordinary_reference(left.clone(), right.clone())?;
     let scratch = TestScratchDir::new();
 
     let unbounded =
@@ -203,6 +206,7 @@ fn owned_compose_matches_all_memory_plans() {
             "{allowance}-byte compose left pair or product scratch behind"
         );
     }
+    Ok(())
 }
 
 #[test]

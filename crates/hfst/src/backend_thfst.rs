@@ -104,7 +104,7 @@ impl Backend for ThfstTransducer {
     fn get_alphabet(&self) -> StringSet {
         Backend::get_alphabet(&self.0)
     }
-    fn is_cyclic(&self) -> bool {
+    fn is_cyclic(&self) -> crate::error::Result<bool> {
         Backend::is_cyclic(&self.0)
     }
     fn number_of_states(&self) -> u32 {

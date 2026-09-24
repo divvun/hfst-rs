@@ -37,6 +37,39 @@ impl<B: AlgebraBackend + 'static> PmatchString<B> {
     }
 }
 
+impl<B: AlgebraBackend + 'static> PmatchQuestionMark<B> {
+    pub fn new() -> Rc<PmatchQuestionMark<B>> {
+        Rc::new(PmatchQuestionMark {
+            name: String::new(),
+            weight: 0.0,
+            line_defined: 0,
+            _marker: std::marker::PhantomData,
+        })
+    }
+}
+
+impl<B: AlgebraBackend + 'static> PmatchEpsilonArc<B> {
+    pub fn new() -> Rc<PmatchEpsilonArc<B>> {
+        Rc::new(PmatchEpsilonArc {
+            name: String::new(),
+            weight: 0.0,
+            line_defined: 0,
+            _marker: std::marker::PhantomData,
+        })
+    }
+}
+
+impl<B: AlgebraBackend + 'static> PmatchEmpty<B> {
+    pub fn new() -> Rc<PmatchEmpty<B>> {
+        Rc::new(PmatchEmpty {
+            name: String::new(),
+            weight: 0.0,
+            line_defined: 0,
+            _marker: std::marker::PhantomData,
+        })
+    }
+}
+
 impl<B: AlgebraBackend + 'static> PmatchNumericOperation<B> {
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-numeric-operation.pmatch-numeric-operation-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-numeric-operation.pmatch-numeric-operation-fn]

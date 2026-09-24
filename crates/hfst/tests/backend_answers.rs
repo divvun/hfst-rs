@@ -697,33 +697,34 @@ fn foma_backend_answers_every_query() {
 /// `is_cyclic` and `is_infinitely_ambiguous` are different questions, and
 /// neither may be constant. `a*` separates them: cyclic, but every arc consumes
 /// an input symbol, so it is only finitely ambiguous.
-fn assert_graph_properties<B: Backend>(tag: &str) {
+fn assert_graph_properties<B: Backend>(tag: &str) -> hfst::error::Result<()> {
     for (name, net, cyclic, ambiguous) in [
         ("abc:xyz", basic_pair("abc", "xyz"), false, false),
         ("a*", basic_sigma_star(&["a"]), true, false),
         ("(0:a)*", basic_epsilon_loop(), true, true),
     ] {
         let b: B = build(&net, name);
-        assert_eq!(b.is_cyclic(), cyclic, "{tag}: is_cyclic({name})");
+        assert_eq!(b.is_cyclic()?, cyclic, "{tag}: is_cyclic({name})");
         assert_eq!(
             b.is_infinitely_ambiguous().expect("ambiguity query"),
             ambiguous,
             "{tag}: is_infinitely_ambiguous({name})"
         );
     }
+    Ok(())
 }
 
 #[test]
-fn tropical_reports_real_graph_properties() {
+fn tropical_reports_real_graph_properties() -> hfst::error::Result<()> {
     let _g = serialized();
-    assert_graph_properties::<StdVectorFst>("tropical");
+    assert_graph_properties::<StdVectorFst>("tropical")
 }
 
 #[cfg(feature = "foma")]
 #[test]
-fn foma_reports_real_graph_properties() {
+fn foma_reports_real_graph_properties() -> hfst::error::Result<()> {
     let _g = serialized();
-    assert_graph_properties::<FomaTransducer>("foma");
+    assert_graph_properties::<FomaTransducer>("foma")
 }
 
 /// This pin used to assert the OL family got both answers WRONG: it probed
@@ -737,10 +738,10 @@ fn foma_reports_real_graph_properties() {
 /// ambiguity needs input-epsilon arcs specifically; both distinctions are
 /// pinned in detail in `ol_graph_properties.rs`.
 #[test]
-fn optimized_lookup_reports_real_graph_properties() {
+fn optimized_lookup_reports_real_graph_properties() -> hfst::error::Result<()> {
     let _g = serialized();
-    assert_graph_properties::<Transducer<WeightedTables>>("olw");
-    assert_graph_properties::<ThfstTransducer>("thfst");
+    assert_graph_properties::<Transducer<WeightedTables>>("olw")?;
+    assert_graph_properties::<ThfstTransducer>("thfst")
 }
 
 /// The registry is only worth its compile error if the arms it claims are real:
@@ -773,7 +774,7 @@ fn every_backend_tag_has_a_battery() {
 
 /// Ops whose result is guaranteed to differ from the input on these fixtures,
 /// for any correct backend. `self.clone()` fails every one of them.
-fn assert_algebra_transforms<B: AlgebraBackend>(tag: &str) {
+fn assert_algebra_transforms<B: AlgebraBackend>(tag: &str) -> hfst::error::Result<()> {
     let ab: B = build(&basic_pair("ab", "xy"), "ab:xy");
 
     assert_eq!(
@@ -792,7 +793,7 @@ fn assert_algebra_transforms<B: AlgebraBackend>(tag: &str) {
         "{tag}: extract_output_language must project onto the output side"
     );
     assert_eq!(
-        accepted(&ab.reverse()),
+        accepted(&ab.reverse()?),
         pairs(&[("ba", "yx")]),
         "{tag}: reverse must reverse the path"
     );
@@ -802,8 +803,8 @@ fn assert_algebra_transforms<B: AlgebraBackend>(tag: &str) {
     // so every extraction here is cycle-bounded.
     for (name, got) in [
         ("repeat_star", ab.repeat_star()),
-        ("repeat_le_n", ab.repeat_le_n(2)),
-        ("optionalize", ab.optionalize()),
+        ("repeat_le_n", ab.repeat_le_n(2)?),
+        ("optionalize", ab.optionalize()?),
     ] {
         assert!(
             accepted_within(&got, 1).contains(&(String::new(), String::new())),
@@ -812,7 +813,7 @@ fn assert_algebra_transforms<B: AlgebraBackend>(tag: &str) {
     }
     for (name, got) in [
         ("repeat_plus", ab.repeat_plus()),
-        ("repeat_n", ab.repeat_n(2)),
+        ("repeat_n", ab.repeat_n(2)?),
     ] {
         assert!(
             accepted_within(&got, 1).contains(&("abab".to_string(), "xyxy".to_string())),
@@ -824,12 +825,12 @@ fn assert_algebra_transforms<B: AlgebraBackend>(tag: &str) {
     // result, and identical operands keep the two symbol tables in step (the
     // raw backend ops do not harmonize).
     assert_eq!(
-        accepted(&ab.concatenate(&ab)),
+        accepted(&ab.concatenate(&ab)?),
         pairs(&[("abab", "xyxy")]),
         "{tag}: concatenate must join the two paths"
     );
     assert!(
-        accepted(&ab.subtract(&ab)).is_empty(),
+        accepted(&ab.subtract(&ab)?).is_empty(),
         "{tag}: a net minus itself is empty"
     );
 
@@ -838,11 +839,11 @@ fn assert_algebra_transforms<B: AlgebraBackend>(tag: &str) {
     // backend ops do not harmonize, so two separately built nets would compare
     // over two unrelated symbol tables.
     assert!(
-        ab.are_equivalent(&ab.copy().expect("copy"), false),
+        ab.are_equivalent(&ab.copy().expect("copy"), false)?,
         "{tag}: a net is equivalent to its own copy"
     );
     assert!(
-        !ab.are_equivalent(&ab.concatenate(&ab), false),
+        !ab.are_equivalent(&ab.concatenate(&ab)?, false)?,
         "{tag}: a net is not equivalent to itself concatenated"
     );
     let acceptor: B = build(&basic_acceptor("ab"), "ab");
@@ -937,6 +938,7 @@ fn assert_algebra_transforms<B: AlgebraBackend>(tag: &str) {
             "{tag}: substitute_symbol_fast answered without substituting"
         );
     }
+    Ok(())
 }
 
 /// The weight-carrying half of the algebra, asserted only where weights exist:
@@ -960,15 +962,16 @@ fn assert_weight_ops_transform<B: AlgebraBackend>(tag: &str) {
 }
 
 #[test]
-fn tropical_algebra_actually_transforms() {
+fn tropical_algebra_actually_transforms() -> hfst::error::Result<()> {
     let _g = serialized();
-    assert_algebra_transforms::<StdVectorFst>("tropical");
+    assert_algebra_transforms::<StdVectorFst>("tropical")?;
     assert_weight_ops_transform::<StdVectorFst>("tropical");
+    Ok(())
 }
 
 #[cfg(feature = "foma")]
 #[test]
-fn foma_algebra_actually_transforms() {
+fn foma_algebra_actually_transforms() -> hfst::error::Result<()> {
     let _g = serialized();
-    assert_algebra_transforms::<FomaTransducer>("foma");
+    assert_algebra_transforms::<FomaTransducer>("foma")
 }

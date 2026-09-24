@@ -68,7 +68,7 @@ fn sparse_chain_union_dense_hub(chain_len: u32, alphabet: u32) -> StdVectorFst {
 }
 
 #[test]
-fn subset_limit_preserves_input() {
+fn subset_limit_preserves_input() -> crate::error::Result<()> {
     let mut input = fanout();
     let original = input.clone();
     let mut output = StdVectorFst::new();
@@ -79,32 +79,34 @@ fn subset_limit_preserves_input() {
         "test",
         &mut output,
         true,
-    );
+    )?;
 
     assert!(matches!(outcome, AdaptiveDeterminize::SubsetLimit));
     assert_eq!(input, original);
     assert_eq!(output.num_states(), 0);
+    Ok(())
 }
 
 #[test]
-fn reverse_fallback_preserves_language() {
+fn reverse_fallback_preserves_language() -> crate::error::Result<()> {
     let input = fanout();
     let minimized = TropicalWeightTransducer::minimize_with_reverse_fallback(
         input.clone(),
         false,
         true,
         Some(budget(100, 4, usize::MAX)),
-    );
+    )?;
     assert!(TropicalWeightTransducer::are_equivalent(
         &input, &minimized, false
-    ));
+    )?);
+    Ok(())
 }
 
 // The weight-encoding strategy is the last one tried, so an unbounded one made
 // every other budget decorative: overruns funnelled straight into it.
 // [spec:hfst:req:determinize-envelope.bounded-strategies/test]
 #[test]
-fn encoded_weight_strategy_honours_the_budget() {
+fn encoded_weight_strategy_honours_the_budget() -> crate::error::Result<()> {
     let mut input = fanout();
     let original = input.clone();
     let mut output = StdVectorFst::new();
@@ -115,20 +117,21 @@ fn encoded_weight_strategy_honours_the_budget() {
         "test",
         &mut output,
         true,
-    );
+    )?;
 
     assert!(matches!(outcome, AdaptiveDeterminize::SubsetLimit));
     assert_eq!(
         input, original,
         "an aborted strategy must decode the machine back to its input form"
     );
+    Ok(())
 }
 
 // A state budget and a subset budget both see this determinization as cheap;
 // only counting the transitions it writes catches it.
 // [spec:hfst:req:determinize-envelope.transition-axis/test]
 #[test]
-fn transition_budget_catches_what_the_other_axes_miss() {
+fn transition_budget_catches_what_the_other_axes_miss() -> crate::error::Result<()> {
     let input = sparse_chain_union_dense_hub(64, 64);
     let mut encoded = input.clone();
     let mut output = StdVectorFst::new();
@@ -140,7 +143,7 @@ fn transition_budget_catches_what_the_other_axes_miss() {
         "test",
         &mut output,
         true,
-    );
+    )?;
     let AdaptiveDeterminize::Determinized(_) = outcome else {
         panic!("with every axis unconstrained this input determinizes")
     };
@@ -164,12 +167,13 @@ fn transition_budget_catches_what_the_other_axes_miss() {
         "test",
         &mut bounded_output,
         true,
-    );
+    )?;
     assert!(
         matches!(outcome, AdaptiveDeterminize::SubsetLimit),
         "the transition axis must stop it"
     );
     assert_eq!(bounded_input, input);
+    Ok(())
 }
 
 // The union that motivated the envelope denotes the same relation whether or
@@ -177,7 +181,7 @@ fn transition_budget_catches_what_the_other_axes_miss() {
 // abandon it.
 // [spec:hfst:req:determinize-envelope.relation-preserved/test]
 #[test]
-fn transition_budget_preserves_the_relation() {
+fn transition_budget_preserves_the_relation() -> crate::error::Result<()> {
     let input = sparse_chain_union_dense_hub(24, 16);
     let input_trs = TropicalWeightTransducer::number_of_arcs(&input) as usize;
 
@@ -186,25 +190,26 @@ fn transition_budget_preserves_the_relation() {
         true,
         false,
         Some(budget(usize::MAX, usize::MAX, usize::MAX)),
-    );
+    )?;
     let stopped = TropicalWeightTransducer::minimize_with_reverse_fallback(
         input.clone(),
         true,
         false,
         Some(budget(usize::MAX, usize::MAX, input_trs)),
-    );
+    )?;
 
     assert!(TropicalWeightTransducer::are_equivalent(
         &input, &unbounded, false
-    ));
+    )?);
     assert!(TropicalWeightTransducer::are_equivalent(
         &input, &stopped, false
-    ));
+    )?);
     assert!(
         TropicalWeightTransducer::number_of_arcs(&stopped)
             < TropicalWeightTransducer::number_of_arcs(&unbounded),
         "stopping early is what makes this worth doing"
     );
+    Ok(())
 }
 
 fn states_only(n: usize) -> StdVectorFst {
@@ -251,19 +256,20 @@ fn small_machines_keep_their_heuristic_budget() {
 // Widening or adding an axis must never perturb a compilation that already fit.
 // [spec:hfst:req:determinize-envelope.transition-axis/test]
 #[test]
-fn a_generous_transition_budget_is_byte_identical() {
+fn a_generous_transition_budget_is_byte_identical() -> crate::error::Result<()> {
     let input = sparse_chain_union_dense_hub(24, 16);
     let unbounded = TropicalWeightTransducer::minimize_with_reverse_fallback(
         input.clone(),
         false,
         true,
         Some(budget(usize::MAX, usize::MAX, usize::MAX)),
-    );
+    )?;
     let bounded = TropicalWeightTransducer::minimize_with_reverse_fallback(
         input,
         false,
         true,
         Some(budget(usize::MAX, usize::MAX, 1 << 30)),
-    );
+    )?;
     assert_eq!(unbounded, bounded);
+    Ok(())
 }

@@ -263,7 +263,7 @@ fn extract_paths_fd_honours_filter_fd_like_tropical() {
 /// epsilon or a flag diacritic) is.
 // [spec:hfst:sem:foma-backend.lookup-impl/test]
 #[test]
-fn is_infinitely_ambiguous_needs_an_input_epsilon_cycle() {
+fn is_infinitely_ambiguous_needs_an_input_epsilon_cycle() -> hfst::error::Result<()> {
     let _g = serialized();
 
     // a* — cyclic, finitely ambiguous.
@@ -278,7 +278,7 @@ fn is_infinitely_ambiguous_needs_an_input_epsilon_cycle() {
 
     for (name, net, want) in [("a*", consuming, false), ("(0:a)*", epsilon_loop, true)] {
         let foma = foma_of(&net);
-        assert!(foma.is_cyclic(), "{name} is cyclic either way");
+        assert!(foma.is_cyclic()?, "{name} is cyclic either way");
         assert_eq!(
             foma.is_infinitely_ambiguous().expect("foma ambiguity"),
             want,
@@ -292,6 +292,7 @@ fn is_infinitely_ambiguous_needs_an_input_epsilon_cycle() {
             "is_infinitely_ambiguous parity for {name}"
         );
     }
+    Ok(())
 }
 
 /// The lookup-time question is about the input, not the whole net: the answer

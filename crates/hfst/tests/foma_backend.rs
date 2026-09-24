@@ -159,12 +159,12 @@ fn hfst_frame_foma(payload: &[u8]) -> Vec<u8> {
 // [spec:hfst:sem:foma-backend.to-basic-fn/test]
 // [spec:hfst:sem:foma-backend.from-basic-fn/test]
 #[test]
-fn foma_stream_round_trip_through_hfst_input_stream() {
+fn foma_stream_round_trip_through_hfst_input_stream() -> hfst::error::Result<()> {
     // A genuine foma-constructed net: (a:b | c:d), built from
     // fsm_cross_product(fsm_symbol,fsm_symbol) unioned via fsm_union.
     let ab = FomaTransducer::define_transducer_symbol_pair("a", "b");
     let cd = FomaTransducer::define_transducer_symbol_pair("c", "d");
-    let original = ab.disjunct(&cd);
+    let original = ab.disjunct(&cd)?;
     let basic1 = original.to_basic().expect("to_basic original");
 
     // Backend::write -> native gzip-compressed .foma image.
@@ -219,6 +219,7 @@ fn foma_stream_round_trip_through_hfst_input_stream() {
         expect_pairs(&[("a", "b"), ("c", "d")]),
         "round-tripped net recognizes {{a:b, c:d}}"
     );
+    Ok(())
 }
 
 // [spec:hfst:sem:foma-backend.stream-io/test]
@@ -454,7 +455,7 @@ fn algebra_parity_union_intersect_compose_subtract_concat() {
 
 // [spec:hfst:sem:foma-backend.algebra-impl/test]
 #[test]
-fn algebra_parity_determinize_minimize_nondeterministic_union() {
+fn algebra_parity_determinize_minimize_nondeterministic_union() -> hfst::error::Result<()> {
     let _g = serialized();
 
     // A nondeterministic {a} | {a}: two parallel a-arcs 0 -> 1 (both final).
@@ -466,8 +467,8 @@ fn algebra_parity_determinize_minimize_nondeterministic_union() {
     }
     nd.set_final_weight(1, &0.0);
 
-    let f = foma_of(&nd).determinize(false).minimize(false);
-    let t = tropical_of(&nd).determinize(false).minimize(false);
+    let f = foma_of(&nd).determinize(false)?.minimize(false)?;
+    let t = tropical_of(&nd).determinize(false)?.minimize(false)?;
 
     // Both collapse the duplicate path to the single relation {a:a}.
     assert_eq!(accepted_pairs(&f), expect_pairs(&[("a", "a")]));
@@ -482,6 +483,7 @@ fn algebra_parity_determinize_minimize_nondeterministic_union() {
         state_count(&t)
     );
     assert_eq!(state_count(&f), 2, "minimal {{a}} is 2 states in foma");
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -745,7 +747,7 @@ fn compose_intersect_parity_vs_tropical() {
 // needs the sma pmscript data and is out of scope for a unit test (see the
 // #[ignore]d stub below).
 #[test]
-fn boolean_minimize_does_not_blow_up_vs_weighted() {
+fn boolean_minimize_does_not_blow_up_vs_weighted() -> hfst::error::Result<()> {
     let _g = serialized();
 
     // 0 -p(0)-> 1, 0 -p(0)-> 2, 0 -q(0)-> 1, 0 -q(5)-> 2
@@ -769,8 +771,8 @@ fn boolean_minimize_does_not_blow_up_vs_weighted() {
     net.set_final_weight(3, &0.0);
     net.set_final_weight(4, &0.0);
 
-    let f = foma_of(&net).determinize(false).minimize(false);
-    let t = tropical_of(&net).determinize(false).minimize(false);
+    let f = foma_of(&net).determinize(false)?.minimize(false)?;
+    let t = tropical_of(&net).determinize(false)?.minimize(false)?;
 
     // Both recognize the same language (foma just drops the weights).
     assert_eq!(
@@ -796,6 +798,7 @@ fn boolean_minimize_does_not_blow_up_vs_weighted() {
         fs < ts,
         "weight-divergent branches: foma ({fs}) must be strictly smaller than openfst ({ts})"
     );
+    Ok(())
 }
 
 /// `substitute_string_transducer` must actually substitute on foma.
