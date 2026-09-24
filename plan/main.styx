@@ -7240,6 +7240,15 @@ children (
                 id quality-burndown.split-twolc
                 title "Split twolc.rs (3286 lines, 185 fns) into submodules; remove its near-duplicate group"
                 deps (quality-burndown.lib-api)
+                sealed true
+                log (
+                    {
+                        at 2026-09-24T16:20:40.375984Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Done (nplan complete)"
+                    }
+                )
             }
 
             {

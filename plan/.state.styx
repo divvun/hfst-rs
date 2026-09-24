@@ -455,6 +455,7 @@ assertions (
     {id quality-burndown.split-hfst-transducer, kind @complete, author "brendan@necessary.nu", at 2026-09-24T16:10:35.025993Z}
     {id quality-burndown.split-basic-transducer, kind @complete, author "brendan@necessary.nu", at 2026-09-24T16:13:39.020773Z}
     {id quality-burndown.split-xfst-compiler, kind @complete, author "brendan@necessary.nu", at 2026-09-24T16:16:07.971615Z}
+    {id quality-burndown.split-twolc, kind @complete, author "brendan@necessary.nu", at 2026-09-24T16:20:40.375984Z}
 )
 
 impl_evidence (
