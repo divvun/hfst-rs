@@ -7255,6 +7255,15 @@ children (
                 id quality-burndown.split-ol-transducer
                 title "Split transducer.rs (optimized-lookup runtime, 274 fns) into submodules"
                 deps (quality-burndown.lib-api)
+                sealed true
+                log (
+                    {
+                        at 2026-09-24T16:24:43.363011Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Done (nplan complete)"
+                    }
+                )
             }
 
             {
