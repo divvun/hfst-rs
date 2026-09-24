@@ -7324,6 +7324,15 @@ children (
                 id quality-burndown.split-parsers
                 title "Split xre.rs (90 fns), lexc.rs (64) and hfst_xerox_rules.rs (55) into submodules"
                 deps (quality-burndown.lib-api)
+                sealed true
+                log (
+                    {
+                        at 2026-09-24T16:31:53.675003Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Done (nplan complete)"
+                    }
+                )
             }
 
             {
