@@ -269,11 +269,7 @@ pub mod dump_alphabets {
 
     // [spec:hfst:def:hfst-dump-alphabets.main-fn]
     // [spec:hfst:sem:hfst-dump-alphabets.main-fn]
-    pub fn run(args: Vec<String>) -> i32 {
-        cli::exit_code(execute(args))
-    }
-
-    fn execute(args: Vec<String>) -> ToolResult {
+    pub(in crate::tools) fn execute(args: Vec<String>) -> ToolResult {
         let argv0 = args.first().cloned().unwrap_or_default();
 
         let common = hfst_set_program_name(&argv0, "0.1", "HfstSummarize");
@@ -590,11 +586,7 @@ pub mod edit_metadata {
 
     // [spec:hfst:def:hfst-edit-metadata.main-fn]
     // [spec:hfst:sem:hfst-edit-metadata.main-fn]
-    pub fn run(args: Vec<String>) -> i32 {
-        cli::exit_code(execute(args))
-    }
-
-    fn execute(args: Vec<String>) -> ToolResult {
+    pub(in crate::tools) fn execute(args: Vec<String>) -> ToolResult {
         let argv0 = args.first().cloned().unwrap_or_default();
 
         let common = hfst_set_program_name(&argv0, "0.1", "HfstEditMetadata");
@@ -868,11 +860,7 @@ If K is omitted default is 1."
 
     // [spec:hfst:def:hfst-head.main-fn]
     // [spec:hfst:sem:hfst-head.main-fn]
-    pub fn run(args: Vec<String>) -> i32 {
-        cli::exit_code(execute(args))
-    }
-
-    fn execute(args: Vec<String>) -> ToolResult {
+    pub(in crate::tools) fn execute(args: Vec<String>) -> ToolResult {
         let argv0 = args.first().cloned().unwrap_or_default();
 
         let common = hfst_set_program_name(&argv0, "0.2", "HfstHead");
@@ -1217,11 +1205,7 @@ FEAT should be name of feature supported by HFST, such as openfst, foma or icu"
 
     // [spec:hfst:def:hfst-info.main-fn]
     // [spec:hfst:sem:hfst-info.main-fn]
-    pub fn run(args: Vec<String>) -> i32 {
-        cli::exit_code(execute(args))
-    }
-
-    fn execute(args: Vec<String>) -> ToolResult {
+    pub(in crate::tools) fn execute(args: Vec<String>) -> ToolResult {
         let argv0 = args.first().cloned().unwrap_or_default();
 
         let common = hfst_set_program_name(&argv0, "0.1", "HfstInfo");
@@ -1517,11 +1501,7 @@ pub mod name {
 
     // [spec:hfst:def:hfst-name.main-fn]
     // [spec:hfst:sem:hfst-name.main-fn]
-    pub fn run(args: Vec<String>) -> i32 {
-        cli::exit_code(execute(args))
-    }
-
-    fn execute(args: Vec<String>) -> ToolResult {
+    pub(in crate::tools) fn execute(args: Vec<String>) -> ToolResult {
         let argv0 = args.first().cloned().unwrap_or_default();
 
         let common = hfst_set_program_name(&argv0, "0.1", "HfstName");
@@ -1754,11 +1734,7 @@ This command creates files \"rule1.tr\" (equivalent to transducer_a) and \"rule2
 
     // [spec:hfst:def:hfst-split.main-fn]
     // [spec:hfst:sem:hfst-split.main-fn]
-    pub fn run(args: Vec<String>) -> i32 {
-        cli::exit_code(execute(args))
-    }
-
-    fn execute(args: Vec<String>) -> ToolResult {
+    pub(in crate::tools) fn execute(args: Vec<String>) -> ToolResult {
         let argv0 = args.first().cloned().unwrap_or_default();
 
         let common = hfst_set_program_name(&argv0, "0.1", "HfstSplit");
@@ -1866,11 +1842,7 @@ pub mod strip_header {
 
     // [spec:hfst:def:hfst-strip-header.main-fn]
     // [spec:hfst:sem:hfst-strip-header.main-fn]
-    pub fn run(args: Vec<String>) -> i32 {
-        cli::exit_code(execute(args))
-    }
-
-    fn execute(args: Vec<String>) -> ToolResult {
+    pub(in crate::tools) fn execute(args: Vec<String>) -> ToolResult {
         let argv0 = args.first().cloned().unwrap_or_default();
 
         let common = hfst_set_program_name(&argv0, "0.1", "HfstStripHeader");
@@ -2050,11 +2022,7 @@ if K is omitted, it defaults to +1 (all except the first)"
 
     // [spec:hfst:def:hfst-tail.main-fn]
     // [spec:hfst:sem:hfst-tail.main-fn]
-    pub fn run(args: Vec<String>) -> i32 {
-        cli::exit_code(execute(args))
-    }
-
-    fn execute(args: Vec<String>) -> ToolResult {
+    pub(in crate::tools) fn execute(args: Vec<String>) -> ToolResult {
         let argv0 = args.first().cloned().unwrap_or_default();
 
         let common = hfst_set_program_name(&argv0, "0.2", "HfstTail");
@@ -2337,11 +2305,7 @@ pub mod traverse {
 
     // [spec:hfst:def:hfst-traverse.main-fn]
     // [spec:hfst:sem:hfst-traverse.main-fn]
-    pub fn run(args: Vec<String>) -> i32 {
-        cli::exit_code(execute(args))
-    }
-
-    fn execute(args: Vec<String>) -> ToolResult {
+    pub(in crate::tools) fn execute(args: Vec<String>) -> ToolResult {
         let argv0 = args.first().cloned().unwrap_or_default();
 
         let common = hfst_set_program_name(&argv0, "0.1", "HfstDeterminize");

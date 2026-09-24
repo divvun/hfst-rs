@@ -20,7 +20,6 @@ pub mod guess {
         get_guesses, get_paradigms, is_guesser, read_model_forms,
     };
     use hfst::hfst_input_stream::HfstInputStream;
-    use hfst::hfst_symbol_defs::StringVector;
     use hfst::hfst_transducer::HfstTransducer;
     use std::io::{BufRead, Write};
 
@@ -208,19 +207,9 @@ pub mod guess {
         -1.0
     }
 
-    // 'std::ostream << StringVector' concatenates the symbols with no separator
-    // (generate_model_forms.cc 'operator<<').
-    fn string_vector_to_string(v: &StringVector) -> String {
-        v.concat()
-    }
-
     // [spec:hfst:def:hfst-guess.main-fn]
     // [spec:hfst:sem:hfst-guess.main-fn]
-    pub fn run(args: Vec<String>) -> i32 {
-        cli::exit_code(execute(args))
-    }
-
-    fn execute(args: Vec<String>) -> ToolResult {
+    pub(in crate::tools) fn execute(args: Vec<String>) -> ToolResult {
         let argv0 = args.first().cloned().unwrap_or_default();
 
         let common = hfst_set_program_name(&argv0, "0.3", "HfstGuess");
@@ -374,6 +363,8 @@ pub mod guess {
                 }
             };
 
+            // 'std::ostream << StringVector' concatenates the symbols with no
+            // separator (generate_model_forms.cc 'operator<<').
             if options.generate_model_forms {
                 // make scan-build happy, this should not happen
                 let gen_tr = generator
@@ -395,13 +386,13 @@ pub mod guess {
                 };
 
                 for it in &paradigms {
-                    let _ = writeln!(out, "{}", string_vector_to_string(it));
+                    let _ = writeln!(out, "{}", it.concat());
                 }
             } else {
                 for it in guesses.iter_mut() {
                     it.reverse();
 
-                    let _ = writeln!(out, "{}\t{}", line, string_vector_to_string(it));
+                    let _ = writeln!(out, "{}\t{}", line, it.concat());
                 }
             }
             let _ = writeln!(out);
@@ -787,11 +778,7 @@ pub mod pmatch {
 
     // [spec:hfst:def:hfst-pmatch.main-fn]
     // [spec:hfst:sem:hfst-pmatch.main-fn]
-    pub fn run(args: Vec<String>) -> i32 {
-        cli::exit_code(execute(args))
-    }
-
-    fn execute(args: Vec<String>) -> ToolResult {
+    pub(in crate::tools) fn execute(args: Vec<String>) -> ToolResult {
         let argv0 = args.first().cloned().unwrap_or_default();
 
         let common = hfst_set_program_name(&argv0, "0.1", "HfstPmatch");
@@ -1257,11 +1244,7 @@ pub mod tokenize {
 
     // [spec:hfst:def:hfst-tokenize.main-fn]
     // [spec:hfst:sem:hfst-tokenize.main-fn]
-    pub fn run(args: Vec<String>) -> i32 {
-        cli::exit_code(execute(args))
-    }
-
-    fn execute(args: Vec<String>) -> ToolResult {
+    pub(in crate::tools) fn execute(args: Vec<String>) -> ToolResult {
         let argv0 = args.first().cloned().unwrap_or_default();
 
         let common = hfst_set_program_name(&argv0, "0.1", "HfstTokenize");

@@ -15,30 +15,10 @@
 //! `UNANALYSED_WEIGHT` — the largest weight the runtime admits — and reports
 //! the resulting reading with each format's own unknown-material marking.
 
-use std::io::Write;
-use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+mod common;
 
-fn run(args: &[&str], stdin: &[u8]) -> (bool, String) {
-    let mut child = Command::new(env!("CARGO_BIN_EXE_hfst"))
-        .args(args)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()
-        .expect("spawn hfst");
-    child
-        .stdin
-        .take()
-        .expect("child stdin")
-        .write_all(stdin)
-        .expect("write stdin");
-    let out = child.wait_with_output().expect("wait for hfst");
-    (
-        out.status.success(),
-        String::from_utf8_lossy(&out.stdout).into_owned(),
-    )
-}
+use common::run;
+use std::path::{Path, PathBuf};
 
 /// A plain weighted `.hfstol` holding `dogs` and `cats` but not `cot` — the
 /// shape `hfst tokenize` falls back to its naive tokenizer for, since the

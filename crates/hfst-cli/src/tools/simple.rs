@@ -178,11 +178,7 @@ pub mod affix_guessify {
 
     // [spec:hfst:def:hfst-affix-guessify.main-fn]
     // [spec:hfst:sem:hfst-affix-guessify.main-fn]
-    pub fn run(args: Vec<String>) -> i32 {
-        cli::exit_code(execute(args))
-    }
-
-    fn execute(args: Vec<String>) -> ToolResult {
+    pub(in crate::tools) fn execute(args: Vec<String>) -> ToolResult {
         let argv0 = args.first().cloned().unwrap_or_default();
 
         let common = hfst_set_program_name(&argv0, "0.1", "HfstAffixGuessify");
@@ -331,11 +327,7 @@ pub mod determinize {
 
     // [spec:hfst:def:hfst-determinize.main-fn]
     // [spec:hfst:sem:hfst-determinize.main-fn]
-    pub fn run(args: Vec<String>) -> i32 {
-        cli::exit_code(execute(args))
-    }
-
-    fn execute(args: Vec<String>) -> ToolResult {
+    pub(in crate::tools) fn execute(args: Vec<String>) -> ToolResult {
         let argv0 = args.first().cloned().unwrap_or_default();
 
         let common = hfst_set_program_name(&argv0, "0.1", "HfstDeterminize");
@@ -460,11 +452,7 @@ pub mod eliminate_flags {
 
     // [spec:hfst:def:hfst-eliminate-flags.main-fn]
     // [spec:hfst:sem:hfst-eliminate-flags.main-fn]
-    pub fn run(args: Vec<String>) -> i32 {
-        cli::exit_code(execute(args))
-    }
-
-    fn execute(args: Vec<String>) -> ToolResult {
+    pub(in crate::tools) fn execute(args: Vec<String>) -> ToolResult {
         let argv0 = args.first().cloned().unwrap_or_default();
 
         let common = hfst_set_program_name(&argv0, "0.1", "HfstEliminateFlags");
@@ -645,11 +633,7 @@ pub mod insert_freely {
 
     // [spec:hfst:def:hfst-insert-freely.main-fn]
     // [spec:hfst:sem:hfst-insert-freely.main-fn]
-    pub fn run(args: Vec<String>) -> i32 {
-        cli::exit_code(execute(args))
-    }
-
-    fn execute(args: Vec<String>) -> ToolResult {
+    pub(in crate::tools) fn execute(args: Vec<String>) -> ToolResult {
         let argv0 = args.first().cloned().unwrap_or_default();
 
         let common = hfst_set_program_name(&argv0, "0.1", "HfstPush");
@@ -796,11 +780,7 @@ pub mod invert {
 
     // [spec:hfst:def:hfst-invert.main-fn]
     // [spec:hfst:sem:hfst-invert.main-fn]
-    pub fn run(args: Vec<String>) -> i32 {
-        cli::exit_code(execute(args))
-    }
-
-    fn execute(args: Vec<String>) -> ToolResult {
+    pub(in crate::tools) fn execute(args: Vec<String>) -> ToolResult {
         let argv0 = args.first().cloned().unwrap_or_default();
 
         let common = hfst_set_program_name(&argv0, "0.1", "HfstInvert");
@@ -1019,11 +999,7 @@ pub mod kill_paths {
 
     // [spec:hfst:def:hfst-kill-paths.main-fn]
     // [spec:hfst:sem:hfst-kill-paths.main-fn]
-    pub fn run(args: Vec<String>) -> i32 {
-        cli::exit_code(execute(args))
-    }
-
-    fn execute(args: Vec<String>) -> ToolResult {
+    pub(in crate::tools) fn execute(args: Vec<String>) -> ToolResult {
         let argv0 = args.first().cloned().unwrap_or_default();
 
         let common = hfst_set_program_name(&argv0, "0.1", "HfstKillPaths");
@@ -1173,11 +1149,7 @@ pub mod minimize {
 
     // [spec:hfst:def:hfst-minimize.main-fn]
     // [spec:hfst:sem:hfst-minimize.main-fn]
-    pub fn run(args: Vec<String>) -> i32 {
-        cli::exit_code(execute(args))
-    }
-
-    fn execute(args: Vec<String>) -> ToolResult {
+    pub(in crate::tools) fn execute(args: Vec<String>) -> ToolResult {
         let argv0 = args.first().cloned().unwrap_or_default();
 
         let common = hfst_set_program_name(&argv0, "0.1", "HfstMinimize");
@@ -1312,11 +1284,7 @@ pub mod multiply {
 
     // [spec:hfst:def:hfst-multiply.main-fn]
     // [spec:hfst:sem:hfst-multiply.main-fn]
-    pub fn run(args: Vec<String>) -> i32 {
-        cli::exit_code(execute(args))
-    }
-
-    fn execute(args: Vec<String>) -> ToolResult {
+    pub(in crate::tools) fn execute(args: Vec<String>) -> ToolResult {
         let argv0 = args.first().cloned().unwrap_or_default();
 
         let common = hfst_set_program_name(&argv0, "0.1", "HfstDuplicate");
@@ -1505,11 +1473,7 @@ pub mod preprocess_for_optimized_lookup_format {
 
     // [spec:hfst:def:hfst-preprocess-for-optimized-lookup-format.main-fn]
     // [spec:hfst:sem:hfst-preprocess-for-optimized-lookup-format.main-fn]
-    pub fn run(args: Vec<String>) -> i32 {
-        cli::exit_code(execute(args))
-    }
-
-    fn execute(args: Vec<String>) -> ToolResult {
+    pub(in crate::tools) fn execute(args: Vec<String>) -> ToolResult {
         let argv0 = args.first().cloned().unwrap_or_default();
 
         let common = hfst_set_program_name(&argv0, "0.1", "HfstPreprocessForOptimizedLookupFormat");
@@ -1709,11 +1673,7 @@ pub mod project {
 
     // [spec:hfst:def:hfst-project.main-fn]
     // [spec:hfst:sem:hfst-project.main-fn]
-    pub fn run(args: Vec<String>) -> i32 {
-        cli::exit_code(execute(args))
-    }
-
-    fn execute(args: Vec<String>) -> ToolResult {
+    pub(in crate::tools) fn execute(args: Vec<String>) -> ToolResult {
         let argv0 = args.first().cloned().unwrap_or_default();
 
         let common = hfst_set_program_name(&argv0, "0.1", "HfstProject");
@@ -1813,11 +1773,7 @@ pub mod prune_alphabet {
 
     // [spec:hfst:def:hfst-prune-alphabet.main-fn]
     // [spec:hfst:sem:hfst-prune-alphabet.main-fn]
-    pub fn run(args: Vec<String>) -> i32 {
-        cli::exit_code(execute(args))
-    }
-
-    fn execute(args: Vec<String>) -> ToolResult {
+    pub(in crate::tools) fn execute(args: Vec<String>) -> ToolResult {
         let argv0 = args.first().cloned().unwrap_or_default();
 
         let common = hfst_set_program_name(&argv0, "0.1", "HfstPruneAlphabet");
@@ -1966,11 +1922,7 @@ pub mod push_labels {
 
     // [spec:hfst:def:hfst-push-labels.main-fn]
     // [spec:hfst:sem:hfst-push-labels.main-fn]
-    pub fn run(args: Vec<String>) -> i32 {
-        cli::exit_code(execute(args))
-    }
-
-    fn execute(args: Vec<String>) -> ToolResult {
+    pub(in crate::tools) fn execute(args: Vec<String>) -> ToolResult {
         let argv0 = args.first().cloned().unwrap_or_default();
 
         let common = hfst_set_program_name(&argv0, "0.1", "HfstPush");
@@ -2158,11 +2110,7 @@ pub mod push_weights {
 
     // [spec:hfst:def:hfst-push-weights.main-fn]
     // [spec:hfst:sem:hfst-push-weights.main-fn]
-    pub fn run(args: Vec<String>) -> i32 {
-        cli::exit_code(execute(args))
-    }
-
-    fn execute(args: Vec<String>) -> ToolResult {
+    pub(in crate::tools) fn execute(args: Vec<String>) -> ToolResult {
         let argv0 = args.first().cloned().unwrap_or_default();
 
         let common = hfst_set_program_name(&argv0, "0.1", "HfstPush");
@@ -2286,11 +2234,7 @@ pub mod realign {
 
     // [spec:hfst:def:hfst-realign.main-fn]
     // [spec:hfst:sem:hfst-realign.main-fn]
-    pub fn run(args: Vec<String>) -> i32 {
-        cli::exit_code(execute(args))
-    }
-
-    fn execute(args: Vec<String>) -> ToolResult {
+    pub(in crate::tools) fn execute(args: Vec<String>) -> ToolResult {
         let argv0 = args.first().cloned().unwrap_or_default();
 
         let common = hfst_set_program_name(&argv0, "0.1", "HfstRealign");
@@ -2378,11 +2322,7 @@ pub mod remove_epsilons {
 
     // [spec:hfst:def:hfst-remove-epsilons.main-fn]
     // [spec:hfst:sem:hfst-remove-epsilons.main-fn]
-    pub fn run(args: Vec<String>) -> i32 {
-        cli::exit_code(execute(args))
-    }
-
-    fn execute(args: Vec<String>) -> ToolResult {
+    pub(in crate::tools) fn execute(args: Vec<String>) -> ToolResult {
         let argv0 = args.first().cloned().unwrap_or_default();
 
         let common = hfst_set_program_name(&argv0, "0.1", "HfstRemoveEpsilons");
@@ -2639,11 +2579,7 @@ pub mod repeat {
 
     // [spec:hfst:def:hfst-repeat.main-fn]
     // [spec:hfst:sem:hfst-repeat.main-fn]
-    pub fn run(args: Vec<String>) -> i32 {
-        cli::exit_code(execute(args))
-    }
-
-    fn execute(args: Vec<String>) -> ToolResult {
+    pub(in crate::tools) fn execute(args: Vec<String>) -> ToolResult {
         let argv0 = args.first().cloned().unwrap_or_default();
 
         let common = hfst_set_program_name(&argv0, "0.1", "HfstRepeat");
@@ -2804,11 +2740,7 @@ pub mod reverse {
 
     // [spec:hfst:def:hfst-reverse.main-fn]
     // [spec:hfst:sem:hfst-reverse.main-fn]
-    pub fn run(args: Vec<String>) -> i32 {
-        cli::exit_code(execute(args))
-    }
-
-    fn execute(args: Vec<String>) -> ToolResult {
+    pub(in crate::tools) fn execute(args: Vec<String>) -> ToolResult {
         let argv0 = args.first().cloned().unwrap_or_default();
 
         let common = hfst_set_program_name(&argv0, "0.1", "HfstReverse");

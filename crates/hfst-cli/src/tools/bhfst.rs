@@ -970,11 +970,7 @@ fn info(common: &CommonOptions, path: &str) -> i32 {
 
 // [spec:hfst:def:thfst-backend.bhfst-tool]
 // [spec:hfst:sem:thfst-backend.bhfst-tool]
-pub fn run(args: Vec<String>) -> i32 {
-    cli::exit_code(execute(args))
-}
-
-fn execute(args: Vec<String>) -> ToolResult {
+pub(super) fn execute(args: Vec<String>) -> ToolResult {
     let argv0 = args.first().cloned().unwrap_or_default();
 
     let common = hfst_set_program_name(&argv0, "0.1", "HfstBhfst");

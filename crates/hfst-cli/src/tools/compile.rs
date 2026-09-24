@@ -183,11 +183,7 @@ pub mod guessify {
 
     // [spec:hfst:def:hfst-guessify.main-fn]
     // [spec:hfst:sem:hfst-guessify.main-fn]
-    pub fn run(args: Vec<String>) -> i32 {
-        cli::exit_code(execute(args))
-    }
-
-    fn execute(args: Vec<String>) -> ToolResult {
+    pub(in crate::tools) fn execute(args: Vec<String>) -> ToolResult {
         let argv0 = args.first().cloned().unwrap_or_default();
 
         let common = hfst_set_program_name(&argv0, "0.3", "HfstGuessify");
@@ -428,11 +424,7 @@ pub mod pmatch2fst {
 
     // [spec:hfst:def:hfst-pmatch2fst.main-fn]
     // [spec:hfst:sem:hfst-pmatch2fst.main-fn]
-    pub fn run(args: Vec<String>) -> i32 {
-        cli::exit_code(execute(args))
-    }
-
-    fn execute(args: Vec<String>) -> ToolResult {
+    pub(in crate::tools) fn execute(args: Vec<String>) -> ToolResult {
         let argv0 = args.first().cloned().unwrap_or_default();
 
         let common = hfst_set_program_name(&argv0, "0.1", "Pmatch2Fst");
@@ -815,11 +807,7 @@ pub mod twolc {
         }
     }
 
-    pub fn run(args: Vec<String>) -> i32 {
-        cli::exit_code(execute(args))
-    }
-
-    fn execute(args: Vec<String>) -> ToolResult {
+    pub(in crate::tools) fn execute(args: Vec<String>) -> ToolResult {
         // The C++ driver linked the library's warning/error streams to stderr;
         // here that is the shared tracing subscriber the other tools install via
         // hfst_set_program_name (the library's info!/error! diagnostics would

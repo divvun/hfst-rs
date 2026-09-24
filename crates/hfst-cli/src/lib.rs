@@ -16,9 +16,9 @@
 //! derive structs' doc comments, not the C's hand-written print_usage blocks.
 //! The rest of the shared infrastructure (hfst-commandline,
 //! hfst-tool-metadata) remains a close port; each tool lives as a module under
-//! src/tools/ exposing run(args) -> i32, and the single 'hfst' multiplexer
-//! binary (src/bin/hfst.rs) dispatches to them by invoked basename or
-//! subcommand.
+//! src/tools/ with an execute(args) -> ToolResult entry point, and the single
+//! 'hfst' multiplexer binary (src/bin/hfst.rs) dispatches to them by invoked
+//! basename or subcommand.
 
 // -----------------------------------------------------------------------------
 // The one-per-stream-read dispatch of [dec:hfst:monomorphic-backends] step 5:

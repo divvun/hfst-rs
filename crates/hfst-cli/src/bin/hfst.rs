@@ -3,9 +3,9 @@
 //! them two ways:
 //!
 //! 1. Basename dispatch: when invoked via a symlink/hardlink/copy named after
-//!    an original binary (e.g. 'hfst-compose'), the matching tool's run() is
-//!    called with the ORIGINAL argv unchanged, so output is byte-identical to
-//!    the old standalone binary.
+//!    an original binary (e.g. 'hfst-compose'), the matching tool's execute()
+//!    is called with the ORIGINAL argv unchanged, so output is byte-identical
+//!    to the old standalone binary.
 //! 2. Subcommand dispatch: 'hfst <sub> [ARGS...]' where <sub> is the tool name
 //!    minus the 'hfst-' prefix. The tool argv is rebuilt as
 //!    ["hfst <sub>", ARGS...] so program-name-derived message prefixes render
@@ -20,10 +20,11 @@
 //! HFST-shaped error reporting).
 
 use clap::{Arg, ArgAction, Command};
+use hfst_cli::cli::exit_code;
 use hfst_cli::hfst_commandline::{
     VERSION_COPYRIGHT_BLOCK, extend_options_from_env, print_elapsed, start_timing, version_line,
 };
-use hfst_cli::tools::TOOLS;
+use hfst_cli::tools::{TOOLS, ToolRun};
 
 // The FST algorithms are allocation-heavy; mimalloc beats the system
 // allocator substantially on this workload (house convention for binaries).
@@ -37,7 +38,7 @@ static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 #[global_allocator]
 static GLOBAL: dhat::Alloc = dhat::Alloc;
 
-fn find_tool(name: &str) -> Option<fn(Vec<String>) -> i32> {
+fn find_tool(name: &str) -> Option<ToolRun> {
     TOOLS
         .iter()
         .find(|(tool, _, _)| *tool == name)
@@ -237,7 +238,7 @@ fn run_main() {
         // [spec:hfst:req:cli.arg-parse]
         extend_options_from_env(&mut argv);
         start_timing(&basename);
-        let code = run(argv);
+        let code = exit_code(run(argv));
         print_elapsed();
         std::process::exit(code);
     }
@@ -269,7 +270,7 @@ fn run_main() {
             #[cfg(feature = "dhat-heap")]
             let profiler = dhat::Profiler::new_heap();
             start_timing(&format!("hfst-{sub}"));
-            let code = run(tool_argv);
+            let code = exit_code(run(tool_argv));
             // Flush dhat-heap.json before process::exit skips destructors.
             #[cfg(feature = "dhat-heap")]
             drop(profiler);

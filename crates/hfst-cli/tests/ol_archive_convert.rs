@@ -15,36 +15,15 @@
 //!   interior epsilons instead of comparing against the internal epsilon
 //!   marker.
 
-use std::io::Write;
+mod common;
+
+use common::run;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
 
 fn scratch(name: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!("hfst-ol-archive-{name}"));
     std::fs::create_dir_all(&dir).expect("create scratch dir");
     dir
-}
-
-/// Run `hfst <args>` with `stdin`, returning (success, stdout).
-fn run(args: &[&str], stdin: &[u8]) -> (bool, String) {
-    let mut child = Command::new(env!("CARGO_BIN_EXE_hfst"))
-        .args(args)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()
-        .expect("spawn hfst");
-    child
-        .stdin
-        .take()
-        .expect("child stdin")
-        .write_all(stdin)
-        .expect("write stdin");
-    let out = child.wait_with_output().expect("wait for hfst");
-    (
-        out.status.success(),
-        String::from_utf8_lossy(&out.stdout).into_owned(),
-    )
 }
 
 /// Compile `regex` (with `-S`, single-token strings) to a tropical `.hfst`.

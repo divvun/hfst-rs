@@ -7166,4 +7166,102 @@ children (
             }
         )
     }
+
+    {
+        id quality-burndown
+        title "Burn down every code-quality gate breach: all Rust files under the absolute limits (3000 code lines, 50 functions, complexity 50, name caps, no trivial wrappers, no duplicate groups)"
+        kind @refactor
+        children (
+            {
+                id quality-burndown.lib-api
+                title "Library API cleanup: delete the trivial alias/pass-through functions in hfst + hfst-openfst (callers updated), shorten the over-cap names, dedupe hfst_rules.rs"
+            }
+
+            {
+                id quality-burndown.cli-api
+                title "CLI cleanup: dispatch straight to each tool's execute (drops ~70 run wrappers), remove the other CLI pass-throughs, share the test helper copied into five CLI tests, shorten CLI test names"
+                sealed true
+                log (
+                    {
+                        at 2026-09-24T15:41:51.262071Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Done (nplan complete)"
+                    }
+                )
+            }
+
+            {
+                id quality-burndown.split-pmatch-compiler
+                title "Split pmatch_compiler.rs (6051 lines, 277 fns) into submodules; break up build_object (110), PmatchUnaryOperation::evaluate (66), compile (52)"
+                deps (quality-burndown.lib-api)
+            }
+
+            {
+                id quality-burndown.split-xfst-compiler
+                title "Split xfst_compiler.rs (5655 lines, 274 fns) into submodules; break up eval_command (119)"
+                deps (quality-burndown.lib-api)
+            }
+
+            {
+                id quality-burndown.split-basic-transducer
+                title "Split hfst_basic_transducer.rs (3863 lines, 166 fns) into submodules"
+                deps (quality-burndown.lib-api)
+            }
+
+            {
+                id quality-burndown.split-twolc
+                title "Split twolc.rs (3286 lines, 185 fns) into submodules; remove its near-duplicate group"
+                deps (quality-burndown.lib-api)
+            }
+
+            {
+                id quality-burndown.split-ol-transducer
+                title "Split transducer.rs (optimized-lookup runtime, 274 fns) into submodules"
+                deps (quality-burndown.lib-api)
+            }
+
+            {
+                id quality-burndown.split-hfst-transducer
+                title "Split hfst_transducer.rs (211 fns) into submodules; break up flag_build (88); extend [arch:hfst:backend-dispatch] exposes to the new directory"
+                deps (quality-burndown.lib-api)
+            }
+
+            {
+                id quality-burndown.split-tropical
+                title "Split tropical_weight_transducer.rs (131 fns) into submodules"
+                deps (quality-burndown.lib-api)
+            }
+
+            {
+                id quality-burndown.split-pmatch-runtime
+                title "Split pmatch_state.rs (95 fns) and pmatch.rs (72 fns) into submodules"
+                deps (quality-burndown.lib-api)
+            }
+
+            {
+                id quality-burndown.split-parsers
+                title "Split xre.rs (90 fns), lexc.rs (64) and hfst_xerox_rules.rs (55) into submodules"
+                deps (quality-burndown.lib-api)
+            }
+
+            {
+                id quality-burndown.split-backends
+                title "Split backend.rs (73 fns) and backend_foma.rs (73 fns) into submodules"
+                deps (quality-burndown.lib-api)
+            }
+
+            {
+                id quality-burndown.split-lib-tests
+                title "Split tests/test_xerox_rules.rs (97 fns, 5x duplicated block) and tests/foma_backend.rs (57 fns)"
+                deps (quality-burndown.lib-api)
+            }
+
+            {
+                id quality-burndown.split-cli-tools
+                title "Split hfst-cli tools/simple.rs (146 fns), tools/inspect.rs (77) and tools/binary.rs (65) into per-tool modules"
+                deps (quality-burndown.cli-api quality-burndown.lib-api)
+            }
+        )
+    }
 )

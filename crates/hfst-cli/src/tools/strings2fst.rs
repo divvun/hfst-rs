@@ -456,11 +456,7 @@ fn process_stream_typed<B: hfst::backend::AlgebraBackend>(
 
 // [spec:hfst:def:hfst-strings2fst.main-fn]
 // [spec:hfst:sem:hfst-strings2fst.main-fn]
-pub fn run(args: Vec<String>) -> i32 {
-    cli::exit_code(execute(args))
-}
-
-fn execute(args: Vec<String>) -> ToolResult {
+pub(super) fn execute(args: Vec<String>) -> ToolResult {
     let argv0 = args.first().cloned().unwrap_or_default();
 
     let common = hfst_set_program_name(&argv0, "0.1", "Strings2Fst");

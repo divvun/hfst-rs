@@ -109,7 +109,7 @@ fn weights(stdout: &str) -> Vec<f32> {
 /// back only a handful of analyses, and never let the epsilon-loop weight
 /// explode.
 #[test]
-fn ol_lookup_epsilon_cycle_is_bounded_under_time_cutoff() {
+fn ol_lookup_epsilon_cycle_bounded_under_time_cutoff() {
     let dir = scratch("eps-cycle");
     let ol = dir.join("w_cycle.ol");
     build_ol("[0:a::1]*", &ol);

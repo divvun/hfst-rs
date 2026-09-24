@@ -158,11 +158,6 @@ fn last_os_error_code() -> i32 {
     std::io::Error::last_os_error().raw_os_error().unwrap_or(0)
 }
 
-// The OS strerror text for `errnum` (C: os_error_string(e)).
-fn os_error_string(errnum: i32) -> String {
-    std::io::Error::from_raw_os_error(errnum).to_string()
-}
-
 // ---------------------------------------------------------------------------
 // error / warning printers
 // ---------------------------------------------------------------------------
@@ -173,7 +168,7 @@ pub fn error_at_line(status: i32, errnum: i32, filename: &str, linenum: u32, msg
     let f = &mut std::io::stderr();
     let _ = write!(f, "{}.{}: {}", filename, linenum, msg);
     if errnum != 0 {
-        let _ = write!(f, "{}", os_error_string(errnum));
+        let _ = write!(f, "{}", std::io::Error::from_raw_os_error(errnum));
     }
     let _ = writeln!(f);
     if status != 0 {
@@ -201,7 +196,7 @@ pub fn hfst_error_at_line(
     let _ = write!(f, "{}", msg);
     if errnum != 0 {
         maybe_print_colour(opts, f, COLOUR_MAGENTA);
-        let _ = write!(f, "{}", os_error_string(errnum));
+        let _ = write!(f, "{}", std::io::Error::from_raw_os_error(errnum));
         maybe_print_colour(opts, f, COLOUR_RESET);
     }
     if status != 0 {
@@ -229,7 +224,7 @@ pub fn hfst_warning_at_line(
     let _ = write!(f, "{}", msg);
     if errnum != 0 {
         maybe_print_colour(opts, f, COLOUR_MAGENTA);
-        let _ = write!(f, "{}", os_error_string(errnum));
+        let _ = write!(f, "{}", std::io::Error::from_raw_os_error(errnum));
         maybe_print_colour(opts, f, COLOUR_RESET);
     }
     if status != 0 {
@@ -244,7 +239,7 @@ pub fn error(opts: &CommonOptions, status: i32, errnum: i32, msg: &str) {
     let f = &mut std::io::stderr();
     let _ = write!(f, "{}: {}", opts.program_name, msg);
     if errnum != 0 {
-        let _ = write!(f, "{}", os_error_string(errnum));
+        let _ = write!(f, "{}", std::io::Error::from_raw_os_error(errnum));
     }
     let _ = writeln!(f);
     if status != 0 {
@@ -265,7 +260,7 @@ pub fn hfst_error(opts: &CommonOptions, status: i32, errnum: i32, msg: &str) {
     let _ = write!(f, "{}", msg);
     if errnum != 0 {
         maybe_print_colour(opts, f, COLOUR_MAGENTA);
-        let _ = write!(f, "{}", os_error_string(errnum));
+        let _ = write!(f, "{}", std::io::Error::from_raw_os_error(errnum));
         maybe_print_colour(opts, f, COLOUR_RESET);
     }
     let _ = writeln!(f);
@@ -281,7 +276,7 @@ pub fn warning(opts: &CommonOptions, status: i32, errnum: i32, msg: &str) {
     let f = &mut std::io::stderr();
     let _ = write!(f, "{}: warning: {}", opts.program_name, msg);
     if errnum != 0 {
-        let _ = write!(f, "{}", os_error_string(errnum));
+        let _ = write!(f, "{}", std::io::Error::from_raw_os_error(errnum));
     }
     let _ = writeln!(f);
     if status != 0 {
@@ -302,7 +297,7 @@ pub fn hfst_warning(opts: &CommonOptions, status: i32, errnum: i32, msg: &str) {
     let _ = write!(f, "{}", msg);
     if errnum != 0 {
         maybe_print_colour(opts, f, COLOUR_MAGENTA);
-        let _ = write!(f, "{}", os_error_string(errnum));
+        let _ = write!(f, "{}", std::io::Error::from_raw_os_error(errnum));
         maybe_print_colour(opts, f, COLOUR_RESET);
     }
     let _ = writeln!(f);

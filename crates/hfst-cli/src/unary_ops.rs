@@ -5,7 +5,7 @@
 //! optimized-lookup input is rejected; it is lifted here once and
 //! parameterized by an op descriptor, the unary analogue of
 //! [`crate::binary_ops`]. Each tool keeps its own parse_options and option
-//! struct, and passes the descriptor plus its op in from a thin run().
+//! struct, and passes the descriptor plus its op in from its execute().
 
 use hfst::backend::AlgebraBackend;
 use hfst::hfst_input_stream::HfstInputStream;

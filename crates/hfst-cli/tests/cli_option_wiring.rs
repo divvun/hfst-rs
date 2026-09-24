@@ -15,11 +15,12 @@
 //! a bare optional-argument option takes its default and never a neighbour's
 //! value, because its value must be attached with '='.
 
+mod common;
+
 use clap::Parser;
+use common::run;
 use hfst_cli::cli::{CommonArgs, UnaryIo};
-use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
 
 // ---------------------------------------------------------------------------
 // optional-argument values stay attached (the former optarg-leak lock)
@@ -84,28 +85,6 @@ fn scratch(name: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!("hfst-option-wiring-{name}"));
     std::fs::create_dir_all(&dir).expect("create scratch dir");
     dir
-}
-
-/// Run `hfst <args>` with `stdin`, returning (success, stdout).
-fn run(args: &[&str], stdin: &[u8]) -> (bool, String) {
-    let mut child = Command::new(env!("CARGO_BIN_EXE_hfst"))
-        .args(args)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()
-        .expect("spawn hfst");
-    child
-        .stdin
-        .take()
-        .expect("child stdin")
-        .write_all(stdin)
-        .expect("write stdin");
-    let out = child.wait_with_output().expect("wait for hfst");
-    (
-        out.status.success(),
-        String::from_utf8_lossy(&out.stdout).into_owned(),
-    )
 }
 
 fn pmatch_ruleset(dir: &Path) -> String {
@@ -175,7 +154,7 @@ fn small_transducer(dir: &Path) -> String {
 /// `--colour` and `-S` take an optional argument; supplied bare after an
 /// argument-taking option they used to read that option's argument.
 #[test]
-fn bare_optional_argument_options_do_not_read_the_previous_argument() {
+fn bare_optional_options_never_read_previous_argument() {
     let dir = scratch("optarg");
     let fst = small_transducer(&dir);
 

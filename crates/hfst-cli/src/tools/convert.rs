@@ -286,11 +286,7 @@ pub mod expand_equivalences {
 
     // [spec:hfst:def:hfst-expand-equivalences.main-fn]
     // [spec:hfst:sem:hfst-expand-equivalences.main-fn]
-    pub fn run(args: Vec<String>) -> i32 {
-        cli::exit_code(execute(args))
-    }
-
-    fn execute(args: Vec<String>) -> ToolResult {
+    pub(in crate::tools) fn execute(args: Vec<String>) -> ToolResult {
         let argv0 = args.first().cloned().unwrap_or_default();
 
         let common = hfst_set_program_name(&argv0, "0.1", "HfstExpandEquivalences");
@@ -479,11 +475,7 @@ pub mod format {
 
     // [spec:hfst:def:hfst-format.main-fn]
     // [spec:hfst:sem:hfst-format.main-fn]
-    pub fn run(args: Vec<String>) -> i32 {
-        cli::exit_code(execute(args))
-    }
-
-    fn execute(args: Vec<String>) -> ToolResult {
+    pub(in crate::tools) fn execute(args: Vec<String>) -> ToolResult {
         let argv0 = args.first().cloned().unwrap_or_default();
 
         let mut common = hfst_set_program_name(&argv0, "0.1", "HfstFormat");
@@ -919,11 +911,7 @@ pub mod fst2fst {
 
     // [spec:hfst:def:hfst-fst2fst.main-fn]
     // [spec:hfst:sem:hfst-fst2fst.main-fn]
-    pub fn run(args: Vec<String>) -> i32 {
-        cli::exit_code(execute(args))
-    }
-
-    fn execute(args: Vec<String>) -> ToolResult {
+    pub(in crate::tools) fn execute(args: Vec<String>) -> ToolResult {
         let argv0 = args.first().cloned().unwrap_or_default();
 
         let common = hfst_set_program_name(&argv0, "0.1", "HfstFst2Fst");
@@ -1297,11 +1285,7 @@ pub mod fst2txt {
 
     // [spec:hfst:def:hfst-fst2txt.main-fn]
     // [spec:hfst:sem:hfst-fst2txt.main-fn]
-    pub fn run(args: Vec<String>) -> i32 {
-        cli::exit_code(execute(args))
-    }
-
-    fn execute(args: Vec<String>) -> ToolResult {
+    pub(in crate::tools) fn execute(args: Vec<String>) -> ToolResult {
         let argv0 = args.first().cloned().unwrap_or_default();
 
         let common = hfst_set_program_name(&argv0, "0.3", "HfstFst2Txt");

@@ -29,9 +29,7 @@
 //!     fn apply_io(&self, opts: &mut CommonOptions) { self.io.apply(opts) }
 //! }
 //!
-//! pub fn run(args: Vec<String>) -> i32 { cli::exit_code(execute(args)) }
-//!
-//! fn execute(args: Vec<String>) -> ToolResult {
+//! pub(in crate::tools) fn execute(args: Vec<String>) -> ToolResult {
 //!     let argv0 = args.first().cloned().unwrap_or_default();
 //!     let common = hfst_set_program_name(&argv0, "0.1", "HfstMinimize");
 //!     let (common, args) = cli::parse::<Args>(common, args)?;
@@ -39,6 +37,7 @@
 //! }
 //! ```
 //!
+//! The tool's `execute` is what its TOOLS entry (src/tools/mod.rs) names.
 //! Doc comments on the fields become the help text. Anything the C tool
 //! validated inside its getopt loop goes in [`ToolArgs::validate`], which runs
 //! before the parameter checks so the error ordering the spec pins is kept;
@@ -64,11 +63,11 @@
 //!
 //! # Exit codes
 //!
-//! A tool body returns [`ToolResult`]; [`exit_code`] is the single place that
-//! becomes the process status the TOOLS table's fn(Vec<String>) -> i32
-//! contract wants. Argument errors are reported in HFST's own shape (the
-//! "Try ... --help" hint, then "prog: Unknown option ...") and exit 1, not
-//! clap's 2.
+//! A tool body returns [`ToolResult`], and the TOOLS table registers that
+//! body directly; [`exit_code`] is the single place the 'hfst' dispatcher
+//! turns it into the process status. Argument errors are reported in HFST's
+//! own shape (the "Try ... --help" hint, then "prog: Unknown option ...") and
+//! exit 1, not clap's 2.
 
 use clap::ArgAction;
 use clap::error::{ContextKind, ContextValue, ErrorKind};

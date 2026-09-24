@@ -189,11 +189,7 @@ Examples:
 
     // [spec:hfst:def:hfst-binary-tool.main-fn]
     // [spec:hfst:sem:hfst-binary-tool.main-fn]
-    pub fn run(args: Vec<String>) -> i32 {
-        cli::exit_code(execute(args))
-    }
-
-    fn execute(args: Vec<String>) -> ToolResult {
+    pub(in crate::tools) fn execute(args: Vec<String>) -> ToolResult {
         let argv0 = args.first().cloned().unwrap_or_default();
 
         let common = hfst_set_program_name(&argv0, "0.1", "HfstGenericBinaryTool");
@@ -518,11 +514,7 @@ pub mod check_alpha {
 
     // [spec:hfst:def:hfst-check-alpha.main-fn]
     // [spec:hfst:sem:hfst-check-alpha.main-fn]
-    pub fn run(args: Vec<String>) -> i32 {
-        cli::exit_code(execute(args))
-    }
-
-    fn execute(args: Vec<String>) -> ToolResult {
+    pub(in crate::tools) fn execute(args: Vec<String>) -> ToolResult {
         let argv0 = args.first().cloned().unwrap_or_default();
 
         let common = hfst_set_program_name(&argv0, "0.1", "HfstALphaFix");
@@ -873,11 +865,7 @@ pub mod compare {
 
     // [spec:hfst:def:hfst-compare.main-fn]
     // [spec:hfst:sem:hfst-compare.main-fn]
-    pub fn run(args: Vec<String>) -> i32 {
-        cli::exit_code(execute(args))
-    }
-
-    fn execute(args: Vec<String>) -> ToolResult {
+    pub(in crate::tools) fn execute(args: Vec<String>) -> ToolResult {
         let argv0 = args.first().cloned().unwrap_or_default();
 
         let common = hfst_set_program_name(&argv0, "0.1", "HfstCompare");
@@ -1075,11 +1063,7 @@ Examples:
 
     // [spec:hfst:def:hfst-compose.main-fn]
     // [spec:hfst:sem:hfst-compose.main-fn]
-    pub fn run(args: Vec<String>) -> i32 {
-        cli::exit_code(execute(args))
-    }
-
-    fn execute(args: Vec<String>) -> ToolResult {
+    pub(in crate::tools) fn execute(args: Vec<String>) -> ToolResult {
         let argv0 = args.first().cloned().unwrap_or_default();
 
         let common = hfst_set_program_name(&argv0, "0.1", "HfstCompose");
@@ -1335,11 +1319,7 @@ concatenates cat.hfst with dog.hfst and writes results to catdog.hfst"
 
     // [spec:hfst:def:hfst-concatenate.main-fn]
     // [spec:hfst:sem:hfst-concatenate.main-fn]
-    pub fn run(args: Vec<String>) -> i32 {
-        cli::exit_code(execute(args))
-    }
-
-    fn execute(args: Vec<String>) -> ToolResult {
+    pub(in crate::tools) fn execute(args: Vec<String>) -> ToolResult {
         let argv0 = args.first().cloned().unwrap_or_default();
 
         let common = hfst_set_program_name(&argv0, "0.1", "HfstConcatenate");
@@ -1466,11 +1446,7 @@ pub mod conjunct {
 
     // [spec:hfst:def:hfst-conjunct.main-fn]
     // [spec:hfst:sem:hfst-conjunct.main-fn]
-    pub fn run(args: Vec<String>) -> i32 {
-        cli::exit_code(execute(args))
-    }
-
-    fn execute(args: Vec<String>) -> ToolResult {
+    pub(in crate::tools) fn execute(args: Vec<String>) -> ToolResult {
         let argv0 = args.first().cloned().unwrap_or_default();
 
         let common = hfst_set_program_name(&argv0, "0.1", "HfstConjunct");
@@ -1616,11 +1592,7 @@ pub mod disjunct {
 
     // [spec:hfst:def:hfst-disjunct.main-fn]
     // [spec:hfst:sem:hfst-disjunct.main-fn]
-    pub fn run(args: Vec<String>) -> i32 {
-        cli::exit_code(execute(args))
-    }
-
-    fn execute(args: Vec<String>) -> ToolResult {
+    pub(in crate::tools) fn execute(args: Vec<String>) -> ToolResult {
         let argv0 = args.first().cloned().unwrap_or_default();
 
         let common = hfst_set_program_name(&argv0, "0.1", "HfstDisjunct");
@@ -1721,11 +1693,7 @@ pub mod priority_disjunct {
 
     // [spec:hfst:def:hfst-priority-disjunct.main-fn]
     // [spec:hfst:sem:hfst-priority-disjunct.main-fn]
-    pub fn run(args: Vec<String>) -> i32 {
-        cli::exit_code(execute(args))
-    }
-
-    fn execute(args: Vec<String>) -> ToolResult {
+    pub(in crate::tools) fn execute(args: Vec<String>) -> ToolResult {
         let argv0 = args.first().cloned().unwrap_or_default();
 
         let common = hfst_set_program_name(&argv0, "0.1", "HfstPriorityDisjunct");
@@ -1819,11 +1787,7 @@ pub mod shuffle {
 
     // [spec:hfst:def:hfst-shuffle.main-fn]
     // [spec:hfst:sem:hfst-shuffle.main-fn]
-    pub fn run(args: Vec<String>) -> i32 {
-        cli::exit_code(execute(args))
-    }
-
-    fn execute(args: Vec<String>) -> ToolResult {
+    pub(in crate::tools) fn execute(args: Vec<String>) -> ToolResult {
         let argv0 = args.first().cloned().unwrap_or_default();
 
         let common = hfst_set_program_name(&argv0, "0.1", "HfstShuffle");
@@ -1918,11 +1882,7 @@ pub mod subtract {
 
     // [spec:hfst:def:hfst-subtract.main-fn]
     // [spec:hfst:sem:hfst-subtract.main-fn]
-    pub fn run(args: Vec<String>) -> i32 {
-        cli::exit_code(execute(args))
-    }
-
-    fn execute(args: Vec<String>) -> ToolResult {
+    pub(in crate::tools) fn execute(args: Vec<String>) -> ToolResult {
         let argv0 = args.first().cloned().unwrap_or_default();
 
         let common = hfst_set_program_name(&argv0, "0.1", "HfstSubtract");
