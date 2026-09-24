@@ -7210,6 +7210,15 @@ children (
                 id quality-burndown.split-xfst-compiler
                 title "Split xfst_compiler.rs (5655 lines, 274 fns) into submodules; break up eval_command (119)"
                 deps (quality-burndown.lib-api)
+                sealed true
+                log (
+                    {
+                        at 2026-09-24T16:16:07.971615Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Done (nplan complete)"
+                    }
+                )
             }
 
             {
