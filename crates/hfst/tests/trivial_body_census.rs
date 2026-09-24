@@ -120,6 +120,21 @@ const SANCTIONED: &[(&str, &str, &str, &str)] = &[
          populated.",
     ),
     (
+        "crates/hfst-cli/src/tools/inspect/info.rs",
+        "applies_common_options",
+        "false",
+        "hfst-info.cc's switch handles only its own version/feature options plus \
+         help and version: '-v/-q/-s/-d/-o/--colour' are accepted and discarded, \
+         and no output file is resolved, which is why the report goes to stdout.",
+    ),
+    (
+        "crates/hfst-cli/src/tools/inspect/info.rs",
+        "apply_io",
+        "{}",
+        "No UnaryIo / BinaryIo operand group to fold (its INFILE list is accepted \
+         and ignored), and applies_common_options above is false.",
+    ),
+    (
         "crates/hfst-openfst/src/flag_overlay_compose/lookahead.rs",
         "lookahead_prefix",
         "false",

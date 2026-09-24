@@ -7351,6 +7351,15 @@ children (
                 id quality-burndown.split-cli-tools
                 title "Split hfst-cli tools/simple.rs (146 fns), tools/inspect.rs (77) and tools/binary.rs (65) into per-tool modules"
                 deps (quality-burndown.cli-api quality-burndown.lib-api)
+                sealed true
+                log (
+                    {
+                        at 2026-09-24T16:28:13.629397Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Done (nplan complete)"
+                    }
+                )
             }
 
             {

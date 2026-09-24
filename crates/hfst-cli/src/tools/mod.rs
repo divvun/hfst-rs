@@ -5,9 +5,9 @@
 //! to these via the TOOLS table below, keyed by the original binary names,
 //! and maps the result to the process exit code with cli::exit_code.
 //!
-//! Small tools are grouped into family files, each holding its tools as
-//! inline modules and re-exported below so every 'tools::<tool>' path is
-//! the same whether the tool has its own file or shares a family one:
+//! Small tools are grouped into families, each a module with one child
+//! file per tool, re-exported below so every 'tools::<tool>' path is the
+//! same whether the tool stands alone or belongs to a family:
 //!
 //! - `simple.rs`: affix_guessify, determinize, eliminate_flags, insert_freely,
 //!   invert, kill_paths, minimize, multiply,

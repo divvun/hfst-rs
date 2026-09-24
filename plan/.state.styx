@@ -461,6 +461,7 @@ assertions (
     {id quality-burndown.split-pmatch-compiler, kind @complete, author "brendan@necessary.nu", at 2026-09-24T16:25:32.440991Z}
     {id quality-burndown.split-pmatch-runtime, kind @complete, author "brendan@necessary.nu", at 2026-09-24T16:27:35.516027Z}
     {id quality-burndown.split-backends, kind @complete, author "brendan@necessary.nu", at 2026-09-24T16:27:53.475744Z}
+    {id quality-burndown.split-cli-tools, kind @complete, author "brendan@necessary.nu", at 2026-09-24T16:28:13.629397Z}
 )
 
 impl_evidence (
