@@ -267,14 +267,6 @@ impl HfstOutputStream {
         Ok(self)
     }
 
-    /// An alias for [`Self::write`].
-    pub fn redirect<B: Backend>(
-        &mut self,
-        transducer: &mut HfstTransducer<B>,
-    ) -> crate::error::Result<&mut Self> {
-        self.write(transducer)
-    }
-
     /// Write `transducer` to this stream.
     pub fn write<B: Backend>(
         &mut self,

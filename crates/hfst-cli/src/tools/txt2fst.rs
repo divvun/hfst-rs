@@ -11,6 +11,7 @@ use crate::hfst_commandline::{
     verbose_print,
 };
 use crate::hfst_tool_metadata::{hfst_set_formula, hfst_set_name};
+use hfst::convert_transducer_format::ConversionFunctions;
 use hfst::hfst_basic_transducer::HfstBasicTransducer;
 use hfst::hfst_data_types::ImplementationType;
 use hfst::hfst_output_stream::HfstOutputStream;
@@ -207,7 +208,7 @@ fn process_stream_typed<B: hfst::backend::AlgebraBackend>(
 
             // C: catches NotValidPrologFormatException; the Rust readers
             // panic_any rather than throw, so the catch arm is not reproduced.
-            let fsm = match HfstBasicTransducer::read_in_prolog_format_file(input, &mut linecount) {
+            let fsm = match HfstBasicTransducer::read_in_prolog_format(input, &mut linecount) {
                 Ok(v) => v,
                 Err(e) => {
                     hfst_error(common, 1, 0, &format!("{}", e));
@@ -258,7 +259,7 @@ fn process_stream_typed<B: hfst::backend::AlgebraBackend>(
             while !is_eof(input) {
                 // C: HfstTransducer(inputfile, type, epsilon, warn) — read the
                 // basic graph from the AT&T file then build the typed transducer.
-                let net = match HfstBasicTransducer::read_in_att_format_file(
+                let net = match HfstBasicTransducer::read_in_att_format(
                     input,
                     &epsilonname,
                     &mut linecount,
@@ -296,7 +297,7 @@ fn process_stream_typed<B: hfst::backend::AlgebraBackend>(
             // C: catches NotValidAttFormatException; the Rust readers panic_any
             // rather than throw, so the catch arm is not reproduced here.
             // C: HfstTransducer(inputfile, type, epsilon, linecount, warn).
-            let net = match HfstBasicTransducer::read_in_att_format_file(
+            let net = match HfstBasicTransducer::read_in_att_format(
                 input,
                 &epsilonname,
                 &mut linecount,
@@ -322,7 +323,9 @@ fn process_stream_typed<B: hfst::backend::AlgebraBackend>(
                     common,
                     "Checking if the transducer has epsilon cycles with a negative weight...\n",
                 );
-                let fsm = HfstBasicTransducer::from_transducer(&t);
+                let fsm = ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(&t).expect(
+                    "hfst_transducer_to_hfst_basic_transducer on a valid transducer cannot fail",
+                );
                 if fsm.has_negative_epsilon_cycles() {
                     if !common.silent {
                         hfst_warning(

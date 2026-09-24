@@ -1,6 +1,7 @@
 //! Facade metadata, alphabet maintenance, harmonization, and structural queries.
 
 use super::*;
+use crate::convert_transducer_format::ConversionFunctions;
 
 impl<B: Backend> HfstTransducer<B> {
     // -------------------------------------------------------------------------
@@ -121,10 +122,14 @@ impl<B: Backend> HfstTransducer<B> {
     // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.harmonize-symbol-encodings-fn]
     // [spec:hfst:sem:hfst-transducer.hfst.hfst-transducer.harmonize-symbol-encodings-fn]
     pub fn harmonize_symbol_encodings(&mut self, another: &HfstTransducer<B>) -> HfstTransducer<B> {
-        let another_basic = HfstBasicTransducer::from_transducer(another);
-        let this_basic = HfstBasicTransducer::from_transducer(&*self);
-        *self = HfstTransducer::from_basic_transducer(&this_basic);
-        HfstTransducer::from_basic_transducer(&another_basic)
+        let another_basic = ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(another)
+            .expect("hfst_transducer_to_hfst_basic_transducer on a valid transducer cannot fail");
+        let this_basic = ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(&*self)
+            .expect("hfst_transducer_to_hfst_basic_transducer on a valid transducer cannot fail");
+        *self = HfstTransducer::new_from_basic(&this_basic)
+            .expect("converting a basic transducer to an available backend type cannot fail");
+        HfstTransducer::new_from_basic(&another_basic)
+            .expect("converting a basic transducer to an available backend type cannot fail")
     }
 
     // test function
@@ -153,7 +158,7 @@ impl<B: Backend> HfstTransducer<B> {
                 missing_flags.insert(it.clone());
             }
         }
-        self.insert_to_alphabet_set(&missing_flags)?;
+        self.insert_to_alphabet_string_set(&missing_flags)?;
         Ok(missing_flags)
     }
 
@@ -179,7 +184,7 @@ impl<B: Backend> HfstTransducer<B> {
                 }
             }
         }
-        self.insert_to_alphabet_set(&missing_symbols)?;
+        self.insert_to_alphabet_string_set(&missing_symbols)?;
         Ok(())
     }
 
@@ -216,33 +221,6 @@ impl<B: Backend> HfstTransducer<B> {
     pub fn is_infinitely_ambiguous(&self) -> crate::error::Result<bool> {
         self.fst.is_infinitely_ambiguous()
     }
-
-    // ----- integration shims (alphabet / substitute overload-name aliases) -----
-
-    pub fn insert_to_alphabet_symbol<S: AsRef<str>>(
-        &mut self,
-        symbol: S,
-    ) -> crate::error::Result<()> {
-        self.insert_to_alphabet_string(symbol.as_ref())
-    }
-    pub fn insert_to_alphabet<S: AsRef<str>>(&mut self, symbol: S) -> crate::error::Result<()> {
-        self.insert_to_alphabet_string(symbol.as_ref())
-    }
-    pub fn insert_to_alphabet_set(&mut self, symbols: &StringSet) -> crate::error::Result<()> {
-        self.insert_to_alphabet_string_set(symbols)
-    }
-    pub fn remove_from_alphabet_symbol<S: AsRef<str>>(
-        &mut self,
-        symbol: S,
-    ) -> crate::error::Result<()> {
-        self.remove_from_alphabet_string(symbol.as_ref())
-    }
-    pub fn remove_from_alphabet<S: AsRef<str>>(&mut self, symbol: S) -> crate::error::Result<()> {
-        self.remove_from_alphabet_string(symbol.as_ref())
-    }
-    pub fn remove_from_alphabet_set(&mut self, symbols: &StringSet) -> crate::error::Result<()> {
-        self.remove_from_alphabet_string_set(symbols)
-    }
 }
 
 impl<B: AlgebraBackend> HfstTransducer<B> {
@@ -275,10 +253,10 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
         // flags alike whatever backend the operands came from.)
 
         // The C++ copied 'another' before converting, because its conversion
-        // consumed the source. 'get_basic_transducer' builds a fresh graph from
+        // consumed the source. 'to_basic' builds a fresh graph from
         // a shared reference, so the copy is a second full transducer nobody
         // reads — on a flag-harmonized operand that is gigabytes.
-        let another_basic = another.get_basic_transducer()?;
+        let another_basic = another.to_basic()?;
         self.harmonize_onto(another_basic).map(Some)
     }
 
@@ -293,7 +271,7 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
             crate::bail!(Fatal, "harmonize_copy with anonymous transducers");
         }
 
-        let another_basic = another.get_basic_transducer()?;
+        let another_basic = another.to_basic()?;
         drop(another);
         self.harmonize_onto(another_basic).map(Some)
     }
@@ -323,7 +301,7 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
         another_basic.reindex_into(&mut canonical);
 
         self.convert_to_hfst_transducer(this_basic)?;
-        Ok(HfstTransducer::from_basic_owned(another_basic))
+        HfstTransducer::new_from_basic_owned(another_basic)
     }
 
     /*  Harmonize symbol-to-number encodings and expand unknown and
@@ -389,8 +367,8 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
         another: &HfstTransducer<B>,
         harmonize: bool,
     ) -> crate::error::Result<bool> {
-        let mut one_copy = HfstTransducer::new_from(self);
-        let mut another_copy = HfstTransducer::new_from(another);
+        let mut one_copy = HfstTransducer::new_copy(self)?;
+        let mut another_copy = HfstTransducer::new_copy(another)?;
 
         /* prevent harmonization, if needed */
         if !harmonize {

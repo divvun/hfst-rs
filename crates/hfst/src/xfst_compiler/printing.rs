@@ -2,6 +2,7 @@
 //! labels, lists, definitions, names and the network itself.
 
 use super::*;
+use crate::convert_transducer_format::ConversionFunctions;
 
 impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     // @brief Print parts of automaton with epsilon loops
@@ -201,7 +202,8 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         tr: &HfstTransducer<B>,
     ) -> &mut Self {
         let mut label_set: BTreeSet<(Symbol, Symbol)> = BTreeSet::new();
-        let fsm = HfstBasicTransducer::from_transducer(tr);
+        let fsm = ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(tr)
+            .expect("hfst_transducer_to_hfst_basic_transducer on a valid transducer cannot fail");
 
         for it in fsm.iter() {
             for tr_it in it.iter() {
@@ -265,7 +267,8 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         };
 
         let mut label_map: BTreeMap<(Symbol, Symbol), u32> = BTreeMap::new();
-        let fsm = HfstBasicTransducer::from_transducer(self.net(topmost));
+        let fsm = ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(self.net(topmost))
+            .expect("hfst_transducer_to_hfst_basic_transducer on a valid transducer cannot fail");
 
         for it in fsm.iter() {
             for tr_it in it.iter() {
@@ -380,7 +383,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             self.xfst_lesser_fail();
             return Ok(self);
         };
-        let basic = HfstBasicTransducer::from_transducer(self.net(tmp));
+        let basic = ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(self.net(tmp))?;
         basic.write_in_xfst_format(oss, self.variables["print-weight"] == "ON");
         self.flush();
         self.prompt();
@@ -405,7 +408,8 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
                     self.print_sigma(oss, false /*do not prompt*/)?;
                     self.stack.pop();
                 }
-                let basic = HfstBasicTransducer::from_transducer(self.net(it));
+                let basic =
+                    ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(self.net(it))?;
                 basic.write_in_xfst_format(oss, self.variables["print-weight"] == "ON");
                 self.flush();
                 self.prompt();
@@ -534,7 +538,8 @@ fn uses_unknown_or_identity<B: Backend>(t: &HfstTransducer<B>) -> (bool, bool) {
     let mut unknown = false;
     let mut identity = false;
 
-    let fsm = HfstBasicTransducer::from_transducer(t);
+    let fsm = ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(t)
+        .expect("hfst_transducer_to_hfst_basic_transducer on a valid transducer cannot fail");
     for it in fsm.iter() {
         for tr_it in it.iter() {
             let istr = tr_it.get_input_symbol(fsm.coder());

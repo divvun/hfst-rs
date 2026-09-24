@@ -206,7 +206,7 @@ impl<B: AlgebraBackend + 'static> PmatchObject<B> for PmatchSymbol<B> {
             retval = symbol_from_local_context(ctx, &self.sym)
                 .expect("symbol_in_local_context verified above")
                 .evaluate(ctx)?;
-        } else if symbol_in_global_context(ctx, &self.sym) {
+        } else if ctx.definitions_contains(&self.sym) {
             if ctx.flatten && ctx.def_insed_expressions_contains(&self.sym) {
                 retval = ctx
                     .def_insed_expressions_get(&self.sym)
@@ -214,7 +214,7 @@ impl<B: AlgebraBackend + 'static> PmatchObject<B> for PmatchSymbol<B> {
                     .evaluate(ctx)?;
             } else {
                 retval = symbol_from_global_context(ctx, &self.sym)
-                    .expect("symbol_in_global_context verified above")
+                    .expect("definitions_contains verified above")
                     .evaluate(ctx)?;
             }
             ctx.used_definitions_insert(self.sym.clone());
@@ -245,7 +245,7 @@ impl<B: AlgebraBackend + 'static> PmatchObject<B> for PmatchSymbol<B> {
             return symbol_from_local_context(ctx, &self.sym)
                 .expect("symbol_in_local_context verified above")
                 .evaluate_as_arg(ctx);
-        } else if symbol_in_global_context(ctx, &self.sym) {
+        } else if ctx.definitions_contains(&self.sym) {
             ctx.used_definitions_insert(self.sym.clone());
             if ctx.flatten && ctx.def_insed_expressions_contains(&self.sym) {
                 return ctx
@@ -254,7 +254,7 @@ impl<B: AlgebraBackend + 'static> PmatchObject<B> for PmatchSymbol<B> {
                     .evaluate_as_arg(ctx);
             } else {
                 return symbol_from_global_context(ctx, &self.sym)
-                    .expect("symbol_in_global_context verified above")
+                    .expect("definitions_contains verified above")
                     .evaluate_as_arg(ctx);
             }
         } else {
@@ -283,9 +283,9 @@ impl<B: AlgebraBackend + 'static> PmatchObject<B> for PmatchSymbol<B> {
             symbol_from_local_context(ctx, &self.sym)
                 .expect("symbol_in_local_context verified above")
                 .collect_strings_into(ctx, strings);
-        } else if symbol_in_global_context(ctx, &self.sym) {
+        } else if ctx.definitions_contains(&self.sym) {
             symbol_from_global_context(ctx, &self.sym)
-                .expect("symbol_in_global_context verified above")
+                .expect("definitions_contains verified above")
                 .collect_strings_into(ctx, strings);
             ctx.used_definitions_insert(self.sym.clone());
         } else {

@@ -883,8 +883,8 @@ pub fn remove_b2_constraint<B: AlgebraBackend>(
 
     let mut retval = constraint_composition(t, &constraint)?;
 
-    retval.remove_from_alphabet(&left_marker2)?;
-    retval.remove_from_alphabet(&right_marker2)?;
+    retval.remove_from_alphabet_string(&left_marker2)?;
+    retval.remove_from_alphabet_string(&right_marker2)?;
 
     //printf("Remove B2 After composition: \n");
     //retval.write_in_att_format(stdout, 1);
@@ -998,7 +998,7 @@ pub fn apply_boundary_mark<B: AlgebraBackend>(
     let boundary = HfstTransducer::new_tokenized(&boundary_marker, &tok)?;
 
     let mut identity_pair = HfstTransducer::identity_pair();
-    identity_pair.insert_to_alphabet(&boundary_marker)?;
+    identity_pair.insert_to_alphabet_string(&boundary_marker)?;
     // ? - .#.
     let mut identity_minus_boundary = identity_pair.clone();
     identity_minus_boundary
@@ -1045,7 +1045,7 @@ pub fn apply_boundary_mark<B: AlgebraBackend>(
     //tr.insert_to_alphabet(boundary_marker);
     // substitutute unknowns with tmp symbol
     // this is necessary because of first composition
-    tr.substitute("@_UNKNOWN_SYMBOL_@", "@TMP_UNKNOWN@", true, true)?;
+    tr.substitute_string("@_UNKNOWN_SYMBOL_@", "@TMP_UNKNOWN@", true, true)?;
 
     //printf("----first: ----\n");
     //tr.write_in_att_format(stdout, 1);
@@ -1070,10 +1070,10 @@ pub fn apply_boundary_mark<B: AlgebraBackend>(
     //            retval.write_in_att_format(stdout, 1);
 
     // bring back unknown symbols
-    retval.substitute("@TMP_UNKNOWN@", "@_UNKNOWN_SYMBOL_@", true, true)?;
-    retval.remove_from_alphabet("@TMP_UNKNOWN@")?;
+    retval.substitute_string("@TMP_UNKNOWN@", "@_UNKNOWN_SYMBOL_@", true, true)?;
+    retval.remove_from_alphabet_string("@TMP_UNKNOWN@")?;
 
     // remove boundary from alphabet
-    retval.remove_from_alphabet(&boundary_marker)?;
+    retval.remove_from_alphabet_string(&boundary_marker)?;
     Ok(retval)
 }

@@ -144,7 +144,7 @@ impl<B: AlgebraBackend> SubstituteEngine<B> {
                 "Substituting pair {}:{} with pair {}:{}...\n",
                 fp.0, fp.1, tp.0, tp.1
             ));
-            trans.substitute_symbol_pair(fp, tp)?;
+            trans.substitute_pair_with_pair(fp, tp)?;
         } else if let (Some(fl), Some(tl)) = (&request.from_label, &request.to_label) {
             if request.compose {
                 if transducer_n < 2 {
@@ -173,7 +173,7 @@ impl<B: AlgebraBackend> SubstituteEngine<B> {
                         fl, tl, transducer_n
                     ));
                 }
-                trans.substitute(fl, tl, true, true)?;
+                trans.substitute_string(fl, tl, true, true)?;
             }
         } else if let (Some(fp), true) = (&request.from_pair, has_to_transducer) {
             let to_name = self.to_transducer_name(request);
@@ -192,7 +192,7 @@ impl<B: AlgebraBackend> SubstituteEngine<B> {
                 .to_transducer
                 .as_mut()
                 .expect("to_transducer present when has_to_transducer is true");
-            trans.substitute_symbol_pair_with_transducer(fp, to_t, true)?;
+            trans.substitute_pair_with_transducer(fp, to_t, true)?;
         } else if let (Some(fl), true) = (&request.from_label, has_to_transducer) {
             let to_name = self.to_transducer_name(request);
             if transducer_n < 2 {
@@ -211,7 +211,7 @@ impl<B: AlgebraBackend> SubstituteEngine<B> {
                 .to_transducer
                 .as_mut()
                 .expect("to_transducer present when has_to_transducer is true");
-            trans.substitute_symbol_pair_with_transducer(&from_arc, to_t, true)?;
+            trans.substitute_pair_with_transducer(&from_arc, to_t, true)?;
         }
         Ok(())
     }
@@ -282,13 +282,13 @@ impl<B: AlgebraBackend> SubstituteEngine<B> {
     pub fn flush_batched(&mut self, trans: &mut HfstTransducer<B>, in_order: bool) -> Result<()> {
         // perform label-to-label substitution right away
         if !in_order && self.label_batch_in_use {
-            trans.substitute_substitutions(&self.label_substitutions)?;
+            trans.substitute_symbol_substitutions(&self.label_substitutions)?;
             self.label_batch_in_use = false;
         }
 
         // perform symbol pair-to-symbol pair substitution right away
         if !in_order && self.pair_batch_in_use {
-            trans.substitute_symbol_pairs(&self.pair_substitutions)?;
+            trans.substitute_symbol_pair_substitutions(&self.pair_substitutions)?;
             self.pair_batch_in_use = false;
         }
         Ok(())

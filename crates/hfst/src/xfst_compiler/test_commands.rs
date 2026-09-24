@@ -56,9 +56,9 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             return Ok(self);
         };
 
-        let mut tmp_input = HfstTransducer::new_from_transducer(self.net(tmp));
+        let mut tmp_input = HfstTransducer::new_copy(self.net(tmp))?;
         tmp_input.input_project()?;
-        let mut tmp_output = HfstTransducer::new_from_transducer(self.net(tmp));
+        let mut tmp_output = HfstTransducer::new_copy(self.net(tmp))?;
         tmp_output.output_project()?;
 
         let result = tmp_input.compare(&tmp_output, false)?;
@@ -81,7 +81,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             return Ok(self);
         };
 
-        let mut tmp = HfstTransducer::new_from_transducer(self.net(temp));
+        let mut tmp = HfstTransducer::new_copy(self.net(temp))?;
         tmp.output_project()?;
         tmp.remove_epsilons()?; // needed for testing cyclicity
 
@@ -103,7 +103,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             return Ok(self);
         };
 
-        let mut tmp = HfstTransducer::new_from_transducer(self.net(temp));
+        let mut tmp = HfstTransducer::new_copy(self.net(temp))?;
         tmp.input_project()?;
         let id = HfstTransducer::new_symbol(internal_identity)?;
         let mut value = false;
@@ -140,7 +140,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             return Ok(self);
         };
 
-        let mut tmp = HfstTransducer::new_from_transducer(self.net(temp));
+        let mut tmp = HfstTransducer::new_copy(self.net(temp))?;
         tmp.input_project()?;
         tmp.remove_epsilons()?; // needed for testing cyclicity
 
@@ -219,12 +219,12 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         let topmost = copied_stack
             .pop()
             .expect("stack has at least 2 networks (checked above)");
-        let mut topmost_transducer = HfstTransducer::new_from_transducer(self.net(topmost));
+        let mut topmost_transducer = HfstTransducer::new_copy(self.net(topmost))?;
 
         let empty: HfstTransducer<B> = HfstTransducer::new();
 
         while let Some(next) = copied_stack.pop() {
-            let next_transducer = HfstTransducer::new_from_transducer(self.net(next));
+            let next_transducer = HfstTransducer::new_copy(self.net(next))?;
 
             match operation {
                 TestOperation::TEST_OVERLAP_ => {
@@ -246,7 +246,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
                 TestOperation::TEST_SUBLANGUAGE_ => {
                     // [spec:hfst:def:xfst-compiler.hfst.xfst.intersection-fn]
                     // [spec:hfst:sem:xfst-compiler.hfst.xfst.intersection-fn]
-                    let mut intersection = HfstTransducer::new_from_transducer(&topmost_transducer);
+                    let mut intersection = HfstTransducer::new_copy(&topmost_transducer)?;
                     intersection.intersect(&next_transducer, true)?;
                     if !intersection.compare(&topmost_transducer, true)? {
                         self.print_bool(false);

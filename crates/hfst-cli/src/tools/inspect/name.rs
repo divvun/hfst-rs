@@ -143,7 +143,7 @@ fn process_stream(
                 } else {
                     trans.set_name(&name);
                 }
-                if let Err(e) = outstream.redirect(&mut trans) {
+                if let Err(e) = outstream.write(&mut trans) {
                     eprintln!("hfst-name: {e}");
                     return 1;
                 }

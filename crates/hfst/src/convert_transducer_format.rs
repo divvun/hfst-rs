@@ -124,7 +124,7 @@ impl ConversionFunctions {
     pub fn hfst_transducer_to_hfst_basic_transducer<B: crate::backend::Backend>(
         t: &crate::hfst_transducer::HfstTransducer<B>,
     ) -> crate::error::Result<crate::hfst_basic_transducer::HfstBasicTransducer> {
-        let mut retval = t.get_basic_transducer()?;
+        let mut retval = t.to_basic()?;
         retval.name = t.get_name();
         Ok(retval)
     }

@@ -134,7 +134,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             let Some(temp) = self.top() else {
                 return Ok(self);
             };
-            tmp = HfstTransducer::new_from_transducer(self.net(temp));
+            tmp = HfstTransducer::new_copy(self.net(temp))?;
         } else {
             match self.definitions.get(name).copied() {
                 None => {
@@ -144,7 +144,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
                     return Ok(self);
                 }
                 Some(it) => {
-                    tmp = HfstTransducer::new_from_transducer(self.net(it));
+                    tmp = HfstTransducer::new_copy(self.net(it))?;
                 }
             }
         }
@@ -181,7 +181,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             let Some(temp) = self.top() else {
                 return Ok(self);
             };
-            tmp = HfstTransducer::new_from_transducer(self.net(temp));
+            tmp = HfstTransducer::new_copy(self.net(temp))?;
         } else {
             match self.definitions.get(name).copied() {
                 None => {
@@ -191,7 +191,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
                     return Ok(self);
                 }
                 Some(it) => {
-                    tmp = HfstTransducer::new_from_transducer(self.net(it));
+                    tmp = HfstTransducer::new_copy(self.net(it))?;
                 }
             }
         }
@@ -421,8 +421,8 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         };
 
         // Variables needed to find out some properties about the transducer
-        let mut tmp_lower = HfstTransducer::new_from_transducer(self.net(topmost));
-        let mut tmp_upper = HfstTransducer::new_from_transducer(self.net(topmost));
+        let mut tmp_lower = HfstTransducer::new_copy(self.net(topmost))?;
+        let mut tmp_upper = HfstTransducer::new_copy(self.net(topmost))?;
         tmp_lower.output_project()?.remove_epsilons()?;
         tmp_upper.input_project()?.remove_epsilons()?;
 
@@ -517,7 +517,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             let Some(tmp) = self.top() else {
                 return Ok(self);
             };
-            temp = HfstTransducer::new_from_transducer(self.net(tmp));
+            temp = HfstTransducer::new_copy(self.net(tmp))?;
         } else {
             match self.definitions.get(name).copied() {
                 None => {
@@ -527,7 +527,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
                     return Ok(self);
                 }
                 Some(it) => {
-                    temp = HfstTransducer::new_from_transducer(self.net(it));
+                    temp = HfstTransducer::new_copy(self.net(it))?;
                 }
             }
         }

@@ -700,18 +700,4 @@ impl HfstBasicTransducer {
             }
         }
     }
-
-    pub fn read_in_prolog_format_is(
-        is: &mut dyn BufRead,
-        linecount: &mut u32,
-    ) -> crate::error::Result<HfstBasicTransducer> {
-        Self::read_in_prolog_format(is, linecount)
-    }
-
-    pub fn read_in_prolog_format_file(
-        file: &mut dyn BufRead,
-        linecount: &mut u32,
-    ) -> crate::error::Result<HfstBasicTransducer> {
-        Self::read_in_prolog_format(file, linecount)
-    }
 }

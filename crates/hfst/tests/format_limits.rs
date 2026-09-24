@@ -173,7 +173,7 @@ fn ol_round_trip_is_lossless() {
 
     // And so does the lookup relation: "cat" -> "cats" @ 0.5, "dog" -> "dogs"
     // @ 1.25.
-    let cat = reloaded.lookup_fd_str("cat", -1, 0.0);
+    let cat = reloaded.lookup_fd_cstr("cat", -1, 0.0);
     let outputs: Vec<(String, f32)> = cat
         .iter()
         .map(|p| {
@@ -185,7 +185,7 @@ fn ol_round_trip_is_lossless() {
         .collect();
     assert_eq!(outputs, vec![("cats".to_string(), 0.5f32)]);
 
-    let dog = reloaded.lookup_fd_str("dog", -1, 0.0);
+    let dog = reloaded.lookup_fd_cstr("dog", -1, 0.0);
     let dog_outputs: Vec<(String, f32)> = dog
         .iter()
         .map(|p| {

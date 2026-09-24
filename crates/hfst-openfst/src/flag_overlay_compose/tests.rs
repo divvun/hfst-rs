@@ -88,11 +88,11 @@ fn materialize_pair_store_variants(
     right: Arc<StdVectorFst>,
     overlay: FlagOverlay,
 ) -> Result<StdVectorFst> {
-    let lazy = compose_flag_overlay_lazy(Arc::clone(&left), Arc::clone(&right), overlay.clone())?;
+    let lazy = FlagOverlayComposeFst::new(Arc::clone(&left), Arc::clone(&right), overlay.clone())?;
     let actual = materialize(&lazy)?;
 
     let scratch = TestScratchDir::new()?;
-    let spilled_lazy = compose_flag_overlay_lazy_with_store(
+    let spilled_lazy = FlagOverlayComposeFst::new_with_state_store(
         left,
         right,
         overlay,
@@ -297,7 +297,7 @@ fn lookahead_rejects_dead_pairs_before_interning() -> Result<()> {
         filter.filter_tr(&mut dead_arc, &mut right_arc)?,
         OverlayFilterState::new_no_state()
     );
-    let sequence = compose_flag_overlay_lazy(
+    let sequence = FlagOverlayComposeFst::new(
         Arc::clone(&left),
         Arc::clone(&right),
         FlagOverlay::default(),
@@ -309,7 +309,7 @@ fn lookahead_rejects_dead_pairs_before_interning() -> Result<()> {
         "fixture must create one dead pair"
     );
 
-    let lookahead = compose_lookahead_with_store(
+    let lookahead = FlagOverlayLookAheadComposeFst::new_with_state_store(
         Arc::clone(&left),
         Arc::clone(&right),
         FlagOverlay::default(),
@@ -336,7 +336,7 @@ fn lookahead_rejects_dead_pairs_before_interning() -> Result<()> {
     assert_eq!(actual, expected);
 
     let scratch = TestScratchDir::new()?;
-    let spilled = compose_lookahead_with_store(
+    let spilled = FlagOverlayLookAheadComposeFst::new_with_state_store(
         left,
         right,
         FlagOverlay::default(),
@@ -380,13 +380,18 @@ fn lookahead_follows_peer_epsilon_closure() -> Result<()> {
     sort_right(&mut right);
     let left = Arc::new(left);
     let right = Arc::new(right);
-    let sequence = compose_flag_overlay_lazy(
+    let sequence = FlagOverlayComposeFst::new(
         Arc::clone(&left),
         Arc::clone(&right),
         FlagOverlay::default(),
     )?;
     let sequence_raw: StdVectorFst = sequence.inner.compute()?;
-    let lookahead = compose_lookahead_with_store(left, right, FlagOverlay::default(), None)?;
+    let lookahead = FlagOverlayLookAheadComposeFst::new_with_state_store(
+        left,
+        right,
+        FlagOverlay::default(),
+        None,
+    )?;
     let lookahead_raw: StdVectorFst = lookahead.inner.compute()?;
     assert!(
         lookahead_raw.num_states() < sequence_raw.num_states(),

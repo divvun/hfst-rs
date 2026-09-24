@@ -10,10 +10,11 @@ impl<B: Backend> HfstTransducer<B> {
     /// converts back to this transducer's type. Lifted from hfst-kill-paths.
     pub fn kill_paths(&self, symbol: &str) -> HfstTransducer<B> {
         let killed = self
-            .get_basic_transducer()
-            .expect("get_basic_transducer on a valid transducer cannot fail")
+            .to_basic()
+            .expect("to_basic on a valid transducer cannot fail")
             .kill_paths(symbol);
-        HfstTransducer::from_basic_transducer(&killed)
+        HfstTransducer::new_from_basic(&killed)
+            .expect("converting a basic transducer to an available backend type cannot fail")
     }
 }
 
@@ -104,8 +105,8 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
 
     pub fn repeat_n_plus(&mut self, n: u32) -> crate::error::Result<&mut HfstTransducer<B>> {
         self.is_trie = false; // This could be done so that is_trie is preserved
-        let mut a = HfstTransducer::new_from(self);
-        let b = HfstTransducer::new_from(a.repeat_star()?);
+        let mut a = HfstTransducer::new_copy(self)?;
+        let b = HfstTransducer::new_copy(a.repeat_star()?)?;
         self.repeat_n(n)?.concatenate(&b, true)
     }
 
@@ -121,8 +122,8 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
         k: u32,
     ) -> crate::error::Result<&mut HfstTransducer<B>> {
         self.is_trie = false; // This could be done so that is_trie is preserved
-        let mut a = HfstTransducer::new_from(self);
-        let b = HfstTransducer::new_from(a.repeat_n_minus(k - n)?);
+        let mut a = HfstTransducer::new_copy(self)?;
+        let b = HfstTransducer::new_copy(a.repeat_n_minus(k - n)?)?;
         self.repeat_n(n)?.concatenate(&b, true)
     }
 
@@ -242,14 +243,6 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
         net.insert_freely_graph(&substituting_net)?;
         self.fst = B::from_basic(&net)?;
         Ok(self)
-    }
-
-    pub fn insert_freely_transducer(
-        &mut self,
-        tr: &HfstTransducer<B>,
-        harmonize: bool,
-    ) -> crate::error::Result<&mut HfstTransducer<B>> {
-        self.insert_freely(tr, harmonize)
     }
 
     // -------------------------------------------------------------------------

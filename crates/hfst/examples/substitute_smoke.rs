@@ -7,14 +7,14 @@ fn main() -> hfst::error::Result<()> {
     let tr = HfstBasicTransition::new_symbols(1, "a".into(), "b".into(), 0.0, g.coder_mut());
     g.add_transition(0, &tr, true);
     g.substitute_symbol(&"a".into(), &"x".into(), true, false)?;
-    let t = g.transitions(0)?;
+    let t = g.index(0)?;
     assert_eq!(t[0].get_input_symbol(g.coder()), "x");
     assert_eq!(t[0].get_output_symbol(g.coder()), "b");
     println!("substitute_symbol OK");
 
     // pair substitution: x:b -> c:d
     g.substitute_pair(&("x".into(), "b".into()), &("c".into(), "d".into()))?;
-    let t = g.transitions(0)?;
+    let t = g.index(0)?;
     // the first new pair both replaces and is appended (bug preserved) -> two arcs
     assert!(
         t.iter()
@@ -41,7 +41,7 @@ fn main() -> hfst::error::Result<()> {
     host.substitute_pair_with_graph(&("a".into(), "b".into()), &sub)?;
     // p:q now appears somewhere in the host's expanded graph
     let found = (0..=host.get_max_state()).any(|s| {
-        host.transitions(s)
+        host.index(s)
             .expect("state s is within 0..=get_max_state so its transition list exists")
             .iter()
             .any(|tr| {

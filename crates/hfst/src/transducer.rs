@@ -380,18 +380,6 @@ pub struct Transducer<T: TransducerTablesInterface = WeightedTables> {
 impl<T: TransducerTablesInterface> Transducer<T> {
     // ---- small accessors mirroring the C++ member dereferences ----
     #[inline]
-    fn hdr(&self) -> &TransducerHeader {
-        self.header
-            .as_deref()
-            .expect("header is initialized during container load")
-    }
-    #[inline]
-    fn alph(&self) -> &TransducerAlphabet {
-        self.alphabet
-            .as_deref()
-            .expect("alphabet is initialized during container load")
-    }
-    #[inline]
     fn tbl(&self) -> &T {
         self.tables
             .as_ref()
@@ -505,11 +493,15 @@ impl<T: TransducerTablesInterface> Transducer<T> {
 
     #[inline]
     pub fn get_header(&self) -> &TransducerHeader {
-        self.hdr()
+        self.header
+            .as_deref()
+            .expect("header is initialized during container load")
     }
     #[inline]
     pub fn get_alphabet(&self) -> &TransducerAlphabet {
-        self.alph()
+        self.alphabet
+            .as_deref()
+            .expect("alphabet is initialized during container load")
     }
     #[inline]
     pub fn get_encoder(&self) -> &Encoder {
@@ -517,8 +509,10 @@ impl<T: TransducerTablesInterface> Transducer<T> {
             .as_deref()
             .expect("encoder is initialized during container load")
     }
+    // [spec:hfst:def:hfst-ol-transducer.hfst.implementations.hfst-ol-transducer.get-flag-diacritics-fn]
+    // [spec:hfst:sem:hfst-ol-transducer.hfst.implementations.hfst-ol-transducer.get-flag-diacritics-fn]
     pub fn get_fd_table(&self) -> &FdTable<SymbolNumber> {
-        self.alph().get_fd_table()
+        self.get_alphabet().get_fd_table()
     }
     /// The neutral flag state a run starts from; see the field.
     pub(crate) fn flag_state_proto(&self) -> &FdState<SymbolNumber> {
@@ -526,7 +520,7 @@ impl<T: TransducerTablesInterface> Transducer<T> {
     }
     #[inline]
     pub fn get_symbol_table(&self) -> &SymbolTable {
-        self.alph().get_symbol_table()
+        self.get_alphabet().get_symbol_table()
     }
 }
 

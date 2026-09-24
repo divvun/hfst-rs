@@ -70,10 +70,10 @@ impl<T: TransducerTablesInterface> Transducer<T> {
 
         if indexes_transition_index_table(state_index) {
             // for each input symbol that has a transition from this state
-            for symbol in 0..self.hdr().symbol_count() {
+            for symbol in 0..self.get_header().symbol_count() {
                 // There may be flags at index 0 even if there aren't any
                 // epsilons, so those have to be checked for
-                if self.alph().is_like_epsilon(symbol) {
+                if self.get_alphabet().is_like_epsilon(symbol) {
                     let mut transition_i = self.get_index_target(state_index + 1);
                     if !self.index_matches(state_index + 1, 0) {
                         continue;
@@ -83,7 +83,7 @@ impl<T: TransducerTablesInterface> Transducer<T> {
                         if self.transition_matches(transition_i, symbol) {
                             transitions.insert(transition_i);
                         // There could still be epsilons here, or other flags
-                        } else if input != 0 && !self.alph().is_like_epsilon(input) {
+                        } else if input != 0 && !self.get_alphabet().is_like_epsilon(input) {
                             break;
                         }
                         transition_i += 1;
@@ -95,7 +95,7 @@ impl<T: TransducerTablesInterface> Transducer<T> {
                     // this indexes past the index table — a benign out-of-bounds read
                     // in C++ that yields a non-matching entry. Guard it to the
                     // intended "no entry beyond the table => no transitions" semantics.
-                    if state_index + 1 + symbol as u32 >= self.hdr().index_table_size() {
+                    if state_index + 1 + symbol as u32 >= self.get_header().index_table_size() {
                         continue;
                     }
                     let test_input = self.get_index_input(state_index + 1 + symbol as u32);
@@ -224,23 +224,23 @@ impl<T: TransducerTablesInterface> Transducer<T> {
     // [spec:hfst:def:transducer.hfst-ol.transducer.is-flag-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transducer.is-flag-fn]
     pub fn is_flag(&self, symbol: SymbolNumber) -> bool {
-        self.alph().is_flag_diacritic(symbol)
+        self.get_alphabet().is_flag_diacritic(symbol)
     }
     // [spec:hfst:def:transducer.hfst-ol.transducer.is-weighted-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transducer.is-weighted-fn]
     pub fn is_weighted(&self) -> bool {
-        self.hdr().probe_flag(HeaderFlag::Weighted)
+        self.get_header().probe_flag(HeaderFlag::Weighted)
     }
 
     // [spec:hfst:def:transducer.hfst-ol.transducer.get-unknown-symbol-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transducer.get-unknown-symbol-fn]
     #[inline]
     pub fn get_unknown_symbol(&self) -> SymbolNumber {
-        self.alph().get_unknown_symbol()
+        self.get_alphabet().get_unknown_symbol()
     }
     // [spec:hfst:def:transducer.hfst-ol.transducer.get-string-symbol-map-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transducer.get-string-symbol-map-fn]
     pub fn get_string_symbol_map(&self) -> StringSymbolMap {
-        self.alph().build_string_symbol_map()
+        self.get_alphabet().build_string_symbol_map()
     }
 }

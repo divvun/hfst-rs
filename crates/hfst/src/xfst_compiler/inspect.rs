@@ -1,6 +1,7 @@
 //! Interactive inspection of the top network: inspect-net and view.
 
 use super::*;
+use crate::convert_transducer_format::ConversionFunctions;
 
 impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     // [spec:hfst:def:xfst-compiler.hfst.xfst.xfst-compiler.print-level-fn]
@@ -150,7 +151,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             return Ok(self);
         };
 
-        let net = HfstBasicTransducer::from_transducer(self.net(t));
+        let net = ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(self.net(t))?;
 
         const INSPECT_NET_HELP_MSG: &str =
             "'N' transits arc N, '-N' returns to level N, '<' to previous level, '0' quits.\n";

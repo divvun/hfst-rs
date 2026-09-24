@@ -186,7 +186,7 @@ impl PmatchContainer {
             .uncompose_left
             .as_ref()
             .expect("uncompose_left set when uncomposable")
-            .lookup_fd_str(&loc.input, -1, 0.0);
+            .lookup_fd_cstr(&loc.input, -1, 0.0);
         if middle_left.is_empty() {
             if verbose {
                 debug!("empty midleft compose");
@@ -210,7 +210,7 @@ impl PmatchContainer {
                 .uncompose_right
                 .as_ref()
                 .expect("uncompose_right set when uncomposable")
-                .lookup_fd_str(&mids, -1, 0.0);
+                .lookup_fd_cstr(&mids, -1, 0.0);
             if middle_right.is_empty() {
                 if verbose {
                     debug!("empty midright compose");

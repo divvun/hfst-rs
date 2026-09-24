@@ -29,16 +29,6 @@ const DOT_MAX_LABEL_SIZE: usize = 64;
 // [spec:hfst:def:hfst-print-dot.hfst.c99-snprintf-fn]
 // [spec:hfst:sem:hfst-print-dot.hfst.c99-snprintf-fn]
 
-// C++ 'HfstBasicTransducer mutt {t};' invokes the
-// 'HfstBasicTransducer(const HfstTransducer&)' conversion constructor. The facade
-// exposes it as 'HfstTransducer::get_basic_transducer'.
-fn hfst_transducer_to_basic<B: crate::backend::Backend>(
-    t: &HfstTransducer<B>,
-) -> HfstBasicTransducer {
-    t.get_basic_transducer()
-        .expect("get_basic_transducer on a valid transducer cannot fail")
-}
-
 // [spec:hfst:def:hfst-print-dot.hfst.trim-to-valid-utf8-fn]
 // [spec:hfst:sem:hfst-print-dot.hfst.trim-to-valid-utf8-fn]
 fn trim_to_valid_utf8(inp: &mut Vec<u8>) {
@@ -148,7 +138,10 @@ pub fn print_dot_file<B: crate::backend::Backend>(
     writeln!(out, "charset = UTF8;")?;
     writeln!(out, "rankdir = LR;")?;
     writeln!(out, "node [shape=circle,style=filled,fillcolor=yellow]")?;
-    let mutt: HfstBasicTransducer = hfst_transducer_to_basic(t);
+    // C++: 'HfstBasicTransducer mutt {t};' — the conversion constructor.
+    let mutt: HfstBasicTransducer = t
+        .to_basic()
+        .expect("to_basic on a valid transducer cannot fail");
     let mut s: HfstState = 0;
     // for some reason, dot works nicer if I first have all nodes, then arcs
     for _state in mutt.iter() {
@@ -210,7 +203,9 @@ pub fn print_dot_os<B: crate::backend::Backend>(out: &mut dyn Write, t: &mut Hfs
     let _ = writeln!(out, "charset = UTF8;");
     let _ = writeln!(out, "rankdir = LR;");
     let _ = writeln!(out, "node [shape=circle,style=filled,fillcolor=yellow]");
-    let mutt: HfstBasicTransducer = hfst_transducer_to_basic(t);
+    let mutt: HfstBasicTransducer = t
+        .to_basic()
+        .expect("to_basic on a valid transducer cannot fail");
     let mut s: HfstState = 0;
     // for some reason, dot works nicer if I first have all nodes, then arcs
     for _state in mutt.iter() {

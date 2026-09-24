@@ -56,7 +56,7 @@ impl<B: AlgebraBackend> XreCompiler<B> {
                         false, // do not harmonize
                     )?;
                     if !alpha.contains(symbol) {
-                        tr.remove_from_alphabet(symbol)?;
+                        tr.remove_from_alphabet_string(symbol)?;
                     }
                     break;
                 }

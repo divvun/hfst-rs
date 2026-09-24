@@ -1518,7 +1518,7 @@ pub fn make_naive_tokenizer<B: AlgebraBackend>(
     let tokenizer_minus_dict: Vec<crate::hfst_data_types::Symbol> =
         tokenizer_syms.difference(&dict_syms).cloned().collect();
     for it in tokenizer_minus_dict.iter() {
-        dictionary.insert_to_alphabet(it.as_str())?;
+        dictionary.insert_to_alphabet_string(it.as_str())?;
     }
     let tokenizer_basic =
         ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(&tokenizer)?;

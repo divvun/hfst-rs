@@ -494,7 +494,7 @@ impl PmatchCore {
             };
             // Then we convert the harmonizer... (typed now: basic -> weighted
             // OL tables, the former convert(HFST_OLW_TYPE)).
-            let harmonizer_net = harmonizer.get_basic_transducer()?;
+            let harmonizer_net = harmonizer.to_basic()?;
             let harmonizer_ol_owned = ConversionFunctions::hfst_basic_transducer_to_hfst_ol(
                 &harmonizer_net,
                 true,

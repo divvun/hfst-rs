@@ -55,7 +55,7 @@ fn test10a<B: AlgebraBackend>() -> Result<(), hfst::error::Error> {
     let identity_pair = HfstTransducer::<B>::identity_pair();
     let mut result1 = identity_pair.clone();
     result1.repeat_star()?.minimize()?;
-    result1.insert_to_alphabet_symbol("a")?;
+    result1.insert_to_alphabet_string("a")?;
 
     let replace_tr = xr::replace_rule(&rule, false)?;
 

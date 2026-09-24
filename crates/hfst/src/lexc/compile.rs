@@ -3,6 +3,7 @@
 
 use super::recode::{flag_joiner_encode, joiner_encode};
 use super::*;
+use crate::convert_transducer_format::ConversionFunctions;
 
 /// Parse a weight out of an entry gloss formatted '"weight: N"'.
 ///
@@ -312,7 +313,7 @@ impl<B: AlgebraBackend> LexcCompiler<B> {
         // this narrow scope: on large lexicons retaining it through the later
         // determinization needlessly keeps a complete second graph resident.
         let right_symbols = {
-            let fsm = HfstBasicTransducer::from_transducer(&lexicons);
+            let fsm = ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(&lexicons)?;
             let mut symbols: StringSet = BTreeSet::new();
             for state in fsm.states_and_transitions() {
                 for tr in state {
@@ -401,13 +402,14 @@ impl<B: AlgebraBackend> LexcCompiler<B> {
             } else {
                 key.to_string()
             };
-            let btr = HfstBasicTransducer::from_transducer(tr);
+            let btr = ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(tr)?;
             reg_mark_to_tr.insert(Symbol::from(alph), btr);
         }
 
         let mut rv_needs_optimization = !reg_mark_to_tr.is_empty();
         let mut rv = if rv_needs_optimization {
-            let mut lexicons_basic = HfstBasicTransducer::from_transducer(&lexicons);
+            let mut lexicons_basic =
+                ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(&lexicons)?;
             drop(lexicons);
             lexicons_basic.substitute_subst_map(&mut reg_mark_to_tr, true)?;
             lexicons_basic.prune_alphabet(true);
@@ -473,7 +475,7 @@ impl<B: AlgebraBackend> LexcCompiler<B> {
                 .compose_with_config(&flag_filter, true, &cfg)?
                 .optimize()?;
 
-            rv.assign(&filtered_lexicons)?;
+            rv.operator_assign(&filtered_lexicons)?;
             rv_needs_optimization = false;
         }
 

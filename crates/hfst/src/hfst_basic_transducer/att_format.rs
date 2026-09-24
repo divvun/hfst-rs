@@ -275,7 +275,7 @@ impl HfstBasicTransducer {
             coder: SymbolCoder::new(),
         };
         let mut linecount: u32 = 0;
-        let read = Self::read_in_att_format_file(file, "@0@", &mut linecount, false)?;
+        let read = Self::read_in_att_format(file, "@0@", &mut linecount, false)?;
         retval.assign(&read);
         retval.name = String::new();
         Ok(retval)
@@ -325,23 +325,5 @@ impl HfstBasicTransducer {
             retval.add_att_line(&line, epsilon_symbol, warn_negs)?;
         }
         Ok(retval)
-    }
-
-    pub fn read_in_att_format_is(
-        is: &mut dyn BufRead,
-        epsilon_symbol: &str,
-        linecount: &mut u32,
-        warn_negs: bool,
-    ) -> crate::error::Result<HfstBasicTransducer> {
-        Self::read_in_att_format(is, epsilon_symbol, linecount, warn_negs)
-    }
-
-    pub fn read_in_att_format_file(
-        file: &mut dyn BufRead,
-        epsilon_symbol: &str,
-        linecount: &mut u32,
-        warn_negs: bool,
-    ) -> crate::error::Result<HfstBasicTransducer> {
-        Self::read_in_att_format(file, epsilon_symbol, linecount, warn_negs)
     }
 }

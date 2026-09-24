@@ -223,7 +223,8 @@ fn lexicon(len: usize) -> T {
         }
     }
     b.set_final_weight(len as u32, &0.0);
-    HfstTransducer::from_basic(&b)
+    HfstTransducer::new_from_basic(&b)
+        .expect("converting a basic transducer to an available backend type cannot fail")
 }
 
 // Rule "count of 'a' mod k": a k-state cycle that advances on 'a', self-loops
@@ -245,7 +246,8 @@ fn rule_mod(k: usize) -> T {
     }
     b.set_final_weight(0, &0.0);
     b.add_symbol_to_alphabet(&hfst::hfst_data_types::Symbol::new(EPS));
-    HfstTransducer::from_basic(&b)
+    HfstTransducer::new_from_basic(&b)
+        .expect("converting a basic transducer to an available backend type cannot fail")
 }
 
 fn n_a(s: &str) -> usize {
@@ -253,10 +255,10 @@ fn n_a(s: &str) -> usize {
 }
 
 /// Membership test: convert the composed tropical net to the optimized-lookup
-/// backend (which exposes `lookup_string`) and check the input is accepted.
+/// backend (which exposes `lookup_fd_string`) and check the input is accepted.
 fn accepts(t: &T, s: &str) -> Result<bool, hfst::error::Error> {
     let ol = HfstTransducer::<Transducer<WeightedTables>>::new_from_basic(&t.to_basic()?)?;
-    Ok(!ol.lookup_string(s, -1, 0.0)?.is_empty())
+    Ok(!ol.lookup_fd_string(s, -1, 0.0)?.is_empty())
 }
 
 // Correctness: composing the branching lexicon with several coprime modular

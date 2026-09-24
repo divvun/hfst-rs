@@ -44,11 +44,11 @@ pub fn print_pckimmo<B: crate::backend::Backend>(
     t: &crate::hfst_transducer::HfstTransducer<B>,
 ) -> std::io::Result<()> {
     // C++: 'HfstBasicTransducer mutt {t};' — build the interchange graph from
-    // the facade. get_basic_transducer is the HfstBasicTransducer(const
+    // the facade. to_basic is the HfstBasicTransducer(const
     // HfstTransducer&) conversion.
     let mutt: HfstBasicTransducer = t
-        .get_basic_transducer()
-        .expect("get_basic_transducer on a valid transducer cannot fail");
+        .to_basic()
+        .expect("to_basic on a valid transducer cannot fail");
     let mut s: HfstState = 0;
     let mut last: HfstState = 0;
     let mut pairs: BTreeSet<(

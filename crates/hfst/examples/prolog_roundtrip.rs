@@ -51,7 +51,7 @@ fn main() -> hfst::error::Result<()> {
     assert_eq!(g2.get_max_state(), 1);
     assert!(g2.is_final_state(1));
     assert!((g2.get_final_weight(1)? - 0.3).abs() < 1e-6);
-    let trs = g2.transitions(0)?;
+    let trs = g2.index(0)?;
     assert_eq!(trs.len(), 1);
     assert_eq!(trs[0].get_input_symbol(g2.coder()), "a");
     assert_eq!(trs[0].get_output_symbol(g2.coder()), "b");
@@ -63,19 +63,19 @@ fn main() -> hfst::error::Result<()> {
     {
         let mut reader = std::io::Cursor::new(text.into_bytes());
         let mut lc: u32 = 0;
-        let g3 = HfstBasicTransducer::read_in_prolog_format_file(&mut reader, &mut lc)
+        let g3 = HfstBasicTransducer::read_in_prolog_format(&mut reader, &mut lc)
             .expect("round-tripped Prolog text reads back as a valid transducer");
 
         assert_eq!(g3.name, "foo");
         assert_eq!(g3.get_max_state(), 1);
         assert!(g3.is_final_state(1));
         assert!((g3.get_final_weight(1)? - 0.3).abs() < 1e-6);
-        let t = g3.transitions(0)?;
+        let t = g3.index(0)?;
         assert_eq!(t.len(), 1);
         assert_eq!(t[0].get_input_symbol(g3.coder()), "a");
         assert_eq!(t[0].get_output_symbol(g3.coder()), "b");
         assert!((t[0].get_weight() - 0.5).abs() < 1e-6);
-        println!("prolog round-trip (read_in_prolog_format_file) OK");
+        println!("prolog round-trip (read_in_prolog_format) OK");
     }
     Ok(())
 }

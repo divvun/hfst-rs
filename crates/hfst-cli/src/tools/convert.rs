@@ -268,7 +268,7 @@ pub mod expand_equivalences {
                         return;
                     }
                 };
-                if let Err(e) = outstream.redirect(&mut trans) {
+                if let Err(e) = outstream.write(&mut trans) {
                     error(common, 1, 0, &format!("{e}"));
                     return;
                 }
@@ -889,7 +889,7 @@ pub mod fst2fst {
                 let src = orig.clone();
                 hfst_set_name_unary(&mut orig, &src, "convert");
                 hfst_set_formula_unary(&mut orig, &src, "Id");
-                if let Err(e) = outstream.redirect(&mut orig) {
+                if let Err(e) = outstream.write(&mut orig) {
                     error(common, 1, 0, &format!("{e}"));
                     return 1;
                 }

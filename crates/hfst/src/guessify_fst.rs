@@ -10,6 +10,7 @@
 //! 'main-fn' block at the end of this file).
 
 use crate::backend::{AlgebraBackend, Backend};
+use crate::convert_transducer_format::ConversionFunctions;
 use crate::hfst_basic_transducer::HfstBasicTransducer;
 use crate::hfst_basic_transition::HfstBasicTransition;
 use crate::hfst_data_types::Symbol;
@@ -92,7 +93,8 @@ pub fn get_prefix_remover<B: AlgebraBackend>(
 
     let mut identity_except_cathegory: HfstTransducer<B> =
         HfstTransducer::new_symbol(internal_identity)?;
-    let mut basic_identity = HfstBasicTransducer::from_transducer(&identity_except_cathegory);
+    let mut basic_identity =
+        ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(&identity_except_cathegory)?;
 
     // Add cathegory symbols as paths in cathegory_symbols_fst and add
     // them to the alphabet of basic_identity so that the identity
@@ -110,7 +112,7 @@ pub fn get_prefix_remover<B: AlgebraBackend>(
     cathegory_symbols_fst
         .concatenate(&identity, true)?
         .minimize()?;
-    identity_except_cathegory = HfstTransducer::new_from_basic_transducer(&basic_identity);
+    identity_except_cathegory = HfstTransducer::new_from_basic(&basic_identity)?;
     identity_except_cathegory.repeat_star()?.minimize()?;
 
     let mut remove_symbol = HfstTransducer::new_symbol_pair(internal_unknown, REMOVED_SYMBOL)?;
@@ -230,7 +232,8 @@ pub fn guessify_analyzer<B: AlgebraBackend>(
     // Add a sink state and default transitions from every state
     // (including the sink state) to the sink state. The default
     // transitions all have the same weight @a penalty.
-    let mut basic_guesser = HfstBasicTransducer::from_transducer(&morphological_analyzer);
+    let mut basic_guesser =
+        ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(&morphological_analyzer)?;
 
     let sink_state = basic_guesser.add_state_new();
 
@@ -274,7 +277,7 @@ pub fn guessify_analyzer<B: AlgebraBackend>(
         s += 1;
     }
 
-    let mut guesser: HfstTransducer<B> = HfstTransducer::new_from_basic_transducer(&basic_guesser);
+    let mut guesser: HfstTransducer<B> = HfstTransducer::new_from_basic(&basic_guesser)?;
 
     let invalid_form_filterer = get_invalid_form_filterer(&alphabet)?;
 
@@ -299,7 +302,7 @@ pub fn store_guesser<B: AlgebraBackend>(
         generator = HfstTransducer::new_copy(guesser)?;
     }
 
-    guesser.substitute(my_default(), internal_default, true, true)?;
+    guesser.substitute_string(my_default(), internal_default, true, true)?;
     // The C++ 'convert(HFST_OLW_TYPE)' mutated the facade in place, keeping
     // its metadata (name + properties, e.g. the "reverse input" guesser
     // marker); the typed conversion pair pins the written result to the
@@ -319,7 +322,7 @@ pub fn store_guesser<B: AlgebraBackend>(
     if compile_generator {
         generator.invert()?;
         generator.set_name(&format!("inverted({})", guesser.get_name()));
-        generator.substitute(my_default(), internal_default, true, true)?;
+        generator.substitute_string(my_default(), internal_default, true, true)?;
         let mut generator_olw: HfstTransducer<crate::transducer::Transducer> =
             crate::convert_transducer_format::ConversionFunctions::hfst_ol_to_hfst_transducer(
                 &crate::convert_transducer_format::ConversionFunctions::hfst_transducer_to_hfst_ol(
@@ -364,7 +367,7 @@ pub fn affix_guessify<B: Backend>(
     let alpha = trans.get_alphabet()?;
     Ok(match direction {
         GuessDirection::GuessSuffix => {
-            let mutt = HfstBasicTransducer::from_transducer(trans);
+            let mutt = ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(trans)?;
             let mut repl = HfstBasicTransducer::new();
             let guess_state = repl.add_state(0);
             let guess_arc = HfstBasicTransition::new_symbols(
@@ -409,7 +412,7 @@ pub fn affix_guessify<B: Backend>(
                     );
                     repl.add_transition(guess_state, &x_arc, true);
                 }
-                for arc in mutt.transitions(s)?.iter() {
+                for arc in mutt.index(s)?.iter() {
                     // Cross-graph copy: read arc symbols via 'mutt's coder, then
                     // build the new transition into 'repl' via 'repl's coder.
                     let target = arc.get_target_state() + 1;
@@ -424,7 +427,7 @@ pub fn affix_guessify<B: Backend>(
             HfstTransducer::new_from_basic(&repl)?
         }
         GuessDirection::GuessPrefix => {
-            let mut repl = HfstBasicTransducer::from_transducer(trans);
+            let mut repl = ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(trans)?;
             let guess_state = repl.add_state_new();
             repl.set_final_weight(guess_state, &0.0f32);
             let guess_arc = HfstBasicTransition::new_symbols(

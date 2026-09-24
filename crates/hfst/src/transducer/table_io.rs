@@ -6,11 +6,11 @@ impl<T: TransducerTablesInterface> Transducer<T> {
     // [spec:hfst:def:transducer.hfst-ol.transducer.copy-windex-table-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transducer.copy-windex-table-fn]
     pub fn copy_windex_table(&self) -> crate::error::Result<TransducerTable<TransitionWIndex>> {
-        if !self.hdr().probe_flag(HeaderFlag::Weighted) {
+        if !self.get_header().probe_flag(HeaderFlag::Weighted) {
             crate::bail!(TransducerHasWrongType);
         }
         let mut another = TransducerTable::new();
-        for i in 0..self.hdr().index_table_size() {
+        for i in 0..self.get_header().index_table_size() {
             another.append(TransitionWIndex::new_values(
                 self.tbl().get_index_input(i),
                 self.tbl().get_index_target(i),
@@ -21,11 +21,11 @@ impl<T: TransducerTablesInterface> Transducer<T> {
     // [spec:hfst:def:transducer.hfst-ol.transducer.copy-transitionw-table-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transducer.copy-transitionw-table-fn]
     pub fn copy_transitionw_table(&self) -> crate::error::Result<TransducerTable<TransitionW>> {
-        if !self.hdr().probe_flag(HeaderFlag::Weighted) {
+        if !self.get_header().probe_flag(HeaderFlag::Weighted) {
             crate::bail!(TransducerHasWrongType);
         }
         let mut another = TransducerTable::new();
-        for i in 0..self.hdr().target_table_size() {
+        for i in 0..self.get_header().target_table_size() {
             another.append(TransitionW::new_values(
                 self.tbl().get_transition_input(i),
                 self.tbl().get_transition_output(i),
@@ -45,7 +45,7 @@ impl<T: TransducerTablesInterface> Transducer<T> {
     /// so the two answers are the same table pair.
     // [spec:hfst:req:table-residency.single-copy-load]
     pub fn into_weighted_tables(self) -> crate::error::Result<T> {
-        if !self.hdr().probe_flag(HeaderFlag::Weighted) {
+        if !self.get_header().probe_flag(HeaderFlag::Weighted) {
             crate::bail!(TransducerHasWrongType);
         }
         Ok(self
@@ -56,11 +56,11 @@ impl<T: TransducerTablesInterface> Transducer<T> {
     // [spec:hfst:def:transducer.hfst-ol.transducer.copy-index-table-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transducer.copy-index-table-fn]
     pub fn copy_index_table(&self) -> crate::error::Result<TransducerTable<TransitionIndex>> {
-        if self.hdr().probe_flag(HeaderFlag::Weighted) {
+        if self.get_header().probe_flag(HeaderFlag::Weighted) {
             crate::bail!(TransducerHasWrongType);
         }
         let mut another = TransducerTable::new();
-        for i in 0..self.hdr().index_table_size() {
+        for i in 0..self.get_header().index_table_size() {
             // tables->get_index(i) returns a base TransitionIndex; copy its data
             another.append(TransitionIndex::new_values(
                 self.tbl().get_index_input(i),
@@ -72,11 +72,11 @@ impl<T: TransducerTablesInterface> Transducer<T> {
     // [spec:hfst:def:transducer.hfst-ol.transducer.copy-transition-table-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transducer.copy-transition-table-fn]
     pub fn copy_transition_table(&self) -> crate::error::Result<TransducerTable<Transition>> {
-        if self.hdr().probe_flag(HeaderFlag::Weighted) {
+        if self.get_header().probe_flag(HeaderFlag::Weighted) {
             crate::bail!(TransducerHasWrongType);
         }
         let mut another = TransducerTable::new();
-        for i in 0..self.hdr().target_table_size() {
+        for i in 0..self.get_header().target_table_size() {
             another.append(Transition::new_values(
                 self.tbl().get_transition_input(i),
                 self.tbl().get_transition_output(i),
@@ -89,11 +89,11 @@ impl<T: TransducerTablesInterface> Transducer<T> {
     // [spec:hfst:def:transducer.hfst-ol.transducer.load-tables-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transducer.load-tables-fn]
     pub fn load_tables(&mut self, is: &mut dyn std::io::BufRead) -> crate::error::Result<()> {
-        if self.hdr().probe_flag(HeaderFlag::Weighted) != T::WEIGHTED {
+        if self.get_header().probe_flag(HeaderFlag::Weighted) != T::WEIGHTED {
             crate::bail!(TransducerHasWrongType);
         }
-        let its = self.hdr().index_table_size();
-        let tts = self.hdr().target_table_size();
+        let its = self.get_header().index_table_size();
+        let tts = self.get_header().target_table_size();
         self.tables = Some(T::read_from(is, its, tts)?);
         self.validate_tables()
     }
@@ -102,9 +102,9 @@ impl<T: TransducerTablesInterface> Transducer<T> {
     /// and the alphabet they were read alongside. Run once at the stream
     /// boundary; see [`validate_ol_index_entry`].
     fn validate_tables(&self) -> crate::error::Result<()> {
-        let index_len = self.hdr().index_table_size();
-        let transition_len = self.hdr().target_table_size();
-        let symbol_count = self.alph().get_symbol_table().len();
+        let index_len = self.get_header().index_table_size();
+        let transition_len = self.get_header().target_table_size();
+        let symbol_count = self.get_alphabet().get_symbol_table().len();
         for i in 0..index_len {
             validate_ol_index_entry(
                 i as usize,
@@ -136,13 +136,13 @@ impl<T: TransducerTablesInterface> Transducer<T> {
         // in either tree — so derive them here rather than write a file that
         // misdescribes itself to whoever reads it next. One walk per file.
         self.header_with_graph_properties().write(os);
-        self.alph().write(os);
-        let weighted = self.hdr().probe_flag(HeaderFlag::Weighted);
+        self.get_alphabet().write(os);
+        let weighted = self.get_header().probe_flag(HeaderFlag::Weighted);
         // 'i' is already a TransitionTableIndex (u32), so no narrowing occurs.
-        for i in 0..self.hdr().index_table_size() {
+        for i in 0..self.get_header().index_table_size() {
             self.tbl().write_index(i, os, weighted);
         }
-        for i in 0..self.hdr().target_table_size() {
+        for i in 0..self.get_header().target_table_size() {
             self.tbl().write_transition(i, os, weighted);
         }
     }
@@ -168,8 +168,8 @@ impl<T: TransducerTablesInterface> Transducer<T> {
     // [spec:hfst:sem:transducer.hfst-ol.transducer.display-fn]
     pub fn display(&self) {
         println!("-----Displaying optimized-lookup transducer------");
-        self.hdr().display();
-        self.alph().display();
+        self.get_header().display();
+        self.get_alphabet().display();
         self.tbl().display();
         println!("-------------------------------------------------");
     }

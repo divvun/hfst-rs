@@ -282,7 +282,7 @@ fn sparse_symtable_round_trip<B: AlgebraBackend + FromAnyTransducer>()
     // The read-back transducer keeps the surviving "a" arc and no "x".
     let basic = read_back
         .expect("count == 1 guarantees exactly one transducer was read back")
-        .get_basic_transducer()?;
+        .to_basic()?;
     let mut has_a = false;
     for transitions in basic.iter() {
         for arc in transitions.iter() {

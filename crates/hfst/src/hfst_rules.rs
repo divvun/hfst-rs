@@ -710,7 +710,7 @@ pub fn restriction<B: AlgebraBackend>(
         let mut retval = HfstTransducer::new_string_pair_set(alphabet, true)?;
         let mut tmp1 = l1.clone();
         tmp1.subtract(&l2, true)?;
-        tmp1.substitute(&marker, internal_epsilon, true, true)?;
+        tmp1.substitute_string(&marker, internal_epsilon, true, true)?;
         retval.subtract(&tmp1, true)?;
         Ok(retval)
     } else if twol_type == TwolType::twol_left {
@@ -718,7 +718,7 @@ pub fn restriction<B: AlgebraBackend>(
         let mut retval = HfstTransducer::new_string_pair_set(alphabet, true)?;
         let mut tmp1 = l2.clone();
         tmp1.subtract(&l1, true)?;
-        tmp1.substitute(&marker, internal_epsilon, true, true)?;
+        tmp1.substitute_string(&marker, internal_epsilon, true, true)?;
         retval.subtract(&tmp1, true)?;
         Ok(retval)
     } else if twol_type == TwolType::twol_both {
@@ -728,13 +728,13 @@ pub fn restriction<B: AlgebraBackend>(
         let mut retval1 = HfstTransducer::new_string_pair_set(alphabet, true)?;
         let mut tmp1 = l1.clone();
         tmp1.subtract(&l2, true)?;
-        tmp1.substitute(&marker, internal_epsilon, true, true)?;
+        tmp1.substitute_string(&marker, internal_epsilon, true, true)?;
         retval1.subtract(&tmp1, true)?;
 
         let mut retval2 = HfstTransducer::new_string_pair_set(alphabet, true)?;
         let mut tmp2 = l2.clone();
         tmp2.subtract(&l1, true)?;
-        tmp2.substitute(&marker, internal_epsilon, true, true)?;
+        tmp2.substitute_string(&marker, internal_epsilon, true, true)?;
         retval2.subtract(&tmp2, true)?;
 
         Ok(retval1.intersect(&retval2, true)?.clone())

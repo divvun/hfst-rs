@@ -151,7 +151,7 @@ fn check_all_symbols<B: hfst::backend::AlgebraBackend>(
     let lexicon_b = ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(lexicon)?;
 
     for s in 0..=lexicon_b.get_max_state() {
-        for it in lexicon_b.transitions(s)?.iter() {
+        for it in lexicon_b.index(s)?.iter() {
             let output_symbol = it.get_output_symbol(lexicon_b.coder());
 
             if !rule_input_symbols.contains(&output_symbol) {
@@ -177,7 +177,7 @@ fn check_multi_char_symbols<B: hfst::backend::AlgebraBackend>(
     let rule_input_symbols = rule_b.input_symbols_used();
 
     for s in 0..=lexicon_b.get_max_state() {
-        for it in lexicon_b.transitions(s)?.iter() {
+        for it in lexicon_b.index(s)?.iter() {
             let output_symbol = it.get_output_symbol(lexicon_b.coder());
 
             if !rule_input_symbols.contains(&output_symbol) {
@@ -520,7 +520,7 @@ fn compose_streams_typed<
             common,
             &format!("Storing result in {}...\n", common.output_filename),
         );
-        if let Err(e) = outstream.redirect(&mut lexicon) {
+        if let Err(e) = outstream.write(&mut lexicon) {
             error(common, 1, 0, &format!("{e}"));
             return 1;
         }

@@ -2,6 +2,7 @@
 //! cross product, shuffle, and compose-intersect.
 
 use super::*;
+use crate::convert_transducer_format::ConversionFunctions;
 
 impl<B: AlgebraBackend> HfstTransducer<B> {
     /// The harmonization preamble of the former 'apply(..., HfstTransducer&,
@@ -43,10 +44,11 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
         another: &HfstTransducer<B>,
         args: &crate::xre::XreConstructorArguments<B>,
     ) -> crate::error::Result<&mut HfstTransducer<B>> {
-        let mut this_basic = HfstBasicTransducer::from_transducer(self);
+        let mut this_basic = ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(self)?;
         // [spec:hfst:def:hfst-transducer.hfst.another-basic-fn]
         // [spec:hfst:sem:hfst-transducer.hfst.another-basic-fn]
-        let mut another_basic = HfstBasicTransducer::from_transducer(another);
+        let mut another_basic =
+            ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(another)?;
         let mut markers_added: BTreeSet<Symbol> = BTreeSet::new();
         let result = HfstBasicTransducer::merge(
             &mut this_basic,
@@ -54,7 +56,7 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
             &args.list_definitions,
             &mut markers_added,
         )?;
-        let mut initial_merge = HfstTransducer::from_basic(&result);
+        let mut initial_merge = HfstTransducer::new_from_basic(&result)?;
         initial_merge.optimize()?;
 
         // filter non-optimal paths
@@ -83,14 +85,15 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
             cp.compose(&worsener, true)?.output_project()?.optimize()?;
 
             initial_merge.subtract(&cp, true)?.optimize()?;
-            initial_merge.substitute_symbol(&marker, internal_epsilon, true, true)?;
+            initial_merge.substitute_string(&marker, internal_epsilon, true, true)?;
 
             // [spec:hfst:def:hfst-transducer.hfst.fsm-fn]
             // [spec:hfst:sem:hfst-transducer.hfst.fsm-fn]
-            let fsm = HfstBasicTransducer::from_transducer(&initial_merge);
+            let fsm =
+                ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(&initial_merge)?;
             let symbols = fsm.symbols_used();
             if !symbols.contains(symbol.as_str()) {
-                initial_merge.remove_from_alphabet(&symbol)?;
+                initial_merge.remove_from_alphabet_string(&symbol)?;
             }
         }
 
@@ -121,7 +124,7 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
     /// Compose with an optional lazy flag-diacritic self-loop overlay.
     ///
     /// The overlay must have been produced by
-    /// [`Self::prepare_flag_diacritics_for_compose`] for these operands.  It is
+    /// [`Self::prepare_flag_diacritics_for_operation`] for these operands.  It is
     /// resolved to backend labels only after ordinary symbol harmonization has
     /// established the operands' shared canonical coding. In Xerox mode the
     /// overlay labels follow the operands through the `%...%` encoding pass; in
@@ -198,8 +201,8 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
         /* Take care of unknown and identity symbols being handled right in
         composition. */
         if config.unknown_symbols_in_use {
-            self.substitute_symbol("@_IDENTITY_SYMBOL_@", "@_UNKNOWN_SYMBOL_@", false, true)?;
-            another_copy.substitute_symbol(
+            self.substitute_string("@_IDENTITY_SYMBOL_@", "@_UNKNOWN_SYMBOL_@", false, true)?;
+            another_copy.substitute_string(
                 "@_IDENTITY_SYMBOL_@",
                 "@_UNKNOWN_SYMBOL_@",
                 true,
@@ -282,8 +285,8 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
         // Put MARK all over lower part of automata1 and upper part of automata2,
         // and then compose them. Also, there should be created padding after
         // strings, on both sides
-        automata1.insert_to_alphabet("@_MARK_@")?;
-        automata2.insert_to_alphabet("@_MARK_@")?;
+        automata1.insert_to_alphabet_string("@_MARK_@")?;
+        automata2.insert_to_alphabet_string("@_MARK_@")?;
 
         let mut tok = HfstTokenizer::new();
         tok.add_multichar_symbol("@_EPSILON_SYMBOL_@");
@@ -342,7 +345,7 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
             Symbol::new_static("@_IDENTITY_SYMBOL_@"),
             Symbol::new_static("@_IDENTITY_SYMBOL_@"),
         ));
-        retval.substitute_symbol_pair_with_set(
+        retval.substitute_pair_with_pair_set(
             &(
                 Symbol::new_static("@_UNKNOWN_SYMBOL_@"),
                 Symbol::new_static("@_UNKNOWN_SYMBOL_@"),
@@ -350,7 +353,7 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
             &id_or_unk,
         )?;
 
-        retval.remove_from_alphabet("@_MARK_@")?;
+        retval.remove_from_alphabet_string("@_MARK_@")?;
 
         *self = retval;
         Ok(self)
@@ -362,8 +365,9 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
         _b: bool,
     ) -> crate::error::Result<&mut HfstTransducer<B>> {
         // We use HfstBasicTransducers for efficiency
-        let mut this_basic = HfstBasicTransducer::from_transducer(self);
-        let mut another_basic = HfstBasicTransducer::from_transducer(another);
+        let mut this_basic = ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(self)?;
+        let mut another_basic =
+            ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(another)?;
 
         // Expand (unknowns and) identities
         this_basic.harmonize(&mut another_basic);
@@ -423,8 +427,8 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
         another_basic.insert_freely_set(&this_alphabet_pairset, 0.0)?;
 
         // We use HfstTransducers for intersection
-        let mut this1: HfstTransducer<B> = HfstTransducer::from_basic(&this_basic);
-        let another1: HfstTransducer<B> = HfstTransducer::from_basic(&another_basic);
+        let mut this1: HfstTransducer<B> = HfstTransducer::new_from_basic(&this_basic)?;
+        let another1: HfstTransducer<B> = HfstTransducer::new_from_basic(&another_basic)?;
 
         this1.intersect(&another1, true)?;
         this1.optimize()?;
@@ -432,7 +436,8 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
         // We use HfstBasicTransducers again
         // [spec:hfst:def:hfst-transducer.hfst.this1-basic-fn]
         // [spec:hfst:sem:hfst-transducer.hfst.this1-basic-fn]
-        let mut this1_basic = HfstBasicTransducer::from_transducer(&this1);
+        let mut this1_basic =
+            ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(&this1)?;
 
         // Decode the shuffled transducer, i.e. remove the prefixes
         // "@1" and "@2" from symbols
@@ -445,7 +450,7 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
         this1_basic.remove_symbols_from_alphabet(&another_alphabet);
 
         // Convert once again to HfstTransducer
-        let this_finally = HfstTransducer::from_basic(&this1_basic);
+        let this_finally = HfstTransducer::new_from_basic(&this1_basic)?;
         *self = this_finally;
 
         Ok(self)
@@ -545,9 +550,10 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
 
             // Add the word boundary symbol to the alphabet so harmonization
             // won't touch it.
-            let mut basic_this = HfstBasicTransducer::from_transducer(self);
+            let mut basic_this =
+                ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(self)?;
             basic_this.add_symbol_to_alphabet(&Symbol::new_static("@#@"));
-            *self = HfstTransducer::from_basic(&basic_this);
+            *self = HfstTransducer::new_from_basic(&basic_this)?;
 
             wb.concatenate(self, true)?
                 .concatenate(&wb_copy, true)?
@@ -572,7 +578,7 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
 
         if invert {
             harmonized_lexicon.invert()?;
-            harmonized_lexicon.substitute_symbol_pair(
+            harmonized_lexicon.substitute_pair_with_pair(
                 &(
                     Symbol::new_static("@#@"),
                     Symbol::new_static(internal_epsilon),
@@ -584,13 +590,13 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
             )?;
         }
 
-        harmonized_lexicon.substitute_symbol(
+        harmonized_lexicon.substitute_string(
             internal_identity,
             "||_IDENTITY_SYMBOL_||",
             true,
             true,
         )?;
-        harmonized_lexicon.substitute_symbol(
+        harmonized_lexicon.substitute_string(
             internal_unknown,
             "||_UNKNOWN_SYMBOL_||",
             true,
@@ -602,7 +608,7 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
 
             if invert {
                 rule_fst.invert()?;
-                rule_fst.substitute_symbol_pair(
+                rule_fst.substitute_pair_with_pair(
                     &(
                         Symbol::new_static(internal_epsilon),
                         Symbol::new_static("@#@"),
@@ -624,8 +630,10 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
             // symbol numbers can be combined directly in the lazy product (the
             // per-graph-coder replacement for the former process-global numbering).
             let mut canonical = crate::hfst_tropical_transducer_transition_data::SymbolCoder::new();
-            let mut rule_basic = HfstBasicTransducer::from_transducer(&rule_fst);
-            let mut lexicon_basic = HfstBasicTransducer::from_transducer(&harmonized_lexicon);
+            let mut rule_basic =
+                ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(&rule_fst)?;
+            let mut lexicon_basic =
+                ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(&harmonized_lexicon)?;
             lexicon_basic.intern_into(&mut canonical);
             rule_basic.intern_into(&mut canonical);
             lexicon_basic.reindex_into(&mut canonical);
@@ -656,7 +664,7 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
             drop(lexicon_basic);
 
             res.prune_alphabet(true);
-            *self = HfstTransducer::from_basic(&res);
+            *self = HfstTransducer::new_from_basic(&res)?;
         } else {
             // In case there are many rules, build a ComposeIntersectRulePair
             // recursively and compose with that.
@@ -664,7 +672,7 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
 
             if invert {
                 first_rule_fst.invert()?;
-                first_rule_fst.substitute_symbol_pair(
+                first_rule_fst.substitute_pair_with_pair(
                     &(
                         Symbol::new_static(internal_epsilon),
                         Symbol::new_static("@#@"),
@@ -680,7 +688,7 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
 
             if invert {
                 second_rule_fst.invert()?;
-                second_rule_fst.substitute_symbol_pair(
+                second_rule_fst.substitute_pair_with_pair(
                     &(
                         Symbol::new_static(internal_epsilon),
                         Symbol::new_static("@#@"),
@@ -706,16 +714,19 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
             // former process-global numbering). Build every basic transducer first,
             // intern them ALL into the shared coder, then reindex each — so even
             // alphabet-only symbols agree across all of them.
-            let mut lexicon_basic = HfstBasicTransducer::from_transducer(&harmonized_lexicon);
-            let mut first_rule_basic = HfstBasicTransducer::from_transducer(&first_rule_fst);
-            let mut second_rule_basic = HfstBasicTransducer::from_transducer(&second_rule_fst);
+            let mut lexicon_basic =
+                ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(&harmonized_lexicon)?;
+            let mut first_rule_basic =
+                ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(&first_rule_fst)?;
+            let mut second_rule_basic =
+                ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(&second_rule_fst)?;
             let mut extra_rule_basics: Vec<HfstBasicTransducer> = Vec::new();
             for it in &v[2..] {
                 let mut rule_fst = it.clone();
 
                 if invert {
                     rule_fst.invert()?;
-                    rule_fst.substitute_symbol_pair(
+                    rule_fst.substitute_pair_with_pair(
                         &(
                             Symbol::new_static(internal_epsilon),
                             Symbol::new_static("@#@"),
@@ -726,7 +737,9 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
                         ),
                     )?;
                 }
-                extra_rule_basics.push(HfstBasicTransducer::from_transducer(&rule_fst));
+                extra_rule_basics.push(
+                    ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(&rule_fst)?,
+                );
             }
 
             let mut canonical = crate::hfst_tropical_transducer_transition_data::SymbolCoder::new();
@@ -793,7 +806,7 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
             drop(lexicon_basic);
 
             res.prune_alphabet(true);
-            *self = HfstTransducer::from_basic(&res);
+            *self = HfstTransducer::new_from_basic(&res)?;
 
             if invert {
                 self.invert()?;
@@ -802,8 +815,8 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
 
         drop(harmonized_lexicon);
 
-        self.substitute_symbol("||_IDENTITY_SYMBOL_||", internal_identity, true, true)?;
-        self.substitute_symbol("||_UNKNOWN_SYMBOL_||", internal_unknown, true, true)?;
+        self.substitute_string("||_IDENTITY_SYMBOL_||", internal_identity, true, true)?;
+        self.substitute_string("||_UNKNOWN_SYMBOL_||", internal_unknown, true, true)?;
 
         Ok(self)
     }

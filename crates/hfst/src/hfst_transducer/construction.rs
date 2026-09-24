@@ -82,14 +82,6 @@ impl<B: Backend> HfstTransducer<B> {
     // ----- Assignment -----
     // -------------------------------------------------------------------------
 
-    /// 'HfstTransducer &assign(const HfstTransducer &another)' -> 'operator='.
-    pub fn assign(
-        &mut self,
-        another: &HfstTransducer<B>,
-    ) -> crate::error::Result<&mut HfstTransducer<B>> {
-        self.operator_assign(another)
-    }
-
     /// \brief Assign this transducer a new value equivalent to 'another'.
     ///
     /// 'HfstTransducer &operator=(const HfstTransducer &another)'. The C++
@@ -155,7 +147,8 @@ impl<B: Backend> HfstTransducer<B> {
         bt.add_transition(0, &tr, true);
         bt.set_final_weight(1, &0.0);
 
-        HfstTransducer::new_from_basic_transducer(&bt)
+        HfstTransducer::new_from_basic(&bt)
+            .expect("converting a basic transducer to an available backend type cannot fail")
     }
 
     // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.identity-pair-fn]
@@ -172,31 +165,7 @@ impl<B: Backend> HfstTransducer<B> {
         bt.add_transition(0, &tr, true);
         bt.set_final_weight(1, &0.0);
 
-        HfstTransducer::new_from_basic_transducer(&bt)
-    }
-
-    // ----- integration shims (copy-constructor aliases) -----
-
-    pub fn new_from(another: &HfstTransducer<B>) -> Self {
-        HfstTransducer::new_copy(another).expect("copying an existing transducer cannot fail")
-    }
-    pub fn new_from_transducer(another: &HfstTransducer<B>) -> Self {
-        HfstTransducer::new_copy(another).expect("copying an existing transducer cannot fail")
-    }
-    pub fn from_basic(net: &HfstBasicTransducer) -> Self {
-        HfstTransducer::new_from_basic(net)
-            .expect("converting a basic transducer to an available backend type cannot fail")
-    }
-    pub fn from_basic_owned(net: HfstBasicTransducer) -> Self {
-        HfstTransducer::new_from_basic_owned(net)
-            .expect("converting a basic transducer to an available backend type cannot fail")
-    }
-    pub fn from_basic_transducer(net: &HfstBasicTransducer) -> Self {
-        HfstTransducer::new_from_basic(net)
-            .expect("converting a basic transducer to an available backend type cannot fail")
-    }
-    pub fn new_from_basic_transducer(net: &HfstBasicTransducer) -> Self {
-        HfstTransducer::new_from_basic(net)
+        HfstTransducer::new_from_basic(&bt)
             .expect("converting a basic transducer to an available backend type cannot fail")
     }
 }

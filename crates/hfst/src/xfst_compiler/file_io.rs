@@ -1,6 +1,7 @@
 //! Reading and writing networks, properties and definitions from and to files.
 
 use super::*;
+use crate::convert_transducer_format::ConversionFunctions;
 
 impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     // @brief Read lexicons from @a indata
@@ -241,7 +242,8 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             self.xfst_lesser_fail();
             return self;
         };
-        let fsm = HfstBasicTransducer::from_transducer(self.net(tmp));
+        let fsm = ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(self.net(tmp))
+            .expect("hfst_transducer_to_hfst_basic_transducer on a valid transducer cannot fail");
         fsm.write_in_att_format_os(oss, self.variables["print-weight"] == "ON");
         self.flush();
         self.prompt();
@@ -339,7 +341,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             if name.is_empty() {
                 name = "NO_NAME".to_string();
             }
-            let fsm = HfstBasicTransducer::from_transducer(self.net(*tr));
+            let fsm = ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(self.net(*tr))?;
             let write_weights = self.variables["print-weight"] == "ON";
             fsm.write_in_prolog_format_os(oss, &name, write_weights)?;
             if i + 1 != self.stack.len() {

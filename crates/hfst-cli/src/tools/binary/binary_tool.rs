@@ -162,7 +162,7 @@ fn concatenate_pair<B: hfst::backend::AlgebraBackend>(
         eprintln!("hfst-binary-tool: {e}");
         return 1;
     }
-    if let Err(e) = outstream.redirect(&mut first) {
+    if let Err(e) = outstream.write(&mut first) {
         eprintln!("hfst-binary-tool: {e}");
         return 1;
     }

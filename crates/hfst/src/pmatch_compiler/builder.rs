@@ -339,12 +339,11 @@ fn build_read_file<B: AlgebraBackend + FromAnyTransducer + 'static>(
             Ok(f) => {
                 let mut reader = std::io::BufReader::new(f);
                 let mut linecount: u32 = 0;
-                let tmp =
-                    crate::hfst_basic_transducer::HfstBasicTransducer::read_in_prolog_format_file(
-                        &mut reader,
-                        &mut linecount,
-                    )?;
-                let mut t = Box::new(HfstTransducer::new_from_basic_transducer(&tmp));
+                let tmp = crate::hfst_basic_transducer::HfstBasicTransducer::read_in_prolog_format(
+                    &mut reader,
+                    &mut linecount,
+                )?;
+                let mut t = Box::new(HfstTransducer::new_from_basic(&tmp)?);
                 t.minimize()?;
                 Ok(as_obj(pmb_tc(*t)))
             }

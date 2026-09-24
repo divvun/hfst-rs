@@ -20,7 +20,7 @@ pub fn remove_markers<B: AlgebraBackend>(
     let right_marker: Symbol = Symbol::new_static("@RM@");
 
     retval
-        .substitute_symbol_pair(
+        .substitute_pair_with_pair(
             &(left_marker.clone(), left_marker.clone()),
             &(
                 Symbol::new_static("@_EPSILON_SYMBOL_@"),
@@ -29,7 +29,7 @@ pub fn remove_markers<B: AlgebraBackend>(
         )?
         .optimize()?;
     retval
-        .substitute_symbol_pair(
+        .substitute_pair_with_pair(
             &(right_marker.clone(), right_marker.clone()),
             &(
                 Symbol::new_static("@_EPSILON_SYMBOL_@"),
@@ -38,8 +38,8 @@ pub fn remove_markers<B: AlgebraBackend>(
         )?
         .optimize()?;
 
-    retval.remove_from_alphabet_symbol(&left_marker)?;
-    retval.remove_from_alphabet_symbol(&right_marker)?;
+    retval.remove_from_alphabet_string(&left_marker)?;
+    retval.remove_from_alphabet_string(&right_marker)?;
 
     retval.optimize()?;
 
@@ -106,19 +106,15 @@ pub fn insert_freely_all_the_brackets<B: AlgebraBackend>(
     let left_bracket = HfstTransducer::new_tokenized(&left_marker, &tok)?;
     let right_bracket = HfstTransducer::new_tokenized(&right_marker, &tok)?;
 
-    t.insert_freely_transducer(&left_bracket, false)?
-        .optimize()?;
-    t.insert_freely_transducer(&right_bracket, false)?
-        .optimize()?;
+    t.insert_freely(&left_bracket, false)?.optimize()?;
+    t.insert_freely(&right_bracket, false)?.optimize()?;
 
     if !optional {
         let left_bracket2 = HfstTransducer::new_tokenized(&left_marker2, &tok)?;
         let right_bracket2 = HfstTransducer::new_tokenized(&right_marker2, &tok)?;
 
-        t.insert_freely_transducer(&left_bracket2, false)?
-            .optimize()?;
-        t.insert_freely_transducer(&right_bracket2, false)?
-            .optimize()?;
+        t.insert_freely(&left_bracket2, false)?.optimize()?;
+        t.insert_freely(&right_bracket2, false)?.optimize()?;
     }
     Ok(())
 }
@@ -228,7 +224,7 @@ pub fn expand_contexts_with_mapping<B: AlgebraBackend>(
         tok.add_multichar_symbol(&boundary_marker);
         let boundary = HfstTransducer::new_tokenized(&boundary_marker, &tok)?;
 
-        identity_star.insert_to_alphabet_symbol(&boundary_marker)?;
+        identity_star.insert_to_alphabet_string(&boundary_marker)?;
 
         // to first_context
         let first_context_alphabet = first_context.get_alphabet()?;
@@ -240,7 +236,7 @@ pub fn expand_contexts_with_mapping<B: AlgebraBackend>(
         }
 
         if !has_boundary {
-            first_context.insert_to_alphabet_symbol(&boundary_marker)?;
+            first_context.insert_to_alphabet_string(&boundary_marker)?;
             let mut tmp = boundary.clone();
             tmp.concatenate(&identity_star, true)?.optimize()?;
             tmp.concatenate(&first_context, true)?;
@@ -257,7 +253,7 @@ pub fn expand_contexts_with_mapping<B: AlgebraBackend>(
         }
 
         if !has_boundary {
-            second_context.insert_to_alphabet_symbol(&boundary_marker)?;
+            second_context.insert_to_alphabet_string(&boundary_marker)?;
             second_context
                 .concatenate(&identity_star, true)?
                 .concatenate(&boundary, true)?
@@ -339,7 +335,7 @@ pub fn bracketed_replace<B: AlgebraBackend>(
 
         // for removing .#. from the center
         let mut identity_without_boundary = identity.clone();
-        identity_without_boundary.insert_to_alphabet_symbol(".#.")?;
+        identity_without_boundary.insert_to_alphabet_string(".#.")?;
         let mut remove_hash = identity_without_boundary.clone();
         let boundary = HfstTransducer::new_tokenized(".#.", &tok)?;
         remove_hash
@@ -351,11 +347,11 @@ pub fn bracketed_replace<B: AlgebraBackend>(
             // remove .#. from the center
             // center - (?* .#. ?*)
             one_mapping_pair.subtract(&remove_hash, false)?.optimize()?;
-            one_mapping_pair.remove_from_alphabet_symbol(".#.")?;
+            one_mapping_pair.remove_from_alphabet_string(".#.")?;
             mapping = one_mapping_pair;
         } else {
             one_mapping_pair.subtract(&remove_hash, false)?.optimize()?;
-            one_mapping_pair.remove_from_alphabet_symbol(".#.")?;
+            one_mapping_pair.remove_from_alphabet_string(".#.")?;
             mapping.disjunct(&one_mapping_pair, true)?.optimize()?;
         }
     }
@@ -370,14 +366,14 @@ pub fn bracketed_replace<B: AlgebraBackend>(
         if mapping_pair_vector[0].1.compare(&empty, true)? {
             let transducer_alphabet = mapping_pair_vector[0].0.get_alphabet()?;
             for s in transducer_alphabet.iter() {
-                mapping.insert_to_alphabet_symbol(s)?;
+                mapping.insert_to_alphabet_string(s)?;
             }
         }
     }
 
-    mapping.insert_to_alphabet_symbol(&left_marker)?;
-    mapping.insert_to_alphabet_symbol(&right_marker)?;
-    mapping.insert_to_alphabet_symbol(&tmp_marker)?;
+    mapping.insert_to_alphabet_string(&left_marker)?;
+    mapping.insert_to_alphabet_string(&right_marker)?;
+    mapping.insert_to_alphabet_string(&tmp_marker)?;
 
     let left_bracket = HfstTransducer::new_tokenized(&left_marker, &tok)?;
     let right_bracket = HfstTransducer::new_tokenized(&right_marker, &tok)?;
@@ -406,11 +402,11 @@ pub fn bracketed_replace<B: AlgebraBackend>(
             left_mapping_union.disjunct(&pair.0, true)?.optimize()?;
         }
         // needed in case of ? -> x replacement
-        left_mapping_union.insert_to_alphabet_symbol(&left_marker2)?;
-        left_mapping_union.insert_to_alphabet_symbol(&right_marker2)?;
-        left_mapping_union.insert_to_alphabet_symbol(&left_marker)?;
-        left_mapping_union.insert_to_alphabet_symbol(&right_marker)?;
-        left_mapping_union.insert_to_alphabet_symbol(&tmp_marker)?;
+        left_mapping_union.insert_to_alphabet_string(&left_marker2)?;
+        left_mapping_union.insert_to_alphabet_string(&right_marker2)?;
+        left_mapping_union.insert_to_alphabet_string(&left_marker)?;
+        left_mapping_union.insert_to_alphabet_string(&right_marker)?;
+        left_mapping_union.insert_to_alphabet_string(&tmp_marker)?;
 
         mapping_with_brackets2
             .concatenate(&left_mapping_union, true)?
@@ -418,8 +414,8 @@ pub fn bracketed_replace<B: AlgebraBackend>(
             .optimize()?;
 
         // mapping_with_brackets...... expanded
-        mapping_with_brackets.insert_to_alphabet_symbol(&left_marker2)?;
-        mapping_with_brackets.insert_to_alphabet_symbol(&right_marker2)?;
+        mapping_with_brackets.insert_to_alphabet_string(&left_marker2)?;
+        mapping_with_brackets.insert_to_alphabet_string(&right_marker2)?;
         mapping_with_brackets
             .disjunct(&mapping_with_brackets2, true)?
             .optimize()?;
@@ -429,13 +425,13 @@ pub fn bracketed_replace<B: AlgebraBackend>(
     // [I:I | <a:b>]* (+ tmp_marker in alphabet)
     let mut identity_expanded = identity_pair.clone();
 
-    identity_expanded.insert_to_alphabet_symbol(&left_marker)?;
-    identity_expanded.insert_to_alphabet_symbol(&right_marker)?;
-    identity_expanded.insert_to_alphabet_symbol(&tmp_marker)?;
+    identity_expanded.insert_to_alphabet_string(&left_marker)?;
+    identity_expanded.insert_to_alphabet_string(&right_marker)?;
+    identity_expanded.insert_to_alphabet_string(&tmp_marker)?;
 
     if !optional {
-        identity_expanded.insert_to_alphabet_symbol(&left_marker2)?;
-        identity_expanded.insert_to_alphabet_symbol(&right_marker2)?;
+        identity_expanded.insert_to_alphabet_string(&left_marker2)?;
+        identity_expanded.insert_to_alphabet_string(&right_marker2)?;
     }
 
     identity_expanded
@@ -449,7 +445,7 @@ pub fn bracketed_replace<B: AlgebraBackend>(
         if context_vector[0].0.compare(&epsilon, true)?
             && context_vector[0].1.compare(&epsilon, true)?
         {
-            identity_expanded.remove_from_alphabet_symbol(&tmp_marker)?;
+            identity_expanded.remove_from_alphabet_string(&tmp_marker)?;
             return Ok(identity_expanded);
         }
     }
@@ -486,7 +482,7 @@ pub fn bracketed_replace<B: AlgebraBackend>(
 
     // remove tmpMaprker
     replace_without_contexts
-        .substitute_symbol_pair(
+        .substitute_pair_with_pair(
             &(tmp_marker.clone(), tmp_marker.clone()),
             &(
                 Symbol::new_static("@_EPSILON_SYMBOL_@"),
@@ -494,10 +490,10 @@ pub fn bracketed_replace<B: AlgebraBackend>(
             ),
         )?
         .optimize()?;
-    replace_without_contexts.remove_from_alphabet_symbol(&tmp_marker)?;
+    replace_without_contexts.remove_from_alphabet_string(&tmp_marker)?;
     replace_without_contexts.optimize()?;
 
-    identity_expanded.remove_from_alphabet_symbol(&tmp_marker)?;
+    identity_expanded.remove_from_alphabet_string(&tmp_marker)?;
 
     // final negation
     let mut unconditional_tr = identity_expanded.clone();
@@ -579,27 +575,27 @@ pub fn parallel_bracketed_replace<B: AlgebraBackend>(
     // Identity pair (unknowns/identities must not be expanded to marker
     // symbols)
     let mut identity_pair = HfstTransducer::identity_pair();
-    identity_pair.insert_to_alphabet_set(&marker_symbols)?;
+    identity_pair.insert_to_alphabet_string_set(&marker_symbols)?;
 
     let mut identity = identity_pair.clone();
     // unknowns/identities must not be expanded to marker symbols
-    identity.insert_to_alphabet_set(&marker_symbols)?;
+    identity.insert_to_alphabet_string_set(&marker_symbols)?;
     identity.repeat_star()?.optimize()?;
 
     let mut identity_expanded = identity_pair.clone();
-    identity_expanded.insert_to_alphabet_symbol(&left_marker)?;
-    identity_expanded.insert_to_alphabet_symbol(&right_marker)?;
-    identity_expanded.insert_to_alphabet_symbol(&left_marker2)?;
-    identity_expanded.insert_to_alphabet_symbol(&right_marker2)?;
-    identity_expanded.insert_to_alphabet_symbol(&tmp_marker)?;
-    identity_expanded.insert_to_alphabet_set(&marker_symbols)?;
+    identity_expanded.insert_to_alphabet_string(&left_marker)?;
+    identity_expanded.insert_to_alphabet_string(&right_marker)?;
+    identity_expanded.insert_to_alphabet_string(&left_marker2)?;
+    identity_expanded.insert_to_alphabet_string(&right_marker2)?;
+    identity_expanded.insert_to_alphabet_string(&tmp_marker)?;
+    identity_expanded.insert_to_alphabet_string_set(&marker_symbols)?;
     // will be expanded with mappings
 
     // for removing .#. from the center
     let mut identity_without_boundary = identity.clone();
-    identity_without_boundary.insert_to_alphabet_symbol(".#.")?;
+    identity_without_boundary.insert_to_alphabet_string(".#.")?;
     // (must not be expanded to marker symbols)
-    identity_without_boundary.insert_to_alphabet_set(&marker_symbols)?;
+    identity_without_boundary.insert_to_alphabet_string_set(&marker_symbols)?;
     let mut remove_hash = identity_without_boundary.clone();
     let boundary = HfstTransducer::new_tokenized(".#.", &tok)?;
     remove_hash
@@ -623,20 +619,20 @@ pub fn parallel_bracketed_replace<B: AlgebraBackend>(
             let marker = HfstTransducer::new_symbol(&marker_string)?;
             let mut one_mapping_pair = mapping_pair.0.clone();
             // unknowns/identities must not be expanded to marker symbols
-            one_mapping_pair.insert_to_alphabet_set(&marker_symbols)?;
+            one_mapping_pair.insert_to_alphabet_string_set(&marker_symbols)?;
             let mut mapping_output = mapping_pair.1.clone();
-            mapping_output.insert_to_alphabet_set(&marker_symbols)?;
+            mapping_output.insert_to_alphabet_string_set(&marker_symbols)?;
             one_mapping_pair.cross_product(mapping_output.concatenate(&marker, true)?, true)?;
 
             if j == 0 {
                 // remove .#. from the center
                 // center - (?* .#. ?*)
                 one_mapping_pair.subtract(&remove_hash, false)?.optimize()?;
-                one_mapping_pair.remove_from_alphabet_symbol(".#.")?;
+                one_mapping_pair.remove_from_alphabet_string(".#.")?;
                 mapping = one_mapping_pair;
             } else {
                 one_mapping_pair.subtract(&remove_hash, false)?.optimize()?;
-                one_mapping_pair.remove_from_alphabet_symbol(".#.")?;
+                one_mapping_pair.remove_from_alphabet_string(".#.")?;
                 mapping.disjunct(&one_mapping_pair, true)?.optimize()?;
             }
         }
@@ -665,15 +661,15 @@ pub fn parallel_bracketed_replace<B: AlgebraBackend>(
             if mapping_pair_vector[0].1.compare(&empty, true)? {
                 let transducer_alphabet = mapping_pair_vector[0].0.get_alphabet()?;
                 for s in transducer_alphabet.iter() {
-                    mapping.insert_to_alphabet_symbol(s)?;
+                    mapping.insert_to_alphabet_string(s)?;
                 }
             }
         }
         //////////////////////////////////////////////////////////////////
 
-        mapping.insert_to_alphabet_symbol(&left_marker)?;
-        mapping.insert_to_alphabet_symbol(&right_marker)?;
-        mapping.insert_to_alphabet_symbol(&tmp_marker)?;
+        mapping.insert_to_alphabet_string(&left_marker)?;
+        mapping.insert_to_alphabet_string(&right_marker)?;
+        mapping.insert_to_alphabet_string(&tmp_marker)?;
 
         // Surround mapping with brackets
         let mut mapping_with_brackets = left_bracket.clone();
@@ -686,10 +682,10 @@ pub fn parallel_bracketed_replace<B: AlgebraBackend>(
         // mapping = <a:b> u <2a:a>2
         if !optional {
             // needed in case of ? -> x replacement
-            mapping.insert_to_alphabet_symbol(&left_marker2)?;
-            mapping.insert_to_alphabet_symbol(&right_marker2)?;
-            mapping_with_brackets.insert_to_alphabet_symbol(&left_marker2)?;
-            mapping_with_brackets.insert_to_alphabet_symbol(&right_marker2)?;
+            mapping.insert_to_alphabet_string(&left_marker2)?;
+            mapping.insert_to_alphabet_string(&right_marker2)?;
+            mapping_with_brackets.insert_to_alphabet_string(&left_marker2)?;
+            mapping_with_brackets.insert_to_alphabet_string(&right_marker2)?;
 
             let mut mapping_project = mapping.clone();
             mapping_project.input_project()?.optimize()?;
@@ -716,10 +712,10 @@ pub fn parallel_bracketed_replace<B: AlgebraBackend>(
 
     // if none of the rules have contexts, return identity_expanded
     if no_contexts {
-        identity_expanded.remove_from_alphabet_symbol(&tmp_marker)?;
+        identity_expanded.remove_from_alphabet_string(&tmp_marker)?;
         // substitute markers with epsilons
-        identity_expanded.substitute_symbols(&marker_substitutions)?;
-        identity_expanded.remove_from_alphabet_set(&marker_symbols)?;
+        identity_expanded.substitute_symbol_substitutions(&marker_substitutions)?;
+        identity_expanded.remove_from_alphabet_string_set(&marker_symbols)?;
         return Ok(identity_expanded);
     }
 
@@ -800,7 +796,7 @@ pub fn parallel_bracketed_replace<B: AlgebraBackend>(
 
     // remove tmpMaprker
     replace_without_contexts
-        .substitute_symbol_pair(
+        .substitute_pair_with_pair(
             &(tmp_marker.clone(), tmp_marker.clone()),
             &(
                 Symbol::new_static("@_EPSILON_SYMBOL_@"),
@@ -808,10 +804,10 @@ pub fn parallel_bracketed_replace<B: AlgebraBackend>(
             ),
         )?
         .optimize()?;
-    replace_without_contexts.remove_from_alphabet_symbol(&tmp_marker)?;
+    replace_without_contexts.remove_from_alphabet_string(&tmp_marker)?;
     replace_without_contexts.optimize()?;
 
-    identity_expanded.remove_from_alphabet_symbol(&tmp_marker)?;
+    identity_expanded.remove_from_alphabet_string(&tmp_marker)?;
 
     // final negation
     let mut unconditional_tr = identity_expanded.clone();
@@ -820,8 +816,8 @@ pub fn parallel_bracketed_replace<B: AlgebraBackend>(
         .optimize()?;
 
     // substitute markers with epsilons
-    unconditional_tr.substitute_symbols(&marker_substitutions)?;
-    unconditional_tr.remove_from_alphabet_set(&marker_symbols)?;
+    unconditional_tr.substitute_symbol_substitutions(&marker_substitutions)?;
+    unconditional_tr.remove_from_alphabet_string_set(&marker_symbols)?;
 
     Ok(unconditional_tr)
 }

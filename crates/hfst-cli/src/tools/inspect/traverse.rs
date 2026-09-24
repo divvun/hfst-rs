@@ -5,6 +5,7 @@
 use crate::cli::{self, CommonArgs, ToolArgs, ToolResult, UnaryIo};
 use crate::globals::CommonOptions;
 use crate::hfst_commandline::{error, hfst_readline, hfst_set_program_name, verbose_print};
+use hfst::convert_transducer_format::ConversionFunctions;
 use hfst::hfst_basic_transducer::HfstBasicTransducer;
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_output_stream::HfstOutputStream;
@@ -167,13 +168,14 @@ fn process_stream(
                 trans_name = common.input_filename.clone();
             }
             // HfstBasicTransducer walkable(trans);
-            let walkable = match HfstBasicTransducer::try_from_transducer(&trans) {
-                Ok(v) => v,
-                Err(e) => {
-                    error(common, 1, 0, &format!("{e}"));
-                    return 1;
-                }
-            };
+            let walkable =
+                match ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(&trans) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        error(common, 1, 0, &format!("{e}"));
+                        return 1;
+                    }
+                };
             if options.cave_mode {
                 let _ = write!(
                     msg,

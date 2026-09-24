@@ -14,7 +14,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut stream = HfstInputStream::new_filename(&path)?;
     let any = stream.read()?;
     let t: HfstTransducer<hfst_openfst::StdVectorFst> = any.into_typed()?;
-    let net = t.get_basic_transducer()?;
+    let net = t.to_basic()?;
 
     let mut arcs: u64 = 0;
     let mut groups: u64 = 0;

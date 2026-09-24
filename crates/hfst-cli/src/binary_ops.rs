@@ -326,7 +326,7 @@ fn process_pair<B: AlgebraBackend>(
     let first_src = first.clone();
     hfst_set_name_binary(&mut first, &first_src, &second, spec.name_op);
     hfst_set_formula_binary(&mut first, &first_src, &second, spec.formula);
-    if let Err(e) = outstream.redirect(&mut first) {
+    if let Err(e) = outstream.write(&mut first) {
         error(common, 1, 0, &format!("{e}"));
         return Err(1);
     }

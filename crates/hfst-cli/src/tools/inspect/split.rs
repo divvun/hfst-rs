@@ -148,7 +148,7 @@ fn process_stream(
         // the one runtime dispatch per stream read ([dec:hfst:monomorphic-backends])
         crate::for_any!(any, trans => {
             let mut trans = trans;
-            if let Err(e) = outstream.redirect(&mut trans) {
+            if let Err(e) = outstream.write(&mut trans) {
                 error(common, 1, 0, &format!("{e}"));
                 return 1;
             }

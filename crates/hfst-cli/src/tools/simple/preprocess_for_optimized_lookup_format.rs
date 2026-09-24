@@ -6,6 +6,7 @@ use crate::cli::{self, CommonArgs, ToolArgs, ToolResult, UnaryIo};
 use crate::globals::CommonOptions;
 use crate::hfst_commandline::{error, hfst_set_program_name, verbose_print};
 use crate::hfst_tool_metadata::{hfst_get_name, hfst_set_formula_unary, hfst_set_name_unary};
+use hfst::convert_transducer_format::ConversionFunctions;
 use hfst::hfst_basic_transducer::HfstBasicTransducer;
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_output_stream::HfstOutputStream;
@@ -79,7 +80,7 @@ fn process_stream(
         // C++: HfstBasicTransducer original(trans); — the
         // HfstBasicTransducer(const HfstTransducer&) conversion constructor.
         let original: HfstBasicTransducer =
-            match HfstBasicTransducer::try_from_transducer(&trans) {
+            match ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(&trans) {
                 Ok(v) => v,
                 Err(e) => {
                     error(common, 1, 0, &format!("{e}"));
@@ -104,7 +105,7 @@ fn process_stream(
             error(common, 1, 0, &format!("{e}"));
             return 1;
         }
-        if let Err(e) = outstream.redirect(&mut trans) {
+        if let Err(e) = outstream.write(&mut trans) {
             error(common, 1, 0, &format!("{e}"));
             return 1;
         }

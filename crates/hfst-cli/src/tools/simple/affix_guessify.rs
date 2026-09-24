@@ -136,7 +136,7 @@ fn process_stream(
                     return 1;
                 }
             };
-            if let Err(e) = outstream.redirect(&mut t) {
+            if let Err(e) = outstream.write(&mut t) {
                 error(common, 1, 0, &format!("{e}"));
                 return 1;
             }

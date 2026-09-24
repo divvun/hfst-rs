@@ -105,6 +105,8 @@ impl<B: AlgebraBackend + 'static> PmatchEvalContext<B> {
     pub(super) fn definitions_get(&self, k: &str) -> Option<ObjRef<B>> {
         self.definitions_table.get(k).cloned()
     }
+    // [spec:hfst:def:pmatch-utils.hfst.pmatch.symbol-in-global-context-fn]
+    // [spec:hfst:sem:pmatch-utils.hfst.pmatch.symbol-in-global-context-fn]
     pub(super) fn definitions_contains(&self, k: &str) -> bool {
         self.definitions_table.contains_key(k)
     }

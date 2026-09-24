@@ -42,12 +42,12 @@ pub use constraints::{
     shortest_match_left_most_constraint, shortest_match_right_most_constraint,
 };
 pub use replace::{
-    create_mapping_for_mark_up_replace, replace_epenthesis_rule, replace_epenthesis_rule_vector,
-    replace_left_rule, replace_left_rule_vector, replace_leftmost_longest_match_rule,
-    replace_leftmost_longest_match_rule_vector, replace_leftmost_shortest_match_rule,
-    replace_leftmost_shortest_match_rule_vector, replace_rightmost_longest_match_rule,
-    replace_rightmost_longest_match_rule_vector, replace_rightmost_shortest_match_rule,
-    replace_rightmost_shortest_match_rule_vector, replace_rule, replace_rule_vector,
+    create_mapping_for_mark_up_replace, replace_left_rule, replace_left_rule_vector,
+    replace_leftmost_longest_match_rule, replace_leftmost_longest_match_rule_vector,
+    replace_leftmost_shortest_match_rule, replace_leftmost_shortest_match_rule_vector,
+    replace_rightmost_longest_match_rule, replace_rightmost_longest_match_rule_vector,
+    replace_rightmost_shortest_match_rule, replace_rightmost_shortest_match_rule_vector,
+    replace_rule, replace_rule_vector,
 };
 pub use restriction::{after, before, restriction};
 
@@ -339,7 +339,7 @@ pub fn encode_flag_diacritics<B: AlgebraBackend>(
     }
 
     let mut retval: HfstTransducer<B> = tr.clone();
-    retval.substitute_substitutions(&real_flags_to_fake_flags)?;
+    retval.substitute_symbol_substitutions(&real_flags_to_fake_flags)?;
 
     retval.remove_from_alphabet_string_set(&remove_from_alphabet_set)?;
     Ok(retval)
@@ -384,7 +384,7 @@ pub fn decode_flag_diacritics<B: AlgebraBackend>(
     }
 
     let mut retval: HfstTransducer<B> = tr.clone();
-    retval.substitute_substitutions(&fake_flags_to_real_flags)?;
+    retval.substitute_symbol_substitutions(&fake_flags_to_real_flags)?;
     retval.remove_from_alphabet_string_set(&remove_from_alphabet_set)?;
     Ok(retval)
 }

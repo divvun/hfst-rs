@@ -57,7 +57,7 @@ fn main() {
     // and add only the missing symbols to the alphabets. No state×flag arcs are
     // materialized here.
     let overlay = a
-        .prepare_flag_diacritics_for_compose(&mut b)
+        .prepare_flag_diacritics_for_operation(&mut b)
         .expect("prepare virtual flag overlay");
     shape("stage 2 first", &a);
     shape("stage 2 second", &b);

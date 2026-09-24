@@ -6,7 +6,7 @@
 use crate::cli::{self, CommonArgs, ToolArgs, ToolResult, UnaryIo};
 use crate::globals::CommonOptions;
 use crate::hfst_commandline::{hfst_set_program_name, verbose_print};
-use hfst::hfst_basic_transducer::HfstBasicTransducer;
+use hfst::convert_transducer_format::ConversionFunctions;
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_symbol_defs::StringSet;
 use std::io::Write;
@@ -188,7 +188,8 @@ fn process_stream(
         };
         // the one runtime dispatch per stream read ([dec:hfst:monomorphic-backends])
         crate::for_any!(any, trans => {
-            let mutt = HfstBasicTransducer::from_transducer(&trans);
+            let mutt = ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(&trans)
+                .expect("hfst_transducer_to_hfst_basic_transducer on a valid transducer cannot fail");
             // unsigned int initial_state = 0; // mutt.get_initial_state();
             let transducer_alphabet = match trans.get_alphabet() {
                 Ok(a) => a,

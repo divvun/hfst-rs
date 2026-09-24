@@ -20,7 +20,6 @@
 #![allow(clippy::too_many_arguments)]
 
 use crate::backend::AlgebraBackend;
-use crate::hfst_basic_transducer::HfstBasicTransducer;
 use crate::hfst_data_types::StringPairSet;
 use crate::hfst_data_types::Symbol;
 use crate::hfst_data_types::{StringPair, StringVector};

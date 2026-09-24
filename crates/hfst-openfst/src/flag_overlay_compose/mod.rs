@@ -30,9 +30,9 @@ use crate::StdVectorFst;
 
 mod lookahead;
 
+pub use lookahead::FlagOverlayLookAheadComposeFst;
 #[cfg(test)]
 use lookahead::OverlayLookAheadComposeFilterBuilder;
-pub use lookahead::{FlagOverlayLookAheadComposeFst, compose_lookahead_with_store};
 use lookahead::{LookaheadPairCache, LookaheadPeerIndex};
 
 type FstHandle = Arc<StdVectorFst>;
@@ -729,7 +729,8 @@ impl FlagOverlayComposeFst {
 
     /// Builds a lazy overlay composition with an optional bounded pair-state
     /// store. When `state_store` is `None`, rustfst's ordinary unbounded
-    /// in-memory interner is retained for compatibility.
+    /// in-memory interner is retained for compatibility; a zero-byte
+    /// configuration forces the pair-state interner to scratch.
     pub fn new_with_state_store(
         fst1: FstHandle,
         fst2: FstHandle,
@@ -783,28 +784,6 @@ impl FlagOverlayComposeFst {
     pub fn as_fst(&self) -> &impl Fst<TropicalWeight> {
         &self.inner
     }
-}
-
-/// Convenience constructor for [`FlagOverlayComposeFst`].
-pub fn compose_flag_overlay_lazy(
-    fst1: FstHandle,
-    fst2: FstHandle,
-    overlay: FlagOverlay,
-) -> Result<FlagOverlayComposeFst> {
-    FlagOverlayComposeFst::new(fst1, fst2, overlay)
-}
-
-/// Storage-aware variant of [`compose_flag_overlay_lazy`].
-///
-/// A zero-byte configuration forces rustfst's pair-state interner to scratch;
-/// `None` preserves the ordinary unbounded in-memory interner.
-pub fn compose_flag_overlay_lazy_with_store(
-    fst1: FstHandle,
-    fst2: FstHandle,
-    overlay: FlagOverlay,
-    state_store: Option<ComposeStateStoreConfig>,
-) -> Result<FlagOverlayComposeFst> {
-    FlagOverlayComposeFst::new_with_state_store(fst1, fst2, overlay, state_store)
 }
 
 #[cfg(test)]

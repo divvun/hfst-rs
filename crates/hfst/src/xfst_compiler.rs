@@ -173,7 +173,7 @@ pub struct XfstCompiler<B: AlgebraBackend> {
     // Needed in interactive mode, where user input is read line by line.
     pub quit_requested: bool,
     // Whether the compiler has encountered an error when compiling input given to
-    // 'parse' or 'parse_line' function that should quit the compilation and make
+    // 'parse' function that should quit the compilation and make
     // the function return a non-zero value. Note that if the variable 'quit-on-fail'
     // is false, fail_flag will always be false.
     pub fail_flag: bool,
@@ -371,6 +371,8 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
 
     // [spec:hfst:def:xfst-compiler.hfst.xfst.xfst-compiler.parse-fn]
     // [spec:hfst:sem:xfst-compiler.hfst.xfst.xfst-compiler.parse-fn]
+    // [spec:hfst:def:xfst-compiler.hfst.xfst.xfst-compiler.parse-line-fn]
+    // [spec:hfst:sem:xfst-compiler.hfst.xfst.xfst-compiler.parse-line-fn]
     // @brief Parse @a src as an XFST script using nfst-xfst and walk the
     // resulting commands. Replaces the bison-action dispatch.
     pub fn parse(&mut self, src: &str) -> i32 {
@@ -429,16 +431,6 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             name.to_string()
         };
         self
-    }
-
-    // [spec:hfst:def:xfst-compiler.hfst.xfst.xfst-compiler.parse-line-fn]
-    // [spec:hfst:sem:xfst-compiler.hfst.xfst.xfst-compiler.parse-line-fn]
-    // @brief Parse @a line
-    pub fn parse_line(&mut self, line: String) -> i32 {
-        // The C++ drove the bison line parser (hxfst_scan_string + hxfstparse);
-        // here we route the line through the nfst-xfst-backed parse() instead.
-
-        self.parse(&line)
     }
 }
 

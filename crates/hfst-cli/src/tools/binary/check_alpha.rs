@@ -10,6 +10,7 @@
 use crate::cli::{self, BinaryIo, CommonArgs, ToolArgs, ToolResult};
 use crate::globals::CommonOptions;
 use crate::hfst_commandline::{error, hfst_set_program_name, verbose_print};
+use hfst::convert_transducer_format::ConversionFunctions;
 use hfst::hfst_basic_transducer::HfstBasicTransducer;
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_symbol_defs::StringSet;
@@ -88,7 +89,7 @@ fn process_stream(
         // one dispatch per read ([dec:hfst:monomorphic-backends]); the
         // alphabet queries are backend-independent values.
         let (mutt, first_transducer_alphabet): (HfstBasicTransducer, StringSet) = crate::for_any!(&first, t => {
-            let mutt = match HfstBasicTransducer::try_from_transducer(t) {
+            let mutt = match ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(t) {
                 Ok(m) => m,
                 Err(e) => {
                     error(common, 1, 0, &format!("{e}"));
@@ -115,7 +116,7 @@ fn process_stream(
             }
         };
         let (secondmutt, second_transducer_alphabet): (HfstBasicTransducer, StringSet) = crate::for_any!(&second, t => {
-            let mutt = match HfstBasicTransducer::try_from_transducer(t) {
+            let mutt = match ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(t) {
                 Ok(m) => m,
                 Err(e) => {
                     error(common, 1, 0, &format!("{e}"));

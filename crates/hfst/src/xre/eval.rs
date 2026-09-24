@@ -607,8 +607,7 @@ impl<B: AlgebraBackend> XreCompiler<B> {
                 };
                 let mut reader = std::io::BufReader::new(f);
                 let mut linecount: u32 = 0;
-                let tmp =
-                    HfstBasicTransducer::read_in_prolog_format_file(&mut reader, &mut linecount)?;
+                let tmp = HfstBasicTransducer::read_in_prolog_format(&mut reader, &mut linecount)?;
                 let mut retval = HfstTransducer::new_from_basic(&tmp)?;
                 retval.optimize_with_config(&self.opt_cfg())?;
                 Ok(retval)

@@ -32,10 +32,10 @@ impl<T: TransducerTablesInterface> Transducer<T> {
     // [spec:hfst:def:transducer.hfst-ol.transducer.include-symbol-in-alphabet-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transducer.include-symbol-in-alphabet-fn]
     pub fn include_symbol_in_alphabet(&mut self, sym: &str) {
-        if self.alph().symbol_from_string(sym).is_some() {
+        if self.get_alphabet().symbol_from_string(sym).is_some() {
             return;
         }
-        let key = u32::try_from(self.alph().get_symbol_table().len())
+        let key = u32::try_from(self.get_alphabet().get_symbol_table().len())
             .expect("value out of u32 range") as SymbolNumber;
         self.alphabet
             .as_mut()
@@ -45,14 +45,6 @@ impl<T: TransducerTablesInterface> Transducer<T> {
             .as_mut()
             .expect("encoder is initialized during container load")
             .read_input_symbol(sym, key as i32);
-    }
-
-    /// A run state over this machine: the tapes, flag state, traversal
-    /// bookkeeping and limits one lookup needs, owned by the caller so the
-    /// machine itself stays shared and immutable. Reusable across calls.
-    // [spec:hfst:req:lookup-run-state.caller-owned-scratch]
-    pub fn lookup_state(&self) -> LookupState<'_, T> {
-        LookupState::new(self)
     }
 
     // The convenience surface, for callers with one input and no interest in
@@ -65,15 +57,11 @@ impl<T: TransducerTablesInterface> Transducer<T> {
         limit: isize,
         time_cutoff: f64,
     ) -> HfstOneLevelPaths {
-        self.lookup_state().lookup_fd_strvec(s, limit, time_cutoff)
-    }
-
-    pub fn lookup_fd_str(&self, s: &str, limit: isize, time_cutoff: f64) -> HfstOneLevelPaths {
-        self.lookup_fd_cstr(s, limit, time_cutoff)
+        LookupState::new(self).lookup_fd_strvec(s, limit, time_cutoff)
     }
 
     pub fn lookup_fd_cstr(&self, s: &str, limit: isize, time_cutoff: f64) -> HfstOneLevelPaths {
-        self.lookup_state().lookup_fd(s, limit, time_cutoff)
+        LookupState::new(self).lookup_fd(s, limit, time_cutoff)
     }
 
     pub fn lookup_fd_pairs_str(
@@ -82,14 +70,14 @@ impl<T: TransducerTablesInterface> Transducer<T> {
         limit: isize,
         time_cutoff: f64,
     ) -> HfstTwoLevelPaths {
-        self.lookup_state().lookup_fd_pairs(s, limit, time_cutoff)
+        LookupState::new(self).lookup_fd_pairs(s, limit, time_cutoff)
     }
 
     pub fn is_lookup_infinitely_ambiguous_str(&self, s: &str) -> bool {
-        self.lookup_state().is_lookup_infinitely_ambiguous(s)
+        LookupState::new(self).is_lookup_infinitely_ambiguous(s)
     }
 
     pub fn is_lookup_infinitely_ambiguous_strvec(&self, s: &StringVector) -> bool {
-        self.lookup_state().is_lookup_infinitely_ambiguous_strvec(s)
+        LookupState::new(self).is_lookup_infinitely_ambiguous_strvec(s)
     }
 }

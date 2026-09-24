@@ -37,10 +37,10 @@ pub(super) fn try_lookahead<B: AlgebraBackend>(
     // lexicon placeholders must be visible before identity expansion so the
     // resulting labels still match.
     let mut prepared_lexicon = lexicon.clone();
-    prepared_lexicon.substitute_symbol(internal_identity, "||_IDENTITY_SYMBOL_||", true, true)?;
-    prepared_lexicon.substitute_symbol(internal_unknown, "||_UNKNOWN_SYMBOL_||", true, true)?;
+    prepared_lexicon.substitute_string(internal_identity, "||_IDENTITY_SYMBOL_||", true, true)?;
+    prepared_lexicon.substitute_string(internal_unknown, "||_UNKNOWN_SYMBOL_||", true, true)?;
     let mut prepared_rule = rule.clone();
-    prepared_rule.substitute_symbol(internal_unknown, "||_RULE_UNKNOWN_SYMBOL_||", true, true)?;
+    prepared_rule.substitute_string(internal_unknown, "||_RULE_UNKNOWN_SYMBOL_||", true, true)?;
     prepared_lexicon = prepared_rule
         .harmonize_copy_owned(prepared_lexicon)?
         .expect("lookahead-capable backends harmonize through the interchange graph");
@@ -52,9 +52,9 @@ pub(super) fn try_lookahead<B: AlgebraBackend>(
         Some(&overlay),
         config.compose_memory_limit_bytes,
     )?;
-    prepared_lexicon.substitute_symbol("||_IDENTITY_SYMBOL_||", internal_identity, true, true)?;
-    prepared_lexicon.substitute_symbol("||_UNKNOWN_SYMBOL_||", internal_unknown, true, true)?;
-    prepared_lexicon.substitute_symbol(
+    prepared_lexicon.substitute_string("||_IDENTITY_SYMBOL_||", internal_identity, true, true)?;
+    prepared_lexicon.substitute_string("||_UNKNOWN_SYMBOL_||", internal_unknown, true, true)?;
+    prepared_lexicon.substitute_string(
         "||_RULE_UNKNOWN_SYMBOL_||",
         internal_unknown,
         true,

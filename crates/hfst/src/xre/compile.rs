@@ -10,8 +10,36 @@ impl<B: AlgebraBackend> XreCompiler<B> {
     // [spec:hfst:sem:xre-compiler.hfst.xre.xre-compiler.compile-fn]
     // Returns the compiled transducer, or None on parse failure / comments-only
     // (the C++ 'HfstTransducer*' null contract expressed as an Option).
-    pub fn compile(&mut self, expression: &str) -> Option<HfstTransducer<B>> {
-        self.compile_impl(expression)
+    // Comments-only also flips the contains_only_comments flag, matching the
+    // 'XRE: (empty) { contains_only_comments = true; }' action.
+    pub fn compile(&mut self, src: &str) -> Option<HfstTransducer<B>> {
+        // Retain the source so diagnostics can render the offending snippet.
+        self.source = src.to_string();
+        self.contains_only_comments = false;
+        if is_only_whitespace_or_comments(src) {
+            self.contains_only_comments = true;
+            return None;
+        }
+        // Reject pathologically deep nesting before it can overflow the parser's
+        // recursion; report it as an ordinary parse failure, never an abort.
+        if exceeds_max_nesting_depth(src) {
+            return None;
+        }
+        match parse(src) {
+            Ok(expr) => self.eval_finalized(&expr).ok(),
+            Err(e) => {
+                // Distinguish comments-only (parse_all yields []) from a real
+                // parse error.
+                if let Ok(exprs) = parse_all(src)
+                    && exprs.is_empty()
+                {
+                    self.contains_only_comments = true;
+                } else {
+                    self.diag_parse_error(&e);
+                }
+                None
+            }
+        }
     }
 
     // [spec:hfst:def:xre-compiler.hfst.xre.xre-compiler.compile-first-fn]
@@ -71,39 +99,6 @@ impl<B: AlgebraBackend> XreCompiler<B> {
             Err(e) => {
                 self.diag_parse_error(&e);
                 *chars_read = 0;
-                None
-            }
-        }
-    }
-
-    // Internal compile driver: parse → eval root → optimize. None on parse error
-    // or comments-only (the latter also flips the contains_only_comments flag,
-    // matching the 'XRE: (empty) { contains_only_comments = true; }' action).
-    fn compile_impl(&mut self, src: &str) -> Option<HfstTransducer<B>> {
-        // Retain the source so diagnostics can render the offending snippet.
-        self.source = src.to_string();
-        self.contains_only_comments = false;
-        if is_only_whitespace_or_comments(src) {
-            self.contains_only_comments = true;
-            return None;
-        }
-        // Reject pathologically deep nesting before it can overflow the parser's
-        // recursion; report it as an ordinary parse failure, never an abort.
-        if exceeds_max_nesting_depth(src) {
-            return None;
-        }
-        match parse(src) {
-            Ok(expr) => self.eval_finalized(&expr).ok(),
-            Err(e) => {
-                // Distinguish comments-only (parse_all yields []) from a real
-                // parse error.
-                if let Ok(exprs) = parse_all(src)
-                    && exprs.is_empty()
-                {
-                    self.contains_only_comments = true;
-                } else {
-                    self.diag_parse_error(&e);
-                }
                 None
             }
         }

@@ -15,6 +15,7 @@
 
 use std::collections::BTreeSet;
 
+use crate::convert_transducer_format::ConversionFunctions;
 use crate::error::Result;
 use crate::hfst_basic_transducer::HfstBasicTransducer;
 use crate::hfst_basic_transition::HfstBasicTransition;
@@ -59,12 +60,6 @@ fn get_target(
 ) -> HfstState {
     t.pair_target_state(s, isymbol, osymbol, known_symbols)
         .unwrap_or(u32::MAX)
-}
-
-// [spec:hfst:def:hfst-pair-test.is-final-state-fn]
-// [spec:hfst:sem:hfst-pair-test.is-final-state-fn]
-fn is_final_state(s: HfstState, t: &HfstBasicTransducer) -> bool {
-    t.is_final_state(s)
 }
 
 // [spec:hfst:def:hfst-pair-test.get-transducer-fn]
@@ -248,11 +243,13 @@ impl PairTestGrammar {
             }
         }
 
-        if is_final_state(s, t) && positive {
+        // [spec:hfst:def:hfst-pair-test.is-final-state-fn]
+        // [spec:hfst:sem:hfst-pair-test.is-final-state-fn]
+        if t.is_final_state(s) && positive {
             0
         } else if positive {
             1
-        } else if !is_final_state(s, t) {
+        } else if !t.is_final_state(s) {
             0
         } else {
             1
@@ -278,7 +275,8 @@ impl PairTestGrammar {
         str_transducer.input_project()?;
         str_transducer.compose(&rule, true)?;
         str_transducer.minimize()?;
-        let recognizer = HfstBasicTransducer::from_transducer(&str_transducer);
+        let recognizer =
+            ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(&str_transducer)?;
 
         let mut s: HfstState = 0;
         let mut idx = 0;

@@ -15,6 +15,7 @@
 use hfst::convert_transducer_format::ConversionFunctions;
 use hfst::hfst_basic_transducer::HfstBasicTransducer;
 use hfst::hfst_basic_transition::HfstBasicTransition;
+use hfst::lookup_state::LookupState;
 use hfst::transducer::{Transducer, UnweightedTables, WeightedTables};
 
 const IDENTITY: &str = "@_IDENTITY_SYMBOL_@";
@@ -97,10 +98,10 @@ fn two_states_over_one_machine_stay_isolated() {
     let alone_first = to_ol(&net);
     let alone_second = to_ol(&net);
 
-    let mut state_first = shared.lookup_state();
-    let mut state_second = shared.lookup_state();
-    let mut private_first = alone_first.lookup_state();
-    let mut private_second = alone_second.lookup_state();
+    let mut state_first = LookupState::new(&shared);
+    let mut state_second = LookupState::new(&shared);
+    let mut private_first = LookupState::new(&alone_first);
+    let mut private_second = LookupState::new(&alone_second);
 
     for (first, second) in first_words().iter().zip(second_words().iter()) {
         let shared_first = analyses(state_first.lookup_fd(first, -1, 0.0));
@@ -128,7 +129,7 @@ fn admitting_a_symbol_leaves_the_machine_unchanged() {
     let machine = to_ol(&fixture());
     let symbols_before = machine.get_symbol_table().len();
 
-    let mut state = machine.lookup_state();
+    let mut state = LookupState::new(&machine);
     for word in first_words().iter().chain(second_words().iter()) {
         let found = analyses(state.lookup_fd(word, -1, 0.0));
         assert!(
@@ -159,7 +160,7 @@ fn a_reused_state_admits_a_symbol_once() {
     let machine = to_ol(&fixture());
     let doubled = format!("{FIRST_UNKNOWN}{FIRST_UNKNOWN}");
 
-    let mut reused = machine.lookup_state();
+    let mut reused = LookupState::new(&machine);
     for word in first_words() {
         reused.lookup_fd(&word, -1, 0.0);
     }
@@ -167,7 +168,7 @@ fn a_reused_state_admits_a_symbol_once() {
 
     assert_eq!(
         second_time,
-        analyses(machine.lookup_state().lookup_fd(&doubled, -1, 0.0)),
+        analyses(LookupState::new(&machine).lookup_fd(&doubled, -1, 0.0)),
         "a state that had already admitted the symbol answered differently"
     );
     assert_eq!(
@@ -199,7 +200,7 @@ fn concurrent_lookups_share_one_loaded_machine() {
     let expected: Vec<Vec<(String, f32)>> = first_words()
         .iter()
         .chain(second_words().iter())
-        .map(|w| analyses(machine.lookup_state().lookup_fd(w, -1, 0.0)))
+        .map(|w| analyses(LookupState::new(&machine).lookup_fd(w, -1, 0.0)))
         .collect();
 
     let words: Vec<String> = first_words().into_iter().chain(second_words()).collect();
@@ -208,7 +209,7 @@ fn concurrent_lookups_share_one_loaded_machine() {
         let handles: Vec<_> = words
             .iter()
             .map(|word| {
-                scope.spawn(move || analyses(machine.lookup_state().lookup_fd(word, -1, 0.0)))
+                scope.spawn(move || analyses(LookupState::new(machine).lookup_fd(word, -1, 0.0)))
             })
             .collect();
         handles
@@ -231,7 +232,7 @@ fn four_byte_symbols_admit_like_two_byte() {
     let symbols_before = machine.get_symbol_table().len();
     let emoji = "😀";
 
-    let mut state = machine.lookup_state();
+    let mut state = LookupState::new(&machine);
     for word in [
         emoji.to_string(),
         format!("{emoji}{emoji}"),
@@ -245,7 +246,7 @@ fn four_byte_symbols_admit_like_two_byte() {
         );
         assert_eq!(
             found,
-            analyses(machine.lookup_state().lookup_fd(&word, -1, 0.0)),
+            analyses(LookupState::new(&machine).lookup_fd(&word, -1, 0.0)),
             "a fresh state answered {word:?} differently"
         );
     }

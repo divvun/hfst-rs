@@ -169,9 +169,29 @@ impl FlagDiacriticTable {
         }
     }
 
+    // The C++ 'split_diacritic' parsed a genuine diacritic into the global maps;
+    // that work now lives in 'parse_diacritic', recomputed on demand by the
+    // accessors, so the cache-populating pass is gone. Its 'assert' that a
+    // value-less diacritic is C/D/R-op is preserved by 'is_diacritic'
+    // (which rejects '@P.X@' / '@N.X@' / '@U.X@' — they require a value).
+
+    // [spec:hfst:def:hfst-lookup-flag-diacritics.flag-diacritic-table.flag-diacritic-table-fn]
+    // [spec:hfst:sem:hfst-lookup-flag-diacritics.flag-diacritic-table.flag-diacritic-table-fn]
+    pub fn new() -> Self {
+        FlagDiacriticTable {
+            feature_values: BTreeMap::new(),
+            feature_polarities: BTreeMap::new(),
+            error_flag: false,
+        }
+    }
+
+    // [spec:hfst:def:hfst-lookup-flag-diacritics.flag-diacritic-table.is-diacritic-fn]
+    // [spec:hfst:sem:hfst-lookup-flag-diacritics.flag-diacritic-table.is-diacritic-fn]
     // [spec:hfst:def:hfst-lookup-flag-diacritics.flag-diacritic-table.is-genuine-diacritic-fn]
     // [spec:hfst:sem:hfst-lookup-flag-diacritics.flag-diacritic-table.is-genuine-diacritic-fn]
-    fn is_genuine_diacritic(diacritic_string: &str) -> bool {
+    pub fn is_diacritic(diacritic_string: &str) -> bool {
+        // The C++ also eagerly split a genuine diacritic into the global maps;
+        // with on-demand parsing that side effect is unnecessary.
         let bytes = diacritic_string.as_bytes();
         // All diacritics have form @[A-Z][.][A-Z]+([.][A-Z]+)?@
         if diacritic_string.len() < 5 {
@@ -204,30 +224,6 @@ impl FlagDiacriticTable {
             return false;
         }
         true
-    }
-
-    // The C++ 'split_diacritic' parsed a genuine diacritic into the global maps;
-    // that work now lives in 'parse_diacritic', recomputed on demand by the
-    // accessors, so the cache-populating pass is gone. Its 'assert' that a
-    // value-less diacritic is C/D/R-op is preserved by 'is_genuine_diacritic'
-    // (which rejects '@P.X@' / '@N.X@' / '@U.X@' — they require a value).
-
-    // [spec:hfst:def:hfst-lookup-flag-diacritics.flag-diacritic-table.flag-diacritic-table-fn]
-    // [spec:hfst:sem:hfst-lookup-flag-diacritics.flag-diacritic-table.flag-diacritic-table-fn]
-    pub fn new() -> Self {
-        FlagDiacriticTable {
-            feature_values: BTreeMap::new(),
-            feature_polarities: BTreeMap::new(),
-            error_flag: false,
-        }
-    }
-
-    // [spec:hfst:def:hfst-lookup-flag-diacritics.flag-diacritic-table.is-diacritic-fn]
-    // [spec:hfst:sem:hfst-lookup-flag-diacritics.flag-diacritic-table.is-diacritic-fn]
-    pub fn is_diacritic(symbol: &str) -> bool {
-        // The C++ also eagerly split a genuine diacritic into the global maps;
-        // with on-demand parsing that side effect is unnecessary.
-        Self::is_genuine_diacritic(symbol)
     }
 
     // [spec:hfst:def:hfst-lookup-flag-diacritics.flag-diacritic-table.set-positive-value-fn]
@@ -399,7 +395,7 @@ impl FlagDiacriticTable {
     // unscoped C++ enum streams as its integer value (mirrored with 'as i32').
     pub fn display(diacritic: i16) {
         let key = diacritic.to_string();
-        if !Self::is_genuine_diacritic(&key) {
+        if !Self::is_diacritic(&key) {
             println!("{} not defined.", diacritic);
         } else {
             let (op, feature, value) = Self::parse_diacritic(&key);

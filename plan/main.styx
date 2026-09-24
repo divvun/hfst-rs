@@ -7397,6 +7397,29 @@ children (
                     quality-burndown.split-lib-tests
                     quality-burndown.split-cli-tools
                 )
+                sealed true
+                log (
+                    {
+                        at 2026-09-24T17:14:45.498921Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Done (nplan complete)"
+                    }
+                )
+            }
+        )
+    }
+
+    {
+        id pmatch2fst-syntax-error-exit-zero
+        title "hfst pmatch2fst exits 0 on a syntax error, writing a zero-byte file (\"Empty ruleset, nothing to write\"); a pmscript typo silently yields an empty tokeniser in a lang build. C++ does the same. Must exit non-zero"
+        kind @fix
+        log (
+            {
+                at 2026-09-24T16:33:49.966348Z
+                author "brendan@necessary.nu"
+                kind @note
+                text "Found 2026-09-24 during the quality burn-down. Repro: printf 'Define Word L( ;\\n' > bad.pmatch; hfst pmatch2fst bad.pmatch -o bad.pmhfst prints \"Error: pmatch: syntax error: unexpected token in expression\" then \"hfst pmatch2fst: Empty ruleset, nothing to write\", exit 0, 0-byte output. Upstream C++ hfst-pmatch2fst also exits 0 (prints HfstException ... parsing failed). Same for lang-sme tools/tokenisers/regexp.pmatch (syntax error at 7:29; it is an include fragment). Per the operator ruling on uncompilable input (lang-slh, upstream-bugs.t3.slh-set-centre): a parse failure must fail the tool. Check before fixing whether any lang-* pmscript currently compiles only because its errors are swallowed."
             }
         )
     }

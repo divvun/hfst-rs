@@ -20,7 +20,7 @@ fn main() -> hfst::error::Result<()> {
     assert!((lex.get_final_weight(3)? - 0.3).abs() < 1e-6);
     assert!((lex.get_final_weight(4)? - 0.5).abs() < 1e-6);
     // state 2 branches to two transitions (t and r)
-    assert_eq!(lex.transitions(2)?.len(), 2);
+    assert_eq!(lex.index(2)?.len(), 2);
     println!("disjunct trie OK (max_state={})", lex.get_max_state());
 
     // longest accepted path is "cat"/"car" = length 3

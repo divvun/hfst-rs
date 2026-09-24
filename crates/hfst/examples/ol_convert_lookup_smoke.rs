@@ -12,7 +12,7 @@ fn main() -> hfst::error::Result<()> {
     // Convert to the optimized-lookup format and look up "a".
     let ol = ConversionFunctions::hfst_basic_transducer_to_hfst_ol(&basic, true, "", None)?;
 
-    let results = ol.lookup_fd_str("a", -1, 0.0);
+    let results = ol.lookup_fd_cstr("a", -1, 0.0);
     assert_eq!(results.len(), 1, "expected exactly one analysis");
     let r = results.iter().next().unwrap();
     assert_eq!(r.second, vec!["b".to_string()], "output should be b");
@@ -24,13 +24,13 @@ fn main() -> hfst::error::Result<()> {
     println!("OL lookup OK (a -> b, weight {})", r.first);
 
     // Unknown input yields nothing.
-    let none = ol.lookup_fd_str("x", -1, 0.0);
+    let none = ol.lookup_fd_cstr("x", -1, 0.0);
     assert!(none.is_empty(), "unknown input must give no analyses");
     println!("OL lookup of unknown input OK");
 
     // Round-trip the OL transducer back to a HfstBasicTransducer.
     let basic2 = ConversionFunctions::hfst_ol_to_hfst_basic_transducer(&ol);
-    let t0 = basic2.transitions(0)?;
+    let t0 = basic2.index(0)?;
     assert_eq!(
         t0.len(),
         1,

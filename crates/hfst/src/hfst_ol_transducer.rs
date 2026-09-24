@@ -13,8 +13,8 @@
 //! Ownership mapping for the C++ 'hfst_ol::Transducer*' signatures:
 //! - 'create_empty_transducer(bool)' — the C++ 'new's and returns a
 //!   'Transducer*' -> returns an owned ['Transducer'].
-//! - methods that take a 'Transducer*' and read it ('is_cyclic',
-//!   'extract_paths', 'get_flag_diacritics', 'get_alphabet') -> '&Transducer'.
+//! - methods that take a 'Transducer*' and read it ('extract_paths',
+//!   'get_alphabet') -> '&Transducer'.
 //! - 'HfstOlInputStream::read_transducer' 'new's a 'Transducer' -> owned.
 //! - 'HfstOlOutputStream::write_transducer(Transducer*)' reads it -> '&Transducer'.
 //!
@@ -352,23 +352,6 @@ mod ol_construction_io {
                     crate::transducer::TransducerTablesInterface::new_empty(),
                 )
             }
-        }
-
-        /// The C++ probed `HeaderFlag::Cyclic`, which nothing ever sets; the
-        /// answer comes off the graph instead. See
-        /// [`crate::transducer::Transducer::is_cyclic`] for why.
-        pub fn is_cyclic<T: crate::transducer::TransducerTablesInterface>(
-            t: &Transducer<T>,
-        ) -> bool {
-            t.is_cyclic()
-        }
-
-        // [spec:hfst:def:hfst-ol-transducer.hfst.implementations.hfst-ol-transducer.get-flag-diacritics-fn]
-        // [spec:hfst:sem:hfst-ol-transducer.hfst.implementations.hfst-ol-transducer.get-flag-diacritics-fn]
-        pub fn get_flag_diacritics<T: crate::transducer::TransducerTablesInterface>(
-            t: &Transducer<T>,
-        ) -> &FdTable<SymbolNumber> {
-            t.get_alphabet().get_fd_table()
         }
 
         // [spec:hfst:def:hfst-ol-transducer.hfst.implementations.hfst-ol-transducer.get-alphabet-fn]

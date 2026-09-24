@@ -339,7 +339,7 @@ fn unescape_enclosing_angle_brackets<B: AlgebraBackend>(
     if substitutions.is_empty() {
         return Ok(());
     }
-    t.substitute_substitutions(&substitutions)?;
+    t.substitute_symbol_substitutions(&substitutions)?;
     t.optimize_with_config(&crate::hfst_transducer::EngineConfig::default())?;
     Ok(())
 }

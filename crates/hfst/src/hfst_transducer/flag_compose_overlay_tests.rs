@@ -1,6 +1,7 @@
 //! Focused virtual flag-overlay preparation and validation tests.
 
 use super::*;
+use crate::convert_transducer_format::ConversionFunctions;
 
 fn symbol_set(symbols: &[&str]) -> StringSet {
     symbols.iter().map(Symbol::new).collect()
@@ -182,7 +183,7 @@ fn assert_special_mode_parity<B: AlgebraBackend>() {
                 virtual_right.number_of_arcs(),
             );
             let overlay = virtual_left
-                .prepare_flag_diacritics_for_compose(&mut virtual_right)
+                .prepare_flag_diacritics_for_operation(&mut virtual_right)
                 .expect("virtual special-mode harmonization");
             assert_eq!(
                 (
@@ -210,7 +211,8 @@ fn assert_special_mode_parity<B: AlgebraBackend>() {
 }
 
 fn graph_rows<B: Backend>(fst: &HfstTransducer<B>) -> Vec<(u32, String, String, u32)> {
-    let basic = HfstBasicTransducer::from_transducer(fst);
+    let basic = ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(fst)
+        .expect("hfst_transducer_to_hfst_basic_transducer on a valid transducer cannot fail");
     let mut rows = Vec::new();
     for (state, transitions) in basic.state_vector.iter().enumerate() {
         for transition in transitions {
@@ -282,7 +284,7 @@ fn foma_backend_accepts_virtual_overlay() {
         virtual_right.number_of_arcs(),
     );
     let overlay = virtual_left
-        .prepare_flag_diacritics_for_compose(&mut virtual_right)
+        .prepare_flag_diacritics_for_operation(&mut virtual_right)
         .expect("virtual two-sided Foma harmonization");
     assert!(overlay.enforce_left_before_right);
     assert_eq!(

@@ -107,6 +107,8 @@ fn is_epsilon_lhs_empty_context<B: AlgebraBackend>(rule: &Rule<B>) -> crate::err
 }
 
 // replace up, left, right, down
+// [spec:hfst:def:hfst-xerox-rules.hfst.xerox-rules.replace-epenthesis-fn]
+// [spec:hfst:sem:hfst-xerox-rules.hfst.xerox-rules.replace-epenthesis-fn]
 pub fn replace_rule<B: AlgebraBackend>(
     rule: &Rule<B>,
     optional: bool,
@@ -561,22 +563,4 @@ pub fn replace_rightmost_shortest_match_rule_vector<B: AlgebraBackend>(
     retval = apply_boundary_mark(&retval)?;
 
     Ok(retval)
-}
-
-// replace up, left, right, down
-// [spec:hfst:def:hfst-xerox-rules.hfst.xerox-rules.replace-epenthesis-fn]
-// [spec:hfst:sem:hfst-xerox-rules.hfst.xerox-rules.replace-epenthesis-fn]
-pub fn replace_epenthesis_rule<B: AlgebraBackend>(
-    rule: &Rule<B>,
-    optional: bool,
-) -> crate::error::Result<HfstTransducer<B>> {
-    replace_rule(rule, optional)
-}
-
-// replace up, left, right, down
-pub fn replace_epenthesis_rule_vector<B: AlgebraBackend>(
-    rule_vector: &[Rule<B>],
-    optional: bool,
-) -> crate::error::Result<HfstTransducer<B>> {
-    replace_rule_vector(rule_vector, optional)
 }

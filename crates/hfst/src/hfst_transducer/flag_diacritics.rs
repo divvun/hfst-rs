@@ -1,6 +1,7 @@
 //! Flag-diacritic harmonization, illegal-path restriction, and elimination.
 
 use super::*;
+use crate::convert_transducer_format::ConversionFunctions;
 
 impl<B: Backend> HfstTransducer<B> {
     /*
@@ -61,7 +62,10 @@ impl<B: Backend> HfstTransducer<B> {
                 caller_line = caller.line(),
                 "materializing missing flag-diacritic self-loops eagerly; no virtual overlay was selected"
             );
-            let mut basic: HfstBasicTransducer = HfstBasicTransducer::from_transducer(self);
+            let mut basic: HfstBasicTransducer =
+                ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(self).expect(
+                    "hfst_transducer_to_hfst_basic_transducer on a valid transducer cannot fail",
+                );
 
             // Every state gains a free self-loop per missing flag, so the graph
             // grows by 'states x flags' transitions — on a Giella speller that is
@@ -94,20 +98,32 @@ impl<B: Backend> HfstTransducer<B> {
                 }
             }
 
-            *self = HfstTransducer::from_basic_owned(basic);
+            *self = HfstTransducer::new_from_basic_owned(basic)
+                .expect("converting a basic transducer to an available backend type cannot fail");
         }
     }
 
     // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.has-flag-diacritics-fn]
     // [spec:hfst:sem:hfst-transducer.hfst.hfst-transducer.has-flag-diacritics-fn]
+    // [spec:hfst:def:hfst-transducer.hfst.has-flags-fn]
+    // [spec:hfst:sem:hfst-transducer.hfst.has-flags-fn]
     pub fn has_flag_diacritics(&self) -> bool {
-        has_flags(self)
+        let alphabet = self
+            .get_alphabet()
+            .expect("get_alphabet on a valid transducer cannot fail");
+        for it in alphabet.iter() {
+            if FdOperation::is_diacritic(it) {
+                return true;
+            }
+        }
+        false
     }
 
     // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.twosided-flag-diacritics-fn]
     // [spec:hfst:sem:hfst-transducer.hfst.hfst-transducer.twosided-flag-diacritics-fn]
     pub fn twosided_flag_diacritics(&mut self) -> crate::error::Result<()> {
-        let basic_fst: HfstBasicTransducer = HfstBasicTransducer::from_transducer(self);
+        let basic_fst: HfstBasicTransducer =
+            ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(self)?;
         let mut basic_fst_copy: HfstBasicTransducer = HfstBasicTransducer::new();
         let _ = basic_fst_copy.add_state(basic_fst.get_max_state());
 
@@ -204,8 +220,8 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
         another: &mut HfstTransducer<B>,
         insert_renamed_flags: bool,
     ) -> crate::error::Result<()> {
-        let this_has_flag_diacritics = has_flags(self);
-        let another_has_flag_diacritics = has_flags(another);
+        let this_has_flag_diacritics = self.has_flag_diacritics();
+        let another_has_flag_diacritics = another.has_flag_diacritics();
 
         if this_has_flag_diacritics && another_has_flag_diacritics {
             rename_flag_diacritics(self, "_1");
@@ -229,15 +245,15 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
     // -------------------------------------------------------------------------
 
     pub fn eliminate_flags(&mut self) -> crate::error::Result<&mut HfstTransducer<B>> {
-        let basic = crate::hfst_basic_transducer::HfstBasicTransducer::from_transducer(self);
+        let basic = ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(self)?;
         let flags = basic.get_flags();
         let filter = get_flag_filter(self, &flags, "")?;
 
         if let Some(filter) = filter {
-            let mut filter_copy = HfstTransducer::new_from(&filter);
+            let mut filter_copy = HfstTransducer::new_copy(&filter)?;
             {
-                let self_copy = HfstTransducer::new_from(self);
-                let filter_deref = HfstTransducer::new_from(&filter);
+                let self_copy = HfstTransducer::new_copy(self)?;
+                let filter_deref = HfstTransducer::new_copy(&filter)?;
                 // Compose the symbol-level flag-constraint filter with flags
                 // encoded as ordinary symbols (see eliminate_flag for why).
                 let cfg = EngineConfig {
@@ -257,7 +273,7 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
     }
 
     pub fn eliminate_flag(&mut self, flag: &str) -> crate::error::Result<&mut HfstTransducer<B>> {
-        let basic = crate::hfst_basic_transducer::HfstBasicTransducer::from_transducer(self);
+        let basic = ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(self)?;
         let flags = basic.get_flags();
         let feature_found = flags
             .iter()
@@ -284,10 +300,10 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
 
         let filter = get_flag_filter(self, &flags, flag)?;
         if let Some(filter) = filter {
-            let mut filter_copy = HfstTransducer::new_from(&filter);
+            let mut filter_copy = HfstTransducer::new_copy(&filter)?;
             {
-                let self_copy = HfstTransducer::new_from(self);
-                let filter_deref = HfstTransducer::new_from(&filter);
+                let self_copy = HfstTransducer::new_copy(self)?;
+                let filter_deref = HfstTransducer::new_copy(&filter)?;
                 // The filter is a symbol-level constraint (built over escaped
                 // flags so the flag features are ordinary symbols); apply it
                 // with flag diacritics encoded as ordinary symbols in the
@@ -361,7 +377,7 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
             back_subst.insert(dollar_flag, at_flag);
         }
 
-        self.substitute_symbols(&subst)?;
+        self.substitute_symbol_substitutions(&subst)?;
 
         let mut restriction = get_flag_path_restriction(&_1_flags, &_2_flags);
 
@@ -370,7 +386,7 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
         let _ = &mut restriction;
 
         // Rename $...$ flags back to @...@ flags.
-        self.substitute_symbols(&back_subst)?;
+        self.substitute_symbol_substitutions(&back_subst)?;
 
         Ok(self)
     }
@@ -403,9 +419,9 @@ fn new_filter<B: AlgebraBackend>(
     .expect("the flag-filter xre is well-formed");
 
     // Should the xre compiler do this?
-    result.remove_from_alphabet("Fail")?;
-    result.remove_from_alphabet("Succeed")?;
-    result.remove_from_alphabet("Self")?;
+    result.remove_from_alphabet_string("Fail")?;
+    result.remove_from_alphabet_string("Succeed")?;
+    result.remove_from_alphabet_string("Self")?;
 
     Ok(result)
 }
@@ -424,7 +440,7 @@ fn substitute_escaped_flags<B: AlgebraBackend>(
                 // 'std::string::erase(0)' drops the leading '_'; rebuild the
                 // SmolStr from the remaining bytes instead of mutating in place.
                 let s = Symbol::new(&it[1..]);
-                filter.substitute_symbol(it, &s, true, true)?;
+                filter.substitute_string(it, &s, true, true)?;
             }
         }
     }
@@ -697,7 +713,7 @@ fn flag_purge<B: Backend>(
     transducer: &mut HfstTransducer<B>,
     flag: &str,
 ) -> crate::error::Result<()> {
-    let mut net = crate::hfst_basic_transducer::HfstBasicTransducer::from_transducer(transducer);
+    let mut net = ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(transducer)?;
     net.flag_purge(flag);
     *transducer = HfstTransducer::new_from_basic(&net)?;
     Ok(())
@@ -787,5 +803,6 @@ pub fn get_flag_path_restriction<B: Backend>(
         basic_restriction.add_transition(seen_2_state, &tr, true);
     }
 
-    HfstTransducer::from_basic(&basic_restriction)
+    HfstTransducer::new_from_basic(&basic_restriction)
+        .expect("converting a basic transducer to an available backend type cannot fail")
 }

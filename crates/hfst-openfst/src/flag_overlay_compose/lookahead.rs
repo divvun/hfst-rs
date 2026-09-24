@@ -707,13 +707,3 @@ impl FlagOverlayLookAheadComposeFst {
         &self.inner
     }
 }
-
-/// Storage-aware label-lookahead composition for product-heavy workloads.
-pub fn compose_lookahead_with_store(
-    fst1: FstHandle,
-    fst2: FstHandle,
-    overlay: FlagOverlay,
-    state_store: Option<ComposeStateStoreConfig>,
-) -> Result<FlagOverlayLookAheadComposeFst> {
-    FlagOverlayLookAheadComposeFst::new_with_state_store(fst1, fst2, overlay, state_store)
-}

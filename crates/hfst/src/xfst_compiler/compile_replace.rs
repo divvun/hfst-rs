@@ -2,6 +2,7 @@
 //! side of the top network.
 
 use super::*;
+use crate::convert_transducer_format::ConversionFunctions;
 
 impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     // internal function
@@ -39,7 +40,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         let retokenize_on = self.variables["retokenize"] == "ON";
         let cfg = self.engine_config;
 
-        let mut fsm = HfstBasicTransducer::from_transducer(self.net(tmp));
+        let mut fsm = ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(self.net(tmp))?;
         let mut early_return = false;
         // The C++ wrapped this block in try/catch (const char*) and demoted a
         // malformed compile-replace regexp to a diagnostic.
@@ -79,7 +80,9 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
                         };
 
                         let _ = replacement.optimize_with_config(&cfg);
-                        let repl = HfstBasicTransducer::from_transducer(&replacement);
+                        let repl = ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(
+                            &replacement,
+                        )?;
                         fsm.insert_transducer(*start_state, *end_state, &repl);
                     }
                 }
@@ -92,7 +95,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             return Ok(self);
         }
 
-        let result: NetId = self.alloc_net(HfstTransducer::from_basic_transducer(&fsm));
+        let result: NetId = self.alloc_net(HfstTransducer::new_from_basic(&fsm)?);
 
         // filter out regexps
         let mut cr = Self::contains_regexp_markers_on_one_side(&mut self.xre, level_is_upper);
@@ -101,8 +104,12 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         self.net_mut(result)
             .subtract(&cr, true)?
             .optimize_with_config(&cfg)?;
-        self.net_mut(result)
-            .substitute("@EPSILON_MARKER@", "@_EPSILON_SYMBOL_@", true, true)?;
+        self.net_mut(result).substitute_string(
+            "@EPSILON_MARKER@",
+            "@_EPSILON_SYMBOL_@",
+            true,
+            true,
+        )?;
         self.stack.pop();
         self.stack.push(result);
 

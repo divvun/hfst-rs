@@ -521,7 +521,7 @@ macro_rules! ol_lookup_backend {
                 limit: isize,
                 time_cutoff: f64,
             ) -> HfstOneLevelPaths {
-                Transducer::lookup_fd_str(self, s, limit, time_cutoff)
+                Transducer::lookup_fd_cstr(self, s, limit, time_cutoff)
             }
             fn lookup_fd_strvec(
                 &mut self,

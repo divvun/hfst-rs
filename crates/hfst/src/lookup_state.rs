@@ -87,6 +87,10 @@ pub struct LookupState<'a, T: TransducerTablesInterface> {
 }
 
 impl<'a, T: TransducerTablesInterface> LookupState<'a, T> {
+    /// A run state over `machine`: the tapes, flag state, traversal
+    /// bookkeeping and limits one lookup needs, owned by the caller so the
+    /// machine itself stays shared and immutable. Reusable across calls.
+    // [spec:hfst:req:lookup-run-state.caller-owned-scratch]
     pub fn new(machine: &'a Transducer<T>) -> Self {
         LookupState {
             machine,

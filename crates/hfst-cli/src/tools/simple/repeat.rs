@@ -223,7 +223,7 @@ fn process_stream(
             } else if options.from_infinity && !options.to_infinity {
                 error(common, 1, 0, &format!("Repeating *..{}?", options.at_most));
             }
-            if let Err(e) = outstream.redirect(&mut trans) {
+            if let Err(e) = outstream.write(&mut trans) {
                 error(common, 1, 0, &format!("{e}"));
                 return 1;
             }

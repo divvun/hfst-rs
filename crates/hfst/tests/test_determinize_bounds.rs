@@ -87,10 +87,10 @@ fn lookup_a_string(
     t: &HfstTransducer<StdVectorFst>,
     input: &str,
 ) -> Result<HfstOneLevelPaths, hfst::error::Error> {
-    let ol = HfstTransducer::<Transducer<WeightedTables>>::from_basic(&t.to_basic()?);
+    let ol = HfstTransducer::<Transducer<WeightedTables>>::new_from_basic(&t.to_basic()?)?;
     let tok = HfstTokenizer::new();
     let key = tok.tokenize_one_level(input, false);
-    ol.lookup_string_vector(&key, -1, 0.0)
+    ol.lookup_fd_string_vector(&key, -1, 0.0)
 }
 
 // The minimum path weight over the returned lookup paths (f32::INFINITY if the
@@ -255,9 +255,11 @@ fn small_weighted_acyclic_minimize_byte_identical() {
 
 // Helper mirroring lookup_a_string but for arbitrary lowercase input.
 fn lookup_a_string_generic(t: &HfstTransducer<StdVectorFst>, input: &str) -> HfstOneLevelPaths {
-    let ol =
-        HfstTransducer::<Transducer<WeightedTables>>::from_basic(&t.to_basic().expect("to_basic"));
+    let ol = HfstTransducer::<Transducer<WeightedTables>>::new_from_basic(
+        &t.to_basic().expect("to_basic"),
+    )
+    .expect("converting a basic transducer to an available backend type cannot fail");
     let tok = HfstTokenizer::new();
     let key = tok.tokenize_one_level(input, false);
-    ol.lookup_string_vector(&key, -1, 0.0).expect("lookup")
+    ol.lookup_fd_string_vector(&key, -1, 0.0).expect("lookup")
 }

@@ -139,7 +139,7 @@ fn exceptions() {
 
     let mut reader = std::io::Cursor::new(bytes);
     let mut linecount: u32 = 0;
-    let r = HfstBasicTransducer::read_in_att_format_file(&mut reader, "@0@", &mut linecount, false);
+    let r = HfstBasicTransducer::read_in_att_format(&mut reader, "@0@", &mut linecount, false);
     assert!(
         matches!(&r, Err(e) if matches!(e.kind, hfst::error::ErrorKind::NotValidAttFormat)),
         "expected NotValidAttFormatException"

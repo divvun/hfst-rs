@@ -20,16 +20,11 @@ impl<B: Backend> HfstTransducer<B> {
     // ----- Conversion functions (typed; the runtime 'convert(ty)' is gone) -----
     // -------------------------------------------------------------------------
 
-    /// For internal use: create an 'HfstBasicTransducer' equivalent to '*this'.
-    // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.get-basic-transducer-fn]
-    // [spec:hfst:sem:hfst-transducer.hfst.hfst-transducer.get-basic-transducer-fn]
-    pub fn get_basic_transducer(&self) -> crate::error::Result<HfstBasicTransducer> {
-        self.fst.to_basic()
-    }
-
     /// The typed conversion to the interchange transducer
     /// ([dec:hfst:monomorphic-backends]); cross-backend conversion is
-    /// 'HfstTransducer::<Target>::from_basic(&t.to_basic()?)'.
+    /// 'HfstTransducer::<Target>::new_from_basic(&t.to_basic()?)'.
+    // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.get-basic-transducer-fn]
+    // [spec:hfst:sem:hfst-transducer.hfst.hfst-transducer.get-basic-transducer-fn]
     pub fn to_basic(&self) -> crate::error::Result<HfstBasicTransducer> {
         self.fst.to_basic()
     }
@@ -72,7 +67,7 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
         weighted: bool,
         options: &str,
     ) -> crate::error::Result<HfstTransducer<Transducer<WeightedTables>>> {
-        let net = self.get_basic_transducer()?;
+        let net = self.to_basic()?;
         let ol = crate::convert_transducer_format::ConversionFunctions::
             hfst_basic_transducer_to_hfst_ol(&net, weighted, options, None)?;
         let mut t = HfstTransducer::wrap(ol);
@@ -91,7 +86,7 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
     pub fn to_foma(
         &self,
     ) -> crate::error::Result<HfstTransducer<crate::backend_foma::FomaTransducer>> {
-        let net = self.get_basic_transducer()?;
+        let net = self.to_basic()?;
         let foma =
             <crate::backend_foma::FomaTransducer as crate::backend::Backend>::from_basic(&net)?;
         let mut t = HfstTransducer::wrap(foma);
@@ -125,26 +120,6 @@ impl HfstTransducer<crate::backend_thfst::ThfstTransducer> {
     /// O(1) table move; the facade metadata survives.
     pub fn into_olw(self) -> HfstTransducer<Transducer<WeightedTables>> {
         rewrap_facade(self, |b| b.into_ol())
-    }
-}
-
-// ===== integration shims: HfstBasicTransducer<-facade ctors, method + free-fn aliases =====
-impl HfstBasicTransducer {
-    /// 'HfstBasicTransducer(const HfstTransducer&)' — convert a facade transducer
-    /// to the interchange basic transducer. The C++ ctor goes through
-    /// 'ConversionFunctions::hfst_transducer_to_hfst_basic_transducer', NOT
-    /// 'HfstTransducer::get_basic_transducer' — the former also handles the
-    /// HFST_OL/HFST_OLW backends and propagates the transducer name.
-    pub fn from_transducer<B: Backend>(t: &HfstTransducer<B>) -> HfstBasicTransducer {
-        HfstBasicTransducer::try_from_transducer(t)
-            .expect("hfst_transducer_to_hfst_basic_transducer on a valid transducer cannot fail")
-    }
-    /// The same conversion with the error surfaced instead of panicking, for
-    /// callers (the CLI tools) that report it and exit.
-    pub fn try_from_transducer<B: Backend>(
-        t: &HfstTransducer<B>,
-    ) -> crate::error::Result<HfstBasicTransducer> {
-        crate::convert_transducer_format::ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(t)
     }
 }
 

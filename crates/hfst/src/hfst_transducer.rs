@@ -79,7 +79,7 @@ pub use conversion::{AnyTransducer, FromAnyTransducer};
 pub use flag_diacritics::get_flag_path_restriction;
 pub(crate) use flag_ops::{decode_flag, encode_flag};
 use flag_ops::{
-    decode_flag_diacritics, encode_flag_diacritics, has_flags, rename_flag_diacritics,
+    decode_flag_diacritics, encode_flag_diacritics, rename_flag_diacritics,
     substitute_input_flag_with_epsilon, substitute_one_sided_flags,
     substitute_output_flag_with_epsilon,
 };

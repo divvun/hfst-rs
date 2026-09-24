@@ -378,7 +378,7 @@ fn resolve_thfst_source(common: &CommonOptions, path_str: &str) -> Result<ThfstS
                 return Err(1);
             }
         };
-    if let Err(e) = outstream.redirect(&mut thfst) {
+    if let Err(e) = outstream.write(&mut thfst) {
         error(common, 1, 0, &format!("cannot write THFST: {e}"));
         return Err(1);
     }

@@ -2,6 +2,7 @@
 //! operations the rules are built from.
 
 use super::*;
+use crate::convert_transducer_format::ConversionFunctions;
 use crate::hfst_basic_transducer::HfstBasicTransducer;
 use crate::hfst_basic_transition::HfstBasicTransition;
 use crate::hfst_data_types::implementations::HfstState;
@@ -130,7 +131,8 @@ impl<B: AlgebraBackend> OtherSymbolTransducer<B> {
         if input_symbol == HFST_UNKNOWN && output_symbol == HFST_UNKNOWN {
             this.transducer = Self::get_universal(cfg)?.transducer;
         } else {
-            let mut fst = HfstBasicTransducer::from_transducer(&this.transducer);
+            let mut fst =
+                ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(&this.transducer)?;
             let target = fst.add_state_new();
             fst.set_final_weight(target, &0.0);
 
@@ -306,10 +308,14 @@ impl<B: AlgebraBackend> OtherSymbolTransducer<B> {
     ) -> &mut Self {
         // [spec:hfst:def:other-symbol-transducer.basic-fn]
         // [spec:hfst:sem:other-symbol-transducer.basic-fn]
-        let mut basic = HfstBasicTransducer::from_transducer(&self.transducer);
+        let mut basic = ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(
+            &self.transducer,
+        )
+        .expect("hfst_transducer_to_hfst_basic_transducer on a valid transducer cannot fail");
         let alphabet: BTreeSet<Symbol> = basic.get_alphabet().clone();
 
-        let basic_t = HfstBasicTransducer::from_transducer(&t.transducer);
+        let basic_t = ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(&t.transducer)
+            .expect("hfst_transducer_to_hfst_basic_transducer on a valid transducer cannot fail");
         let t_alphabet: BTreeSet<Symbol> = basic_t.get_alphabet().clone();
 
         let mut missing_diacritics: BTreeSet<Symbol> = BTreeSet::new();
@@ -396,7 +402,8 @@ impl<B: AlgebraBackend> OtherSymbolTransducer<B> {
             is_broken: false,
             transducer: HfstTransducer::new(),
         };
-        let mut fst = HfstBasicTransducer::from_transducer(&universal.transducer);
+        let mut fst =
+            ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(&universal.transducer)?;
         let target = fst.add_state_new();
         fst.set_final_weight(target, &0.0);
         let tr = HfstBasicTransition::new_symbols(
@@ -436,7 +443,8 @@ impl<B: AlgebraBackend> OtherSymbolTransducer<B> {
         _cfg: &OstConfig,
         symbol: &str,
     ) -> crate::error::Result<()> {
-        let mut mutable_transducer = HfstBasicTransducer::from_transducer(&self.transducer);
+        let mut mutable_transducer =
+            ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(&self.transducer)?;
         mutable_transducer.add_symbol_to_alphabet(&Symbol::new(symbol));
         self.transducer = HfstTransducer::new_from_basic(&mutable_transducer)?;
         Ok(())
@@ -514,7 +522,7 @@ impl<B: AlgebraBackend> OtherSymbolTransducer<B> {
         if self.is_broken {
             crate::bail!(UndefinedSymbolPairsFound);
         }
-        let fst = HfstBasicTransducer::from_transducer(&self.transducer);
+        let fst = ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(&self.transducer)?;
         let mut new_fst = HfstBasicTransducer::new();
 
         let output_symbols = cfg.output_symbols.iter().cloned().collect::<Vec<_>>();
@@ -679,7 +687,7 @@ impl<B: AlgebraBackend> OtherSymbolTransducer<B> {
             crate::bail!(UndefinedSymbolPairsFound);
         }
         let mut pair_container = SymbolPairVector::new();
-        let fst = HfstBasicTransducer::from_transducer(&self.transducer);
+        let fst = ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(&self.transducer)?;
         for jt in fst
             .index(0)
             .expect("s is a valid state of this transducer")
@@ -702,8 +710,15 @@ impl<B: AlgebraBackend> OtherSymbolTransducer<B> {
         another: &OtherSymbolTransducer<B>,
         v: &mut StringVector,
     ) -> bool {
-        let this_fst = HfstBasicTransducer::from_transducer(&self.transducer);
-        let another_fst = HfstBasicTransducer::from_transducer(&another.transducer);
+        let this_fst = ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(
+            &self.transducer,
+        )
+        .expect("hfst_transducer_to_hfst_basic_transducer on a valid transducer cannot fail");
+        let another_fst =
+            ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(&another.transducer)
+                .expect(
+                    "hfst_transducer_to_hfst_basic_transducer on a valid transducer cannot fail",
+                );
         let mut visited_pairs: BTreeSet<(HfstState, HfstState)> = BTreeSet::new();
         visited_pairs.insert((0, 0));
         !have_common_string(0, 0, &this_fst, &another_fst, &mut visited_pairs, v)
@@ -721,7 +736,9 @@ impl<B: AlgebraBackend> OtherSymbolTransducer<B> {
         // Do this properly later.. (preserved C++ comment.)
         let mut another_fst = another.clone();
         another_fst.subtract(cfg, self)?;
-        let internal = HfstBasicTransducer::from_transducer(&another_fst.get_transducer()?);
+        let internal = ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(
+            &another_fst.get_transducer()?,
+        )?;
         Ok(Self::empty(&internal))
     }
 
@@ -730,7 +747,12 @@ impl<B: AlgebraBackend> OtherSymbolTransducer<B> {
     // [spec:hfst:def:other-symbol-transducer.other-symbol-transducer.is-empty-fn]
     // [spec:hfst:sem:other-symbol-transducer.other-symbol-transducer.is-empty-fn]
     pub fn is_empty(&self) -> bool {
-        Self::empty(&HfstBasicTransducer::from_transducer(&self.transducer))
+        Self::empty(
+            &ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(&self.transducer)
+                .expect(
+                    "hfst_transducer_to_hfst_basic_transducer on a valid transducer cannot fail",
+                ),
+        )
     }
 }
 

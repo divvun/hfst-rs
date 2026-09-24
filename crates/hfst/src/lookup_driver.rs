@@ -23,6 +23,7 @@
 
 use std::io::Write;
 
+use crate::convert_transducer_format::ConversionFunctions;
 use crate::error::Result;
 use crate::hfst_basic_transducer::HfstBasicTransducer;
 use crate::hfst_data_types::{
@@ -993,11 +994,13 @@ impl LookupCascade {
 /// each arm monomorphizing separately).
 fn to_basic(trans: &AnyTransducer) -> Result<HfstBasicTransducer> {
     match trans {
-        AnyTransducer::Tropical(t) => HfstBasicTransducer::try_from_transducer(t),
-        AnyTransducer::OlW(t) => HfstBasicTransducer::try_from_transducer(t),
-        AnyTransducer::OlU(t) => HfstBasicTransducer::try_from_transducer(t),
+        AnyTransducer::Tropical(t) => {
+            ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(t)
+        }
+        AnyTransducer::OlW(t) => ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(t),
+        AnyTransducer::OlU(t) => ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(t),
         #[cfg(feature = "foma")]
-        AnyTransducer::Foma(t) => HfstBasicTransducer::try_from_transducer(t),
-        AnyTransducer::Thfst(t) => HfstBasicTransducer::try_from_transducer(t),
+        AnyTransducer::Foma(t) => ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(t),
+        AnyTransducer::Thfst(t) => ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(t),
     }
 }

@@ -185,15 +185,17 @@ fn hfst_143_flag_harmonise_no_bloat() {
 
     // t:t a:a l:l o:o then two output-epsilon flag arcs (as in the issue's
     // fst2txt dump: `@U.DECL-NX.SG@ -> @0@`, `@U.DECL-CX.NOM@ -> @0@`).
-    let analyser: HfstTransducer<StdVectorFst> = HfstTransducer::from_basic(&read_att(concat!(
-        "0\t1\tt\tt\t0.000000\n",
-        "1\t2\ta\ta\t0.000000\n",
-        "2\t3\tl\tl\t0.000000\n",
-        "3\t4\to\to\t0.000000\n",
-        "4\t5\t@U.DECL-NX.SG@\t@_EPSILON_SYMBOL_@\t0.000000\n",
-        "5\t6\t@U.DECL-CX.NOM@\t@_EPSILON_SYMBOL_@\t0.000000\n",
-        "6\t0.000000\n",
-    )));
+    let analyser: HfstTransducer<StdVectorFst> =
+        HfstTransducer::new_from_basic(&read_att(concat!(
+            "0\t1\tt\tt\t0.000000\n",
+            "1\t2\ta\ta\t0.000000\n",
+            "2\t3\tl\tl\t0.000000\n",
+            "3\t4\to\to\t0.000000\n",
+            "4\t5\t@U.DECL-NX.SG@\t@_EPSILON_SYMBOL_@\t0.000000\n",
+            "5\t6\t@U.DECL-CX.NOM@\t@_EPSILON_SYMBOL_@\t0.000000\n",
+            "6\t0.000000\n",
+        )))
+        .expect("converting a basic transducer to an available backend type cannot fail");
     assert!(
         analyser.has_flag_diacritics(),
         "fixture analyser must carry flag diacritics"
@@ -219,7 +221,7 @@ fn hfst_143_flag_harmonise_no_bloat() {
     let mut overlay_first = analyser;
     let mut overlay_second = surface;
     let overlay = overlay_first
-        .prepare_flag_diacritics_for_compose(&mut overlay_second)
+        .prepare_flag_diacritics_for_operation(&mut overlay_second)
         .expect("lazy flag overlay preparation");
     let spill_config = EngineConfig {
         compose_memory_limit_bytes: Some(0),
@@ -334,7 +336,8 @@ fn hfst_467_eliminate_flag_no_corruption() {
         "11\t12\t@C.G@\t@C.G@\t0.000000\n",
         "12\t0.000000\n",
     );
-    let base: HfstTransducer<StdVectorFst> = HfstTransducer::from_basic(&read_att(att));
+    let base: HfstTransducer<StdVectorFst> = HfstTransducer::new_from_basic(&read_att(att))
+        .expect("converting a basic transducer to an available backend type cannot fail");
 
     // Sanity: obeying the flags, `xX` maps to `Yy`.
     let base_paths = lookup(&base, &["x", "X"], true);
@@ -361,7 +364,8 @@ fn hfst_467_eliminate_flag_no_corruption() {
         // Structurally valid: round-trips to basic and back without panic, and
         // has a sane (non-degenerate, non-explosive) shape.
         let round_trip: HfstTransducer<StdVectorFst> =
-            HfstTransducer::from_basic(&eliminated.to_basic().expect("to_basic"));
+            HfstTransducer::new_from_basic(&eliminated.to_basic().expect("to_basic"))
+                .expect("converting a basic transducer to an available backend type cannot fail");
         assert!(
             round_trip
                 .compare_default(&eliminated)

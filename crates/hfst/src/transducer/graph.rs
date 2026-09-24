@@ -139,8 +139,8 @@ impl<T: TransducerTablesInterface> Transducer<T> {
     fn reachable_graph(&self) -> ReachableGraph {
         const START: TransitionTableIndex = 0;
         let mut ids = StateIds::new(
-            self.hdr().index_table_size(),
-            self.hdr().target_table_size(),
+            self.get_header().index_table_size(),
+            self.get_header().target_table_size(),
         );
         let mut order = vec![START];
         ids.intern(START, 0);
@@ -177,7 +177,7 @@ impl<T: TransducerTablesInterface> Transducer<T> {
     /// `HfstBasicTransducer::is_infinitely_ambiguous` both count it as epsilon
     /// — at the cost of false positives on flags no path can actually satisfy.
     fn consumes_no_input(&self, input: SymbolNumber) -> bool {
-        input == 0 || self.alph().is_flag_diacritic(input)
+        input == 0 || self.get_alphabet().is_flag_diacritic(input)
     }
 
     /// Whether the transducer has a cycle at all.
@@ -217,7 +217,7 @@ impl<T: TransducerTablesInterface> Transducer<T> {
     /// a consumer to skip work it needed.
     pub(super) fn header_with_graph_properties(&self) -> TransducerHeader {
         let graph = self.reachable_graph();
-        let mut header = self.hdr().clone();
+        let mut header = self.get_header().clone();
 
         header.cyclic = graph.has_cycle_over(|_| true);
         header.has_input_epsilon_cycles =

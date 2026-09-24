@@ -49,7 +49,7 @@ impl Backend for Transducer<WeightedTables> {
     }
 
     fn is_cyclic(&self) -> bool {
-        HfstOlTransducer::is_cyclic(self)
+        Transducer::is_cyclic(self)
     }
 
     fn number_of_states(&self) -> u32 {
@@ -83,7 +83,7 @@ impl Backend for Transducer<WeightedTables> {
         cycles: i32,
         filter_fd: bool,
     ) {
-        let flag_diacritics = HfstOlTransducer::get_flag_diacritics(self);
+        let flag_diacritics = self.get_fd_table();
         HfstOlTransducer::extract_paths(self, callback, cycles, Some(flag_diacritics), filter_fd);
     }
 }
@@ -121,7 +121,7 @@ impl Backend for Transducer<UnweightedTables> {
     }
 
     fn is_cyclic(&self) -> bool {
-        HfstOlTransducer::is_cyclic(self)
+        Transducer::is_cyclic(self)
     }
 
     fn number_of_states(&self) -> u32 {
@@ -155,7 +155,7 @@ impl Backend for Transducer<UnweightedTables> {
         cycles: i32,
         filter_fd: bool,
     ) {
-        let flag_diacritics = HfstOlTransducer::get_flag_diacritics(self);
+        let flag_diacritics = self.get_fd_table();
         HfstOlTransducer::extract_paths(self, callback, cycles, Some(flag_diacritics), filter_fd);
     }
 }

@@ -39,7 +39,7 @@ fn main() -> hfst::error::Result<()> {
     {
         let mut t = HfstTransducer::<StdVectorFst>::new_symbol_pair("a", "b")?;
         let mut out = HfstOutputStream::new_filename(&bin, TROPICAL_OPENFST_TYPE, true)?;
-        out.redirect(&mut t)?;
+        out.write(&mut t)?;
         out.close();
     }
     let from_bin = compile(&mut c, &format!("@bin\"{bin}\""));

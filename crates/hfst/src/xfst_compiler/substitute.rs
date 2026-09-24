@@ -1,6 +1,7 @@
 //! The substitute commands: symbols, labels, and defined networks.
 
 use super::*;
+use crate::convert_transducer_format::ConversionFunctions;
 
 impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     pub fn substitute_named(
@@ -49,7 +50,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             return Ok(self);
         }
 
-        let fsm = HfstBasicTransducer::from_transducer(self.net(top));
+        let fsm = ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(self.net(top))?;
 
         for it in fsm.iter() {
             for tr_it in it {
@@ -132,7 +133,8 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         let target_vector = Self::tokenize_string(target, ':');
         match Self::symbol_vector_to_symbol_pair(&target_vector) {
             Some(target_label) => {
-                let fsm = HfstBasicTransducer::from_transducer(self.net(top));
+                let fsm =
+                    ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(self.net(top))?;
                 let mut target_label_found = false;
 
                 for it in fsm.iter() {
@@ -158,7 +160,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
                 }
 
                 self.net_mut(top)
-                    .substitute_symbol_pair_with_set(&target_label, &symbol_pairs)?;
+                    .substitute_pair_with_pair_set(&target_label, &symbol_pairs)?;
             }
             None => {
                 self.diag_error(&format!("could not substitute '{}'", target));

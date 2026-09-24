@@ -1,6 +1,7 @@
 //! Flag-diacritic encode, decode, detection, and rename helpers.
 
 use super::*;
+use crate::convert_transducer_format::ConversionFunctions;
 
 // C++ file-static substitution callbacks passed to `substitute_with_func`.
 // [spec:hfst:def:hfst-transducer.hfst.substitute-one-sided-flags-fn]
@@ -40,8 +41,8 @@ pub(super) fn substitute_output_flag_with_epsilon(
     false
 }
 
-// C++ file-static flag-diacritic helpers. `has_flags` is read-only; the others
-// mutate the transducer in place (C++ `fst = HfstTransducer(...)`), so they take
+// C++ file-static flag-diacritic helpers. The ones that rewrite a transducer
+// do it in place (C++ `fst = HfstTransducer(...)`), so they take
 // `&mut HfstTransducer` (callers pass `&mut self` / `&mut another`).
 
 // [spec:hfst:def:hfst-transducer.hfst.encode-flag-fn]
@@ -90,20 +91,6 @@ fn add_suffix_to_feature_name(flag_diacritic: &str, suffix: &str) -> Symbol {
     )
 }
 
-// [spec:hfst:def:hfst-transducer.hfst.has-flags-fn]
-// [spec:hfst:sem:hfst-transducer.hfst.has-flags-fn]
-pub(super) fn has_flags<B: Backend>(fst: &HfstTransducer<B>) -> bool {
-    let alphabet = fst
-        .get_alphabet()
-        .expect("get_alphabet on a valid transducer cannot fail");
-    for it in alphabet.iter() {
-        if FdOperation::is_diacritic(it) {
-            return true;
-        }
-    }
-    false
-}
-
 // Return true if the flag in flag_diacritic ends in suffix and false
 // otherwise. E.g. if flag_diacritic = "@D.NeedNoun_1.ON@ and suffix =
 // "_1", return true.
@@ -117,7 +104,8 @@ pub(super) fn is_flag_suffix(suffix: &str, flag_diacritic: &str) -> bool {
 // [spec:hfst:def:hfst-transducer.hfst.rename-flag-diacritics-fn]
 // [spec:hfst:sem:hfst-transducer.hfst.rename-flag-diacritics-fn]
 pub(super) fn rename_flag_diacritics<B: Backend>(fst: &mut HfstTransducer<B>, suffix: &str) {
-    let basic_fst = HfstBasicTransducer::from_transducer(fst);
+    let basic_fst = ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(fst)
+        .expect("hfst_transducer_to_hfst_basic_transducer on a valid transducer cannot fail");
     let mut basic_fst_copy = HfstBasicTransducer::new();
     let _ = basic_fst_copy.add_state(basic_fst.get_max_state());
 
@@ -168,7 +156,8 @@ pub(super) fn rename_flag_diacritics<B: Backend>(fst: &mut HfstTransducer<B>, su
             );
         }
     }
-    *fst = HfstTransducer::from_basic(&basic_fst_copy);
+    *fst = HfstTransducer::new_from_basic(&basic_fst_copy)
+        .expect("converting a basic transducer to an available backend type cannot fail");
 }
 
 // The flag encode/decode passes (`encode_flag_diacritics` /
@@ -176,7 +165,7 @@ pub(super) fn rename_flag_diacritics<B: Backend>(fst: &mut HfstTransducer<B>, su
 // a pure in-place SymbolTable rename (equivalent automaton, bytes diverge from
 // the whole-graph round-trip by design — [node:flag-encode-diverge]); every
 // other backend keeps the C++ round-trip via the Backend default. Either way
-// the facade metadata is reset exactly as the former `*fst = from_basic(...)`
+// the facade metadata is reset exactly as the former `*fst = new_from_basic(...)`
 // did: name -> "", props -> {}, anonymous/is_trie -> false.
 fn reset_facade_metadata_after_flag_pass<B: Backend>(fst: &mut HfstTransducer<B>) {
     fst.name = String::new();
@@ -230,8 +219,8 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
         &mut self,
         another: &mut HfstTransducer<B>,
     ) -> crate::error::Result<FlagDiacriticOverlay> {
-        let left_had_flags = has_flags(self);
-        let right_had_flags = has_flags(another);
+        let left_had_flags = self.has_flag_diacritics();
+        let right_had_flags = another.has_flag_diacritics();
 
         if left_had_flags && right_had_flags {
             rename_flag_diacritics(self, "_1");
@@ -253,13 +242,5 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
             right_self_loops,
             enforce_left_before_right,
         })
-    }
-
-    /// Compatibility wrapper for callers preparing ordinary composition.
-    pub fn prepare_flag_diacritics_for_compose(
-        &mut self,
-        another: &mut HfstTransducer<B>,
-    ) -> crate::error::Result<FlagDiacriticComposeOverlay> {
-        self.prepare_flag_diacritics_for_operation(another)
     }
 }

@@ -92,13 +92,13 @@ fn empty_transducer_lookup_returns_no_analyses() {
     let _guard = serialized();
     let ol = to_ol(&HfstBasicTransducer::new());
     assert!(
-        ol.lookup_fd_str("foo", -1, 0.0).is_empty(),
+        ol.lookup_fd_cstr("foo", -1, 0.0).is_empty(),
         "the empty language accepts nothing, so lookup yields no analyses"
     );
     // Longer input walks further into the traversal; still no analyses, still
     // no panic.
-    assert!(ol.lookup_fd_str("a longer probe", -1, 0.0).is_empty());
-    assert!(ol.lookup_fd_str("", -1, 0.0).is_empty());
+    assert!(ol.lookup_fd_cstr("a longer probe", -1, 0.0).is_empty());
+    assert!(ol.lookup_fd_cstr("", -1, 0.0).is_empty());
 }
 
 // The same shape reached through the pmatch runtime, whose encoder numbers the
@@ -166,7 +166,7 @@ fn well_formed_optimized_lookup_bytes_still_load() {
         Err(e) => panic!("round-tripped bytes are valid: {e}"),
     };
     assert!(
-        !back.lookup_fd_str("a", -1, 0.0).is_empty(),
+        !back.lookup_fd_cstr("a", -1, 0.0).is_empty(),
         "the round-tripped transducer still maps its one arc"
     );
 }
@@ -262,5 +262,5 @@ fn empty_symbol_string_in_alphabet_does_not_panic() {
         Ok(t) => t,
         Err(e) => panic!("an unnameable alphabet is still readable: {e}"),
     };
-    assert!(back.lookup_fd_str("a", -1, 0.0).is_empty());
+    assert!(back.lookup_fd_cstr("a", -1, 0.0).is_empty());
 }

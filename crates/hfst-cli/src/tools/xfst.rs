@@ -306,7 +306,7 @@ fn parse_file<B: hfst::backend::AlgebraBackend + hfst::hfst_transducer::FromAnyT
     };
 
     comp.set_source_name(filename);
-    if 0 != comp.parse_line(line) {
+    if 0 != comp.parse(&line) {
         hfst_error(
             common,
             EXIT_FAILURE,
@@ -526,7 +526,7 @@ fn run_compiler<B: hfst::backend::AlgebraBackend + hfst::hfst_transducer::FromAn
             common,
             &format!("Executing xfst command '{}' given on command line\n", cmd),
         );
-        if 0 != comp.parse_line(cmd.clone()) {
+        if 0 != comp.parse(&cmd) {
             hfst_error(
                 common,
                 EXIT_FAILURE,
@@ -542,7 +542,7 @@ fn run_compiler<B: hfst::backend::AlgebraBackend + hfst::hfst_transducer::FromAn
             common,
             &format!("Executing xfst command '{}' given on command line\n", cmd),
         );
-        if 0 != comp.parse_line(cmd.clone()) {
+        if 0 != comp.parse(&cmd) {
             hfst_error(
                 common,
                 EXIT_FAILURE,
@@ -614,7 +614,7 @@ fn run_compiler<B: hfst::backend::AlgebraBackend + hfst::hfst_transducer::FromAn
                 continue;
             }
 
-            if 0 != comp.parse_line(format!("{}\n", expression)) {
+            if 0 != comp.parse(&format!("{}\n", expression)) {
                 eprintln!("expression '{}' could not be parsed", expression);
                 if comp.get("quit-on-fail") == "ON" {
                     return EXIT_FAILURE;

@@ -5,7 +5,7 @@
 use crate::cli::{self, CommonArgs, ToolArgs, ToolResult, UnaryIo};
 use crate::globals::CommonOptions;
 use crate::hfst_commandline::{error, hfst_set_program_name, verbose_print};
-use hfst::hfst_basic_transducer::HfstBasicTransducer;
+use hfst::convert_transducer_format::ConversionFunctions;
 use hfst::hfst_data_types::{StringPairVector, Symbol};
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_strings2_fst_tokenizer::HfstStrings2FstTokenizer;
@@ -293,7 +293,10 @@ fn process_stream(
         };
         // one dispatch per read: the rules only feed the basic-transducer
         // grammar ([dec:hfst:monomorphic-backends]).
-        let basic = crate::for_any!(&trans, t => HfstBasicTransducer::from_transducer(t));
+        let basic = crate::for_any!(&trans, t => {
+            ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(t)
+                .expect("hfst_transducer_to_hfst_basic_transducer on a valid transducer cannot fail")
+        });
         grammar.push_rule(basic, trans.get_name());
     }
 

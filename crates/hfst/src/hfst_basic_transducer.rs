@@ -436,11 +436,6 @@ impl HfstBasicTransducer {
         Ok(&self.state_vector[s as usize])
     }
 
-    /** @brief Alternative name for 'operator[]'. */
-    pub fn transitions(&self, s: HfstState) -> crate::error::Result<&HfstBasicTransitions> {
-        self.index(s)
-    }
-
     /** @brief Get mutable transitions. */
     pub fn transitions_mut(
         &mut self,

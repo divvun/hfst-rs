@@ -67,7 +67,7 @@ impl HfstBasicTransducer {
     ) -> Option<HfstState> {
         let mut identity_target: Option<HfstState> = None;
         for it in self
-            .transitions(s)
+            .index(s)
             .expect("s is a valid state of this transducer")
             .iter()
         {

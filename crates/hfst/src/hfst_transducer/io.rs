@@ -1,14 +1,15 @@
 //! AT&T and prolog text I/O, lexc reading, and tokenizer creation.
 
 use super::*;
+use crate::convert_transducer_format::ConversionFunctions;
 
 impl<B: Backend> HfstTransducer<B> {
     // -------------------------------------------------------------------------
     // ----- AT&T / prolog I/O, tokenizer creation (HfstTransducer.cc ~5823-6410)
     // -------------------------------------------------------------------------
     // 'HfstBasicTransducer net(*this)' is the conversion constructor
-    // 'HfstBasicTransducer(const HfstTransducer&)' — ported as the assoc-fn
-    // 'HfstBasicTransducer::from_transducer(&self)'.
+    // 'HfstBasicTransducer(const HfstTransducer&)' — ported as
+    // 'ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(self)'.
 
     // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.write-in-att-format-fn]
     // [spec:hfst:sem:hfst-transducer.hfst.hfst-transducer.write-in-att-format-fn]
@@ -38,7 +39,8 @@ impl<B: Backend> HfstTransducer<B> {
         ofile: &mut dyn std::io::Write,
         print_weights: bool,
     ) -> std::io::Result<()> {
-        let net = HfstBasicTransducer::from_transducer(self);
+        let net = ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(self)
+            .expect("hfst_transducer_to_hfst_basic_transducer on a valid transducer cannot fail");
         net.write_in_att_format_number_file(ofile, print_weights)
     }
 
@@ -48,7 +50,8 @@ impl<B: Backend> HfstTransducer<B> {
         print_weights: bool,
     ) -> std::io::Result<()> {
         // Implemented only for internal transducer format.
-        let net = HfstBasicTransducer::from_transducer(self);
+        let net = ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(self)
+            .expect("hfst_transducer_to_hfst_basic_transducer on a valid transducer cannot fail");
         net.write_in_att_format_file(ofile, print_weights)
     }
 
@@ -60,7 +63,7 @@ impl<B: Backend> HfstTransducer<B> {
         name: &str,
         write_weights: bool,
     ) -> crate::error::Result<()> {
-        let fsm = HfstBasicTransducer::from_transducer(self);
+        let fsm = ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(self)?;
         fsm.write_in_prolog_format_file(file, name, write_weights)
     }
 
@@ -93,7 +96,7 @@ impl<B: Backend> HfstTransducer<B> {
         warn_negs: bool,
     ) -> crate::error::Result<HfstTransducer<B>> {
         let mut linecount: u32 = 0;
-        let net = HfstBasicTransducer::read_in_att_format_file(
+        let net = HfstBasicTransducer::read_in_att_format(
             ifile,
             epsilon_symbol,
             &mut linecount,
@@ -111,7 +114,8 @@ impl<B: Backend> HfstTransducer<B> {
         let mut tok = HfstTokenizer::new();
 
         // (the SFST 'get_symbol_pairs' branch is compiled out with the backend)
-        let mut t = HfstBasicTransducer::from_transducer(self);
+        let mut t = ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(self)
+            .expect("hfst_transducer_to_hfst_basic_transducer on a valid transducer cannot fail");
         t.prune_alphabet(true);
         let alpha = t.get_alphabet();
         for it in alpha.iter() {
@@ -162,7 +166,8 @@ impl<B: Backend> HfstTransducer<B> {
 // — write the transducer in AT&T format. Implemented only for the internal
 // (basic) transducer format: convert to a HfstBasicTransducer and write it.
 pub fn write_to<W: std::io::Write, B: Backend>(out: &mut W, t: &HfstTransducer<B>) {
-    let net = HfstBasicTransducer::from_transducer(t);
+    let net = ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(t)
+        .expect("hfst_transducer_to_hfst_basic_transducer on a valid transducer cannot fail");
     // C++ writes weights for every type except SFST/FOMA (both out of scope here).
     let write_weights = t.get_type() != ImplementationType::SFST_TYPE
         && t.get_type() != ImplementationType::FOMA_TYPE;

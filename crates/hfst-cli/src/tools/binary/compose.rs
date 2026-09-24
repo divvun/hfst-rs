@@ -292,7 +292,9 @@ impl BinaryToolOp for ComposeOp {
                 }
             } else {
                 let prepared = if B::SUPPORTS_FLAG_OVERLAY {
-                    first.prepare_flag_diacritics_for_compose(second).map(Some)
+                    first
+                        .prepare_flag_diacritics_for_operation(second)
+                        .map(Some)
                 } else {
                     first.harmonize_flag_diacritics(second, true).map(|()| None)
                 };

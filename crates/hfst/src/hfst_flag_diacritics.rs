@@ -411,14 +411,10 @@ impl<T: Ord + Clone> FdState<T> {
         }
     }
 
-    fn table(&self) -> &FdTable<T> {
+    pub fn get_table(&self) -> &FdTable<T> {
         self.table
             .as_deref()
             .expect("FdState operation on a default-constructed (tableless) state")
-    }
-
-    pub fn get_table(&self) -> &FdTable<T> {
-        self.table()
     }
 
     pub fn get_values(&self) -> &Vec<FdValue> {
@@ -435,7 +431,7 @@ impl<T: Ord + Clone> FdState<T> {
     }
 
     pub fn apply_operation_symbol(&mut self, symbol: T) -> bool {
-        let op = self.table().get_operation(symbol).cloned();
+        let op = self.get_table().get_operation(symbol).cloned();
         if let Some(op) = op {
             return self.apply_operation(&op);
         }
@@ -499,7 +495,7 @@ impl<T: Ord + Clone> FdState<T> {
     }
 
     pub fn apply_operation_string(&mut self, symbol: &str) -> bool {
-        let op = self.table().get_operation_by_string(symbol).cloned();
+        let op = self.get_table().get_operation_by_string(symbol).cloned();
         if let Some(op) = op {
             return self.apply_operation(&op);
         }
@@ -517,7 +513,7 @@ impl<T: Ord + Clone> FdState<T> {
     pub fn reset(&mut self) {
         self.error_flag = false;
         self.values.clear();
-        let nf = self.table().num_features() as usize;
+        let nf = self.get_table().num_features() as usize;
         self.values.resize(nf, 0);
     }
 }

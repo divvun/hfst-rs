@@ -114,9 +114,11 @@ fn thfst_conversion_matches_olw_lookup() {
 
     for word in ["cat", "dog", "mouse", "hippopotamus"] {
         let sv = tok_one_level(&tok, word);
-        let via_olw = olw.lookup_string_vector(&sv, -1, 0.0).expect("olw lookup");
+        let via_olw = olw
+            .lookup_fd_string_vector(&sv, -1, 0.0)
+            .expect("olw lookup");
         let via_thfst = thfst_as_olw
-            .lookup_string_vector(&sv, -1, 0.0)
+            .lookup_fd_string_vector(&sv, -1, 0.0)
             .expect("thfst lookup");
         assert_eq!(
             as_pairs(&via_olw),
@@ -128,7 +130,7 @@ fn thfst_conversion_matches_olw_lookup() {
     // Concrete spot-check: hippopotamus has two weighted plurals.
     let hippo = tok_one_level(&tok, "hippopotamus");
     let res = thfst_as_olw
-        .lookup_string_vector(&hippo, -1, 0.0)
+        .lookup_fd_string_vector(&hippo, -1, 0.0)
         .expect("thfst hippo lookup");
     let pairs = as_pairs(&res);
     assert_eq!(pairs.len(), 2, "hippopotamus has two plurals");
@@ -149,9 +151,9 @@ fn olw_thfst_round_trip_preserves_lookup_and_name() {
     let tok = HfstTokenizer::new();
     let cat = tok_one_level(&tok, "cat");
     let mouse = tok_one_level(&tok, "mouse");
-    let cat_ref = as_pairs(&olw.lookup_string_vector(&cat, -1, 0.0).expect("cat ref"));
+    let cat_ref = as_pairs(&olw.lookup_fd_string_vector(&cat, -1, 0.0).expect("cat ref"));
     let mouse_ref = as_pairs(
-        &olw.lookup_string_vector(&mouse, -1, 0.0)
+        &olw.lookup_fd_string_vector(&mouse, -1, 0.0)
             .expect("mouse ref"),
     );
 
@@ -167,14 +169,18 @@ fn olw_thfst_round_trip_preserves_lookup_and_name() {
 
     assert_eq!(
         cat_ref,
-        as_pairs(&back.lookup_string_vector(&cat, -1, 0.0).expect("cat after")),
+        as_pairs(
+            &back
+                .lookup_fd_string_vector(&cat, -1, 0.0)
+                .expect("cat after")
+        ),
         "cat lookup survives the round trip"
     );
     assert_eq!(
         mouse_ref,
         as_pairs(
             &back
-                .lookup_string_vector(&mouse, -1, 0.0)
+                .lookup_fd_string_vector(&mouse, -1, 0.0)
                 .expect("mouse after")
         ),
         "mouse lookup survives the round trip"
@@ -205,7 +211,7 @@ fn slurp(path: &std::path::Path) -> Vec<u8> {
 /// weighted-OL facade of the SAME source for pre-write reference lookups.
 fn animals_thfst() -> (ThfstTransducer, HfstTransducer<Transducer<WeightedTables>>) {
     let animals = build_animals().expect("build animals");
-    let basic = animals.get_basic_transducer().expect("basic");
+    let basic = animals.to_basic().expect("basic");
     let thfst = ThfstTransducer::from_basic(&basic).expect("thfst from_basic");
     let olw = animals.to_ol(true, "").expect("to_ol(weighted)");
     (thfst, olw)
@@ -225,7 +231,7 @@ fn thfst_roundtrip_lookup_parity() {
     for word in words {
         let sv = tok_one_level(&tok, word);
         refs.push(as_pairs(
-            &olw.lookup_string_vector(&sv, -1, 0.0).expect("olw ref"),
+            &olw.lookup_fd_string_vector(&sv, -1, 0.0).expect("olw ref"),
         ));
     }
 
@@ -526,7 +532,7 @@ use hfst::hfst_output_stream::HfstOutputStream;
 /// `HfstTransducer<ThfstTransducer>` to `write`.
 fn animals_thfst_facade() -> HfstTransducer<ThfstTransducer> {
     let animals = build_animals().expect("build animals");
-    let basic = animals.get_basic_transducer().expect("basic");
+    let basic = animals.to_basic().expect("basic");
     HfstTransducer::<ThfstTransducer>::new_from_basic(&basic).expect("thfst facade")
 }
 
@@ -544,7 +550,7 @@ fn thfst_stream_roundtrip() {
     for word in words {
         let sv = tok_one_level(&tok, word);
         refs.push(as_pairs(
-            &olw.lookup_string_vector(&sv, -1, 0.0).expect("olw ref"),
+            &olw.lookup_fd_string_vector(&sv, -1, 0.0).expect("olw ref"),
         ));
     }
 
@@ -601,7 +607,11 @@ fn thfst_stream_roundtrip() {
         .into_olw();
     for (word, want) in words.iter().zip(refs.iter()) {
         let sv = tok_one_level(&tok, word);
-        let got = as_pairs(&reread.lookup_string_vector(&sv, -1, 0.0).expect("lookup"));
+        let got = as_pairs(
+            &reread
+                .lookup_fd_string_vector(&sv, -1, 0.0)
+                .expect("lookup"),
+        );
         assert_eq!(
             *want, got,
             "re-read THFST lookup of {word:?} matches pre-write"

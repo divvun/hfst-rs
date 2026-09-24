@@ -71,7 +71,7 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
         }
 
         let mut net = self.convert_to_basic_transducer()?;
-        net.substitute_symbol_pair(old_symbol_pair, new_symbol_pair)?;
+        net.substitute_pair(old_symbol_pair, new_symbol_pair)?;
         self.convert_to_hfst_transducer(net)?;
         Ok(self)
     }
@@ -89,50 +89,8 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
         }
 
         let mut net = self.convert_to_basic_transducer()?;
-        net.substitute_symbol_pair_with_set(old_symbol_pair, new_symbol_pair_set)?;
+        net.substitute_pair_with_set(old_symbol_pair, new_symbol_pair_set)?;
         self.convert_to_hfst_transducer(net)
-    }
-
-    pub fn substitute_symbol(
-        &mut self,
-        old_symbol: &str,
-        new_symbol: &str,
-        input_side: bool,
-        output_side: bool,
-    ) -> crate::error::Result<&mut HfstTransducer<B>> {
-        self.substitute_string(old_symbol, new_symbol, input_side, output_side)
-    }
-
-    pub fn substitute_symbol_pair(
-        &mut self,
-        old_symbol_pair: &StringPair,
-        new_symbol_pair: &StringPair,
-    ) -> crate::error::Result<&mut HfstTransducer<B>> {
-        self.substitute_pair_with_pair(old_symbol_pair, new_symbol_pair)
-    }
-
-    pub fn substitute_symbol_pair_with_set(
-        &mut self,
-        old_symbol_pair: &StringPair,
-        new_symbol_pair_set: &StringPairSet,
-    ) -> crate::error::Result<&mut HfstTransducer<B>> {
-        self.substitute_pair_with_pair_set(old_symbol_pair, new_symbol_pair_set)
-    }
-
-    pub fn substitute_symbol_pair_with_transducer(
-        &mut self,
-        symbol_pair: &StringPair,
-        transducer: &mut HfstTransducer<B>,
-        harmonize: bool,
-    ) -> crate::error::Result<&mut HfstTransducer<B>> {
-        self.substitute_pair_with_transducer(symbol_pair, transducer, harmonize)
-    }
-
-    pub fn substitute_symbols(
-        &mut self,
-        substitutions: &HfstSymbolSubstitutions,
-    ) -> crate::error::Result<&mut HfstTransducer<B>> {
-        self.substitute_symbol_substitutions(substitutions)
     }
 
     pub fn substitute_symbol_substitutions(
@@ -141,16 +99,9 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
     ) -> crate::error::Result<&mut HfstTransducer<B>> {
         let mut net = self.convert_to_basic_transducer()?;
 
-        net.substitute_symbols(substitutions);
+        net.substitute_symbol_substitutions(substitutions);
 
         self.convert_to_hfst_transducer(net)
-    }
-
-    pub fn substitute_symbol_pairs(
-        &mut self,
-        substitutions: &HfstSymbolPairSubstitutions,
-    ) -> crate::error::Result<&mut HfstTransducer<B>> {
-        self.substitute_symbol_pair_substitutions(substitutions)
     }
 
     pub fn substitute_symbol_pair_substitutions(
@@ -158,7 +109,7 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
         substitutions: &HfstSymbolPairSubstitutions,
     ) -> crate::error::Result<&mut HfstTransducer<B>> {
         let mut net = self.convert_to_basic_transducer()?;
-        net.substitute_symbol_pairs(substitutions);
+        net.substitute_symbol_pair_substitutions(substitutions);
         self.convert_to_hfst_transducer(net)
     }
 
@@ -198,28 +149,6 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
             .fst
             .substitute_string_transducer(symbol_pair.clone(), &transducer.fst);
         Ok(self)
-    }
-
-    pub fn substitute<S1: AsRef<str>, S2: AsRef<str>>(
-        &mut self,
-        old_symbol: S1,
-        new_symbol: S2,
-        input_side: bool,
-        output_side: bool,
-    ) -> crate::error::Result<&mut HfstTransducer<B>> {
-        self.substitute_string(
-            old_symbol.as_ref(),
-            new_symbol.as_ref(),
-            input_side,
-            output_side,
-        )
-    }
-
-    pub fn substitute_substitutions(
-        &mut self,
-        substitutions: &HfstSymbolSubstitutions,
-    ) -> crate::error::Result<&mut HfstTransducer<B>> {
-        self.substitute_symbol_substitutions(substitutions)
     }
 
     /// Apply a set of label substitutions by composition — the `--compose` path

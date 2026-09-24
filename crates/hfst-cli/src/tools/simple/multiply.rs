@@ -97,7 +97,7 @@ fn process_stream(
                 inputname, dupe_count, transducer_n
             ));
             for _ in 0..dupe_count {
-                if let Err(e) = outstream.redirect(&mut trans) {
+                if let Err(e) = outstream.write(&mut trans) {
                     eprintln!("hfst-multiply: {e}");
                     return 1;
                 }

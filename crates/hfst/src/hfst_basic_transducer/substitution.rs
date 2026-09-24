@@ -4,8 +4,8 @@
 use super::*;
 use crate::harmonize_unknown_and_identity_symbols::HarmonizeUnknownAndIdentitySymbols;
 use crate::hfst_symbol_defs::{
-    HfstSymbolPairSubstitutions, HfstSymbolSubstitutions, StringPair, StringPairSet, StringSet,
-    is_epsilon, is_identity, is_unknown,
+    HfstSymbolPairSubstitutions, HfstSymbolSubstitutions, StringPairSet, StringSet, is_epsilon,
+    is_identity, is_unknown,
 };
 
 // Where a substituting copy of a graph is inserted (origin/target state and
@@ -391,10 +391,6 @@ impl HfstBasicTransducer {
         Ok(self)
     }
 
-    pub fn substitute_symbols(&mut self, substitutions: &HfstSymbolSubstitutions) -> &mut Self {
-        self.substitute_symbol_substitutions(substitutions)
-    }
-
     /** @brief Substitute all transitions as defined in 'substitutions'. */
     pub fn substitute_symbol_substitutions(
         &mut self,
@@ -421,13 +417,6 @@ impl HfstBasicTransducer {
         self.substitute_in_place_numbers(&number_substitutions, no_substitution);
 
         self
-    }
-
-    pub fn substitute_symbol_pairs(
-        &mut self,
-        substitutions: &HfstSymbolPairSubstitutions,
-    ) -> &mut Self {
-        self.substitute_symbol_pair_substitutions(substitutions)
     }
 
     /** @brief Substitute transitions x:y -> X:Y as defined in 'substitutions'. */
@@ -779,31 +768,6 @@ impl HfstBasicTransducer {
         }
 
         self
-    }
-
-    // aliases
-    pub fn substitute_symbol_pair(
-        &mut self,
-        old_symbol_pair: &StringPair,
-        new_symbol_pair: &StringPair,
-    ) -> crate::error::Result<&mut Self> {
-        self.substitute_pair(old_symbol_pair, new_symbol_pair)
-    }
-
-    pub fn substitute_symbol_pair_with_set(
-        &mut self,
-        old_symbol_pair: &StringPair,
-        new_symbol_pair_set: &StringPairSet,
-    ) -> crate::error::Result<&mut Self> {
-        self.substitute_pair_with_set(old_symbol_pair, new_symbol_pair_set)
-    }
-
-    pub fn substitute_symbol_pair_with_transducer(
-        &mut self,
-        symbol_pair: &StringPair,
-        transducer: &HfstBasicTransducer,
-    ) -> crate::error::Result<&mut Self> {
-        self.substitute_pair_with_graph(symbol_pair, transducer)
     }
 
     // --- Insert freely ---

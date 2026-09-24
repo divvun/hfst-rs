@@ -163,7 +163,7 @@ fn virtual_xerox_preserves_collision_error() {
     let mut right = HfstTransducer::<StdVectorFst>::new_from_basic(&basic)
         .expect("valid reserved-symbol fixture");
     let overlay = left
-        .prepare_flag_diacritics_for_compose(&mut right)
+        .prepare_flag_diacritics_for_operation(&mut right)
         .expect("virtual flag preparation");
     let config = EngineConfig {
         xerox_composition: true,

@@ -1,6 +1,7 @@
 //! Special-symbol helpers: definition lookup, tags, context markers, and ranges.
 
 use super::*;
+use crate::convert_transducer_format::ConversionFunctions;
 
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.add-to-pmatch-symbols-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.add-to-pmatch-symbols-fn]
@@ -25,14 +26,6 @@ pub fn should_colourise() -> bool {
 pub fn warn(warning: String) {
     warn!("hfst-pmatch: {}", warning);
 }
-// [spec:hfst:def:pmatch-utils.hfst.pmatch.symbol-in-global-context-fn]
-// [spec:hfst:sem:pmatch-utils.hfst.pmatch.symbol-in-global-context-fn]
-pub fn symbol_in_global_context<B: AlgebraBackend + 'static>(
-    ctx: &mut PmatchEvalContext<B>,
-    sym: &str,
-) -> bool {
-    ctx.definitions_contains(sym)
-}
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.symbol-in-local-context-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.symbol-in-local-context-fn]
 pub fn symbol_in_local_context<B: AlgebraBackend + 'static>(
@@ -48,13 +41,13 @@ pub fn symbol_in_local_context<B: AlgebraBackend + 'static>(
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.symbol-from-global-context-fn]
 //
 // Returns the shared AST node bound to 'sym' in the global definitions. The
-// callers always guard with 'symbol_in_global_context', so the C++ NULL branch
+// callers always guard with 'definitions_contains', so the C++ NULL branch
 // is unreachable.
 pub fn symbol_from_global_context<B: AlgebraBackend + 'static>(
     ctx: &mut PmatchEvalContext<B>,
     sym: &str,
 ) -> Option<ObjRef<B>> {
-    if symbol_in_global_context(ctx, sym) {
+    if ctx.definitions_contains(sym) {
         ctx.definitions_get(sym)
     } else {
         None
@@ -335,7 +328,8 @@ pub fn parse_range<B: AlgebraBackend + 'static>(
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.get-size-info-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.get-size-info-fn]
 pub fn get_size_info<B: AlgebraBackend>(net: &HfstTransducer<B>) -> String {
-    let tmp = HfstBasicTransducer::from_transducer(net);
+    let tmp = ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(net)
+        .expect("hfst_transducer_to_hfst_basic_transducer on a valid transducer cannot fail");
     let mut states: usize = 0;
     let mut arcs: usize = 0;
     for state_it in tmp.states_and_transitions().iter() {

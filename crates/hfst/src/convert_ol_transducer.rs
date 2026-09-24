@@ -157,7 +157,7 @@ pub fn get_states_and_symbols(
         ));
         first_transition += 1; // there's a padding entry between states
         for tr_it in t
-            .transitions(state_number as u32)
+            .index(state_number as u32)
             .expect("state_number is within state_vector bounds")
             .iter()
         {
@@ -257,7 +257,7 @@ pub fn get_states_and_symbols(
         // collect into a temp so the immutable 't' borrow doesn't overlap the
         // mutable 'state_placeholders[state_number]' borrow
         let trs: Vec<HfstBasicTransition> = t
-            .transitions(state_number as u32)
+            .index(state_number as u32)
             .expect("state_number is within state_vector bounds")
             .clone();
         let coder = t.coder();
@@ -311,7 +311,7 @@ impl ConversionFunctions {
         // raw backend pointer; conversions are typed now
         // ([dec:hfst:monomorphic-backends]), so build a fresh weighted OL
         // backend via the basic transducer and return it owned.
-        let net = t.get_basic_transducer()?;
+        let net = t.to_basic()?;
         ConversionFunctions::hfst_basic_transducer_to_hfst_ol(&net, true, "", None)
     }
 

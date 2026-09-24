@@ -245,7 +245,7 @@ impl<B: AlgebraBackend> OtherSymbolTransducer<B> {
         }
         let mut t_copy = t.clone();
         self.transducer
-            .substitute_symbol_pair_with_transducer(p1, &mut t_copy.transducer, b)?;
+            .substitute_pair_with_transducer(p1, &mut t_copy.transducer, b)?;
         self.transducer.minimize()?;
         Ok(self)
     }

@@ -67,7 +67,7 @@ pub fn compile_generator_from_guesser<B: Backend>(
     // The C++ convert(TROPICAL) / invert / convert(HFST_OLW) round-trip is a
     // typed conversion pair now ([dec:hfst:monomorphic-backends]).
     let mut generator: HfstTransducer<hfst_openfst::StdVectorFst> =
-        HfstTransducer::new_from_basic(&guesser.get_basic_transducer()?)?;
+        HfstTransducer::new_from_basic(&guesser.to_basic()?)?;
     generator.invert()?;
     crate::convert_transducer_format::ConversionFunctions::hfst_ol_to_hfst_transducer(
         &crate::convert_transducer_format::ConversionFunctions::hfst_transducer_to_hfst_ol(
@@ -149,7 +149,7 @@ fn generate_word_forms(
     max_generated_forms: usize,
     generate_threshold: f32,
 ) -> crate::error::Result<StringVector> {
-    let word_forms = form_generator.lookup_string_vector(analysis, -1, 0.0)?;
+    let word_forms = form_generator.lookup_fd_string_vector(analysis, -1, 0.0)?;
 
     let mut result_set: StringVectorSet = StringVectorSet::new();
 

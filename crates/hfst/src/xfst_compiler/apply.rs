@@ -1,6 +1,7 @@
 //! Lookup: apply up, apply down and apply med, and lookup optimization.
 
 use super::*;
+use crate::convert_transducer_format::ConversionFunctions;
 
 static APPLY_END_STRING: &str = "<ctrl-d>";
 
@@ -211,8 +212,10 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             && work_type != ImplementationType::THFST_TYPE
         {
             fsm = Some(match &owned_t {
-                Some(c) => HfstBasicTransducer::from_transducer(c),
-                None => HfstBasicTransducer::from_transducer(self.net(top)),
+                Some(c) => ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(c)?,
+                None => {
+                    ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(self.net(top))?
+                }
             });
         }
 
@@ -257,8 +260,8 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         Ok(self)
     }
 
-    // (The former OL-only 'fn lookup' is gone: its 'lookup_fd_string' /
-    // 'lookup_string' surface exists only on the OL instantiations, which
+    // (The former OL-only 'fn lookup' is gone: its 'lookup_fd_string'
+    // surface exists only on the OL instantiations, which
     // 'B: AlgebraBackend' excludes; every apply path uses 'lookup_basic'.)
 
     fn lookup_basic(&mut self, line: &str, t: &HfstBasicTransducer) -> &mut Self {
@@ -342,7 +345,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         let mut copy = HfstTransducer::new_copy(self.net(t))?;
         // the user has been warned for possible slow performance
         copy.invert()?.minimize_with_config(&self.engine_config)?;
-        let fsm = HfstBasicTransducer::from_transducer(&copy);
+        let fsm = ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(&copy)?;
         self.lookup_basic(line, &fsm);
         Ok(self)
     }
@@ -362,7 +365,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         // excludes the OL backends, so this non-OL branch is always taken.
         // hfst_fprintf(warnstream_, "lookup might be slow, consider
         // 'convert net'\n");
-        let fsm = HfstBasicTransducer::from_transducer(self.net(t));
+        let fsm = ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(self.net(t))?;
         Ok(self.lookup_basic(line, &fsm))
     }
 

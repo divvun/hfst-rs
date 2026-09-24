@@ -204,7 +204,7 @@ pub(super) fn try_flag_overlay_product_owned(
     let t1 = std::sync::Arc::new(t1);
     let t2 = std::sync::Arc::new(t2);
     let mut artifact = if pruning == ProductPruning::LabelLookAhead {
-        let lazy = hfst_openfst::flag_overlay_compose::compose_lookahead_with_store(
+        let lazy = hfst_openfst::flag_overlay_compose::FlagOverlayLookAheadComposeFst::new_with_state_store(
             t1, t2, overlay, pair_store,
         )
         .map_err(|error| {
@@ -223,7 +223,7 @@ pub(super) fn try_flag_overlay_product_owned(
         drop(lazy);
         artifact
     } else {
-        let lazy = hfst_openfst::flag_overlay_compose::compose_flag_overlay_lazy_with_store(
+        let lazy = hfst_openfst::flag_overlay_compose::FlagOverlayComposeFst::new_with_state_store(
             t1, t2, overlay, pair_store,
         )
         .map_err(|error| crate::err!(Hfst, format!("OpenFst {operation} setup: {error}")))?;

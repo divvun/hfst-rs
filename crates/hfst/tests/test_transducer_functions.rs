@@ -24,6 +24,7 @@
 // default harmonize=true in the C++ header, mirrored by passing true.
 
 use hfst::backend::{AlgebraBackend, Backend};
+use hfst::convert_transducer_format::ConversionFunctions;
 use hfst::generate_model_forms::{compile_generator_from_guesser, is_guesser};
 use hfst::guessify_fst::{GuessDirection, affix_guessify};
 use hfst::hfst_basic_transducer::HfstBasicTransducer;
@@ -231,7 +232,7 @@ fn function_shuffle<B: AlgebraBackend>() -> Result<(), hfst::error::Error> {
 // original, checking the alphabet survives at each step. The C++ member
 // convert() is gone (monomorphic backends); each step is now the typed
 // conversion through the interchange transducer,
-// HfstTransducer::<Target>::from_basic(&t.to_basic()?). B is the home backend
+// HfstTransducer::<Target>::new_from_basic(&t.to_basic()?). B is the home backend
 // and Other the other in-scope backend, so with n = 2 in-scope types the C++
 // "for j in 0..=n: convert(types[(i + j) % n])" cycle is exactly three
 // conversions: home -> home -> other -> home.
@@ -242,13 +243,13 @@ fn function_convert<B: AlgebraBackend, Other: Backend>() -> Result<(), hfst::err
     let t2 = HfstTransducer::<B>::new_symbol_pair("foo", "bar")?;
 
     // j = 0: convert to the home type itself.
-    let t1 = HfstTransducer::<B>::from_basic(&t1.to_basic()?);
+    let t1 = HfstTransducer::<B>::new_from_basic(&t1.to_basic()?)?;
     assert!(compare_alphabets(&t1, &t2)?);
     // j = 1: convert to the other in-scope type.
-    let t1_other = HfstTransducer::<Other>::from_basic(&t1.to_basic()?);
+    let t1_other = HfstTransducer::<Other>::new_from_basic(&t1.to_basic()?)?;
     assert!(compare_alphabets(&t1_other, &t2)?);
     // j = 2 (= n): convert back to the home type.
-    let t1 = HfstTransducer::<B>::from_basic(&t1_other.to_basic()?);
+    let t1 = HfstTransducer::<B>::new_from_basic(&t1_other.to_basic()?)?;
     assert!(compare_alphabets(&t1, &t2)?);
 
     assert!(t1.compare_default(&t2)?);
@@ -330,7 +331,8 @@ fn function_extract_paths_lookup_nbest<B: AlgebraBackend>() -> Result<(), hfst::
 
     // Convert to optimized lookup format. For TROPICAL the weighted OL
     // type; the typed conversion goes through the interchange transducer.
-    let animals_ol = HfstTransducer::<Transducer<WeightedTables>>::from_basic(&animals.to_basic()?);
+    let animals_ol =
+        HfstTransducer::<Transducer<WeightedTables>>::new_from_basic(&animals.to_basic()?)?;
 
     // No limit to the number of lookup results.
     let limit: isize = -1;
@@ -345,10 +347,11 @@ fn function_extract_paths_lookup_nbest<B: AlgebraBackend>() -> Result<(), hfst::
     assert!(!animals_ol.is_lookup_infinitely_ambiguous_string_vector(&lookup_mouse));
     assert!(!animals_ol.is_lookup_infinitely_ambiguous_string_vector(&lookup_hippopotamus));
 
-    let results_cat = animals_ol.lookup_string_vector(&lookup_cat, limit, 0.0)?;
-    let results_dog = animals_ol.lookup_string_vector(&lookup_dog, limit, 0.0)?;
-    let results_mouse = animals_ol.lookup_string_vector(&lookup_mouse, limit, 0.0)?;
-    let results_hippopotamus = animals_ol.lookup_string_vector(&lookup_hippopotamus, limit, 0.0)?;
+    let results_cat = animals_ol.lookup_fd_string_vector(&lookup_cat, limit, 0.0)?;
+    let results_dog = animals_ol.lookup_fd_string_vector(&lookup_dog, limit, 0.0)?;
+    let results_mouse = animals_ol.lookup_fd_string_vector(&lookup_mouse, limit, 0.0)?;
+    let results_hippopotamus =
+        animals_ol.lookup_fd_string_vector(&lookup_hippopotamus, limit, 0.0)?;
 
     assert_eq!(results_cat.len(), 1);
     assert_eq!(results_dog.len(), 1);
@@ -547,8 +550,8 @@ fn function_push_weights() -> Result<(), hfst::error::Error> {
     t_initial_tr.push_weights(TO_INITIAL_STATE)?;
 
     // Convert back to HFST basic transducer.
-    let t_final = HfstBasicTransducer::from_transducer(&t_final_tr);
-    let t_initial = HfstBasicTransducer::from_transducer(&t_initial_tr);
+    let t_final = ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(&t_final_tr)?;
+    let t_initial = ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(&t_initial_tr)?;
 
     // Final weight (rounding can affect precision).
     assert!(0.79 < t_final.get_final_weight(1)? && t_final.get_final_weight(1)? < 0.81);
@@ -577,7 +580,7 @@ fn function_set_final_weights_transform_weights<B: AlgebraBackend>()
     tr.transform_weights(modify_weights)?;
     tr.push_weights(TO_FINAL_STATE)?;
 
-    let tc = HfstBasicTransducer::from_transducer(&tr);
+    let tc = ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(&tr)?;
     assert!(0.24 < tc.get_final_weight(1)? && tc.get_final_weight(1)? < 0.26);
     Ok(())
 }
@@ -672,9 +675,9 @@ fn function_alphabets<B: AlgebraBackend>() -> Result<(), hfst::error::Error> {
 
     let mut a2unk = HfstTransducer::<B>::new_symbol_pair("a", "@_UNKNOWN_SYMBOL_@")?;
     assert_eq!(a2unk.get_alphabet()?.len(), 4);
-    a2unk.insert_to_alphabet("FOO")?;
+    a2unk.insert_to_alphabet_string("FOO")?;
     assert_eq!(a2unk.get_alphabet()?.len(), 5);
-    a2unk.remove_from_alphabet("FOO")?;
+    a2unk.remove_from_alphabet_string("FOO")?;
     assert_eq!(a2unk.get_alphabet()?.len(), 4);
     let alpha: StringSet = a2unk.get_alphabet()?;
     assert!(!alpha.contains("FOO"));
@@ -882,7 +885,7 @@ fn kill_paths_facade_tropical() -> Result<(), hfst::error::Error> {
     let tx = HfstTransducer::<StdVectorFst>::new_symbol_pair("x", "x")?;
     t.disjunct(&tx, true)?;
 
-    let killed_basic = t.kill_paths("x").get_basic_transducer()?;
+    let killed_basic = t.kill_paths("x").to_basic()?;
 
     let mut has_a = false;
     for transitions in killed_basic.iter() {
@@ -949,7 +952,7 @@ fn substitute_by_composition_matches_direct() -> Result<(), hfst::error::Error> 
     };
 
     let mut direct = build()?;
-    direct.substitute("a", "b", true, true)?;
+    direct.substitute_string("a", "b", true, true)?;
     direct.minimize()?;
 
     let mut composed = build()?;
@@ -986,7 +989,8 @@ fn affix_guessify_adds_guess_state_with_identity_loop() -> Result<(), hfst::erro
 
     // Does any state carry an @_IDENTITY_SYMBOL_@ self-loop?
     let has_identity_self_loop = |t: &HfstTransducer<StdVectorFst>| -> bool {
-        let b = HfstBasicTransducer::from_transducer(t);
+        let b = ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(t)
+            .expect("hfst_transducer_to_hfst_basic_transducer on a valid transducer cannot fail");
         b.iter().enumerate().any(|(s, transitions)| {
             transitions.iter().any(|arc| {
                 arc.get_input_symbol(b.coder()) == internal_identity
@@ -996,11 +1000,13 @@ fn affix_guessify_adds_guess_state_with_identity_loop() -> Result<(), hfst::erro
     };
 
     let input = build_input()?;
-    let input_max = HfstBasicTransducer::from_transducer(&input).get_max_state();
+    let input_max =
+        ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(&input)?.get_max_state();
 
     for direction in [GuessDirection::GuessSuffix, GuessDirection::GuessPrefix] {
         let guesser = affix_guessify(&input, direction, 1.0)?;
-        let guesser_max = HfstBasicTransducer::from_transducer(&guesser).get_max_state();
+        let guesser_max = ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(&guesser)?
+            .get_max_state();
         assert_eq!(
             guesser_max,
             input_max + 1,
@@ -1036,7 +1042,7 @@ fn is_guesser_and_compile_generator_from_guesser() -> Result<(), hfst::error::Er
 
     // Converted back to tropical (typed conversion through the interchange
     // transducer), it equals the manually inverted guesser.
-    let generator_back = HfstTransducer::<StdVectorFst>::from_basic(&generator.to_basic()?);
+    let generator_back = HfstTransducer::<StdVectorFst>::new_from_basic(&generator.to_basic()?)?;
     let mut expected = guesser.clone();
     expected.invert()?;
     assert!(

@@ -770,21 +770,19 @@ impl<B: AlgebraBackend + FromAnyTransducer + 'static> PmatchCompiler<B> {
                     HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_identity)?;
                 anything.repeat_star()?;
                 let mut begins_and_ends_with_non_whitespace =
-                    HfstTransducer::new_from_transducer(&not_whitespace);
+                    HfstTransducer::new_copy(&not_whitespace)?;
                 begins_and_ends_with_non_whitespace.concatenate(&anything, true)?;
                 begins_and_ends_with_non_whitespace.concatenate(&not_whitespace, true)?;
                 begins_and_ends_with_non_whitespace
                     .compose(retval.get("TOP").expect("TOP defined above"), true)?;
-                let mut is_single_non_whitespace =
-                    HfstTransducer::new_from_transducer(&not_whitespace);
+                let mut is_single_non_whitespace = HfstTransducer::new_copy(&not_whitespace)?;
                 is_single_non_whitespace
                     .compose(retval.get("TOP").expect("TOP defined above"), true)?;
                 let empty = HfstTransducer::new();
                 if !begins_and_ends_with_non_whitespace.compare(&empty, true)?
                     || !is_single_non_whitespace.compare(&empty, true)?
                 {
-                    let mut whitespace_punct_context =
-                        HfstTransducer::new_from_transducer(&whitespace_acc);
+                    let mut whitespace_punct_context = HfstTransducer::new_copy(&whitespace_acc)?;
                     whitespace_punct_context.disjunct(&punct_acc, true)?;
                     whitespace_punct_context
                         .disjunct(&HfstTransducer::new_symbol("@BOUNDARY@")?, true)?;
@@ -874,7 +872,7 @@ pub fn build_archive_harmonizer<B: AlgebraBackend>(
         let string_set = t.get_alphabet()?;
         for sym in string_set.iter() {
             if !symbols_seen.contains(sym) {
-                harmonizer.insert_to_alphabet(sym)?;
+                harmonizer.insert_to_alphabet_string(sym)?;
                 symbols_seen.insert(sym.clone());
             }
         }
@@ -958,7 +956,7 @@ pub fn write_archive<B: AlgebraBackend>(
     for (k, v) in properties.iter() {
         output_tmp.set_property(k, v);
     }
-    outstream.redirect(&mut output_tmp)?;
+    outstream.write(&mut output_tmp)?;
 
     if verbose {
         let duration = (clock() - timer) as f64 / CLOCKS_PER_SEC as f64;
@@ -990,7 +988,7 @@ pub fn write_archive<B: AlgebraBackend>(
         let harmonized_tmp = harmonized_tmp?;
         let mut output_tmp = HfstTransducer::wrap(harmonized_tmp);
         output_tmp.set_name(key);
-        outstream.redirect(&mut output_tmp)?;
+        outstream.write(&mut output_tmp)?;
         if verbose {
             let duration = (clock() - timer) as f64 / CLOCKS_PER_SEC as f64;
             let _ = writeln!(msg, "converted in {:.2} seconds", duration);

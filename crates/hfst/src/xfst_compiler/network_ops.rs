@@ -2,6 +2,7 @@
 //! elimination, and the other commands that rewrite the top network.
 
 use super::*;
+use crate::convert_transducer_format::ConversionFunctions;
 
 impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     // @brief Sort top network of the stack
@@ -321,9 +322,10 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             self.xfst_lesser_fail();
             return Ok(self);
         };
-        let mut fsm = HfstBasicTransducer::from_transducer(self.net(topmost));
+        let mut fsm =
+            ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(self.net(topmost))?;
         fsm.complete()?;
-        let result: NetId = self.alloc_net(HfstTransducer::from_basic_transducer(&fsm));
+        let result: NetId = self.alloc_net(HfstTransducer::new_from_basic(&fsm)?);
         self.stack.pop();
         let cfg = self.engine_config;
         self.net_mut(result).optimize_with_config(&cfg)?;
@@ -357,7 +359,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         };
         let result: NetId = self.alloc_net(HfstTransducer::new());
         let mut label_set: BTreeSet<(Symbol, Symbol)> = BTreeSet::new();
-        let fsm = HfstBasicTransducer::from_transducer(self.net(topmost));
+        let fsm = ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(self.net(topmost))?;
         for it in fsm.iter() {
             for tr_it in it.iter() {
                 label_set.insert((
@@ -530,9 +532,9 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
                 // round-trip through the interchange transducer.
                 let tr = self.net_mut(result_op);
                 let mut tropical: HfstTransducer<hfst_openfst::StdVectorFst> =
-                    HfstTransducer::new_from_basic(&tr.get_basic_transducer()?)?;
+                    HfstTransducer::new_from_basic(&tr.to_basic()?)?;
                 tropical.prune()?;
-                *tr = HfstTransducer::new_from_basic(&tropical.get_basic_transducer()?)?;
+                *tr = HfstTransducer::new_from_basic(&tropical.to_basic()?)?;
             }
         }
 

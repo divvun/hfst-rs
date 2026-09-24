@@ -137,7 +137,7 @@ fn matrix<B: AlgebraBackend>() {
     let mut right =
         HfstTransducer::<B>::new_from_basic(&right).expect("valid alphabet right fixture");
     right
-        .insert_to_alphabet(ALPHABET_FLAG)
+        .insert_to_alphabet_string(ALPHABET_FLAG)
         .expect("insert alphabet-only right flag");
     assert_eager_virtual_transducers(left, right);
 }

@@ -12,7 +12,7 @@ use crate::hfst_commandline::{
     is_input_stream_in_ol_format, verbose_print,
 };
 use crate::hfst_tool_metadata::{hfst_get_name, hfst_set_formula_unary, hfst_set_name_unary};
-use hfst::hfst_basic_transducer::HfstBasicTransducer;
+use hfst::convert_transducer_format::ConversionFunctions;
 use hfst::hfst_data_types::ImplementationType;
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_output_stream::HfstOutputStream;
@@ -287,7 +287,7 @@ fn do_reweight<B: hfst::backend::AlgebraBackend>(
 ) -> hfst::error::Result<()> {
     // [spec:hfst:def:hfst-reweight.original-fn]
     // [spec:hfst:sem:hfst-reweight.original-fn]
-    let original = HfstBasicTransducer::from_transducer(trans);
+    let original = ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(trans)?;
     let replication = original.transform_weights(|w, i, o| reweight(options, w, i, o));
     *trans = HfstTransducer::new_from_basic(&replication)?;
     Ok(())
@@ -434,7 +434,7 @@ fn process_stream(
                     return 1;
                 }
             };
-            if let Err(e) = outstream.redirect(reduced) {
+            if let Err(e) = outstream.write(reduced) {
                 hfst_error(common, 1, 0, &format!("{e}"));
                 return 1;
             }

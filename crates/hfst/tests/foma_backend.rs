@@ -26,6 +26,7 @@ use foma_backend_common::{
 };
 use hfst::backend::{AlgebraBackend, Backend};
 use hfst::backend_foma::FomaTransducer;
+use hfst::convert_transducer_format::ConversionFunctions;
 use hfst::guessify_fst::{GuessDirection, affix_guessify};
 use hfst::hfst_basic_transducer::HfstBasicTransducer;
 use hfst::hfst_basic_transition::HfstBasicTransition;
@@ -304,11 +305,13 @@ fn facade_pairs<B: AlgebraBackend>(t: &HfstTransducer<B>) -> BTreeSet<(String, S
 }
 
 fn fac_foma(net: &HfstBasicTransducer) -> HfstTransducer<FomaTransducer> {
-    HfstTransducer::from_basic(net)
+    HfstTransducer::new_from_basic(net)
+        .expect("converting a basic transducer to an available backend type cannot fail")
 }
 
 fn fac_trop(net: &HfstBasicTransducer) -> HfstTransducer<StdVectorFst> {
-    HfstTransducer::from_basic(net)
+    HfstTransducer::new_from_basic(net)
+        .expect("converting a basic transducer to an available backend type cannot fail")
 }
 
 /// Assert foma and openfst recognize the same relation after the binary op, and
@@ -838,8 +841,8 @@ fn foma_substitutes_a_pair_with_transducer_like_tropical() {
 
 /// `hfst_xerox_rules` compiles a conditioned replace rule by bracketing the
 /// centre with temporary markers (`@LM@`, `@RM@`, `@LM2@`, `@RM2@`, `@1@`, ...),
-/// declaring them with `insert_to_alphabet_set` so `?` stops covering them, and
-/// stripping them again with `remove_from_alphabet_symbol` / `_set` once the
+/// declaring them with `insert_to_alphabet_string_set` so `?` stops covering
+/// them, and stripping them again with `remove_from_alphabet_string` / `_set` once the
 /// composition is done. Both halves are alphabet edits, so both were silent on
 /// the foma backend while `from_basic` rebuilt the sigma from arcs alone: the
 /// declarations never landed and the strip had nothing to strip.
@@ -956,9 +959,11 @@ fn affix_guesser_language_matches_tropical() -> Result<(), hfst::error::Error> {
         // foma is unweighted, so only the LANGUAGE can be compared: routing the
         // tropical guesser through the interchange graph into foma is what
         // drops the affix-length ranking weights without touching the relation.
-        let tropical_guesser: HfstTransducer<FomaTransducer> = HfstTransducer::from_basic(
-            &HfstBasicTransducer::from_transducer(&affix_guessify(&t, direction, 1.0)?),
-        );
+        let tropical_guesser: HfstTransducer<FomaTransducer> = HfstTransducer::new_from_basic(
+            &ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(&affix_guessify(
+                &t, direction, 1.0,
+            )?)?,
+        )?;
         assert!(
             foma_guesser.compare(&tropical_guesser, true)?,
             "affix guesser diverges between foma and tropical"

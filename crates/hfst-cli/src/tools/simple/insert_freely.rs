@@ -139,7 +139,7 @@ fn process_stream(
                 hfst_set_name_unary(&mut trans, &src, "insert-freely");
                 hfst_set_formula_unary(&mut trans, &src, "Id");
             }
-            if let Err(e) = outstream.redirect(&mut trans) {
+            if let Err(e) = outstream.write(&mut trans) {
                 error(common, 1, 0, &format!("{e}"));
                 return 1;
             }

@@ -22,7 +22,7 @@ fn roundtrip<B: AlgebraBackend + FromAnyTransducer>(label: &str) -> hfst::error:
     t.set_name("ab");
     {
         let mut out = HfstOutputStream::new_filename(&path, ty, true)?;
-        out.redirect(&mut t)?;
+        out.write(&mut t)?;
         out.close();
     }
 
@@ -77,7 +77,7 @@ fn roundtrip_hfst_ol(weighted: bool, label: &str) -> hfst::error::Result<()> {
         .to_string();
     {
         let mut out = HfstOutputStream::new_filename(&path, ty, true)?;
-        out.redirect(&mut t)?;
+        out.write(&mut t)?;
         out.close();
     }
 

@@ -7,6 +7,7 @@ use nfst_xre::{
 };
 
 use super::*;
+use crate::convert_transducer_format::ConversionFunctions;
 use crate::hfst_data_types::ImplementationType;
 
 // Ported from libhfst/src/parsers/xre_utils.cc and the Replace/Restriction/
@@ -33,7 +34,8 @@ fn zero_weights(_f: f32) -> f32 {
 // [spec:hfst:def:xre-utils.hfst.xre.has-non-identity-pairs-fn]
 // [spec:hfst:sem:xre-utils.hfst.xre.has-non-identity-pairs-fn]
 fn has_non_identity_pairs<B: crate::backend::Backend>(t: &HfstTransducer<B>) -> bool {
-    let basic = crate::hfst_basic_transducer::HfstBasicTransducer::from_transducer(t);
+    let basic = ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(t)
+        .expect("hfst_transducer_to_hfst_basic_transducer on a valid transducer cannot fail");
     let sps = basic.get_transition_pairs();
     for it in sps.iter() {
         if it.0 != it.1 {
@@ -653,7 +655,7 @@ impl<B: AlgebraBackend> XreCompiler<B> {
                 }
 
                 if !alpha3.contains(needle.as_str()) {
-                    tmp_tr.remove_from_alphabet(needle.as_str())?;
+                    tmp_tr.remove_from_alphabet_string(needle.as_str())?;
                 }
                 tmp_tr.optimize_with_config(&self.opt_cfg())?;
                 tmp_tr

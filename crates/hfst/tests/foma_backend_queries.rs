@@ -58,7 +58,7 @@ fn lookup_parity_vs_optimized_lookup() {
             <Transducer<WeightedTables> as Backend>::from_basic(net).expect("OL from_basic");
 
         let foma_out = lookup_outputs(&foma.lookup_fd_str(input, -1, 0.0));
-        let ol_out = lookup_outputs(&ol.lookup_fd_str(input, -1, 0.0));
+        let ol_out = lookup_outputs(&ol.lookup_fd_cstr(input, -1, 0.0));
         let want: BTreeSet<String> = expected.iter().map(|s| s.to_string()).collect();
 
         assert_eq!(foma_out, want, "foma lookup({input})");
@@ -75,7 +75,7 @@ fn lookup_parity_vs_optimized_lookup() {
         "foma lookup of unknown input is empty"
     );
     assert!(
-        ol.lookup_fd_str("zzz", -1, 0.0).is_empty(),
+        ol.lookup_fd_cstr("zzz", -1, 0.0).is_empty(),
         "OL lookup of unknown input is empty"
     );
 }

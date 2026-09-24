@@ -559,7 +559,7 @@ fn process_loop<B: hfst::backend::AlgebraBackend + hfst::hfst_transducer::FromAn
             let src = trans.clone();
             hfst_set_formula_unary(&mut trans, &src, &format!("{} ♲ {}", fl, tf));
         }
-        if let Err(e) = outstream.redirect(&mut trans) {
+        if let Err(e) = outstream.write(&mut trans) {
             hfst_error(common, 1, 0, &format!("{e}"));
             return 1;
         }

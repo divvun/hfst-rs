@@ -105,7 +105,7 @@ impl<B: AlgebraBackend> Rule<B> {
         )?;
         self.rule_transducer
             .apply_subst(cfg, TWOLC_IDENTITY, HFST_IDENTITY, true, true)?;
-        out.redirect(&mut self.rule_transducer.transducer)?;
+        out.write(&mut self.rule_transducer.transducer)?;
         Ok(())
     }
 

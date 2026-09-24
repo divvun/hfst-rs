@@ -1,6 +1,7 @@
 //! Path extraction and the optimized-lookup surface.
 
 use super::*;
+use crate::convert_transducer_format::ConversionFunctions;
 
 impl<B: Backend> HfstTransducer<B> {
     // -------------------------------------------------------------------------
@@ -106,7 +107,7 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
         }
 
         if !obey_flags {
-            let net = HfstBasicTransducer::from_transducer(self);
+            let net = ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(self)?;
             return Ok(net.longest_path_size());
         }
 
@@ -135,7 +136,7 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
             crate::bail!(TransducerIsCyclic);
         }
 
-        let net = HfstBasicTransducer::from_transducer(self);
+        let net = ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(self)?;
         let path_lengths = net.path_sizes();
         if path_lengths.is_empty() {
             return Ok(false);
@@ -201,30 +202,7 @@ macro_rules! ol_lookup_facade {
             /// working through a stream of inputs.
             // [spec:hfst:req:lookup-run-state.caller-owned-scratch]
             pub fn lookup_state(&self) -> LookupState<'_, $tables> {
-                self.fst.lookup_state()
-            }
-
-            // The lookup methods take '&self': the C++ exposed them as const
-            // and mutated the transducer through a const-cast, and the port
-            // long took '&mut self' because an out-of-alphabet input really did
-            // grow the alphabet. It no longer does — the admission lives in the
-            // run state — so shared access is the truth here.
-            pub fn lookup_string_vector(
-                &self,
-                s: &StringVector,
-                limit: isize,
-                time_cutoff: f64,
-            ) -> crate::error::Result<HfstOneLevelPaths> {
-                self.lookup_fd_string_vector(s, limit, time_cutoff)
-            }
-
-            pub fn lookup_string(
-                &self,
-                s: &str,
-                limit: isize,
-                time_cutoff: f64,
-            ) -> crate::error::Result<HfstOneLevelPaths> {
-                self.lookup_fd_string(s, limit, time_cutoff)
+                LookupState::new(&self.fst)
             }
 
             /// Whether `s` tokenizes into symbols this transducer already has.
@@ -235,6 +213,11 @@ macro_rules! ol_lookup_facade {
                 self.fst.can_tokenize(s)
             }
 
+            // The lookup methods take '&self': the C++ exposed them as const
+            // and mutated the transducer through a const-cast, and the port
+            // long took '&mut self' because an out-of-alphabet input really did
+            // grow the alphabet. It no longer does — the admission lives in the
+            // run state — so shared access is the truth here.
             // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.lookup-pairs-fn]
             // [spec:hfst:sem:hfst-transducer.hfst.hfst-transducer.lookup-pairs-fn]
             pub fn lookup_pairs(
@@ -263,7 +246,7 @@ macro_rules! ol_lookup_facade {
                 limit: isize,
                 time_cutoff: f64,
             ) -> crate::error::Result<HfstOneLevelPaths> {
-                Ok(self.fst.lookup_fd_str(s, limit, time_cutoff))
+                Ok(self.fst.lookup_fd_cstr(s, limit, time_cutoff))
             }
 
             // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.lookup-fn]
@@ -276,7 +259,7 @@ macro_rules! ol_lookup_facade {
                 time_cutoff: f64,
             ) -> crate::error::Result<HfstOneLevelPaths> {
                 let sv: StringVector = tok.tokenize_one_level(s, false);
-                self.lookup_string_vector(&sv, limit, time_cutoff)
+                self.lookup_fd_string_vector(&sv, limit, time_cutoff)
             }
 
             // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.is-lookup-infinitely-ambiguous-fn]

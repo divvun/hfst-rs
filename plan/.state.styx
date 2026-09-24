@@ -464,6 +464,7 @@ assertions (
     {id quality-burndown.split-cli-tools, kind @complete, author "brendan@necessary.nu", at 2026-09-24T16:28:13.629397Z}
     {id quality-burndown.split-parsers, kind @complete, author "brendan@necessary.nu", at 2026-09-24T16:31:53.675003Z}
     {id quality-burndown.split-lib-tests, kind @complete, author "brendan@necessary.nu", at 2026-09-24T16:32:30.852923Z}
+    {id quality-burndown.alias-sweep, kind @complete, author "brendan@necessary.nu", at 2026-09-24T17:14:45.498921Z}
 )
 
 impl_evidence (
