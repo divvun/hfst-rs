@@ -453,6 +453,7 @@ assertions (
     {id quality-burndown.cli-api, kind @complete, author "brendan@necessary.nu", at 2026-09-24T15:41:51.262071Z}
     {id quality-burndown.lib-api, kind @complete, author "brendan@necessary.nu", at 2026-09-24T15:54:02.502712Z}
     {id quality-burndown.split-hfst-transducer, kind @complete, author "brendan@necessary.nu", at 2026-09-24T16:10:35.025993Z}
+    {id quality-burndown.split-basic-transducer, kind @complete, author "brendan@necessary.nu", at 2026-09-24T16:13:39.020773Z}
 )
 
 impl_evidence (

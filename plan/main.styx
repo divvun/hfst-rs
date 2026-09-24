@@ -7216,6 +7216,15 @@ children (
                 id quality-burndown.split-basic-transducer
                 title "Split hfst_basic_transducer.rs (3863 lines, 166 fns) into submodules"
                 deps (quality-burndown.lib-api)
+                sealed true
+                log (
+                    {
+                        at 2026-09-24T16:13:39.020773Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Done (nplan complete)"
+                    }
+                )
             }
 
             {
