@@ -7354,6 +7354,15 @@ children (
                 id quality-burndown.split-lib-tests
                 title "Split tests/test_xerox_rules.rs (97 fns, 5x duplicated block) and tests/foma_backend.rs (57 fns)"
                 deps (quality-burndown.lib-api)
+                sealed true
+                log (
+                    {
+                        at 2026-09-24T16:32:30.852923Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Done (nplan complete)"
+                    }
+                )
             }
 
             {
