@@ -58,3 +58,41 @@ fn silent_completion_writes_same_archive() {
     let stderr = String::from_utf8_lossy(&silent.stderr);
     assert!(!stderr.contains("is not declared"), "{stderr}");
 }
+
+#[test]
+fn set_centre_naming_no_pair_fails_at_rule() {
+    let source = concat!(
+        "Alphabet a b c a:b ;\n",
+        "Sets\n",
+        "Cns = a b ;\n",
+        "Rules\n",
+        "\"R1\"\n",
+        "Cns:0 <=> _ c ;\n",
+    );
+    let output = run_twolc(&[], source);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(!output.status.success(), "{stderr}");
+    assert!(output.stdout.is_empty(), "no archive for a failed grammar");
+    assert!(stderr.contains("The pair set Cns:0 is empty."), "{stderr}");
+    assert!(stderr.contains(":5:1"), "{stderr}");
+}
+
+// [spec:hfst:sem:string-manipulation.unescape-fn/test]
+#[test]
+fn rule_names_are_stored_unescaped() {
+    let source = concat!(
+        "Alphabet a b %{p1%}:0 ;\n",
+        "Rules\n",
+        "\"%{p1%}:0 100%%\"\n",
+        "%{p1%}:0 <=> _ a ;\n",
+    );
+    let output = run_twolc(&[], source);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let archive = String::from_utf8_lossy(&output.stdout);
+    assert!(archive.contains("\"{p1}:0 100%\""), "{archive}");
+    assert!(!archive.contains("%{p1%}"), "{archive}");
+}

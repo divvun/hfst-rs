@@ -449,6 +449,7 @@ assertions (
     {id foma-alphabet-specials, kind @complete, author "brendan@necessary.nu", at 2026-09-15T12:42:55.562522Z}
     {id cli-invocation-timing, kind @complete, author "brendan@necessary.nu", at 2026-09-15T16:33:21.133561Z}
     {id cli-timing-as-info, kind @complete, author "brendan@necessary.nu", at 2026-09-15T17:03:30.995247Z}
+    {id upstream-bugs.t3.slh-set-centre, kind @complete, author "brendan@necessary.nu", at 2026-09-24T14:56:25.737395Z}
 )
 
 impl_evidence (

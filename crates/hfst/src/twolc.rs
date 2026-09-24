@@ -3684,7 +3684,9 @@ impl<B: AlgebraBackend> TwolcCompiler<B> {
         // '__HFST_TWOLC_RULE_NAME' marker that 'RuleSymbolVector' rewrote with
         // the 'SUBCASE:'/'var=value' markers; here the rule's own name plays
         // that role and the marker rewrite is applied directly.
-        let name = build_rule_name(&rule.name, vvm);
+        // The parser keeps the name's escapes; upstream's first pass unescapes
+        // it like any other token, so '"%{p1%}:0"' is stored as '"{p1}:0"'.
+        let name = build_rule_name(&crate::string_manipulation::unescape(&rule.name)?, vvm);
 
         let center = self.eval_center(cfg, &rule.center, vvm)?;
         let contexts =
@@ -3762,7 +3764,24 @@ impl<B: AlgebraBackend> TwolcCompiler<B> {
                 };
                 let mut spv: SymbolPairVector = Vec::new();
                 for p in pairs {
-                    spv.push((side(&p.upper), side(&p.lower)));
+                    let (up, lo) = (side(&p.upper), side(&p.lower));
+                    // A center side may name a set, as in 'Cns:0 <=> ...'.
+                    // Upstream's CENTER_PAIR runs every center through
+                    // 'Alphabet::get_symbol_pair_vector', so a set reaches rule
+                    // construction already expanded into its licensed pairs,
+                    // one subrule each.
+                    if self.sets.contains_key(up.as_str()) || self.sets.contains_key(lo.as_str()) {
+                        let expanded = self.licensed_pairs(cfg, &up, &lo);
+                        if expanded.is_empty() {
+                            // Upstream silently drops such a rule. It cannot
+                            // mean anything, so it is an error here.
+                            self.empty_pair_set_error(&up, &lo);
+                            crate::bail!(EmptySymbolPairSet);
+                        }
+                        spv.extend(expanded);
+                    } else {
+                        spv.push((up, lo));
+                    }
                 }
                 CenterEval::Pairs(spv)
             }
@@ -3862,30 +3881,45 @@ impl<B: AlgebraBackend> TwolcCompiler<B> {
             return OtherSymbolTransducer::new_pair(cfg, input, input);
         }
         let mut pair_transducer = OtherSymbolTransducer::new(cfg)?;
-        for x in self.set_of(input) {
-            for y in self.set_of(output) {
-                if self.is_pair(cfg, &x, &y) {
-                    let pair = OtherSymbolTransducer::new_pair(cfg, &x, &y)?;
-                    pair_transducer.disjunct(cfg, &pair)?;
-                }
-            }
+        for (x, y) in self.licensed_pairs(cfg, input, output) {
+            let pair = OtherSymbolTransducer::new_pair(cfg, &x, &y)?;
+            pair_transducer.disjunct(cfg, &pair)?;
         }
         if pair_transducer.is_empty() {
-            if input == output {
-                self.diag_error(&format!(
-                    "The pair set {} is empty.",
-                    Rule::<B>::get_print_name(input)
-                ));
-            } else {
-                self.diag_error(&format!(
-                    "The pair set {}:{} is empty.",
-                    Rule::<B>::get_print_name(input),
-                    Rule::<B>::get_print_name(output)
-                ));
-            }
+            self.empty_pair_set_error(input, output);
             crate::bail!(EmptySymbolPairSet);
         }
         Ok(pair_transducer)
+    }
+
+    /// The concrete pairs 'input:output' denotes: every licensed 'x:y' with x
+    /// in the set named by 'input' and y in the set named by 'output'. A side
+    /// naming no set is its own singleton set.
+    fn licensed_pairs(&self, cfg: &OstConfig, input: &str, output: &str) -> SymbolPairVector {
+        let mut pairs = SymbolPairVector::new();
+        for x in self.set_of(input) {
+            for y in self.set_of(output) {
+                if self.is_pair(cfg, &x, &y) {
+                    pairs.push((x.clone(), y));
+                }
+            }
+        }
+        pairs
+    }
+
+    fn empty_pair_set_error(&self, input: &str, output: &str) {
+        if input == output {
+            self.diag_error(&format!(
+                "The pair set {} is empty.",
+                Rule::<B>::get_print_name(input)
+            ));
+        } else {
+            self.diag_error(&format!(
+                "The pair set {}:{} is empty.",
+                Rule::<B>::get_print_name(input),
+                Rule::<B>::get_print_name(output)
+            ));
+        }
     }
 
     /// htwolcpre3-parser's 'PAIR' production special-cases a pair whose INPUT

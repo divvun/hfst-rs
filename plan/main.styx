@@ -3373,6 +3373,42 @@ children (
                             }
                         )
                     }
+
+                    {
+                        id upstream-bugs.t3.slh-set-centre
+                        title "lang-slh: a twolc rule centre naming a set (CnsNoGlotOrD:0 <=> ...) must expand to its declared pairs; an empty expansion is an error; rule names are stored unescaped"
+                        kind @fix
+                        sealed true
+                        log (
+                            {
+                                at 2026-09-24T14:54:12.726325Z
+                                author "brendan@necessary.nu"
+                                kind @decision
+                                text "Operator ruling 2026-09-24: a set-named centre whose expansion is empty (lang-slh phonology.twolc:655, CnsNoGlotOrD:0 with no b:0 c:0 ... declared) is a hard error, even though it makes lang-slh unbuildable. Upstream C++ silently compiles the rule to nothing (its per-pair loop runs zero times; verified: the rule is absent from the C++ archive). Quote: \"making lang-slh unbuildable was the correct path, since the rule is literally uncompilable.\""
+                            }
+
+                            {
+                                at 2026-09-24T14:54:12.783543Z
+                                author "brendan@necessary.nu"
+                                kind @note
+                                text "Fix: eval_center expands a set-named side through licensed_pairs (the port of Alphabet::get_symbol_pair_vector), giving one ' CENTER=in:out' subrule per pair like upstream. Before, the set name reached new_pair as a literal and failed with 'Unknown pair: CnsNoGlotOrD __HFST_TWOLC_0'. Deliberate divergence: upstream keeps only the first expansion of a set in a non-first union position (RULE_CENTER UNION CENTER_PAIR pushes *$3->begin()); the port keeps all. Also: rule names now go through unescape like upstream's pass 1, so '\"%{p1%}:0\"' is stored as '\"{p1}:0\"'. Oracle (C++ ~/git/necessary/hfst-cpp/dist/bin/hfst-twolc): lang-slh with the rule's pairs declared compiles; lang-olo 84/84 and lang-sms 119/119 rules equivalent to C++ with names and order now identical (both had escaped names before); 16 other local lang-* grammars byte-identical before/after, so none uses the union quirk. Workspace 592/592. Unrelated, not chased: olo/sms archives are 3%/7% larger than C++, unchanged by this fix."
+                            }
+
+                            {
+                                at 2026-09-24T14:56:06.810799Z
+                                author "brendan@necessary.nu"
+                                kind @note
+                                text "Correction to the previous note: its \"lang-slh with the rule's pairs declared compiles\" was written before it was checked. Now verified: a scratch copy of lang-slh 515e81a with all 50 CnsNoGlotOrD members declared as X:0 in the Alphabet compiles with both Rust and C++, and hfst-compare reports 76/76 stored rules equivalent (the 29 other rules plus one CENTER=x:0 subrule per declared pair). The lang-slh repo itself is untouched."
+                            }
+
+                            {
+                                at 2026-09-24T14:56:25.737395Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Todo → Done (nplan complete)"
+                            }
+                        )
+                    }
                 )
             }
 

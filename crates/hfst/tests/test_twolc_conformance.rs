@@ -410,3 +410,40 @@ fn overlapping_sets_list_a_symbol_once() {
                a:b <=> Both: _ ;\n";
     compile(src).expect("overlapping nested sets must compile");
 }
+
+// ─────────────────────── set-named rule centres ───────────────────────
+// A rule centre may name a set, as in lang-slh's `CnsNoGlotOrD:0 <=> ...`.
+// Upstream expands the set into its declared pairs and compiles one subrule
+// per pair. The port passed the set name on as a literal symbol and failed
+// with "Unknown pair: CnsNoGlotOrD 0".
+
+// [spec:hfst:sem:alphabet.alphabet.get-symbol-pair-vector-fn/test]
+#[test]
+fn set_named_centre_expands_to_declared_pairs() {
+    let _g = serialized();
+    let head = "Alphabet a b c a:0 b:0 ;\nSets\nCns = a b ;\nRules\n";
+    let with_set = compile(&format!("{head}\"R1\"\nCns:0 <=> _ c ;\n"))
+        .expect("a set-named centre must compile");
+    let spelled_out = compile(&format!(
+        "{head}\"R1\"\na:0 <=> _ c ;\n\"R2\"\nb:0 <=> _ c ;\n"
+    ))
+    .expect("the spelled-out rules compile");
+    assert!(
+        with_set
+            .compare_default(&spelled_out)
+            .expect("compare set centre and spelled-out rules"),
+        "Cns:0 must mean a:0 and b:0 under the same contexts"
+    );
+}
+
+#[test]
+fn set_centre_naming_no_pair_is_an_error() {
+    let _g = serialized();
+    // Neither a:0 nor b:0 is declared, so Cns:0 names no pair. Upstream drops
+    // the rule without a word; the port refuses the grammar.
+    let src = "Alphabet a b c a:b ;\nSets\nCns = a b ;\nRules\n\"R1\"\nCns:0 <=> _ c ;\n";
+    assert!(
+        compile(src).is_none(),
+        "a set centre that names no declared pair must fail the grammar"
+    );
+}
