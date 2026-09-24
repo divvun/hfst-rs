@@ -7423,4 +7423,25 @@ children (
             }
         )
     }
+
+    {
+        id nuke-cpp-isms
+        title "Remove C++-isms: OpenFst-named rustfst wrappers that panic on error (call rustfst, propagate with ?), tropical set_final_weight/is_final expect-forwards, pmatch pmb_* builders duplicating PmatchX::new, SUPPORTS_FLAG_OVERLAY legacy alias const"
+        kind @refactor
+    }
+
+    {
+        id twolc-pointed-diagnostics
+        title "twolc diagnostics point at the piece at fault, say why, and hint the fix: empty pair sets (centre and context) label the pair and the set definition with the pairs to declare; every bad rule reported in one run; did-you-mean for undeclared symbols; -q never hides errors; no colour codes in redirected logs"
+        kind @feat
+        sealed true
+        log (
+            {
+                at 2026-09-24T18:10:42.944198Z
+                author "brendan@necessary.nu"
+                kind @status
+                text "Todo → Done (nplan complete)"
+            }
+        )
+    }
 )

@@ -325,16 +325,16 @@ pub struct TwolcCompiler<B: AlgebraBackend> {
     pub(crate) source: String,
     /// Label shown in diagnostics for `source` (a file name, or `"<twolc>"`).
     pub(crate) source_name: String,
-    /// Byte span in `source` of the top-level item currently being walked,
-    /// updated as `build_grammar` visits each spanned AST node; the anchor for
-    /// `diag_error`/`diag_warning`.
-    pub(crate) current_span: std::ops::Range<usize>,
+    /// Where each set's name is written in the `Sets` section, so a diagnostic
+    /// about a set can point at its definition.
+    pub(crate) set_spans: BTreeMap<Symbol, std::ops::Range<usize>>,
 }
 
 // (followed by the full ~190-line doc roster of method/helper signatures with
 //  their spec def ids — see the file.)
 
 mod compiler;
+mod diagnostics;
 mod eval;
 mod grammar;
 mod other_symbol_apply;
@@ -343,5 +343,6 @@ mod rule_variables;
 mod rules;
 
 pub use compiler::{CenterEval, ConcreteRule};
+use diagnostics::{PairSite, PairUse};
 pub use rule_variables::RuleVariablesConstIterator;
 pub use rules::{get_wb_fst, replace_substr, unescape_name, wbize};

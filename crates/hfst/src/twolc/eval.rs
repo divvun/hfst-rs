@@ -29,7 +29,7 @@ impl<B: AlgebraBackend> TwolcCompiler<B> {
                 };
                 let mut spv: SymbolPairVector = Vec::new();
                 for p in pairs {
-                    let (up, lo) = (side(&p.upper), side(&p.lower));
+                    let (up, lo) = (side(&p.value.upper.value), side(&p.value.lower.value));
                     // A center side may name a set, as in 'Cns:0 <=> ...'.
                     // Upstream's CENTER_PAIR runs every center through
                     // 'Alphabet::get_symbol_pair_vector', so a set reaches rule
@@ -40,7 +40,12 @@ impl<B: AlgebraBackend> TwolcCompiler<B> {
                         if expanded.is_empty() {
                             // Upstream silently drops such a rule. It cannot
                             // mean anything, so it is an error here.
-                            self.empty_pair_set_error(&up, &lo);
+                            let site = PairSite {
+                                pair: p.span.range.clone(),
+                                upper: p.value.upper.span.range.clone(),
+                                lower: p.value.lower.span.range.clone(),
+                            };
+                            self.report_empty_pair_set(cfg, &up, &lo, &site, PairUse::Centre);
                             crate::bail!(EmptySymbolPairSet);
                         }
                         spv.extend(expanded);
@@ -136,12 +141,11 @@ impl<B: AlgebraBackend> TwolcCompiler<B> {
         cfg: &OstConfig,
         input: &str,
         output: &str,
+        site: &PairSite,
     ) -> crate::error::Result<OtherSymbolTransducer<B>> {
         if cfg.diacritics.contains(input) {
             if input != output && output != TWOLC_EPSILON && output != TWOLC_UNKNOWN {
-                self.diag_warning(&format!(
-                    "Diacritic {input} in pair {input}:{output} will correspond 0."
-                ));
+                self.report_diacritic_pair(input, output, site);
             }
             return OtherSymbolTransducer::new_pair(cfg, input, input);
         }
@@ -151,7 +155,7 @@ impl<B: AlgebraBackend> TwolcCompiler<B> {
             pair_transducer.disjunct(cfg, &pair)?;
         }
         if pair_transducer.is_empty() {
-            self.empty_pair_set_error(input, output);
+            self.report_empty_pair_set(cfg, input, output, site, PairUse::Context);
             crate::bail!(EmptySymbolPairSet);
         }
         Ok(pair_transducer)
@@ -172,21 +176,6 @@ impl<B: AlgebraBackend> TwolcCompiler<B> {
         pairs
     }
 
-    fn empty_pair_set_error(&self, input: &str, output: &str) {
-        if input == output {
-            self.diag_error(&format!(
-                "The pair set {} is empty.",
-                Rule::<B>::get_print_name(input)
-            ));
-        } else {
-            self.diag_error(&format!(
-                "The pair set {}:{} is empty.",
-                Rule::<B>::get_print_name(input),
-                Rule::<B>::get_print_name(output)
-            ));
-        }
-    }
-
     /// htwolcpre3-parser's 'PAIR' production special-cases a pair whose INPUT
     /// side is the grammar's bare '#': it denotes BOTH the absolute word
     /// boundary and the relative one — '[.#.:.#. | #:output]'. The absolute
@@ -204,13 +193,14 @@ impl<B: AlgebraBackend> TwolcCompiler<B> {
         &mut self,
         cfg: &OstConfig,
         output: &str,
+        site: &PairSite,
     ) -> crate::error::Result<OtherSymbolTransducer<B>> {
         // C++: 'alt_wb = ("#", $3 == __HFST_TWOLC_# ? "#" : $3)' — a bare-'#'
         // output side realizes as the relative boundary symbol itself.
         let output = if output == TWOLC_HASH { "#" } else { output };
         let mut wb = OtherSymbolTransducer::new_pair(cfg, "__HFST_TWOLC_.#.", "__HFST_TWOLC_.#.")?;
         let alt = if self.sets.contains_key(output) {
-            self.pair_transducer(cfg, "#", output)?
+            self.pair_transducer(cfg, "#", output, site)?
         } else {
             OtherSymbolTransducer::new_pair(cfg, "#", output)?
         };
@@ -246,12 +236,13 @@ impl<B: AlgebraBackend> TwolcCompiler<B> {
                 // symbol naming a set expands to the declared pairs of the
                 // 'sym:sym' pair set (the 'Alphabet::compute' semantics);
                 // otherwise it is a literal 'sym:sym' pair.
+                let site = PairSite::whole(&e.span.range);
                 if let Some(def) = self.definitions.get(sym.as_str()) {
                     clone_ost(def)
                 } else if self.sets.contains_key(sym.as_str()) {
-                    self.pair_transducer(cfg, &sym, &sym)?
+                    self.pair_transducer(cfg, &sym, &sym, &site)?
                 } else if sym.as_str() == TWOLC_HASH {
-                    self.boundary_pair_transducer(cfg, TWOLC_HASH)?
+                    self.boundary_pair_transducer(cfg, TWOLC_HASH, &site)?
                 } else {
                     OtherSymbolTransducer::new_symbol(cfg, &sym)?
                 }
@@ -259,13 +250,18 @@ impl<B: AlgebraBackend> TwolcCompiler<B> {
             TwolcRegex::Pair { upper, lower } => {
                 let up = symbol_of(upper, vvm);
                 let lo = symbol_of(lower, vvm);
+                let site = PairSite {
+                    pair: e.span.range.clone(),
+                    upper: upper.span.range.clone(),
+                    lower: lower.span.range.clone(),
+                };
                 if up.as_str() == TWOLC_HASH {
                     // C++ dispatches on the '#' input side before any set
                     // handling, so '#:Set' also takes the boundary split.
-                    self.boundary_pair_transducer(cfg, lo.as_str())?
+                    self.boundary_pair_transducer(cfg, lo.as_str(), &site)?
                 } else if self.sets.contains_key(up.as_str()) || self.sets.contains_key(lo.as_str())
                 {
-                    self.pair_transducer(cfg, &up, &lo)?
+                    self.pair_transducer(cfg, &up, &lo, &site)?
                 } else {
                     OtherSymbolTransducer::new_pair(cfg, &up, &lo)?
                 }

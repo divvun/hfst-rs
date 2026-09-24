@@ -60,7 +60,7 @@ impl<B: AlgebraBackend> TwolcCompiler<B> {
             definitions: BTreeMap::new(),
             source: String::new(),
             source_name: String::from("<twolc>"),
-            current_span: 0..0,
+            set_spans: BTreeMap::new(),
         }
     }
 
@@ -70,28 +70,6 @@ impl<B: AlgebraBackend> TwolcCompiler<B> {
     pub fn set_source_name(&mut self, name: &str) -> &mut Self {
         self.source_name = name.to_string();
         self
-    }
-
-    /// Render a source-anchored error at the current top-level item's span.
-    pub(super) fn diag_error(&self, msg: &str) {
-        crate::diag::emit(
-            &self.source_name,
-            &self.source,
-            self.current_span.clone(),
-            crate::diag::Severity::Error,
-            msg,
-        );
-    }
-
-    /// Render a source-anchored warning at the current top-level item's span.
-    pub(super) fn diag_warning(&self, msg: &str) {
-        crate::diag::emit(
-            &self.source_name,
-            &self.source,
-            self.current_span.clone(),
-            crate::diag::Severity::Warning,
-            msg,
-        );
     }
 
     // [spec:hfst:def:twolc-compiler.hfst.twolc.twolc-compiler.compile-fn]
@@ -137,12 +115,7 @@ impl<B: AlgebraBackend> TwolcCompiler<B> {
         let file = match nfst_twolc::parse(input) {
             Ok(f) => f,
             Err(e) => {
-                if !self.silent {
-                    for d in &e.diagnostics {
-                        self.current_span = d.span.range.clone();
-                        self.diag_error(&d.message);
-                    }
-                }
+                self.report_parse_errors(&e.diagnostics);
                 return None;
             }
         };
@@ -169,9 +142,16 @@ impl<B: AlgebraBackend> TwolcCompiler<B> {
         self.register_definitions(&cfg, &twolc_file.definitions)
             .ok()?;
 
+        // Keep going after a bad rule, so one run reports every rule at fault.
+        let mut failed = false;
         for rule in twolc_file.rules.iter() {
-            self.current_span = rule.span.range.clone();
-            self.drive_rule(&cfg, &rule.value, &mut grammar).ok()?;
+            if let Err(e) = self.drive_rule(&cfg, &rule.value, &mut grammar) {
+                self.report_failure(&e, &rule.span.range, "This rule");
+                failed = true;
+            }
+        }
+        if failed {
+            return None;
         }
 
         Some((cfg, grammar))
@@ -202,19 +182,15 @@ impl<B: AlgebraBackend> TwolcCompiler<B> {
         // semantics so existing grammars such as lang-fao still compile.
         let declared = self.collect_declared_symbols(twolc_file);
         let undeclared = self.collect_grammar_pairs(twolc_file, &declared, &mut symbol_pairs)?;
-        if !self.silent {
-            for (symbol, span) in undeclared {
-                crate::diag::emit(
-                    &self.source_name,
-                    &self.source,
-                    span,
-                    crate::diag::Severity::Warning,
-                    &format!(
-                        "Symbol '{}' is not declared in the Alphabet; treating it as a literal symbol.",
-                        Rule::<B>::get_print_name(symbol.as_str())
-                    ),
-                );
-            }
+        let definitions: BTreeSet<Symbol> = twolc_file
+            .definitions
+            .iter()
+            .map(|d| Symbol::new(d.value.name.as_str()))
+            .collect();
+        let mut in_source_order: Vec<_> = undeclared.into_iter().collect();
+        in_source_order.sort_by_key(|(_, span)| span.start);
+        for (symbol, span) in in_source_order {
+            self.report_undeclared_symbol(symbol.as_str(), span, &declared, &definitions);
         }
         symbol_pairs.insert((
             Symbol::new_static("__HFST_TWOLC_.#."),
@@ -242,9 +218,9 @@ impl<B: AlgebraBackend> TwolcCompiler<B> {
             declared.insert(declared_symbol(&d.value));
         }
         for s in &file.sets {
-            declared.insert(Symbol::new(s.value.name.as_str()));
+            declared.insert(Symbol::new(s.value.name.value.as_str()));
             for m in &s.value.members {
-                declared.insert(declared_symbol(m));
+                declared.insert(declared_symbol(&m.value));
             }
         }
         for d in &file.definitions {
@@ -310,7 +286,7 @@ impl<B: AlgebraBackend> TwolcCompiler<B> {
                             // internal '__HFST_TWOLC_?' side, and as the regex
                             // walk below skips a 'TwolcRegex::Any' operand.
                             let (CenterSide::Symbol(u), CenterSide::Symbol(l)) =
-                                (&p.upper, &p.lower)
+                                (&p.value.upper.value, &p.value.lower.value)
                             else {
                                 continue;
                             };
@@ -318,7 +294,7 @@ impl<B: AlgebraBackend> TwolcCompiler<B> {
                             let lower = substitute_symbol(l, &vvm);
                             self.insert_grammar_pair(
                                 (upper, lower),
-                                &rule.span.range,
+                                &p.span.range,
                                 declared,
                                 pairs,
                                 &mut undeclared,
@@ -494,15 +470,18 @@ impl<B: AlgebraBackend> TwolcCompiler<B> {
             let mut members: Vec<Symbol> = Vec::new();
             for m in &s.value.members {
                 // Self-reference would splice in the partially built list.
-                match self.sets.get(m.as_str()) {
-                    Some(n) if m.as_str() != s.value.name => members.extend(n.iter().cloned()),
-                    _ => members.push(Symbol::new(m)),
+                match self.sets.get(m.value.as_str()) {
+                    Some(n) if m.value != s.value.name.value => members.extend(n.iter().cloned()),
+                    _ => members.push(Symbol::new(&m.value)),
                 }
             }
             // A symbol reachable through two sets is listed once.
             let mut seen = std::collections::HashSet::new();
             members.retain(|sym| seen.insert(sym.clone()));
-            self.sets.insert(s.value.name.clone(), members);
+            let name = &s.value.name;
+            self.set_spans
+                .insert(name.value.clone(), name.span.range.clone());
+            self.sets.insert(name.value.clone(), members);
         }
     }
 
@@ -514,12 +493,19 @@ impl<B: AlgebraBackend> TwolcCompiler<B> {
         cfg: &OstConfig,
         defs: &[Spanned<TwolcDefinition>],
     ) -> crate::error::Result<()> {
+        let mut first_error = None;
         for d in defs {
-            self.current_span = d.span.range.clone();
-            let t = self.eval_regex(cfg, &d.value.body)?;
-            self.definitions.insert(d.value.name.clone(), t);
+            match self.eval_regex(cfg, &d.value.body) {
+                Ok(t) => {
+                    self.definitions.insert(d.value.name.clone(), t);
+                }
+                Err(e) => {
+                    self.report_failure(&e, &d.span.range, "This definition");
+                    first_error.get_or_insert(e);
+                }
+            }
         }
-        Ok(())
+        first_error.map_or(Ok(()), Err)
     }
 
     /// Drive one ['TwolcRule']: expand its 'where'-variables into concrete
@@ -648,7 +634,7 @@ impl<B: AlgebraBackend> TwolcCompiler<B> {
         let mut rv = RuleVariables::new();
         for block in blocks {
             for assignment in block.assignments.iter() {
-                rv.set_variable(&assignment.name);
+                rv.set_variable(&assignment.name.value);
                 // A value that names a Set expands to the set's members: the
                 // 'where'-variable iterates over them ('where Cx in (DelCns)'
                 // ranges over g8, m8, n8, h8). nfst_twolc keeps the where-clause
@@ -658,7 +644,7 @@ impl<B: AlgebraBackend> TwolcCompiler<B> {
                 let expanded: Vec<String> = assignment
                     .values
                     .iter()
-                    .flat_map(|v| self.set_of(v).into_iter().map(|s| s.to_string()))
+                    .flat_map(|v| self.set_of(&v.value).into_iter().map(|s| s.to_string()))
                     .collect();
                 rv.add_values(&expanded);
             }

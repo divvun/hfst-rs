@@ -6,9 +6,10 @@
 //! (`nfst_lexc`/`nfst_xre`) already carry byte spans on every AST node, we can
 //! render the offending region with a caret-underlined snippet instead.
 
+use std::io::IsTerminal;
 use std::ops::Range;
 
-use ariadne::{Color, Label, Report, ReportKind, Source};
+use ariadne::{Color, Config, Label, Report, ReportKind, Source};
 
 /// Severity of a rendered diagnostic.
 #[derive(Clone, Copy)]
@@ -42,48 +43,126 @@ pub fn emit_with_notes(
     message: &str,
     notes: &[String],
 ) {
-    if source.is_empty() {
-        emit_plain(severity, message);
-        for n in notes {
-            emit_plain(severity, n);
-        }
-        return;
-    }
-    // The parsers report UTF-8 byte offsets, while ariadne's `Range<usize>`
-    // spans are character offsets. Convert at this shared boundary so a
-    // diagnostic after non-ASCII text still points at the right line and
-    // column. The conversion also clamps stale or mid-code-point offsets.
-    let span = byte_span_to_char_span(source, span);
-
-    let (kind, color) = match severity {
-        Severity::Error => (ReportKind::Error, Color::Red),
-        Severity::Warning => (ReportKind::Warning, Color::Yellow),
-        Severity::Info => (ReportKind::Custom("Info", Color::Blue), Color::Blue),
-    };
-
-    let mut builder = Report::build(kind, (name, span.clone()))
-        .with_message(message)
-        .with_label(
-            Label::new((name, span))
-                .with_message(message)
-                .with_color(color),
-        );
+    let mut d = Diagnostic::new(severity, message).label(span, message);
     for n in notes {
-        builder = builder.with_note(n);
+        d = d.note(n.clone());
+    }
+    d.emit(name, source);
+}
+
+/// A diagnostic that points at several pieces of the source at once.
+///
+/// The first label is the primary one: it gives the report its location and
+/// takes the severity's colour. Later labels mark the other pieces involved,
+/// such as the definition a bad use refers to. Notes say why; the help line
+/// says what to write instead.
+pub struct Diagnostic {
+    severity: Severity,
+    message: String,
+    labels: Vec<(Range<usize>, String)>,
+    notes: Vec<String>,
+    help: Option<String>,
+}
+
+impl Diagnostic {
+    pub fn new(severity: Severity, message: impl Into<String>) -> Self {
+        Self {
+            severity,
+            message: message.into(),
+            labels: Vec::new(),
+            notes: Vec::new(),
+            help: None,
+        }
     }
 
-    let mut out: Vec<u8> = Vec::new();
-    let rendered = builder
-        .finish()
-        .write((name, Source::from(source)), &mut out);
+    pub fn error(message: impl Into<String>) -> Self {
+        Self::new(Severity::Error, message)
+    }
 
-    match rendered {
-        Ok(()) => eprint!("{}", String::from_utf8_lossy(&out)),
-        Err(_) => {
-            emit_plain(severity, message);
-            for n in notes {
-                emit_plain(severity, n);
-            }
+    pub fn warning(message: impl Into<String>) -> Self {
+        Self::new(Severity::Warning, message)
+    }
+
+    pub fn is_error(&self) -> bool {
+        matches!(self.severity, Severity::Error)
+    }
+
+    pub fn label(mut self, span: Range<usize>, text: impl Into<String>) -> Self {
+        self.labels.push((span, text.into()));
+        self
+    }
+
+    pub fn note(mut self, text: impl Into<String>) -> Self {
+        self.notes.push(text.into());
+        self
+    }
+
+    pub fn help(mut self, text: impl Into<String>) -> Self {
+        self.help = Some(text.into());
+        self
+    }
+
+    /// Render to stderr against `source`, labelled `name`. Falls back to
+    /// plain lines when there is no source text or no label to anchor to.
+    pub fn emit(&self, name: &str, source: &str) {
+        let Some((primary, _)) = self.labels.first() else {
+            self.emit_plain();
+            return;
+        };
+        if source.is_empty() {
+            self.emit_plain();
+            return;
+        }
+        // The parsers report UTF-8 byte offsets, while ariadne's `Range<usize>`
+        // spans are character offsets. Convert at this shared boundary so a
+        // diagnostic after non-ASCII text still points at the right line and
+        // column. The conversion also clamps stale or mid-code-point offsets.
+        let (kind, color) = match self.severity {
+            Severity::Error => (ReportKind::Error, Color::Red),
+            Severity::Warning => (ReportKind::Warning, Color::Yellow),
+            Severity::Info => (ReportKind::Custom("Info", Color::Blue), Color::Blue),
+        };
+        let primary = byte_span_to_char_span(source, primary.clone());
+        // Colour only a terminal: a build log redirected to a file should not
+        // fill with escape codes. NO_COLOR opts out everywhere.
+        let colour = std::io::stderr().is_terminal() && std::env::var_os("NO_COLOR").is_none();
+        let mut builder = Report::build(kind, (name, primary))
+            .with_config(Config::default().with_color(colour))
+            .with_message(&self.message);
+        for (i, (span, text)) in self.labels.iter().enumerate() {
+            let span = byte_span_to_char_span(source, span.clone());
+            let label_color = if i == 0 { color } else { Color::Cyan };
+            builder = builder.with_label(
+                Label::new((name, span))
+                    .with_message(text)
+                    .with_color(label_color)
+                    .with_order(i as i32),
+            );
+        }
+        for n in &self.notes {
+            builder = builder.with_note(n);
+        }
+        if let Some(h) = &self.help {
+            builder = builder.with_help(h);
+        }
+
+        let mut out: Vec<u8> = Vec::new();
+        match builder
+            .finish()
+            .write((name, Source::from(source)), &mut out)
+        {
+            Ok(()) => eprint!("{}", String::from_utf8_lossy(&out)),
+            Err(_) => self.emit_plain(),
+        }
+    }
+
+    fn emit_plain(&self) {
+        emit_plain(self.severity, &self.message);
+        for n in &self.notes {
+            emit_plain(self.severity, n);
+        }
+        if let Some(h) = &self.help {
+            emit_plain(self.severity, h);
         }
     }
 }
