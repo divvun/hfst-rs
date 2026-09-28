@@ -300,18 +300,17 @@
 > [spec:hfst:def:hfst-optimized-lookup.print-version-fn]
 > bool
 
-> [spec:hfst:sem:hfst-optimized-lookup.print-version-fn]
-> Print a blank line, then the standard first line
-> "<program_name> <hfst_tool_version> (<PACKAGE_STRING>)", then the shared
-> copyright/licence block of
-> [spec:hfst:sem:hfst-commandline.print-version-fn] verbatim, to standard
-> output. Return true.
+> [spec:hfst:sem:hfst-optimized-lookup.print-version-fn+1]
+> Print a blank line, then the shared identity line and copyright/licence
+> block of [spec:hfst:sem:hfst-commandline.print-version-fn+1] verbatim, to
+> standard output. Return true.
 >
 > PORT DIVERGENCE (branding and licence, deliberate): upstream printed its own
 > two-line banner — a hardcoded PACKAGE_STRING of "hfst-optimized-lookup 1.2"
 > and a lowercase "copyright (C) 2009 University of Helsinki" with no licence
-> or warranty clause at all. This port uses the one shared block. Rationale is
-> recorded on [spec:hfst:sem:hfst-commandline.print-version-fn].
+> or warranty clause at all. This port uses the one shared identity line and
+> block. Rationale is recorded on
+> [spec:hfst:sem:hfst-commandline.print-version-fn+1].
 
 > [spec:hfst:def:hfst-optimized-lookup.run-transducer-fn]
 > void

@@ -338,7 +338,7 @@ pub(in crate::tools) fn execute(args: Vec<String>) -> ToolResult {
         &common,
         &format!(
             "{}\nHFST packaging: {} {}\nHFST version: {}\nHFST long version: {}\nCompatible with upstream HFST: {} (long version {})\n",
-            version_line(&common.program_name),
+            version_line(),
             PACKAGE_NAME,
             PACKAGE_VERSION,
             PACKAGE_VERSION,

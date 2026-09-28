@@ -673,15 +673,15 @@ pub mod twolc {
     }
 
     impl CommandLine {
-        // [spec:hfst:def:command-line.command-line.print-version-fn]
-        // [spec:hfst:sem:command-line.command-line.print-version-fn]
+        // [spec:hfst:def:command-line.command-line.print-version-fn+1]
+        // [spec:hfst:sem:command-line.command-line.print-version-fn+1]
         fn print_version(&self) {
             // c.f. http://www.gnu.org/prep/standards/standards.html#g_t_002d_002dversion
             let f = &mut std::io::stderr();
             let _ = write!(
                 f,
                 "\n{}\n{}\n",
-                crate::hfst_commandline::version_line(PROGRAM_NAME),
+                crate::hfst_commandline::version_line(),
                 crate::hfst_commandline::VERSION_COPYRIGHT_BLOCK
             );
         }

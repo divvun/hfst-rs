@@ -113,13 +113,16 @@ here own only what every tool shares.
 > bug-report address and the pointer to further documentation.  The exact
 > layout of that text is not pinned by this rule.
 
-> [spec:hfst:req:cli.version]
-> `-V`/`--version` must print the shared version banner — the program-name
-> line followed by the copyright and licence block, whose exact text the
-> hfst-commandline print-version rule owns — and exit 0 without doing any
-> work.  Every tool and the umbrella binary print the same banner,
-> differing only in the program name, so the entry points cannot disagree
-> about the version or the licence.
+> [spec:hfst:req:cli.version+1]
+> `-V`/`--version` must print the shared version banner — the identity line
+> "Divvun HFST v<version> (<build date>, <commit>)" followed by the copyright
+> and licence block, whose exact text the hfst-commandline print-version rule
+> owns — and exit 0 without doing any work.  Every tool is the one `hfst`
+> binary reached under another name, so every tool and the umbrella binary
+> print the identical banner, whatever name or path they were invoked by; the
+> invoked name belongs in help and diagnostics.  The entry points cannot
+> disagree about the version or the licence, and the banner says which build
+> of which product is running.
 
 ## Tool entry point
 

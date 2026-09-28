@@ -468,6 +468,7 @@ assertions (
     {id twolc-pointed-diagnostics, kind @complete, author "brendan@necessary.nu", at 2026-09-24T18:10:42.944198Z}
     {id nuke-cpp-isms, kind @complete, author "brendan@necessary.nu", at 2026-09-24T18:38:14.695024Z}
     {id twolc-set-centre-declares-pairs, kind @complete, author "brendan@necessary.nu", at 2026-09-24T19:23:12.786528Z}
+    {id version-banner-one-identity, kind @complete, author "brendan@necessary.nu", at 2026-09-28T14:53:15.900988Z}
 )
 
 impl_evidence (

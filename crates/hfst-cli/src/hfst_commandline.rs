@@ -47,19 +47,16 @@ pub const BUILD_STAMP: &str = concat!(
     ")"
 );
 
-/// The one --version identity line: "Divvun <cmd> v<version> (date, ref)".
+/// The one --version identity line: "Divvun HFST v<version> (date, ref)".
 ///
-/// There is a single version here, the crate's. Upstream carried a per-tool
-/// version alongside the package version, so the banner showed two different
-/// numbers ("hfst-compose 0.1 (hfst 3.17.1)"); in this port every tool ships
-/// out of one crate at one version, so the per-tool number was noise.
-pub fn version_line(program_name: &str) -> String {
-    format!(
-        "Divvun {} v{} {}",
-        program_name,
-        env!("CARGO_PKG_VERSION"),
-        BUILD_STAMP
-    )
+/// Every tool is the one `hfst` binary reached under another name (a symlink,
+/// or `hfst <sub>`), so every entry point identifies itself the same way; the
+/// name it was invoked by belongs in help and diagnostics, not here. There is
+/// a single version too, the crate's. Upstream carried a per-tool version
+/// alongside the package version ("hfst-compose 0.1 (hfst 3.17.1)"), which
+/// for one binary at one version is noise.
+pub fn version_line() -> String {
+    format!("Divvun HFST v{} {}", env!("CARGO_PKG_VERSION"), BUILD_STAMP)
 }
 
 /// The copyright/licence block every tool's --version prints.
@@ -872,12 +869,12 @@ pub fn print_short_help(opts: &CommonOptions) {
 }
 
 // print version message
-// [spec:hfst:def:hfst-commandline.print-version-fn]
-// [spec:hfst:sem:hfst-commandline.print-version-fn]
-// [spec:hfst:req:cli.version]
+// [spec:hfst:def:hfst-commandline.print-version-fn+1]
+// [spec:hfst:sem:hfst-commandline.print-version-fn+1]
+// [spec:hfst:req:cli.version+1]
 pub fn print_version(opts: &CommonOptions) {
     let mut mw = opts.message_writer();
-    let _ = writeln!(mw, "{}", version_line(&opts.program_name));
+    let _ = writeln!(mw, "{}", version_line());
     let _ = write!(mw, "{VERSION_COPYRIGHT_BLOCK}");
 }
 

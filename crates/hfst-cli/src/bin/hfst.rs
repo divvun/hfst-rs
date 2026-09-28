@@ -163,11 +163,11 @@ fn install_symlinks(args: &[String]) -> i32 {
 /// every subcommand prints, so the two entry points cannot disagree.
 ///
 /// clap renders `--version` as "{name} {version}", which would prefix a bare
-/// "hfst" onto a line that already names the program, so `run_main` intercepts
-/// `--version` before clap sees it and prints this directly.
-// [spec:hfst:req:cli.version]
+/// "hfst" onto the identity line, so `run_main` intercepts `--version` before
+/// clap sees it and prints this directly.
+// [spec:hfst:req:cli.version+1]
 static LONG_VERSION: std::sync::LazyLock<String> =
-    std::sync::LazyLock::new(|| format!("{}\n{}", version_line("hfst"), VERSION_COPYRIGHT_BLOCK));
+    std::sync::LazyLock::new(|| format!("{}\n{}", version_line(), VERSION_COPYRIGHT_BLOCK));
 
 fn build_cli() -> Command {
     let mut cmd = Command::new("hfst")

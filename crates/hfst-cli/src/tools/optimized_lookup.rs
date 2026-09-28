@@ -899,16 +899,11 @@ impl ToolArgs for Args {
     }
 }
 
-// [spec:hfst:def:hfst-optimized-lookup.print-version-fn]
-// [spec:hfst:sem:hfst-optimized-lookup.print-version-fn]
+// [spec:hfst:def:hfst-optimized-lookup.print-version-fn+1]
+// [spec:hfst:sem:hfst-optimized-lookup.print-version-fn+1]
 fn print_version(common: &CommonOptions) -> bool {
     let mut msg = common.message_writer();
-    let _ = write!(
-        msg,
-        "\n{}\n{}",
-        version_line(&common.program_name),
-        VERSION_COPYRIGHT_BLOCK
-    );
+    let _ = write!(msg, "\n{}\n{}", version_line(), VERSION_COPYRIGHT_BLOCK);
     true
 }
 

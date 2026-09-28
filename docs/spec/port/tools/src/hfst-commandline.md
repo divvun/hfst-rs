@@ -443,15 +443,24 @@
 > [spec:hfst:def:hfst-commandline.print-version-fn]
 > void
 
-> [spec:hfst:sem:hfst-commandline.print-version-fn]
-> Print the GNU-standard version banner to message_out: a first line
-> "<program_name> <hfst_tool_version> (<PACKAGE_STRING>)\n", where
-> PACKAGE_STRING is "Divvun HFST <crate version>", followed by the fixed
-> copyright/licence block ("Copyright (C) 2026 UiT The Arctic University of
-> Norway", "Copyright (C) 2017 University of Helsinki", "License GPLv3+: GNU
-> GPL version 3 or later <https://gnu.org/licenses/gpl.html>", "This is free
-> software: you are free to change and redistribute it.", "There is NO
-> WARRANTY, to the extent permitted by law."), each terminated by a newline.
+> [spec:hfst:sem:hfst-commandline.print-version-fn+1]
+> Print the version banner to message_out: the identity line
+> "Divvun HFST v<crate version> (<build date>, <git commit>)\n", followed by
+> the fixed copyright/licence block ("Copyright (C) 2026 UiT The Arctic
+> University of Norway", "Copyright (C) 2017 University of Helsinki",
+> "License GPLv3+: GNU GPL version 3 or later
+> <https://gnu.org/licenses/gpl.html>", "This is free software: you are free
+> to change and redistribute it.", "There is NO WARRANTY, to the extent
+> permitted by law."), each terminated by a newline. The identity line is the
+> same whatever name the binary was invoked by.
+>
+> PORT DIVERGENCE (identity line, deliberate): upstream's first line was
+> "<program_name> <hfst_tool_version> (<PACKAGE_STRING>)", with program_name
+> the invoked argv[0] (so a tool run by path printed the path) and an empty
+> PACKAGE_STRING without config.h, rendering "()". Every tool here is the one
+> binary, so the line names the product, its one version and the build: the
+> date and commit say exactly which build is running, which a per-tool
+> version never did.
 >
 > PORT DIVERGENCE (branding and licence, deliberate): upstream printed a sole
 > "Copyright (C) 2017 University of Helsinki," line. This port is Divvun HFST,
@@ -459,8 +468,6 @@
 > GPL-3.0-or-later (the licence the banner names); the hfst library crate is
 > LGPL-3.0-or-later (COPYING). The Helsinki line is RETAINED, not replaced:
 > this is a derivative work and the original notice must survive.
-> Upstream also left PACKAGE_STRING empty without config.h, rendering an empty
-> "()"; the port fills it with the real package identity.
 
 > [spec:hfst:def:hfst-commandline.readline-fn]
 > char *

@@ -111,19 +111,18 @@
 > [spec:hfst:def:command-line.command-line.print-version-fn]
 > void CommandLine::print_version(void)
 
-> [spec:hfst:sem:command-line.command-line.print-version-fn]
+> [spec:hfst:sem:command-line.command-line.print-version-fn+1]
 > Prints version/license info to stderr in the GNU --version style. Writes a blank
-> line, then "<PROGRAM_NAME> <TOOL_VERSION> (<PACKAGE_STRING>)", then the shared
-> copyright/licence block of
-> [spec:hfst:sem:hfst-commandline.print-version-fn] verbatim, with a trailing
+> line, then the shared identity line and copyright/licence block of
+> [spec:hfst:sem:hfst-commandline.print-version-fn+1] verbatim, with a trailing
 > blank line. Returns void.
 >
 > PORT DIVERGENCE (branding, licence, and version, deliberate): upstream printed
 > its own copy of the banner — a 2010 Helsinki copyright, GPLv3, idiosyncratic
 > line wrapping, and the literal integer 0 as the version. This port shares the
-> one block (so the three former copies cannot drift apart again) and carries a
-> real TOOL_VERSION. Rationale for the branding and licence change is recorded
-> on [spec:hfst:sem:hfst-commandline.print-version-fn].
+> one identity line and block (so the three former copies cannot drift apart
+> again). Rationale is recorded on
+> [spec:hfst:sem:hfst-commandline.print-version-fn+1].
 
 > [spec:hfst:def:command-line.main-fn]
 > int main(int argc, char * argv[])

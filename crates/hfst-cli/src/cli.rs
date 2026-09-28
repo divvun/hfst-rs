@@ -512,7 +512,7 @@ fn check_common_params(opts: &mut CommonOptions) {
 /// HFST tools do.
 // [spec:hfst:req:cli.arg-parse]
 // [spec:hfst:req:cli.help]
-// [spec:hfst:req:cli.version]
+// [spec:hfst:req:cli.version+1]
 pub fn parse<T: ToolArgs>(
     mut common: CommonOptions,
     argv: Vec<String>,

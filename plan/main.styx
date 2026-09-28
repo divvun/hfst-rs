@@ -4732,6 +4732,28 @@ children (
                     }
                 )
             }
+
+            {
+                id version-banner-one-identity
+                title "--version prints one identity line, \"Divvun HFST v<version> (<date>, <commit>)\", from every entry point instead of the invoked argv[0] (a tool run by path printed its path); help and diagnostics keep the invoked name"
+                kind @fix
+                sealed true
+                log (
+                    {
+                        at 2026-09-28T14:50:48.976853Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
+
+                    {
+                        at 2026-09-28T14:53:15.900988Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan complete)"
+                    }
+                )
+            }
         )
     }
 
