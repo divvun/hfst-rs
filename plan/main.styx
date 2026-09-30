@@ -7504,4 +7504,26 @@ children (
             }
         )
     }
+
+    {
+        id twolc-ignoring-and-except
+        title "twolc supports the / (ignoring) operator and subtracts except contexts from the positive contexts, as C++ does (hfst-rs#4, lang-esu)"
+        kind @fix
+        sealed true
+        log (
+            {
+                at 2026-09-30T09:56:35.317039Z
+                author "brendan@necessary.nu"
+                kind @status
+                text "Todo → Doing (nplan start)"
+            }
+
+            {
+                at 2026-09-30T09:56:35.558749Z
+                author "brendan@necessary.nu"
+                kind @status
+                text "Doing → Done (nplan complete)"
+            }
+        )
+    }
 )

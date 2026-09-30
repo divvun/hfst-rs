@@ -59,10 +59,11 @@ impl<B: AlgebraBackend> TwolcCompiler<B> {
         })
     }
 
-    /// Evaluate the positive and negative contexts of a rule into one
-    /// ['OtherSymbolTransducerVector']. Each positive context is 'X D ?* D Y';
-    /// each negative context is the same, negated ('?* - context'). The C++
-    /// negative contexts ('except' clauses) are negated before being added.
+    /// Evaluate the positive and negative contexts of a rule into a
+    /// one-element ['OtherSymbolTransducerVector']: the disjunction of the
+    /// positive contexts minus the disjunction of the 'except' contexts, as
+    /// upstream's 'RULE' action does ('htwolcpre3-parser.yy'). Each context is
+    /// 'X D ?* D Y'.
     pub fn eval_contexts(
         &mut self,
         cfg: &OstConfig,
@@ -70,16 +71,20 @@ impl<B: AlgebraBackend> TwolcCompiler<B> {
         neg: &[RuleContext],
         vvm: &VariableValueMap,
     ) -> crate::error::Result<OtherSymbolTransducerVector<B>> {
-        let mut result: OtherSymbolTransducerVector<B> = pos
-            .iter()
-            .map(|ctx| self.eval_context(cfg, ctx, vvm))
-            .collect::<crate::error::Result<_>>()?;
-        for ctx in neg {
-            let mut c = self.eval_context(cfg, ctx, vvm)?;
-            c.negated(cfg)?;
-            result.push(c);
+        let mut positive = OtherSymbolTransducer::new(cfg)?;
+        for ctx in pos {
+            let c = self.eval_context(cfg, ctx, vvm)?;
+            positive.disjunct(cfg, &c)?;
         }
-        Ok(result)
+        if !neg.is_empty() {
+            let mut negative = OtherSymbolTransducer::new(cfg)?;
+            for ctx in neg {
+                let c = self.eval_context(cfg, ctx, vvm)?;
+                negative.disjunct(cfg, &c)?;
+            }
+            positive.subtract(cfg, &negative)?;
+        }
+        Ok(vec![positive])
     }
 
     /// Evaluate one ['RuleContext'] into 'left D ?* D right' via
@@ -417,6 +422,11 @@ impl<B: AlgebraBackend> TwolcCompiler<B> {
                     &right,
                 )?;
             }
+            // 'A / B': A with B freely inserted anywhere, upstream's
+            // 'RE FREELY_INSERT RE' ('htwolcpre3-parser.yy').
+            BinaryOp::Ignoring => {
+                left.insert_freely(cfg, &right)?;
+            }
             other @ BinaryOp::LenientCompose
             | other @ BinaryOp::CrossProduct
             | other @ BinaryOp::MergeRight
@@ -428,12 +438,12 @@ impl<B: AlgebraBackend> TwolcCompiler<B> {
             | other @ BinaryOp::LowerSubtract
             | other @ BinaryOp::UpperPriorityUnion
             | other @ BinaryOp::LowerPriorityUnion
-            | other @ BinaryOp::Ignoring
             | other @ BinaryOp::IgnoreInternally
             | other @ BinaryOp::LeftQuotient => {
-                std::panic::panic_any(format!(
-                    "twolc regex: unsupported binary operator {other:?}"
-                ));
+                crate::bail!(
+                    Hfst,
+                    format!("twolc regex: unsupported binary operator {other:?}")
+                );
             }
         }
         Ok(left)
