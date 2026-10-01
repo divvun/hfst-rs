@@ -192,6 +192,30 @@ fn quoted_value_points_at_the_quote() {
     );
 }
 
+// A regex with no `regex` in front used to be blamed on its quotes, with the
+// false claim that xfst has no quoted strings. Quotes are fine in a regex; the
+// missing command is the fault, and it is reported once, not once per quote.
+#[test]
+fn bare_quoted_regex_asks_for_the_regex_command() {
+    let src = "\"+Err/Orth\":0 || _ .#. ;\n";
+    let ds = diagnose(src);
+    assert_eq!(ds.len(), 1, "one report per line, got {:?}", ds);
+    assert_eq!(&src[ds[0].span.clone()], src.trim_end());
+    assert!(
+        ds[0].notes.iter().any(|n| n.contains("'regex'")),
+        "no advice to add 'regex' in {:?}",
+        ds[0].notes
+    );
+    assert!(diagnose("regex \"+Err/Orth\":0 ;\n").is_empty());
+}
+
+// A quoted percent sign is the one-character string `%`. It must not escape
+// the closing quote and swallow the next command into the regex.
+#[test]
+fn quoted_percent_does_not_swallow_the_next_define() {
+    assert!(diagnose("define A \"%\";\ndefine B b;\nregex A;\n").is_empty());
+}
+
 // A mistyped command names itself and the command it was probably meant to be.
 #[test]
 fn mistyped_command_suggests_the_real_one() {

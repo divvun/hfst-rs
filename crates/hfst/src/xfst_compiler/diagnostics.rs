@@ -137,6 +137,16 @@ pub fn parse_diagnostics(src: &str, e: &nfst_xfst::ParseError) -> Vec<XfstDiagno
             continue;
         }
         if let Some(rest) = d.message.strip_prefix("unexpected character ") {
+            if let Some(line) = bare_regex_line(src, span.start) {
+                // Every quote on the line trips the lexer; one report is enough.
+                if !out
+                    .iter()
+                    .any(|o: &XfstDiagnostic| o.span.start >= line.start)
+                {
+                    out.push(bare_regex_diagnostic(line));
+                }
+                continue;
+            }
             out.push(unexpected_character_diagnostic(rest, span));
             continue;
         }
@@ -260,6 +270,33 @@ fn unknown_command_diagnostic(text: &str, span: std::ops::Range<usize>) -> XfstD
         span,
         message: format!("unknown command '{}'", word),
         notes,
+    }
+}
+
+/// The trimmed span of the line holding `pos`, when that line opens with a
+/// quoted literal. No command starts with a quote, so such a line is a regex
+/// written without the `regex` command in front of it.
+fn bare_regex_line(src: &str, pos: usize) -> Option<std::ops::Range<usize>> {
+    let line_start = src[..pos].rfind('\n').map_or(0, |i| i + 1);
+    let line_end = src[pos..].find('\n').map_or(src.len(), |i| pos + i);
+    let line = &src[line_start..line_end];
+    let indent = line.len() - line.trim_start().len();
+    if !line.trim_start().starts_with('"') {
+        return None;
+    }
+    Some(line_start + indent..line_start + line.trim_end().len())
+}
+
+fn bare_regex_diagnostic(span: std::ops::Range<usize>) -> XfstDiagnostic {
+    XfstDiagnostic {
+        span,
+        message: String::from("expected a command, found a regular expression"),
+        notes: vec![
+            String::from(
+                "quoted strings are fine inside a regex, but the line must start with a command",
+            ),
+            String::from("write 'regex' before it to compile it, or 'define NAME' to name it"),
+        ],
     }
 }
 

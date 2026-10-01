@@ -7526,4 +7526,19 @@ children (
             }
         )
     }
+
+    {
+        id xfst-quoted-percent-and-bare-regex
+        title "xfst reads a quoted % as itself instead of escaping the closing quote (hfst-rs#6), and a line that is a bare regex asks for 'regex' instead of claiming xfst has no quoted strings (hfst-rs#5)"
+        kind @fix
+        sealed true
+        log (
+            {
+                at 2026-10-01T20:48:35.562057Z
+                author "brendan@necessary.nu"
+                kind @status
+                text "Todo → Done (nplan complete)"
+            }
+        )
+    }
 )

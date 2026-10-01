@@ -131,13 +131,14 @@ fn exceeds_max_nesting_depth(src: &str) -> bool {
     let mut chars = src.chars();
     while let Some(c) = chars.next() {
         match c {
+            '"' => in_quote = !in_quote,
+            // Inside a quoted literal '%' is itself, not an escape.
+            _ if in_quote => {}
             // A '%' escapes the next character (an ordinary literal, never a
             // grouping delimiter); consume it so its bracket does not count.
             '%' => {
                 let _ = chars.next();
             }
-            '"' => in_quote = !in_quote,
-            _ if in_quote => {}
             '[' | '(' => {
                 depth += 1;
                 if depth > MAX_NESTING_DEPTH {

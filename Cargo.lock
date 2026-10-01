@@ -1547,7 +1547,7 @@ dependencies = [
 [[package]]
 name = "nfst-lexc"
 version = "0.4.0"
-source = "git+https://github.com/necessary-nu/nfst?rev=ef2f8faae04ae4acd14999f2c4e9e2d326477aa7#ef2f8faae04ae4acd14999f2c4e9e2d326477aa7"
+source = "git+https://github.com/necessary-nu/nfst?rev=53c280b8fc4df9f2ac615ed80ff531549b6d8406#53c280b8fc4df9f2ac615ed80ff531549b6d8406"
 dependencies = [
  "logos",
  "nfst-syntax",
@@ -1558,7 +1558,7 @@ dependencies = [
 [[package]]
 name = "nfst-pmatch"
 version = "0.4.0"
-source = "git+https://github.com/necessary-nu/nfst?rev=ef2f8faae04ae4acd14999f2c4e9e2d326477aa7#ef2f8faae04ae4acd14999f2c4e9e2d326477aa7"
+source = "git+https://github.com/necessary-nu/nfst?rev=53c280b8fc4df9f2ac615ed80ff531549b6d8406#53c280b8fc4df9f2ac615ed80ff531549b6d8406"
 dependencies = [
  "nfst-syntax",
  "nfst-xre",
@@ -1568,12 +1568,12 @@ dependencies = [
 [[package]]
 name = "nfst-syntax"
 version = "0.3.0"
-source = "git+https://github.com/necessary-nu/nfst?rev=ef2f8faae04ae4acd14999f2c4e9e2d326477aa7#ef2f8faae04ae4acd14999f2c4e9e2d326477aa7"
+source = "git+https://github.com/necessary-nu/nfst?rev=53c280b8fc4df9f2ac615ed80ff531549b6d8406#53c280b8fc4df9f2ac615ed80ff531549b6d8406"
 
 [[package]]
 name = "nfst-twolc"
 version = "0.6.0"
-source = "git+https://github.com/necessary-nu/nfst?rev=ef2f8faae04ae4acd14999f2c4e9e2d326477aa7#ef2f8faae04ae4acd14999f2c4e9e2d326477aa7"
+source = "git+https://github.com/necessary-nu/nfst?rev=53c280b8fc4df9f2ac615ed80ff531549b6d8406#53c280b8fc4df9f2ac615ed80ff531549b6d8406"
 dependencies = [
  "nfst-syntax",
  "nfst-xre",
@@ -1583,7 +1583,7 @@ dependencies = [
 [[package]]
 name = "nfst-xfst"
 version = "0.4.1"
-source = "git+https://github.com/necessary-nu/nfst?rev=ef2f8faae04ae4acd14999f2c4e9e2d326477aa7#ef2f8faae04ae4acd14999f2c4e9e2d326477aa7"
+source = "git+https://github.com/necessary-nu/nfst?rev=53c280b8fc4df9f2ac615ed80ff531549b6d8406#53c280b8fc4df9f2ac615ed80ff531549b6d8406"
 dependencies = [
  "nfst-syntax",
  "nfst-xre",
@@ -1592,7 +1592,7 @@ dependencies = [
 [[package]]
 name = "nfst-xre"
 version = "0.4.0"
-source = "git+https://github.com/necessary-nu/nfst?rev=ef2f8faae04ae4acd14999f2c4e9e2d326477aa7#ef2f8faae04ae4acd14999f2c4e9e2d326477aa7"
+source = "git+https://github.com/necessary-nu/nfst?rev=53c280b8fc4df9f2ac615ed80ff531549b6d8406#53c280b8fc4df9f2ac615ed80ff531549b6d8406"
 dependencies = [
  "ariadne",
  "chumsky",
