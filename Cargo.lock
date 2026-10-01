@@ -1547,7 +1547,8 @@ dependencies = [
 [[package]]
 name = "nfst-lexc"
 version = "0.4.0"
-source = "git+https://github.com/necessary-nu/nfst?rev=53c280b8fc4df9f2ac615ed80ff531549b6d8406#53c280b8fc4df9f2ac615ed80ff531549b6d8406"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d4bd02e249158df104632e7e93d60679ac6d6aa720d570cda2badd0cc19ef9fd"
 dependencies = [
  "logos",
  "nfst-syntax",
@@ -1558,7 +1559,8 @@ dependencies = [
 [[package]]
 name = "nfst-pmatch"
 version = "0.4.0"
-source = "git+https://github.com/necessary-nu/nfst?rev=53c280b8fc4df9f2ac615ed80ff531549b6d8406#53c280b8fc4df9f2ac615ed80ff531549b6d8406"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e5519795222be4ebf54486fd231085535670a5cd39357098f84a7154f86dada8"
 dependencies = [
  "nfst-syntax",
  "nfst-xre",
@@ -1568,12 +1570,14 @@ dependencies = [
 [[package]]
 name = "nfst-syntax"
 version = "0.3.0"
-source = "git+https://github.com/necessary-nu/nfst?rev=53c280b8fc4df9f2ac615ed80ff531549b6d8406#53c280b8fc4df9f2ac615ed80ff531549b6d8406"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "edc43cb7a0df0723017947e6fe7056c8ede64a471d5f4ca9ddd89c1bc5f71e8b"
 
 [[package]]
 name = "nfst-twolc"
 version = "0.6.0"
-source = "git+https://github.com/necessary-nu/nfst?rev=53c280b8fc4df9f2ac615ed80ff531549b6d8406#53c280b8fc4df9f2ac615ed80ff531549b6d8406"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "11d7b3dfaecbfa0c7809fd98de5ccd67afdffdc89814430b99fbd409ac1c2510"
 dependencies = [
  "nfst-syntax",
  "nfst-xre",
@@ -1582,8 +1586,9 @@ dependencies = [
 
 [[package]]
 name = "nfst-xfst"
-version = "0.4.1"
-source = "git+https://github.com/necessary-nu/nfst?rev=53c280b8fc4df9f2ac615ed80ff531549b6d8406#53c280b8fc4df9f2ac615ed80ff531549b6d8406"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bb52c6a9fac78e734f8172ae6834f0053a5a7b98e63a806c20076a5f9c730148"
 dependencies = [
  "nfst-syntax",
  "nfst-xre",
@@ -1592,7 +1597,8 @@ dependencies = [
 [[package]]
 name = "nfst-xre"
 version = "0.4.0"
-source = "git+https://github.com/necessary-nu/nfst?rev=53c280b8fc4df9f2ac615ed80ff531549b6d8406#53c280b8fc4df9f2ac615ed80ff531549b6d8406"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "77672ef5326eadbe1b5b8e698b171b5e401200f19aea839336f74e4a3fc19a4c"
 dependencies = [
  "ariadne",
  "chumsky",
