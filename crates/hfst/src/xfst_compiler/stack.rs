@@ -25,17 +25,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     pub(super) fn print_transducer_info(&mut self) {
         if self.verbose && !self.stack.is_empty() {
             let top = *self.stack.last().expect("stack non-empty, checked above");
-            {
-                let t = self.net(top);
-                if t.get_type() != B::TYPE {
-                    return;
-                }
-                println!(
-                    "? bytes. {} states, {} arcs, ? paths",
-                    t.number_of_states(),
-                    t.number_of_arcs()
-                );
-            }
+            println!("{}", self.size_line(top));
             let print_sigma_on =
                 self.variables.get("print-sigma").map(|s| s.as_str()) == Some("ON");
             if print_sigma_on {

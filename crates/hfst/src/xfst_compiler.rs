@@ -176,6 +176,9 @@ impl CommandError {
         CommandError::new("not enough networks on the stack: this operation needs two")
     }
 
+    // [spec:hfst:req:xfst-cmd.no-placeholders]
+    /// The error for a command this compiler has no implementation of: it
+    /// fails by name rather than printing a stand-in.
     fn not_supported(command: &str) -> Self {
         CommandError::new(format!("'{command}' is not supported"))
     }

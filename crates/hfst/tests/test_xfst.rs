@@ -492,3 +492,113 @@ fn context_any_symbol_is_not_the_word_edge() {
     assert!(rewrites("i -> u || \\[i] _", "ai", "au"));
     assert!(rewrites("i -> u || .#. _", "i", "u"));
 }
+
+// Run `script` and return what its last command wrote to `out`.
+fn printed(test: &str, script: &str) -> String {
+    let dir = source_dir(test);
+    let out = dir.join("out.txt");
+    let script = script.replace("OUT", &out.display().to_string());
+    let mut c = XfstCompiler::<StdVectorFst>::new();
+    c.parse(&script).expect("xfst script runs");
+    std::fs::read_to_string(&out).expect("output written")
+}
+
+// [spec:hfst:sem:xfst-cmd.print-counts/test]
+// The size printers count; they never print '?'.
+#[test]
+fn size_printers_count() {
+    let src = "regex c a t ;\nregex d o g s ;\n";
+    assert_eq!(
+        printed("size", &format!("{src}print size > OUT\n")),
+        "5 states, 4 arcs\n"
+    );
+    assert_eq!(
+        printed("stack", &format!("{src}print stack > OUT\n")),
+        "0: 4 states, 3 arcs\n1: 5 states, 4 arcs\n"
+    );
+    assert_eq!(
+        printed("arcs", &format!("{src}print arc-tally > OUT\n")),
+        "4\n"
+    );
+}
+
+// [spec:hfst:sem:xfst-cmd.print-counts/test]
+// sigma-tally counts arcs per symbol on either side; flags lists the flag
+// diacritics.
+#[test]
+fn sigma_tally_and_flags() {
+    let src = "regex [c a t | c:d o g | \"@U.F.x@\" c] ;\n";
+    let tally = printed("tally", &format!("{src}print sigma-tally > OUT\n"));
+    assert!(tally.contains("c: 3\n"), "{tally}");
+    assert!(tally.contains("d: 1\n"), "{tally}");
+    assert_eq!(
+        printed("flags", &format!("{src}print flags > OUT\n")),
+        "@U.F.x@\n"
+    );
+}
+
+// [spec:hfst:sem:xfst-cmd.write-word-lists/test]
+// write spaced-text round-trips any network through read spaced-text, with
+// pairs and escapes.
+#[test]
+fn spaced_text_round_trips() {
+    let dir = source_dir("spaced");
+    let file = dir.join("words.txt");
+    let net = "[c a t | c:d o g | {a:b} \"x y\"]";
+    let mut c = XfstCompiler::<StdVectorFst>::new();
+    c.parse(&format!(
+        "regex {net} ;\nwrite spaced-text {}\n",
+        file.display()
+    ))
+    .expect("written");
+    c.parse(&format!("read spaced-text {}", file.display()))
+        .expect("read back");
+    c.parse("assert test equivalent\n")
+        .expect("the written text reads back as the same network");
+    let text = std::fs::read_to_string(&file).expect("written");
+    assert!(text.contains("c:d o g\n"), "{text}");
+    assert!(text.contains("x\\ y"), "{text}");
+}
+
+// [spec:hfst:sem:xfst-cmd.write-word-lists/test]
+// write text lists the upper side and round-trips a single-character
+// automaton; a cyclic network fails.
+#[test]
+fn text_round_trips_and_refuses_cycles() {
+    let dir = source_dir("text");
+    let file = dir.join("words.txt");
+    let mut c = XfstCompiler::<StdVectorFst>::new();
+    c.parse(&format!(
+        "regex [c a t | d o g] ;\nwrite text {}\n",
+        file.display()
+    ))
+    .expect("written");
+    c.parse(&format!("read text {}", file.display()))
+        .expect("read back");
+    c.parse("assert test equivalent\n")
+        .expect("the written text reads back as the same network");
+    assert_eq!(
+        std::fs::read_to_string(&file).expect("written"),
+        "cat\ndog\n"
+    );
+    let mut c = XfstCompiler::<StdVectorFst>::new();
+    let err = c
+        .parse(&format!("regex a+ ;\nwrite text {}\n", file.display()))
+        .expect_err("a cyclic network has no finite word list");
+    assert!(err.diagnostics[0].message.contains("cyclic"));
+}
+
+// [spec:hfst:req:xfst-cmd.no-placeholders/test]
+// A command with no implementation fails and says so; it prints nothing.
+#[test]
+fn unsupported_commands_fail_by_name() {
+    let mut c = XfstCompiler::<StdVectorFst>::new();
+    let err = c
+        .parse("regex a ;\nprint label-maps\n")
+        .expect_err("label-maps is not supported");
+    assert!(
+        err.diagnostics[0]
+            .message
+            .contains("'print label-maps' is not supported")
+    );
+}

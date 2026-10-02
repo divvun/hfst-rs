@@ -199,13 +199,70 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     }
 
     // @brief Save top networks spaced paths form in @a outfile
-    pub fn write_spaced(&mut self, _oss: &mut dyn std::io::Write) -> CmdResult {
-        Err(CommandError::not_supported("write spaced-text"))
+    // [spec:hfst:sem:xfst-cmd.write-word-lists]
+    /// 'write spaced-text': every path, symbols separated by spaces, a pair
+    /// whose sides differ as 'upper:lower'.
+    pub fn write_spaced(&mut self, oss: &mut dyn std::io::Write) -> CmdResult {
+        for path in self.top_paths("write spaced-text")? {
+            let symbols: Vec<String> = path
+                .iter()
+                .filter(|(i, o)| !(is_epsilon(i) && is_epsilon(o)))
+                .map(|(i, o)| {
+                    if i == o {
+                        escape_text_symbol(i)
+                    } else {
+                        format!("{}:{}", escape_text_symbol(i), escape_text_symbol(o))
+                    }
+                })
+                .collect();
+            writeln!(oss, "{}", symbols.join(" "))?;
+        }
+        oss.flush()?;
+        self.prompt();
+        Ok(())
+    }
+
+    /// Every path of the top network, in a stable order, failing on a cyclic
+    /// network rather than listing part of it.
+    fn top_paths(&self, command: &str) -> CmdResult<Vec<Vec<(Symbol, Symbol)>>> {
+        let top = self.top()?;
+        let mut results = HfstTwoLevelPaths::new();
+        self.net(top)
+            .extract_paths(&mut results, -1, -1)
+            .map_err(|e| {
+                if matches!(e.kind, crate::error::ErrorKind::TransducerIsCyclic) {
+                    CommandError::new(format!(
+                        "'{}' cannot list a cyclic network: it has infinitely many paths",
+                        command
+                    ))
+                } else {
+                    e.into()
+                }
+            })?;
+        let paths: BTreeSet<Vec<(Symbol, Symbol)>> =
+            results.into_iter().map(|p| p.second).collect();
+        Ok(paths.into_iter().collect())
     }
 
     // @brief Save top networks paths form in @a outfile
-    pub fn write_text(&mut self, _oss: &mut dyn std::io::Write) -> CmdResult {
-        Err(CommandError::not_supported("write text"))
+    // [spec:hfst:sem:xfst-cmd.write-word-lists]
+    /// 'write text': every string of the upper side, symbols joined.
+    pub fn write_text(&mut self, oss: &mut dyn std::io::Write) -> CmdResult {
+        let mut words = BTreeSet::new();
+        for path in self.top_paths("write text")? {
+            let word: String = path
+                .iter()
+                .filter(|(i, _)| !is_epsilon(i))
+                .map(|(i, _)| escape_text_symbol(i))
+                .collect();
+            words.insert(word);
+        }
+        for word in &words {
+            writeln!(oss, "{}", word)?;
+        }
+        oss.flush()?;
+        self.prompt();
+        Ok(())
     }
 
     // @brief Save definition @a name in @a outfile
@@ -439,4 +496,21 @@ fn to_filename(file: Option<&str>) -> &str {
         None => "<stdin>",
         Some(f) => f,
     }
+}
+
+fn is_epsilon(s: &str) -> bool {
+    s == crate::hfst_symbol_defs::internal_epsilon || s == "@0@"
+}
+
+/// A symbol as the text readers expect it: ':', space and backslash would
+/// otherwise be read as a pair separator, a symbol break and an escape.
+fn escape_text_symbol(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        if matches!(c, ':' | ' ' | '\\') {
+            out.push('\\');
+        }
+        out.push(c);
+    }
+    out
 }

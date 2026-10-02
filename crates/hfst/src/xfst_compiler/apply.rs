@@ -57,7 +57,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     // surface exists only on the OL instantiations, which
     // 'B: AlgebraBackend' excludes; every apply path uses 'lookup_basic'.)
 
-    fn lookup_basic(&mut self, line: &str, t: &HfstBasicTransducer) {
+    fn lookup_basic(&mut self, line: &str, t: &HfstBasicTransducer) -> CmdResult {
         let token = trim_whitespace(line);
 
         let alpha = t.get_input_symbols();
@@ -96,14 +96,15 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         let mut out = std::io::stdout();
         let printed = if self.variables["print-pairs"] == "OFF" {
             let paths = extract_output_paths(&results);
-            self.print_paths_one(&paths, &mut out, -1)
+            self.print_paths_one(&paths, &mut out, -1)?
         } else {
-            self.print_paths_two(&results, &mut out, -1)
+            self.print_paths_two(&results, &mut out, -1)?
         };
 
         if !printed {
             println!("???");
         }
+        Ok(())
     }
 
     // apply_down_line -> apply_up_line
@@ -117,7 +118,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         let mut copy = HfstTransducer::new_copy(self.net(t))?;
         copy.invert()?.minimize_with_config(&self.engine_config)?;
         let fsm = ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(&copy)?;
-        self.lookup_basic(line, &fsm);
+        self.lookup_basic(line, &fsm)?;
         Ok(())
     }
 
@@ -125,7 +126,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     fn apply_down_line(&mut self, line: &str) -> CmdResult {
         let t = self.top()?;
         let fsm = ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(self.net(t))?;
-        self.lookup_basic(line, &fsm);
+        self.lookup_basic(line, &fsm)?;
         Ok(())
     }
 }

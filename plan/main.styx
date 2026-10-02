@@ -7598,11 +7598,19 @@ children (
 
             {
                 id xfst-no-placeholders
-                title "Replace placeholder output: print arc-count/sigma-tally/flags/sigma NAME/properties, write text/spaced-text; unsupported commands fail"
+                title "Replace placeholder output: print size/stack/arc-tally/sigma-tally/flags/props, write text/spaced-text; unsupported commands fail"
                 implements {
                     target-impl ([spec:hfst:req:xfst-cmd.no-placeholders] [spec:hfst:sem:xfst-cmd.print-counts] [spec:hfst:sem:xfst-cmd.write-word-lists])
                 }
                 deps (xfst-result-flow)
+                log (
+                    {
+                        at 2026-10-02T11:43:10.443015Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
+                )
             }
 
             {
@@ -7677,5 +7685,17 @@ children (
                 )
             }
         )
+    }
+
+    {
+        id esu-lexc-divergence
+        title "hfst-lexc on lang-esu srcV2/esu.lexc gives a network not equal to C++ (13150 vs 13154 states; each side has paths the other lacks, e.g. Rust-only 'a[NonYupik]...:1<=aar...'). Find which is right per Xerox lexc semantics and fix"
+        kind @fix
+    }
+
+    {
+        id esu-twolc-divergence
+        title "hfst-twolc on lang-esu srcV2/esu.twol gives rules not equal to C++ under hfst-compare (same 64 rules, same text size). Find which rules differ and why"
+        kind @fix
     }
 )

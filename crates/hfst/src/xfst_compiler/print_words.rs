@@ -46,7 +46,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         if paths.is_empty() {
             println!("transducer is empty");
         } else {
-            self.print_paths_two(&paths, oss, -1);
+            self.print_paths_two(&paths, oss, -1)?;
         }
         self.flush();
         self.prompt();
@@ -64,7 +64,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         if paths.is_empty() {
             println!("transducer is empty");
         } else {
-            let _ = writeln!(
+            writeln!(
                 oss,
                 "{}",
                 paths
@@ -73,7 +73,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
                     .expect("paths non-empty, checked above")
                     .second
                     .len() as i32
-            );
+            )?;
         }
         self.flush();
         self.prompt();
@@ -128,7 +128,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
 
         tmp.output_project()?;
         tmp.extract_random_paths(&mut paths, number as i32)?;
-        self.print_paths_two(&paths, oss, -1);
+        self.print_paths_two(&paths, oss, -1)?;
         self.flush();
         self.prompt();
         Ok(())
@@ -170,7 +170,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
 
         tmp.input_project()?;
         tmp.extract_random_paths(&mut paths, number as i32)?;
-        self.print_paths_two(&paths, oss, -1);
+        self.print_paths_two(&paths, oss, -1)?;
         self.flush();
         self.prompt();
         Ok(())
@@ -211,7 +211,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         let mut paths = HfstTwoLevelPaths::new();
         self.net(tmp)
             .extract_random_paths(&mut paths, number as i32)?;
-        self.print_paths_two(&paths, oss, -1);
+        self.print_paths_two(&paths, oss, -1)?;
         self.flush();
         self.prompt();
         Ok(())
@@ -226,7 +226,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         paths: &HfstTwoLevelPaths,
         oss: &mut dyn std::io::Write,
         mut n: i32,
-    ) -> bool {
+    ) -> CmdResult<bool> {
         let mut retval = false; // if anything was printed
         let _precision = self.get_precision();
 
@@ -259,10 +259,10 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
                     && !print_symbol.is_empty()
                 // something to show
                 {
-                    let _ = write!(oss, " ");
+                    write!(oss, " ")?;
                 }
 
-                let _ = write!(oss, "{}", print_symbol);
+                write!(oss, "{}", print_symbol)?;
 
                 if !print_symbol.is_empty() {
                     something_printed = true;
@@ -275,21 +275,21 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
                     && p.0 != p.1
                 // input and output symbols differ
                 {
-                    let _ = write!(oss, ":{}", print_symbol);
+                    write!(oss, ":{}", print_symbol)?;
                 }
             } // path gone through
 
             // if needed, print the weight
             if self.variables["print-weight"] == "ON" {
-                let _ = write!(oss, "\t{}", it.first);
+                write!(oss, "\t{}", it.first)?;
             }
 
-            let _ = writeln!(oss);
+            writeln!(oss)?;
             n -= 1;
         } // at most n paths gone through
 
         self.flush();
-        retval
+        Ok(retval)
     }
 
     // @brief Print \a n first paths (or all, if n is negative)
@@ -299,7 +299,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         paths: &HfstOneLevelPaths,
         oss: &mut dyn std::io::Write,
         mut n: i32,
-    ) -> bool {
+    ) -> CmdResult<bool> {
         let mut retval = false; // if anything was printed
         let _precision = self.get_precision();
 
@@ -324,10 +324,10 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
                     && !print_symbol.is_empty()
                 // something to show
                 {
-                    let _ = write!(oss, " ");
+                    write!(oss, " ")?;
                 }
 
-                let _ = write!(oss, "{}", print_symbol);
+                write!(oss, "{}", print_symbol)?;
 
                 if !print_symbol.is_empty() {
                     something_printed = true;
@@ -336,15 +336,15 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
 
             // if needed, print the weight
             if self.variables["print-weight"] == "ON" {
-                let _ = write!(oss, "\t{}", it.first);
+                write!(oss, "\t{}", it.first)?;
             }
 
-            let _ = writeln!(oss);
+            writeln!(oss)?;
             n -= 1;
         } // at most n paths gone through
 
         self.flush();
-        retval
+        Ok(retval)
     }
 
     // A method used by function print_longest_string_or_its_size.
@@ -354,10 +354,10 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         paths: &HfstTwoLevelPaths,
         level: &str,
         print_size: bool,
-    ) {
-        let _ = write!(oss, "{}: ", level);
+    ) -> CmdResult {
+        write!(oss, "{}: ", level)?;
         if print_size {
-            let _ = writeln!(
+            writeln!(
                 oss,
                 "{}",
                 paths
@@ -366,11 +366,12 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
                     .expect("caller only invokes this for a non-cyclic, non-empty level")
                     .second
                     .len() as i32
-            );
+            )?;
         } else {
-            self.print_paths_two(paths, oss, 1);
+            self.print_paths_two(paths, oss, 1)?;
         }
         self.flush();
+        Ok(())
     }
 
     // @brief Print the longest string of topmost transducer in the stack
@@ -445,16 +446,16 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
 
             // print one longest string of the upper level, if not cyclic
             if upper_is_cyclic {
-                let _ = writeln!(oss, "Upper level is cyclic.");
+                writeln!(oss, "Upper level is cyclic.")?;
             } else {
-                self.print_one_string_or_its_size(oss, &paths_upper, "Upper", print_size);
+                self.print_one_string_or_its_size(oss, &paths_upper, "Upper", print_size)?;
             }
 
             // print one longest string of the lower level, if not cyclic
             if lower_is_cyclic {
-                let _ = writeln!(oss, "Lower level is cyclic.");
+                writeln!(oss, "Lower level is cyclic.")?;
             } else {
-                self.print_one_string_or_its_size(oss, &paths_lower, "Lower", print_size);
+                self.print_one_string_or_its_size(oss, &paths_lower, "Lower", print_size)?;
             }
         }
 
@@ -526,7 +527,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             }
         }
 
-        self.print_paths_two(&results, oss, -1);
+        self.print_paths_two(&results, oss, -1)?;
 
         self.prompt();
         Ok(())

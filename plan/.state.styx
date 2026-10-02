@@ -649,4 +649,13 @@ impl_evidence (
     ), covered_claims (
         {impl_name target-impl, rule xfst-cmd.replace-context-symbol}
     )}
+    {id xfst-no-placeholders, covered_rules (
+        xfst-cmd.no-placeholders
+        xfst-cmd.print-counts
+        xfst-cmd.write-word-lists
+    ), covered_claims (
+        {impl_name target-impl, rule xfst-cmd.no-placeholders}
+        {impl_name target-impl, rule xfst-cmd.print-counts}
+        {impl_name target-impl, rule xfst-cmd.write-word-lists}
+    )}
 )

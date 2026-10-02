@@ -11,18 +11,14 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         Err(CommandError::not_supported("collect epsilon-loops"))
     }
 
-    // @brief Print arc count for @a level
-    pub fn print_arc_count_level(
-        &mut self,
-        _level: &str,
-        _oss: &mut dyn std::io::Write,
-    ) -> CmdResult {
-        Err(CommandError::not_supported("print arc-count"))
-    }
-
     // @brief Print arc count
-    pub fn print_arc_count(&mut self, _oss: &mut dyn std::io::Write) -> CmdResult {
-        Err(CommandError::not_supported("print arc-count"))
+    // [spec:hfst:sem:xfst-cmd.print-counts]
+    /// 'print arc-tally': the number of arcs in the top network.
+    pub fn print_arc_count(&mut self, oss: &mut dyn std::io::Write) -> CmdResult {
+        let top = self.top()?;
+        writeln!(oss, "{}", self.net(top).number_of_arcs())?;
+        self.prompt();
+        Ok(())
     }
 
     // @brief Print file info
@@ -31,8 +27,17 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     }
 
     // @brief Print flag diacritics
-    pub fn print_flags(&mut self, _oss: &mut dyn std::io::Write) -> CmdResult {
-        Err(CommandError::not_supported("print flags"))
+    // [spec:hfst:sem:xfst-cmd.print-counts]
+    /// 'print flags': the flag diacritics in the top network's alphabet.
+    pub fn print_flags(&mut self, oss: &mut dyn std::io::Write) -> CmdResult {
+        let top = self.top()?;
+        for symbol in self.net(top).get_alphabet()?.iter() {
+            if crate::hfst_flag_diacritics::FdOperation::is_diacritic(symbol) {
+                writeln!(oss, "{}", symbol)?;
+            }
+        }
+        self.prompt();
+        Ok(())
     }
 
     // @brief Print label mappings
@@ -41,31 +46,50 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     }
 
     // @brief Print properties of top network
-    pub fn print_properties(&mut self, _oss: &mut dyn std::io::Write) -> CmdResult {
-        Err(CommandError::not_supported("print properties"))
-    }
-
-    // @brief Print properties of network named @a name
-    pub fn print_properties_name(
-        &mut self,
-        _name: &str,
-        _oss: &mut dyn std::io::Write,
-    ) -> CmdResult {
-        Err(CommandError::not_supported("print properties"))
+    // [spec:hfst:sem:xfst-cmd.print-counts]
+    /// 'print props': each property of the top network.
+    pub fn print_properties(&mut self, oss: &mut dyn std::io::Write) -> CmdResult {
+        let top = self.top()?;
+        for (name, value) in self.net(top).get_properties() {
+            writeln!(oss, "{}: {}", name, value)?;
+        }
+        self.prompt();
+        Ok(())
     }
 
     // @brief Print nnumber of symbols in network
-    pub fn print_sigma_count(&mut self, _oss: &mut dyn std::io::Write) -> CmdResult {
-        Err(CommandError::not_supported("print sigma-tally"))
-    }
-
-    // @brief Print number of paths with all symbols on @a level
-    pub fn print_sigma_word_count_level(
-        &mut self,
-        _level: &str,
-        _oss: &mut dyn std::io::Write,
-    ) -> CmdResult {
-        Err(CommandError::not_supported("print sigma-word-tally"))
+    // [spec:hfst:sem:xfst-cmd.print-counts]
+    /// 'print sigma-tally': how many arcs each sigma symbol labels, on
+    /// either side.
+    pub fn print_sigma_count(&mut self, oss: &mut dyn std::io::Write) -> CmdResult {
+        let top = self.top()?;
+        let fsm = ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(self.net(top))?;
+        let mut tally: BTreeMap<Symbol, usize> = self
+            .net(top)
+            .get_alphabet()?
+            .into_iter()
+            .filter(|s| !is_special_symbol(s))
+            .map(|s| (s, 0))
+            .collect();
+        for state in fsm.iter() {
+            for arc in state.iter() {
+                let input = arc.get_input_symbol(fsm.coder());
+                let output = arc.get_output_symbol(fsm.coder());
+                if let Some(n) = tally.get_mut(&input) {
+                    *n += 1;
+                }
+                if output != input
+                    && let Some(n) = tally.get_mut(&output)
+                {
+                    *n += 1;
+                }
+            }
+        }
+        for (symbol, count) in &tally {
+            writeln!(oss, "{}: {}", symbol, count)?;
+        }
+        self.prompt();
+        Ok(())
     }
 
     // @brief Print number of paths with all symbols
@@ -73,35 +97,30 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         Err(CommandError::not_supported("print sigma-word-tally"))
     }
 
-    // @brief Print size of network named @a name
-    pub fn print_size_name(&mut self, name: &str, oss: &mut dyn std::io::Write) -> CmdResult {
-        let _ = write!(oss, "{:>10}", name);
-        let _ = writeln!(oss, ": ? bytes. ? states, ? arcs, ? paths.");
-        self.flush();
-        // PROMPT_AND_RETURN_THIS
+    // @brief Print size of top network
+    // [spec:hfst:sem:xfst-cmd.print-counts]
+    /// 'print size': the top network's state and arc counts.
+    pub fn print_size(&mut self, oss: &mut dyn std::io::Write) -> CmdResult {
+        let top = self.top()?;
+        writeln!(oss, "{}", self.size_line(top))?;
         self.prompt();
         Ok(())
     }
 
-    // @brief Print size of top network
-    pub fn print_size(&mut self, oss: &mut dyn std::io::Write) -> CmdResult {
-        let _ = writeln!(oss, "? bytes. ? states, ? arcs, ? paths.");
-        self.flush();
-        // PROMPT_AND_RETURN_THIS
-        self.prompt();
-        Ok(())
+    /// The state and arc counts of a network, as 'print size' shows them.
+    pub(super) fn size_line(&self, id: NetId) -> String {
+        let t = self.net(id);
+        format!(
+            "{} states, {} arcs",
+            t.number_of_states(),
+            t.number_of_arcs()
+        )
     }
 
     // @brief Print aliases
     pub fn print_aliases(&mut self, oss: &mut dyn std::io::Write) -> CmdResult {
-        let aliases: Vec<(String, String)> = self
-            .aliases
-            .iter()
-            .map(|(k, v)| (k.to_string(), v.clone()))
-            .collect();
-        for (first, second) in aliases.iter() {
-            let _ = write!(oss, "{:>10}", "alias ");
-            let _ = write!(oss, "{} {}", first, second);
+        for (name, commands) in &self.aliases {
+            writeln!(oss, "alias {} {}", name, commands)?;
         }
         self.flush();
         self.prompt();
@@ -118,11 +137,11 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             .collect();
         for (first, second) in defs.iter() {
             definitions = true;
-            let _ = write!(oss, "{:>10}", first);
-            let _ = writeln!(oss, " {}", second);
+            write!(oss, "{:>10}", first)?;
+            writeln!(oss, " {}", second)?;
         }
         if !definitions {
-            let _ = writeln!(oss, "No defined symbols.");
+            writeln!(oss, "No defined symbols.")?;
         }
 
         definitions = false;
@@ -133,11 +152,11 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             .collect();
         for (first, second) in funcs.iter() {
             definitions = true;
-            let _ = write!(oss, "{:>10}", first);
-            let _ = writeln!(oss, " {}", second);
+            write!(oss, "{:>10}", first)?;
+            writeln!(oss, " {}", second)?;
         }
         if !definitions {
-            let _ = writeln!(oss, "No function definitions.");
+            writeln!(oss, "No function definitions.")?;
         }
 
         self.flush();
@@ -150,11 +169,11 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         match glob::glob(glob) {
             Ok(paths) => {
                 for entry in paths.flatten() {
-                    let _ = writeln!(oss, "{}", entry.display());
+                    writeln!(oss, "{}", entry.display())?;
                 }
             }
             Err(e) => {
-                let _ = writeln!(oss, "glob({}) = {}", glob, e);
+                writeln!(oss, "glob({}) = {}", glob, e)?;
             }
         }
         self.prompt();
@@ -178,19 +197,19 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             }
         }
 
-        let _ = write!(oss, "Labels: ");
+        write!(oss, "Labels: ")?;
         let first_elem = label_set.iter().next().cloned();
         for it in label_set.iter() {
             if Some(it) != first_elem.as_ref() {
-                let _ = write!(oss, ", ");
+                write!(oss, ", ")?;
             }
-            let _ = write!(oss, "{}", it.0);
+            write!(oss, "{}", it.0)?;
             if it.0 != it.1 {
-                let _ = write!(oss, ":{}", it.1);
+                write!(oss, ":{}", it.1)?;
             }
         }
-        let _ = writeln!(oss);
-        let _ = writeln!(oss, "Size: {}", label_set.len() as i32);
+        writeln!(oss)?;
+        writeln!(oss, "Size: {}", label_set.len() as i32)?;
 
         self.flush();
         self.prompt();
@@ -234,16 +253,16 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         for (i, (key, value)) in label_map.iter().enumerate() {
             let index = (i as u32) + 1;
             if i != 0 {
-                let _ = write!(oss, "   ");
+                write!(oss, "   ")?;
             }
-            let _ = write!(oss, "{}. ", index);
-            let _ = write!(oss, "{}", key.0);
+            write!(oss, "{}. ", index)?;
+            write!(oss, "{}", key.0)?;
             if key.0 != key.1 {
-                let _ = write!(oss, ":{}", key.1);
+                write!(oss, ":{}", key.1)?;
             }
-            let _ = write!(oss, " {}", value);
+            write!(oss, " {}", value)?;
         }
-        let _ = writeln!(oss);
+        writeln!(oss)?;
 
         self.flush();
         self.prompt();
@@ -256,12 +275,12 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             return Err(CommandError::new(format!("no such list: '{}'", name)));
         }
         let l = self.lists[name].clone();
-        let _ = write!(oss, "{:>10}", name);
-        let _ = write!(oss, ": ");
+        write!(oss, "{:>10}", name)?;
+        write!(oss, ": ")?;
         for s in l.iter() {
-            let _ = write!(oss, "{} ", s);
+            write!(oss, "{} ", s)?;
         }
-        let _ = writeln!(oss);
+        writeln!(oss)?;
         self.flush();
         self.prompt();
         Ok(())
@@ -270,7 +289,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     // @brief Print all lists
     pub fn print_list(&mut self, oss: &mut dyn std::io::Write) -> CmdResult {
         if self.lists.is_empty() {
-            let _ = writeln!(oss, "No lists defined.");
+            writeln!(oss, "No lists defined.")?;
             self.flush();
             self.prompt();
             return Ok(());
@@ -282,12 +301,12 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             .collect();
         for (first, second) in lists.iter() {
             // HERE
-            let _ = write!(oss, "{:>10}", first);
-            let _ = write!(oss, " ");
+            write!(oss, "{:>10}", first)?;
+            write!(oss, " ")?;
             for s in second.iter() {
-                let _ = write!(oss, "{} ", s);
+                write!(oss, "{} ", s)?;
             }
-            let _ = writeln!(oss);
+            writeln!(oss)?;
         }
         self.flush();
         self.prompt();
@@ -305,14 +324,14 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             .collect();
         for (first, second) in entries.iter() {
             if tmp == *second {
-                let _ = writeln!(oss, "Name {}", first);
+                writeln!(oss, "Name {}", first)?;
                 self.flush();
                 self.prompt();
                 return Ok(());
             }
         }
 
-        let _ = writeln!(oss, "No name.");
+        writeln!(oss, "No name.")?;
         self.flush();
         self.prompt();
         Ok(())
@@ -359,7 +378,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         // find out whether unknown or identity is used in transitions
         let (unknown, identity) = uses_unknown_or_identity(self.net(t));
 
-        self.print_alphabet(&alpha, unknown, identity, oss);
+        self.print_alphabet(&alpha, unknown, identity, oss)?;
         if prompt {
             self.prompt();
         }
@@ -367,22 +386,14 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         Ok(())
     }
 
-    // @brief Print all symbols of network named @a name
-    pub fn print_sigma_name(&mut self, _name: &str, _oss: &mut dyn std::io::Write) -> CmdResult {
-        Err(CommandError::not_supported("print sigma"))
-    }
-
     // @brief Print all networks in stack
+    // [spec:hfst:sem:xfst-cmd.print-counts]
+    /// 'print stack': the size of every network on the stack, from the
+    /// bottom.
     pub fn print_stack(&mut self, oss: &mut dyn std::io::Write) -> CmdResult {
-        for i in 0..self.stack.len() {
-            let _ = write!(
-                oss,
-                "{:>10}",
-                format!("{}: ? bytes. ? states, ? arcs, ? paths.", i)
-            );
-            let _ = writeln!(oss);
+        for (i, &id) in self.stack.iter().enumerate() {
+            writeln!(oss, "{}: {}", i, self.size_line(id))?;
         }
-        self.flush();
         self.prompt();
         Ok(())
     }
@@ -398,24 +409,24 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         unknown: bool,
         identity: bool,
         oss: &mut dyn std::io::Write,
-    ) {
+    ) -> CmdResult {
         let mut sigma_count: u32 = 0;
-        let _ = write!(oss, "Sigma: ");
+        write!(oss, "Sigma: ")?;
         if self.variables["print-foma-sigma"] == "ON" {
             if unknown {
-                let _ = write!(oss, "?");
+                write!(oss, "?")?;
             }
             if identity {
                 if unknown {
-                    let _ = write!(oss, ", ");
+                    write!(oss, ", ")?;
                 }
-                let _ = write!(oss, "@");
+                write!(oss, "@")?;
             }
         } else
         // xfst-style sigma print
         {
             if unknown || identity {
-                let _ = write!(oss, "?");
+                write!(oss, "?")?;
             }
         }
 
@@ -423,22 +434,23 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         for it in alpha.iter() {
             if !is_special_symbol(it) {
                 if !first_symbol || unknown || identity {
-                    let _ = write!(oss, ", ");
+                    write!(oss, ", ")?;
                 }
                 if it == "?" {
-                    let _ = write!(oss, "\"?\"");
+                    write!(oss, "\"?\"")?;
                 } else if it == "@" && self.variables["print-foma-sigma"] == "ON" {
-                    let _ = write!(oss, "\"@\"");
+                    write!(oss, "\"@\"")?;
                 } else {
-                    let _ = write!(oss, "{}", it);
+                    write!(oss, "{}", it)?;
                 }
                 sigma_count += 1;
                 first_symbol = false;
             }
         }
-        let _ = writeln!(oss);
-        let _ = writeln!(oss, "Size: {}.", sigma_count);
+        writeln!(oss)?;
+        writeln!(oss, "Size: {}.", sigma_count)?;
         self.flush();
+        Ok(())
     }
 }
 

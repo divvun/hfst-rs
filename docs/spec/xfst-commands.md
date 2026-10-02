@@ -67,26 +67,29 @@ what the C++ code did. Where they disagree with this file, this file wins.
 > that does not parse as prolog fails with the line at fault.
 
 > [spec:hfst:sem:xfst-cmd.write-word-lists]
-> `write text` writes every path of the top network's upper side, one per
-> line, symbols joined with no separator. `write spaced-text` writes every
-> path with its symbols separated by single spaces, and a path whose upper
-> and lower sides differ as the upper string, a space-separated `:` and the
-> lower string. Both fail on a cyclic network rather than truncating.
-> Reading the output back with the matching `read` command MUST give an
-> equivalent network.
+> `write text` writes each string of the top network's upper side on its
+> own line, symbols joined with nothing between them. `write spaced-text`
+> writes each path on its own line, symbols separated by single spaces, and
+> a symbol pair whose sides differ as `upper:lower`. In both, a `:`, space
+> or backslash inside a symbol is escaped with a backslash, lines come in a
+> stable order, and a cyclic network fails rather than being truncated.
+> Reading `write spaced-text` output back with `read spaced-text` MUST give
+> an equivalent network, and the same holds for `write text` and
+> `read text` on an automaton whose symbols are single characters.
 
 ## Printing
 
 > [spec:hfst:sem:xfst-cmd.print-counts]
-> `print arc-count` prints the number of arcs in the top network.
-> `print sigma-tally` prints, for each symbol of the top network's sigma, the
-> number of arcs whose input or output label is that symbol, one
-> `symbol: count` line per symbol in sigma order. `print flags` prints
-> each flag diacritic in sigma, one per line. `print sigma NAME` prints the
-> sigma of the network defined as NAME the way `print sigma` prints the top
-> network's. `print properties` prints each property of the top network as
-> a `name: value` line, and `print properties NAME` does the same for a
-> defined network.
+> `print size` prints the top network's state and arc counts, and
+> `print stack` prints them for every network on the stack, numbered from
+> the bottom. `print arc-tally` prints the number of arcs in the top
+> network. `print sigma-tally` prints, for each symbol of the top network's
+> sigma, the number of arcs whose input or output label is that symbol, one
+> `symbol: count` line per symbol in sigma order. `print flags` prints each
+> flag diacritic in the top network's alphabet, one per line.
+> `print props` prints each property of the top network as a
+> `name: value` line. None of these prints a `?` in place of a number it
+> could count.
 
 ## Network operations
 
