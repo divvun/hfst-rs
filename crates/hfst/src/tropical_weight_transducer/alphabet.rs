@@ -22,7 +22,7 @@ impl TropicalWeightTransducer {
             .as_ref()
             .clone();
         st.add_symbol(symbol);
-        t.set_input_symbols(Arc::new(st));
+        Self::set_both_symbol_tables(t, st);
     }
 
     // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.remove-from-alphabet-fn]
@@ -43,7 +43,11 @@ impl TropicalWeightTransducer {
                 st.add_symbol_with_key(sym, label);
             }
         }
-        t.set_input_symbols(Arc::new(st));
+        // [spec:hfst:sem:xfst-cmd.replace-context-symbol]
+        // The output table must lose the symbol too: the alphabet is the union
+        // of both tables, so a stale output table would bring it back on the
+        // next harmonization.
+        Self::set_both_symbol_tables(t, st);
     }
 
     // Add every symbol in `symbols` to the alphabet SymbolTable in place. The
@@ -59,7 +63,7 @@ impl TropicalWeightTransducer {
         for symbol in symbols.iter() {
             st.add_symbol(symbol.as_str());
         }
-        t.set_input_symbols(Arc::new(st));
+        Self::set_both_symbol_tables(t, st);
     }
 
     // In-place O(states + arcs + alphabet) alphabet prune: drop every alphabet
@@ -110,7 +114,7 @@ impl TropicalWeightTransducer {
                 st.add_symbol_with_key(sym, label);
             }
         }
-        t.set_input_symbols(Arc::new(st));
+        Self::set_both_symbol_tables(t, st);
     }
 
     // In-place flag encode: rename each flag-diacritic symbol '@...@' to its
@@ -144,9 +148,10 @@ impl TropicalWeightTransducer {
 
     // An HFST tropical transducer may carry an output symbol table, and when
     // it does that table is equivalent to the input one (the invariant
-    // `handle_symbol_tables` relies on). The in-place flag rename replaces
+    // `handle_symbol_tables` relies on). Every in-place alphabet edit replaces
     // the input table wholesale, so a surviving output table would still hold
-    // the pre-rename spelling of every flag. `copy_alphabet` unions BOTH
+    // the old alphabet: a removed or pruned symbol, or the pre-rename spelling
+    // of every flag. `copy_alphabet` unions BOTH
     // tables into the interchange graph's alphabet, so that stale table
     // reintroduces the un-encoded `@...@` names beside their `%...%`
     // encodings; the matching decode then renames `%X%` back onto a name the

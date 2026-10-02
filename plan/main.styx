@@ -7659,6 +7659,23 @@ children (
                 }
                 deps (xfst-no-placeholders xfst-read-and-sort xfst-ambiguity-substring-med)
             }
+
+            {
+                id replace-context-any-symbol
+                title "A replace-rule context of ? (or \\[a], [? - a]) needs a real symbol: 'i -> u || ? _' must not rewrite a word-initial i (found validating hfst-rs#7 on lang-esu)"
+                kind @fix
+                implements {
+                    target-impl ([spec:hfst:sem:xfst-cmd.replace-context-symbol])
+                }
+                log (
+                    {
+                        at 2026-10-02T11:31:06.197536Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
+                )
+            }
         )
     }
 )

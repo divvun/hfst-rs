@@ -139,6 +139,15 @@ what the C++ code did. Where they disagree with this file, this file wins.
 > malformed or names a surrogate or zero MUST fail the regex with the
 > escape's span; it MUST NOT insert a NUL byte or drop characters.
 
+## Replace-rule contexts
+
+> [spec:hfst:sem:xfst-cmd.replace-context-symbol]
+> In a replace rule's context, `?` and every expression built from it, such
+> as `\[a]` or `[? - a]`, stand for exactly one symbol of the string. The
+> string's edge is not a symbol, so `i -> u || ? _` leaves a word-initial
+> `i` alone and `i -> u || _ ?` leaves a word-final one alone. Only `.#.`
+> matches the edge.
+
 ## pmatch operators
 
 > [spec:hfst:sem:xfst-cmd.pmatch-quotient-subtract]

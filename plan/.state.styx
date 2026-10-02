@@ -644,4 +644,9 @@ impl_evidence (
     ), covered_claims (
         {impl_name target-impl, rule xfst-cmd.source}
     )}
+    {id replace-context-any-symbol, covered_rules (
+        xfst-cmd.replace-context-symbol
+    ), covered_claims (
+        {impl_name target-impl, rule xfst-cmd.replace-context-symbol}
+    )}
 )

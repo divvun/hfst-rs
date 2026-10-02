@@ -470,3 +470,25 @@ fn sourcing_a_missing_file_names_it() {
             .contains("/nonexistent/script.xfst")
     );
 }
+
+// Whether the rule on the top of the stack maps `input` to exactly `expected`.
+fn rewrites(rule: &str, input: &str, expected: &str) -> bool {
+    let mut c = XfstCompiler::<StdVectorFst>::new();
+    c.parse(&format!(
+        "regex [{{{input}}} .o. [{rule}]].l ;\nregex {{{expected}}} ;\nassert test equivalent\n"
+    ))
+    .is_ok()
+}
+
+// [spec:hfst:sem:xfst-cmd.replace-context-symbol/test]
+// '?' in a context is one symbol of the string, never the word edge.
+#[test]
+fn context_any_symbol_is_not_the_word_edge() {
+    assert!(rewrites("i -> u || ? _", "i", "i"));
+    assert!(rewrites("i -> u || ? _", "ai", "au"));
+    assert!(rewrites("i -> u || _ ?", "i", "i"));
+    assert!(rewrites("i -> u || _ ?", "ia", "ua"));
+    assert!(rewrites("i -> u || \\[i] _", "ii", "ii"));
+    assert!(rewrites("i -> u || \\[i] _", "ai", "au"));
+    assert!(rewrites("i -> u || .#. _", "i", "u"));
+}
