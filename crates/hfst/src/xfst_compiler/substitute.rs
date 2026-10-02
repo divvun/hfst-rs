@@ -4,27 +4,13 @@ use super::*;
 use crate::convert_transducer_format::ConversionFunctions;
 
 impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
-    pub fn substitute_named(
-        &mut self,
-        variable: &str,
-        label: &str,
-    ) -> crate::error::Result<&mut Self> {
+    pub fn substitute_named(&mut self, variable: &str, label: &str) -> CmdResult {
         // GET_TOP(top)
-        let Some(top) = self.top() else {
-            self.xfst_lesser_fail();
-            return Ok(self);
-        };
+        let top = self.top()?;
 
-        if !self.definitions.contains_key(variable) {
-            self.diag_unknown_definition(variable);
-            // MAYBE_QUIT
-            if self.variables["quit-on-fail"] == "ON" {
-                self.fail_flag = true;
-            }
-            self.prompt();
-            return Ok(self);
-        }
-        let def_ptr = self.definitions[variable];
+        let Some(&def_ptr) = self.definitions.get(variable) else {
+            return Err(self.unknown_definition(variable));
+        };
 
         // [spec:hfst:def:xfst-compiler.hfst.xfst.labelstr-fn]
         // [spec:hfst:sem:xfst-compiler.hfst.xfst.labelstr-fn]
@@ -38,16 +24,10 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
 
         let mut alpha = self.net(top).get_alphabet()?;
         if !alpha.contains(&labelstr) {
-            self.diag_error(&format!(
+            return Err(CommandError::new(format!(
                 "no occurrences of label '{}' in the network, nothing to substitute",
                 label
-            ));
-            // MAYBE_QUIT
-            if self.variables["quit-on-fail"] == "ON" {
-                self.fail_flag = true;
-            }
-            self.prompt();
-            return Ok(self);
+            )));
         }
 
         let fsm = ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(self.net(top))?;
@@ -57,16 +37,10 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
                 let isymbol = tr_it.get_input_symbol(fsm.coder());
                 let osymbol = tr_it.get_output_symbol(fsm.coder());
                 if isymbol != osymbol && (isymbol == labelstr || osymbol == labelstr) {
-                    self.diag_error(&format!(
+                    return Err(CommandError::new(format!(
                         "label '{}' is used as a symbol on one side of an arc, so it cannot be substituted",
                         label
-                    ));
-                    // MAYBE_QUIT
-                    if self.variables["quit-on-fail"] == "ON" {
-                        self.fail_flag = true;
-                    }
-                    self.prompt();
-                    return Ok(self);
+                    )));
                 }
             }
         }
@@ -89,20 +63,13 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         let cfg = self.engine_config;
         self.net_mut(top).optimize_with_config(&cfg)?;
         self.prompt();
-        Ok(self)
+        Ok(())
     }
 
     // @brief Substitute all labels @a list by @a target.
-    pub fn substitute_label(
-        &mut self,
-        list: &str,
-        target: &str,
-    ) -> crate::error::Result<&mut Self> {
+    pub fn substitute_label(&mut self, list: &str, target: &str) -> CmdResult {
         // GET_TOP(top)
-        let Some(top) = self.top() else {
-            self.xfst_lesser_fail();
-            return Ok(self);
-        };
+        let top = self.top()?;
 
         // tokenize list into labels
         let mut symbol_pairs: StringPairSet = StringPairSet::new();
@@ -117,13 +84,10 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
                         symbol_pairs.insert(sp);
                     }
                     None => {
-                        self.diag_error(&format!("could not substitute with '{}'", list));
-                        // MAYBE_QUIT
-                        if self.variables["quit-on-fail"] == "ON" {
-                            self.fail_flag = true;
-                        }
-                        self.prompt();
-                        return Ok(self);
+                        return Err(CommandError::new(format!(
+                            "could not substitute with '{}'",
+                            list
+                        )));
                     }
                 }
             }
@@ -151,23 +115,20 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
                     }
                 }
                 if !target_label_found {
-                    self.diag_error(&format!(
+                    return Err(CommandError::new(format!(
                         "no occurrences of '{}:{}' in the network, nothing to substitute",
                         target_label.0, target_label.1
-                    ));
-                    self.prompt();
-                    return Ok(self);
+                    )));
                 }
 
                 self.net_mut(top)
                     .substitute_pair_with_pair_set(&target_label, &symbol_pairs)?;
             }
             None => {
-                self.diag_error(&format!("could not substitute '{}'", target));
-                // MAYBE_QUIT
-                if self.variables["quit-on-fail"] == "ON" {
-                    self.fail_flag = true;
-                }
+                return Err(CommandError::new(format!(
+                    "could not substitute '{}'",
+                    target
+                )));
             }
         }
 
@@ -175,33 +136,20 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         let cfg = self.engine_config;
         self.net_mut(top).optimize_with_config(&cfg)?;
         self.prompt();
-        Ok(self)
+        Ok(())
     }
 
     // @brief Substitute all symbols in @a list by @a target.
-    pub fn substitute_symbol(
-        &mut self,
-        list: &str,
-        target: &str,
-    ) -> crate::error::Result<&mut Self> {
+    pub fn substitute_symbol(&mut self, list: &str, target: &str) -> CmdResult {
         // GET_TOP(top)
-        let Some(top) = self.top() else {
-            self.xfst_lesser_fail();
-            return Ok(self);
-        };
+        let top = self.top()?;
 
         let alpha = self.net(top).get_alphabet()?;
         if !alpha.contains(target) {
-            self.diag_error(&format!(
+            return Err(CommandError::new(format!(
                 "no occurrences of symbol '{}' in the network, nothing to substitute",
                 target
-            ));
-            // MAYBE_QUIT
-            if self.variables["quit-on-fail"] == "ON" {
-                self.fail_flag = true;
-            }
-            self.prompt();
-            return Ok(self);
+            )));
         }
 
         self.stack.pop();
@@ -232,11 +180,14 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             self.stack.push(substituted);
             self.print_transducer_info();
         } else {
-            self.diag_error("fatal error in substitution");
-            self.fail_flag = true;
+            self.stack.push(top);
+            return Err(CommandError::new(format!(
+                "could not substitute {} for '{}'",
+                list, target
+            )));
         }
         self.prompt();
-        Ok(self)
+        Ok(())
     }
 
     // Tokenize string \a s using \a c as separator.

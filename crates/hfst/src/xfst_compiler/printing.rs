@@ -7,128 +7,93 @@ use crate::convert_transducer_format::ConversionFunctions;
 impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     // @brief Print parts of automaton with epsilon loops
     // @todo unimplemented yet
-    pub fn collect_epsilon_loops(&mut self) -> &mut Self {
-        self.diag_warning("collect epsilon-loops is not implemented; nothing was printed");
-        // PROMPT_AND_RETURN_THIS
-        self.prompt();
-        self
+    pub fn collect_epsilon_loops(&mut self) -> CmdResult {
+        Err(CommandError::not_supported("collect epsilon-loops"))
     }
 
     // @brief Print arc count for @a level
     pub fn print_arc_count_level(
         &mut self,
-        level: &str,
-        oss: &mut dyn std::io::Write,
-    ) -> &mut Self {
-        let _ = writeln!(oss, "missing {} arc count", level);
-        self.flush();
-        // PROMPT_AND_RETURN_THIS
-        self.prompt();
-        self
+        _level: &str,
+        _oss: &mut dyn std::io::Write,
+    ) -> CmdResult {
+        Err(CommandError::not_supported("print arc-count"))
     }
 
     // @brief Print arc count
-    pub fn print_arc_count(&mut self, oss: &mut dyn std::io::Write) -> &mut Self {
-        let _ = writeln!(oss, "missing arc count");
-        self.flush();
-        // PROMPT_AND_RETURN_THIS
-        self.prompt();
-        self
+    pub fn print_arc_count(&mut self, _oss: &mut dyn std::io::Write) -> CmdResult {
+        Err(CommandError::not_supported("print arc-count"))
     }
 
     // @brief Print file info
-    pub fn print_file_info(&mut self, oss: &mut dyn std::io::Write) -> &mut Self {
-        self.diag_warning("print file-info is not implemented; nothing was printed");
-        // PROMPT_AND_RETURN_THIS
-        self.prompt();
-        self
+    pub fn print_file_info(&mut self, _oss: &mut dyn std::io::Write) -> CmdResult {
+        Err(CommandError::not_supported("print file-info"))
     }
 
     // @brief Print flag diacritics
-    pub fn print_flags(&mut self, oss: &mut dyn std::io::Write) -> &mut Self {
-        let _ = writeln!(oss, "missing print flags");
-        self.flush();
-        // PROMPT_AND_RETURN_THIS
-        self.prompt();
-        self
+    pub fn print_flags(&mut self, _oss: &mut dyn std::io::Write) -> CmdResult {
+        Err(CommandError::not_supported("print flags"))
     }
 
     // @brief Print label mappings
-    pub fn print_labelmaps(&mut self, oss: &mut dyn std::io::Write) -> &mut Self {
-        let _ = writeln!(oss, "missing label-maps");
-        self.flush();
-        // PROMPT_AND_RETURN_THIS
-        self.prompt();
-        self
+    pub fn print_labelmaps(&mut self, _oss: &mut dyn std::io::Write) -> CmdResult {
+        Err(CommandError::not_supported("print label-maps"))
     }
 
     // @brief Print properties of top network
-    pub fn print_properties(&mut self, oss: &mut dyn std::io::Write) -> &mut Self {
-        let _ = writeln!(oss, "missing print properties");
-        self.flush();
-        self
+    pub fn print_properties(&mut self, _oss: &mut dyn std::io::Write) -> CmdResult {
+        Err(CommandError::not_supported("print properties"))
     }
 
     // @brief Print properties of network named @a name
-    pub fn print_properties_name(&mut self, name: &str, oss: &mut dyn std::io::Write) -> &mut Self {
-        self.diag_warning("print properties is not implemented; nothing was printed");
-        // PROMPT_AND_RETURN_THIS
-        self.prompt();
-        self
+    pub fn print_properties_name(
+        &mut self,
+        _name: &str,
+        _oss: &mut dyn std::io::Write,
+    ) -> CmdResult {
+        Err(CommandError::not_supported("print properties"))
     }
 
     // @brief Print nnumber of symbols in network
-    pub fn print_sigma_count(&mut self, oss: &mut dyn std::io::Write) -> &mut Self {
-        let _ = writeln!(oss, "missing print sigma count");
-        self.flush();
-        // PROMPT_AND_RETURN_THIS
-        self.prompt();
-        self
+    pub fn print_sigma_count(&mut self, _oss: &mut dyn std::io::Write) -> CmdResult {
+        Err(CommandError::not_supported("print sigma-tally"))
     }
 
     // @brief Print number of paths with all symbols on @a level
     pub fn print_sigma_word_count_level(
         &mut self,
-        level: &str,
-        oss: &mut dyn std::io::Write,
-    ) -> &mut Self {
-        let _ = writeln!(oss, "missing {} sigma word count", level);
-        self.flush();
-        // PROMPT_AND_RETURN_THIS
-        self.prompt();
-        self
+        _level: &str,
+        _oss: &mut dyn std::io::Write,
+    ) -> CmdResult {
+        Err(CommandError::not_supported("print sigma-word-tally"))
     }
 
     // @brief Print number of paths with all symbols
-    pub fn print_sigma_word_count(&mut self, oss: &mut dyn std::io::Write) -> &mut Self {
-        let _ = writeln!(oss, "missing sigma word count");
-        self.flush();
-        // PROMPT_AND_RETURN_THIS
-        self.prompt();
-        self
+    pub fn print_sigma_word_count(&mut self, _oss: &mut dyn std::io::Write) -> CmdResult {
+        Err(CommandError::not_supported("print sigma-word-tally"))
     }
 
     // @brief Print size of network named @a name
-    pub fn print_size_name(&mut self, name: &str, oss: &mut dyn std::io::Write) -> &mut Self {
+    pub fn print_size_name(&mut self, name: &str, oss: &mut dyn std::io::Write) -> CmdResult {
         let _ = write!(oss, "{:>10}", name);
         let _ = writeln!(oss, ": ? bytes. ? states, ? arcs, ? paths.");
         self.flush();
         // PROMPT_AND_RETURN_THIS
         self.prompt();
-        self
+        Ok(())
     }
 
     // @brief Print size of top network
-    pub fn print_size(&mut self, oss: &mut dyn std::io::Write) -> &mut Self {
+    pub fn print_size(&mut self, oss: &mut dyn std::io::Write) -> CmdResult {
         let _ = writeln!(oss, "? bytes. ? states, ? arcs, ? paths.");
         self.flush();
         // PROMPT_AND_RETURN_THIS
         self.prompt();
-        self
+        Ok(())
     }
 
     // @brief Print aliases
-    pub fn print_aliases(&mut self, oss: &mut dyn std::io::Write) -> &mut Self {
+    pub fn print_aliases(&mut self, oss: &mut dyn std::io::Write) -> CmdResult {
         let aliases: Vec<(String, String)> = self
             .aliases
             .iter()
@@ -140,11 +105,11 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         }
         self.flush();
         self.prompt();
-        self
+        Ok(())
     }
 
     // @brief Print definition
-    pub fn print_defined(&mut self, oss: &mut dyn std::io::Write) -> &mut Self {
+    pub fn print_defined(&mut self, oss: &mut dyn std::io::Write) -> CmdResult {
         let mut definitions = false;
         let defs: Vec<(String, String)> = self
             .original_definitions
@@ -177,11 +142,11 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
 
         self.flush();
         self.prompt();
-        self
+        Ok(())
     }
 
     // @brief Print directory contents
-    pub fn print_dir(&mut self, glob: &str, oss: &mut dyn std::io::Write) -> &mut Self {
+    pub fn print_dir(&mut self, glob: &str, oss: &mut dyn std::io::Write) -> CmdResult {
         match glob::glob(glob) {
             Ok(paths) => {
                 for entry in paths.flatten() {
@@ -193,17 +158,16 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             }
         }
         self.prompt();
-        self
+        Ok(())
     }
 
     pub fn print_labels_tr(
         &mut self,
         oss: &mut dyn std::io::Write,
         tr: &HfstTransducer<B>,
-    ) -> &mut Self {
+    ) -> CmdResult {
         let mut label_set: BTreeSet<(Symbol, Symbol)> = BTreeSet::new();
-        let fsm = ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(tr)
-            .expect("hfst_transducer_to_hfst_basic_transducer on a valid transducer cannot fail");
+        let fsm = ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(tr)?;
 
         for it in fsm.iter() {
             for tr_it in it.iter() {
@@ -230,45 +194,31 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
 
         self.flush();
         self.prompt();
-        self
+        Ok(())
     }
 
     // @brief Print labels in network @a name
-    pub fn print_labels_name(&mut self, name: &str, oss: &mut dyn std::io::Write) -> &mut Self {
-        match self.definitions.get(name).copied() {
-            None => {
-                let _ = writeln!(oss, "no such definition '{}'", name);
-            }
-            Some(tr) => {
-                let net = self.net(tr).clone();
-                return self.print_labels_tr(oss, &net);
-            }
-        }
-        self.flush();
-        self.prompt();
-        self
+    pub fn print_labels_name(&mut self, name: &str, oss: &mut dyn std::io::Write) -> CmdResult {
+        let Some(&tr) = self.definitions.get(name) else {
+            return Err(self.unknown_definition(name));
+        };
+        let net = self.net(tr).clone();
+        self.print_labels_tr(oss, &net)
     }
 
     // @brief Print labels
-    pub fn print_labels(&mut self, oss: &mut dyn std::io::Write) -> &mut Self {
-        let Some(topmost) = self.top() else {
-            self.xfst_lesser_fail();
-            return self;
-        };
+    pub fn print_labels(&mut self, oss: &mut dyn std::io::Write) -> CmdResult {
+        let topmost = self.top()?;
         let net = self.net(topmost).clone();
         self.print_labels_tr(oss, &net)
     }
 
     // @brief Print label count
-    pub fn print_label_count(&mut self, oss: &mut dyn std::io::Write) -> &mut Self {
-        let Some(topmost) = self.top() else {
-            self.xfst_lesser_fail();
-            return self;
-        };
+    pub fn print_label_count(&mut self, oss: &mut dyn std::io::Write) -> CmdResult {
+        let topmost = self.top()?;
 
         let mut label_map: BTreeMap<(Symbol, Symbol), u32> = BTreeMap::new();
-        let fsm = ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(self.net(topmost))
-            .expect("hfst_transducer_to_hfst_basic_transducer on a valid transducer cannot fail");
+        let fsm = ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(self.net(topmost))?;
 
         for it in fsm.iter() {
             for tr_it in it.iter() {
@@ -297,16 +247,13 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
 
         self.flush();
         self.prompt();
-        self
+        Ok(())
     }
 
     // @brief Print list named @a name
-    pub fn print_list_name(&mut self, name: &str, oss: &mut dyn std::io::Write) -> &mut Self {
+    pub fn print_list_name(&mut self, name: &str, oss: &mut dyn std::io::Write) -> CmdResult {
         if !self.lists.contains_key(name) {
-            let _ = writeln!(oss, "No such list defined: {}", name);
-            self.flush();
-            self.prompt();
-            return self;
+            return Err(CommandError::new(format!("no such list: '{}'", name)));
         }
         let l = self.lists[name].clone();
         let _ = write!(oss, "{:>10}", name);
@@ -317,16 +264,16 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         let _ = writeln!(oss);
         self.flush();
         self.prompt();
-        self
+        Ok(())
     }
 
     // @brief Print all lists
-    pub fn print_list(&mut self, oss: &mut dyn std::io::Write) -> &mut Self {
+    pub fn print_list(&mut self, oss: &mut dyn std::io::Write) -> CmdResult {
         if self.lists.is_empty() {
             let _ = writeln!(oss, "No lists defined.");
             self.flush();
             self.prompt();
-            return self;
+            return Ok(());
         }
         let lists: Vec<(String, BTreeSet<Symbol>)> = self
             .lists
@@ -344,15 +291,12 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         }
         self.flush();
         self.prompt();
-        self
+        Ok(())
     }
 
     // @brief Print name of top network
-    pub fn print_name(&mut self, oss: &mut dyn std::io::Write) -> &mut Self {
-        let Some(tmp) = self.top() else {
-            self.xfst_lesser_fail();
-            return self;
-        };
+    pub fn print_name(&mut self, oss: &mut dyn std::io::Write) -> CmdResult {
+        let tmp = self.top()?;
 
         let entries: Vec<(String, NetId)> = self
             .names
@@ -364,44 +308,33 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
                 let _ = writeln!(oss, "Name {}", first);
                 self.flush();
                 self.prompt();
-                return self;
+                return Ok(());
             }
         }
 
         let _ = writeln!(oss, "No name.");
         self.flush();
         self.prompt();
-        self
+        Ok(())
     }
 
     // @brief Print network
-    pub fn print_net(&mut self, oss: &mut dyn std::io::Write) -> crate::error::Result<&mut Self> {
+    pub fn print_net(&mut self, oss: &mut dyn std::io::Write) -> CmdResult {
         if self.variables["print-sigma"] == "ON" {
             self.print_sigma(oss, false /*do not prompt*/)?;
         }
-        let Some(tmp) = self.top() else {
-            self.xfst_lesser_fail();
-            return Ok(self);
-        };
+        let tmp = self.top()?;
         let basic = ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(self.net(tmp))?;
         basic.write_in_xfst_format(oss, self.variables["print-weight"] == "ON");
         self.flush();
         self.prompt();
-        Ok(self)
+        Ok(())
     }
 
     // @brief Print network named @a name
-    pub fn print_net_name(
-        &mut self,
-        name: &str,
-        oss: &mut dyn std::io::Write,
-    ) -> crate::error::Result<&mut Self> {
+    pub fn print_net_name(&mut self, name: &str, oss: &mut dyn std::io::Write) -> CmdResult {
         match self.definitions.get(name).copied() {
-            None => {
-                self.diag_unknown_definition(name);
-                self.prompt();
-                Ok(self)
-            }
+            None => Err(self.unknown_definition(name)),
             Some(it) => {
                 if self.variables["print-sigma"] == "ON" {
                     self.stack.push(it);
@@ -413,21 +346,14 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
                 basic.write_in_xfst_format(oss, self.variables["print-weight"] == "ON");
                 self.flush();
                 self.prompt();
-                Ok(self)
+                Ok(())
             }
         }
     }
 
     // @brief Print all symbols of network
-    pub fn print_sigma(
-        &mut self,
-        oss: &mut dyn std::io::Write,
-        prompt: bool,
-    ) -> crate::error::Result<&mut Self> {
-        let Some(t) = self.top() else {
-            self.xfst_lesser_fail();
-            return Ok(self);
-        };
+    pub fn print_sigma(&mut self, oss: &mut dyn std::io::Write, prompt: bool) -> CmdResult {
+        let t = self.top()?;
         let alpha = self.net(t).get_alphabet()?;
 
         // find out whether unknown or identity is used in transitions
@@ -438,19 +364,16 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             self.prompt();
         }
         self.flush();
-        Ok(self)
+        Ok(())
     }
 
     // @brief Print all symbols of network named @a name
-    pub fn print_sigma_name(&mut self, _name: &str, oss: &mut dyn std::io::Write) -> &mut Self {
-        let _ = writeln!(oss, "missing print sigma");
-        self.flush();
-        self.prompt();
-        self
+    pub fn print_sigma_name(&mut self, _name: &str, _oss: &mut dyn std::io::Write) -> CmdResult {
+        Err(CommandError::not_supported("print sigma"))
     }
 
     // @brief Print all networks in stack
-    pub fn print_stack(&mut self, oss: &mut dyn std::io::Write) -> &mut Self {
+    pub fn print_stack(&mut self, oss: &mut dyn std::io::Write) -> CmdResult {
         for i in 0..self.stack.len() {
             let _ = write!(
                 oss,
@@ -461,7 +384,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         }
         self.flush();
         self.prompt();
-        self
+        Ok(())
     }
 
     // [spec:hfst:def:xfst-compiler.hfst.xfst.xfst-compiler.print-alphabet-fn]

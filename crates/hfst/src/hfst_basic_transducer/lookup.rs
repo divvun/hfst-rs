@@ -424,20 +424,18 @@ impl HfstBasicTransducer {
                     }
                 };
 
-                let istr;
-                let ostr;
                 // identity symbol is replaced with the lookup symbol
-                if is_identity(&tr_isym) {
-                    istr = params.lookup_path[lookup_index as usize].clone();
-                    ostr = istr.clone();
+                let (istr, ostr) = if is_identity(&tr_isym) {
+                    let istr = params.lookup_path[lookup_index as usize].clone();
+                    (istr.clone(), istr)
                 } else {
-                    if is_unknown(&tr_isym) {
-                        istr = params.lookup_path[lookup_index as usize].clone();
+                    let istr = if is_unknown(&tr_isym) {
+                        params.lookup_path[lookup_index as usize].clone()
                     } else {
-                        istr = tr_isym;
-                    }
-                    ostr = transition.get_output_symbol(&self.coder);
-                }
+                        tr_isym
+                    };
+                    (istr, transition.get_output_symbol(&self.coder))
+                };
 
                 Self::push_back_to_two_level_path(
                     acc.path_so_far,

@@ -632,4 +632,11 @@ impl_evidence (
     ), covered_claims (
         {impl_name target-impl, rule twolc-compiler.hfst.twolcpre2.complete-alphabet-fn}
     )}
+    {id xfst-result-flow, covered_rules (
+        xfst-cmd.errors-are-values
+        xfst-cmd.io-errors
+    ), covered_claims (
+        {impl_name target-impl, rule xfst-cmd.errors-are-values}
+        {impl_name target-impl, rule xfst-cmd.io-errors}
+    )}
 )

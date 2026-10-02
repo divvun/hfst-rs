@@ -434,7 +434,7 @@ fn xfst_net_size_under_foma_is_nonzero() {
     let script = "regex [a:b | c:d | e:f];\n";
 
     let mut foma_c = XfstCompiler::<FomaTransducer>::new();
-    foma_c.parse(script);
+    foma_c.parse(script).expect("xfst script runs");
     let foma_top = *foma_c.get_stack().last().expect("foma stack non-empty");
     let foma_size = (
         foma_c.net(foma_top).number_of_states(),
@@ -442,7 +442,7 @@ fn xfst_net_size_under_foma_is_nonzero() {
     );
 
     let mut trop_c = XfstCompiler::<StdVectorFst>::new();
-    trop_c.parse(script);
+    trop_c.parse(script).expect("xfst script runs");
     let trop_top = *trop_c.get_stack().last().expect("tropical stack non-empty");
     let trop_size = (
         trop_c.net(trop_top).number_of_states(),

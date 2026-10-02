@@ -75,7 +75,7 @@ fn xfst_result(right_flag: Option<&str>, config: &EngineConfig) -> HfstTransduce
         }
     );
     let mut compiler = XfstCompiler::<StdVectorFst>::new();
-    assert_eq!(compiler.parse(&script), 0, "XFST script failed");
+    compiler.parse(&script).expect("XFST script failed");
     assert_eq!(compiler.get_stack().len(), 1, "compose must leave one net");
     let top = *compiler.get_stack().last().expect("one XFST result");
     compiler.net(top).clone()
@@ -124,7 +124,8 @@ fn composition_chain_finalization_preserves_result() {
     );
 
     let mut xfst = XfstCompiler::<StdVectorFst>::new();
-    assert_eq!(xfst.parse(&format!("regex {expression} ;\n")), 0);
+    xfst.parse(&format!("regex {expression} ;\n"))
+        .expect("regex compiles");
     let top = *xfst.get_stack().last().expect("one XFST chain result");
     assert!(
         xfst.net(top)

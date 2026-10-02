@@ -33,24 +33,15 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     }
 
     // @brief Set variable @c name = @c text
-    pub fn set(&mut self, name: &str, text: &str) -> &mut Self {
+    pub fn set(&mut self, name: &str, text: &str) -> CmdResult {
         if !self.variables.contains_key(name) {
             if name == "compose-flag-as-special" {
                 self.diag_warning(
                     "there is no compose-flag-as-special variable; setting flag-is-epsilon instead",
                 );
-                self.variables
-                    .insert("flag-is-epsilon".to_string(), text.to_string());
-                if self.verbose {
-                    println!("variable flag-is-epsilon = {}", text);
-                }
-                self.prompt();
-                return self;
-            } else {
-                self.diag_unknown_variable(name);
-                self.prompt();
-                return self;
+                return self.set("flag-is-epsilon", text);
             }
+            return Err(self.unknown_variable(name));
         }
         self.variables.insert(name.to_string(), text.to_string());
         if name == "hopcroft-min" {
@@ -135,20 +126,18 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         }
 
         self.prompt();
-        self
+        Ok(())
     }
 
     // @brief Set variable @c name = @c number
-    pub fn set_number(&mut self, name: &str, number: u32) -> &mut Self {
+    pub fn set_number(&mut self, name: &str, number: u32) -> CmdResult {
         if !self.variables.contains_key(name) {
-            self.diag_unknown_variable(name);
-            self.prompt();
-            return self;
+            return Err(self.unknown_variable(name));
         }
         let num = format!("{}", number);
         self.variables.insert(name.to_string(), num);
         self.prompt();
-        self
+        Ok(())
     }
 
     // [spec:hfst:def:xfst-compiler.hfst.xfst.xfst-compiler.get-fn]
@@ -162,19 +151,17 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     }
 
     // @brief Show named variable
-    pub fn show(&mut self, name: &str) -> &mut Self {
-        if !self.variables.contains_key(name) {
-            self.diag_unknown_variable(name);
-            self.prompt();
-            return self;
-        }
-        println!("variable {} = {}", name, self.variables[name]);
+    pub fn show(&mut self, name: &str) -> CmdResult {
+        let Some(value) = self.variables.get(name) else {
+            return Err(self.unknown_variable(name));
+        };
+        println!("variable {} = {}", name, value);
         self.prompt();
-        self
+        Ok(())
     }
 
     // @brief Show all variables
-    pub fn show_all(&mut self) -> &mut Self {
+    pub fn show_all(&mut self) {
         let vars: Vec<(String, String)> = self
             .variables
             .iter()
@@ -189,7 +176,6 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             }
         }
         self.prompt();
-        self
     }
 
     // @brief Define whether readline library is used to read input in apply up etc.
@@ -257,20 +243,6 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     // @brief Whether restricted mode is on.
     pub fn get_restricted_mode(&self) -> bool {
         self.restricted_mode
-    }
-
-    // [spec:hfst:def:xfst-compiler.hfst.xfst.xfst-compiler.quit-requested-fn]
-    // [spec:hfst:sem:xfst-compiler.hfst.xfst.xfst-compiler.quit-requested-fn]
-    // @brief Whether it has been requested to quit the program.
-    pub fn quit_requested(&self) -> bool {
-        self.quit_requested
-    }
-
-    // [spec:hfst:def:xfst-compiler.hfst.xfst.xfst-compiler.get-fail-flag-fn]
-    // [spec:hfst:sem:xfst-compiler.hfst.xfst.xfst-compiler.get-fail-flag-fn]
-    // For xfst parser.
-    pub fn get_fail_flag(&self) -> bool {
-        self.fail_flag
     }
 }
 

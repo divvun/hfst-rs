@@ -26,10 +26,10 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         );
     }
 
-    /// Report a `set`/`show` against a variable this compiler does not have,
+    /// A `set`/`show` against a variable this compiler does not have,
     /// suggesting the nearest one it does. The valid set is session state, so
     /// the suggestion is drawn from it rather than from a fixed list.
-    pub(super) fn diag_unknown_variable(&self, name: &str) {
+    pub(super) fn unknown_variable(&self, name: &str) -> CommandError {
         let mut notes = Vec::new();
         if let Some(near) = nearest_name(name, self.variables.keys().map(String::as_str)) {
             notes.push(format!("did you mean '{}'?", near));
@@ -37,18 +37,18 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         notes.push(String::from(
             "'show variables' lists every variable and its value",
         ));
-        self.diag_error_with_notes(&format!("no such variable: '{}'", name), &notes);
+        CommandError::new(format!("no such variable: '{}'", name)).with_notes(notes)
     }
 
-    /// Report a reference to a network that was never defined, suggesting the
+    /// A reference to a network that was never defined, suggesting the
     /// nearest name this session has defined.
-    pub(super) fn diag_unknown_definition(&self, name: &str) {
+    pub(super) fn unknown_definition(&self, name: &str) -> CommandError {
         let mut notes = Vec::new();
         if let Some(near) = nearest_name(name, self.definitions.keys().map(|k| k.as_str())) {
             notes.push(format!("did you mean '{}'?", near));
         }
         notes.push(String::from("'print defined' lists the defined networks"));
-        self.diag_error_with_notes(&format!("no such defined network: '{}'", name), &notes);
+        CommandError::new(format!("no such defined network: '{}'", name)).with_notes(notes)
     }
 
     /// Render a warning about the command currently being evaluated, anchored
@@ -73,28 +73,6 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             msg,
             notes,
         );
-    }
-
-    pub(super) fn error_message(&self, message: &str) -> &Self {
-        self.diag_error(message);
-        self
-    }
-
-    // [spec:hfst:def:xfst-compiler.hfst.xfst.xfst-compiler.unknown-command-fn]
-    // [spec:hfst:sem:xfst-compiler.hfst.xfst.xfst-compiler.unknown-command-fn]
-    // @brief Handle unknown command \a s.
-    //  @return Whether the parser should go on, 0 signifying true.
-    pub fn unknown_command(&mut self, s: &str) -> i32 {
-        let d = unknown_command_diagnostic(s, self.current_span.clone());
-        if self.variables["quit-on-fail"] == "ON" {
-            if self.verbose {
-                self.diag_error_with_notes(&d.message, &d.notes);
-            }
-            return 1;
-        }
-        self.diag_error_with_notes(&d.message, &d.notes);
-        self.prompt();
-        0
     }
 }
 

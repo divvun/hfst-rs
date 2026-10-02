@@ -4,16 +4,15 @@ use super::*;
 
 impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     // @brief Define alias for command sequence
-    pub fn define_alias(&mut self, name: &str, commands: &str) -> &mut Self {
+    pub fn define_alias(&mut self, name: &str, commands: &str) {
         self.aliases.insert(Symbol::new(name), commands.to_string());
         self.prompt();
-        self
     }
 
     // @brief Define list by range
     // @todo lists are not supported by HFST
     // @todo Unicode ranges are not supported
-    pub fn define_list_by_range(&mut self, name: &str, start: &str, end: &str) -> &mut Self {
+    pub fn define_list_by_range(&mut self, name: &str, start: &str, end: &str) {
         if (start.len() > 1) || (end.len() > 1) {
             self.diag_warning(&format!("unsupported unicode range {}-{}", start, end));
         }
@@ -27,26 +26,20 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             c += 1;
         }
         self.lists.insert(Symbol::new(name), l);
-        self
     }
 
     // @brief Define list by labels
     // @todo lists are not supportedd by HFST
-    pub fn define_list(&mut self, name: &str, list: &str) -> &mut Self {
+    pub fn define_list(&mut self, name: &str, list: &str) -> CmdResult {
         if self.definitions.contains_key(name) {
-            self.diag_error_with_notes(
-                &format!("'{}' is already defined as a transducer", name),
-                &[format!(
-                    "a name cannot be both; 'undefine {}' first to redefine it as a list",
-                    name
-                )],
-            );
-            // MAYBE_QUIT
-            if self.variables["quit-on-fail"] == "ON" {
-                self.fail_flag = true;
-            }
-            self.prompt();
-            return self;
+            return Err(CommandError::new(format!(
+                "'{}' is already defined as a transducer",
+                name
+            ))
+            .with_note(format!(
+                "a name cannot be both; 'undefine {}' first to redefine it as a list",
+                name
+            )));
         }
         let mut l: BTreeSet<Symbol> = BTreeSet::new();
         for token in list.split(' ') {
@@ -58,73 +51,19 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         self.lists.insert(Symbol::new(name), l.clone());
         self.xre.define_list(name, &l); // XRE
         self.prompt();
-        self
+        Ok(())
     }
 
     // @brief Define regex macro
-    pub fn define_xre(&mut self, name: &str, xre: &str) -> &mut Self {
-        // When calling this function, the regex 'indata' should already have
-        // been compiled into a transducer which should have been stored to
-        // the variable latest_regex_compiled.
-
-        if self.lists.contains_key(name) {
-            self.diag_error_with_notes(
-                &format!("'{}' is already defined as a list", name),
-                &[format!(
-                    "a name cannot be both; 'unlist {}' first to redefine it as a transducer",
-                    name
-                )],
-            );
-            // MAYBE_QUIT
-            if self.variables["quit-on-fail"] == "ON" {
-                self.fail_flag = true;
-            }
-            self.prompt();
-            return self;
-        }
-
-        if self.latest_regex_compiled.is_some() {
-            let compiled = self.xre.compile(xre);
-            let compiled = compiled.map(|t| self.alloc_net(t));
-            match compiled {
-                Some(compiled) => {
-                    self.define_transducer(name, compiled);
-                    self.original_definitions
-                        .insert(Symbol::new(name), xre.to_string());
-                }
-                None => {
-                    self.diag_error(&format!(
-                        "could not define '{}': its regex did not compile",
-                        name
-                    ));
-                    self.xfst_fail();
-                }
-            }
-        } else {
-            self.diag_error(&format!(
-                "could not define '{}': no regex was compiled for it",
-                name
-            ));
-            self.xfst_fail();
-        }
-        self.prompt();
-        self
-    }
-
-    // @brief Define regex macro
-    pub fn define(&mut self, name: &str) -> &mut Self {
-        // GET_TOP(top)
-        let Some(top) = self.top() else {
-            self.xfst_lesser_fail();
-            return self;
-        };
+    pub fn define(&mut self, name: &str) -> CmdResult {
+        let top = self.top()?;
         self.stack.pop();
         self.define_transducer(name, top);
 
         self.original_definitions
             .insert(Symbol::new(name), "<net taken from stack>".to_string());
         self.prompt();
-        self
+        Ok(())
     }
 
     // [spec:hfst:def:xfst-compiler.hfst.xfst.xfst-compiler.define-fn]
@@ -155,34 +94,28 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
 
     // @brief Define regex macro function
     // @todo Regex parser does not support macro functions
-    pub fn define_function(&mut self, prototype: &str, xre: &str) -> &mut Self {
+    pub fn define_function(&mut self, prototype: &str, xre: &str) -> CmdResult {
         let Some(name) = Self::extract_function_name(prototype) else {
-            self.diag_error(&format!(
+            return Err(CommandError::new(format!(
                 "could not read a function name out of the prototype '{}'",
                 prototype
-            ));
-            self.xfst_fail();
-            self.prompt();
-            return self;
+            )));
         };
 
         let Some(arguments) = Self::extract_function_arguments(prototype) else {
-            self.diag_error(&format!(
+            return Err(CommandError::new(format!(
                 "could not read the argument list out of the prototype '{}'",
                 prototype
-            ));
-            self.xfst_fail();
-            self.prompt();
-            return self;
+            )));
         };
 
         let xre_converted =
             Self::convert_argument_symbols(&arguments, xre, &name, &mut self.xre, false);
         if xre_converted.is_empty() {
-            self.diag_error(&format!("could not parse the body of function '{}'", name));
-            self.xfst_fail();
-            self.prompt();
-            return self;
+            return Err(CommandError::new(format!(
+                "could not parse the body of function '{}'",
+                name
+            )));
         }
 
         let was_defined = self.xre.is_function_definition(&name);
@@ -192,11 +125,10 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             u32::try_from(arguments.len()).expect("value out of u32 range"),
             &xre_converted,
         ) {
-            // XRE
-            self.diag_error(&format!("could not define function '{}'", name));
-            self.xfst_fail();
-            self.prompt();
-            return self;
+            return Err(CommandError::new(format!(
+                "could not define function '{}'",
+                name
+            )));
         }
 
         if self.verbose {
@@ -219,11 +151,11 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             .insert(Symbol::new(prototype), xre.to_string());
 
         self.prompt();
-        self
+        Ok(())
     }
 
     // @brief Remove definition
-    pub fn undefine(&mut self, name_list: &str) -> &mut Self {
+    pub fn undefine(&mut self, name_list: &str) {
         for name in name_list.split(' ') {
             if name.is_empty() {
                 continue;
@@ -233,17 +165,12 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             }
         }
         self.prompt();
-        self
     }
 
     // @brief Remove list
-    // @todo HFST does not support lists
-    pub fn unlist(&mut self, name: &str) -> &mut Self {
-        if self.lists.contains_key(name) {
-            self.lists.remove(name);
-        }
+    pub fn unlist(&mut self, name: &str) {
+        self.lists.remove(name);
         self.prompt();
-        self
     }
 
     // Extract the function name (up to and including the '(') from 'prototype'.

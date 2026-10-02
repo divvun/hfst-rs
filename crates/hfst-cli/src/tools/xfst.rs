@@ -17,7 +17,7 @@ use crate::hfst_commandline::{
     print_version, verbose_print,
 };
 use hfst::hfst_data_types::ImplementationType;
-use hfst::xfst_compiler::XfstCompiler;
+use hfst::xfst_compiler::{Flow, XfstCompiler};
 use std::io::{BufRead, Read, Write};
 
 const EXIT_SUCCESS: i32 = 0;
@@ -306,16 +306,11 @@ fn parse_file<B: hfst::backend::AlgebraBackend + hfst::hfst_transducer::FromAnyT
     };
 
     comp.set_source_name(filename);
-    if 0 != comp.parse(&line) {
-        hfst_error(
-            common,
-            EXIT_FAILURE,
-            0,
-            &format!("error when parsing file {}\n", filename),
-        );
-        return EXIT_FAILURE;
+    match comp.parse(&line) {
+        Ok(_) => EXIT_SUCCESS,
+        // Already reported against the script.
+        Err(_) => EXIT_FAILURE,
     }
-    0
 }
 
 fn expression_continues(expr: &mut String) -> bool {
@@ -503,7 +498,8 @@ fn run_compiler<B: hfst::backend::AlgebraBackend + hfst::hfst_transducer::FromAn
 
     if options.print_weight {
         comp.set_prompt_verbosity(false);
-        comp.set("print-weight", "ON");
+        comp.set("print-weight", "ON")
+            .expect("print-weight is a variable every session has");
         comp.set_prompt_verbosity(true);
     }
 
@@ -526,14 +522,10 @@ fn run_compiler<B: hfst::backend::AlgebraBackend + hfst::hfst_transducer::FromAn
             common,
             &format!("Executing xfst command '{}' given on command line\n", cmd),
         );
-        if 0 != comp.parse(&cmd) {
-            hfst_error(
-                common,
-                EXIT_FAILURE,
-                0,
-                &format!("command '{}' could not be parsed\n", cmd),
-            );
-            return EXIT_FAILURE;
+        match comp.parse(&cmd) {
+            Ok(Flow::Continue) => {}
+            Ok(Flow::Quit) => return EXIT_SUCCESS,
+            Err(_) => return EXIT_FAILURE,
         }
     }
     // If needed, execute script given in command line, and quit
@@ -542,16 +534,10 @@ fn run_compiler<B: hfst::backend::AlgebraBackend + hfst::hfst_transducer::FromAn
             common,
             &format!("Executing xfst command '{}' given on command line\n", cmd),
         );
-        if 0 != comp.parse(&cmd) {
-            hfst_error(
-                common,
-                EXIT_FAILURE,
-                0,
-                &format!("command '{}' could not be parsed\n", cmd),
-            );
-            return EXIT_FAILURE;
-        }
-        return EXIT_SUCCESS;
+        return match comp.parse(&cmd) {
+            Ok(_) => EXIT_SUCCESS,
+            Err(_) => EXIT_FAILURE,
+        };
     }
     // If needed, execute script in startup file
     if let Some(startupfilename) = options.startupfilename.clone() {
@@ -614,18 +600,16 @@ fn run_compiler<B: hfst::backend::AlgebraBackend + hfst::hfst_transducer::FromAn
                 continue;
             }
 
-            if 0 != comp.parse(&format!("{}\n", expression)) {
-                eprintln!("expression '{}' could not be parsed", expression);
-                if comp.get("quit-on-fail") == "ON" {
-                    return EXIT_FAILURE;
+            // The prompt reports a failure and carries on.
+            match comp.parse(&format!("{}\n", expression)) {
+                Ok(Flow::Quit) => break,
+                Ok(Flow::Continue) => {}
+                Err(_) => {
+                    if !common.silent {
+                        comp.prompt();
+                        let _ = std::io::stdout().flush();
+                    }
                 }
-                if !common.silent {
-                    comp.prompt();
-                    let _ = std::io::stdout().flush();
-                }
-            }
-            if comp.quit_requested() {
-                break;
             }
 
             expression = String::new();

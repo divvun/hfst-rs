@@ -4,57 +4,42 @@
 use super::*;
 
 impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
-    fn print_bool(&mut self, value: bool) -> &mut Self {
-        let printval = if value { 1 } else { 0 };
-        println!("{}, (1 = TRUE, 0 = FALSE)", printval);
+    fn print_bool(&self, value: bool) {
+        println!("{}, (1 = TRUE, 0 = FALSE)", u8::from(value));
         self.flush();
-        self
+    }
+
+    /// Print a test's verdict, and fail when it is false under an
+    /// assertion (the 'assert' prefix or the 'assert' variable).
+    fn report_test(&mut self, value: bool, assertion: bool) -> CmdResult {
+        self.print_bool(value);
+        if !value && (assertion || self.variables["assert"] == "ON") {
+            return Err(CommandError::new("assertion failed: the test is false"));
+        }
+        self.prompt();
+        Ok(())
     }
 
     // @brief Test top transducer in stack for equivalence
     // @todo tests are not implemented
-    pub fn test_eq(&mut self, assertion: bool) -> crate::error::Result<&mut Self> {
-        if self.stack.len() < 2 {
-            self.diag_warning("not enough networks on the stack: this operation needs two");
-            self.xfst_lesser_fail();
-            return Ok(self);
-        }
-        let first = *self.stack.last().expect("stack has >= 2, checked above");
-        self.stack.pop();
-        let second = *self
-            .stack
-            .last()
-            .expect("stack still non-empty after one pop");
-        self.stack.pop();
+    pub fn test_eq(&mut self, assertion: bool) -> CmdResult {
+        self.require_two()?;
+        let first = self.stack[self.stack.len() - 1];
+        let second = self.stack[self.stack.len() - 2];
         let result = self.net(first).compare(self.net(second), false)?;
-        self.print_bool(result);
-        self.stack.push(second);
-        self.stack.push(first);
-        // MAYBE_ASSERT(assertion, result)
-        if !result
-            && ((self.variables["assert"] == "ON" || assertion)
-                && (self.variables["quit-on-fail"] == "ON"))
-        {
-            self.fail_flag = true;
-        }
-        Ok(self)
+        self.report_test(result, assertion)
     }
 
     // @brief Test top transducer in stack for functionality
     // @todo tests are not implemented
-    pub fn test_funct(&mut self, assertion: bool) -> &mut Self {
-        let _ = assertion;
-        self.diag_warning("test funct is not implemented; no verdict was produced");
-        self.prompt();
-        self
+    pub fn test_funct(&mut self, _assertion: bool) -> CmdResult {
+        Err(CommandError::not_supported("test functional"))
     }
 
     // @brief Test top transducer in stack for identity
     // @todo tests are not implemented
-    pub fn test_id(&mut self, assertion: bool) -> crate::error::Result<&mut Self> {
-        let Some(tmp) = self.top() else {
-            return Ok(self);
-        };
+    pub fn test_id(&mut self, assertion: bool) -> CmdResult {
+        let tmp = self.top()?;
 
         let mut tmp_input = HfstTransducer::new_copy(self.net(tmp))?;
         tmp_input.input_project()?;
@@ -62,110 +47,66 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         tmp_output.output_project()?;
 
         let result = tmp_input.compare(&tmp_output, false)?;
-        self.print_bool(result);
-        // MAYBE_ASSERT(assertion, result)
-        if !result
-            && ((self.variables["assert"] == "ON" || assertion)
-                && (self.variables["quit-on-fail"] == "ON"))
-        {
-            self.fail_flag = true;
-        }
-        self.prompt();
-        Ok(self)
+        self.report_test(result, assertion)
     }
 
     // @brief Test top transducer in stack for upper language boundedness
     // @todo tests are not implemented
-    pub fn test_upper_bounded(&mut self, assertion: bool) -> crate::error::Result<&mut Self> {
-        let Some(temp) = self.top() else {
-            return Ok(self);
-        };
+    pub fn test_upper_bounded(&mut self, assertion: bool) -> CmdResult {
+        let temp = self.top()?;
 
         let mut tmp = HfstTransducer::new_copy(self.net(temp))?;
         tmp.output_project()?;
         tmp.remove_epsilons()?; // needed for testing cyclicity
 
         let result = !tmp.is_cyclic()?;
-        self.print_bool(result);
-        // MAYBE_ASSERT(assertion, result)
-        if !result
-            && ((self.variables["assert"] == "ON" || assertion)
-                && (self.variables["quit-on-fail"] == "ON"))
-        {
-            self.fail_flag = true;
-        }
-        self.prompt();
-        Ok(self)
+        self.report_test(result, assertion)
     }
 
-    pub fn test_uni(&mut self, level: Level, assertion: bool) -> crate::error::Result<&mut Self> {
-        let Some(temp) = self.top() else {
-            return Ok(self);
+    /// Whether one side of the top network is the universal language: its
+    /// projection equals '?*'.
+    pub fn test_uni(&mut self, level: Level, assertion: bool) -> CmdResult {
+        let temp = self.top()?;
+        let mut side = HfstTransducer::new_copy(self.net(temp))?;
+        match level {
+            Level::UPPER_LEVEL => side.input_project()?,
+            Level::LOWER_LEVEL => side.output_project()?,
+            Level::BOTH_LEVELS => unreachable!("universality is tested on one side"),
         };
-
-        let mut tmp = HfstTransducer::new_copy(self.net(temp))?;
-        tmp.input_project()?;
-        let id = HfstTransducer::new_symbol(internal_identity)?;
-        let mut value = false;
-
-        if level == Level::UPPER_LEVEL {
-            value = id.compare(&tmp, false)?;
-        } else if level == Level::LOWER_LEVEL {
-            value = !id.compare(&tmp, false)?;
-        } else {
-            error!("ERROR: argument given to function 'test_uni' not recognized");
-        }
-        self.print_bool(value);
-        // MAYBE_ASSERT(assertion, value)
-        if !value
-            && ((self.variables["assert"] == "ON" || assertion)
-                && (self.variables["quit-on-fail"] == "ON"))
-        {
-            self.fail_flag = true;
-        }
-        self.prompt();
-        Ok(self)
+        let mut universal = HfstTransducer::new_symbol(internal_identity)?;
+        universal.repeat_star()?;
+        let value = side.compare(&universal, false)?;
+        self.report_test(value, assertion)
     }
 
     // @brief Test top transducer in stack for upper language universality
     // @todo tests are not implemented
-    pub fn test_upper_uni(&mut self, assertion: bool) -> crate::error::Result<&mut Self> {
+    pub fn test_upper_uni(&mut self, assertion: bool) -> CmdResult {
         self.test_uni(Level::UPPER_LEVEL, assertion)
     }
 
     // @brief Test top transducer in stack for lower language boundedness
     // @todo tests are not implemented
-    pub fn test_lower_bounded(&mut self, assertion: bool) -> crate::error::Result<&mut Self> {
-        let Some(temp) = self.top() else {
-            return Ok(self);
-        };
+    pub fn test_lower_bounded(&mut self, assertion: bool) -> CmdResult {
+        let temp = self.top()?;
 
         let mut tmp = HfstTransducer::new_copy(self.net(temp))?;
         tmp.input_project()?;
         tmp.remove_epsilons()?; // needed for testing cyclicity
 
         let result = !tmp.is_cyclic()?;
-        self.print_bool(result);
-        // MAYBE_ASSERT(assertion, result)
-        if !result
-            && ((self.variables["assert"] == "ON" || assertion)
-                && (self.variables["quit-on-fail"] == "ON"))
-        {
-            self.fail_flag = true;
-        }
-        self.prompt();
-        Ok(self)
+        self.report_test(result, assertion)
     }
 
     // @brief Test top transducer in stack for lower language universality
     // @todo tests are not implemented
-    pub fn test_lower_uni(&mut self, assertion: bool) -> crate::error::Result<&mut Self> {
+    pub fn test_lower_uni(&mut self, assertion: bool) -> CmdResult {
         self.test_uni(Level::LOWER_LEVEL, assertion)
     }
 
     // @brief Test top transducer in stack for not emptiness
     // @todo tests are not implemented
-    pub fn test_nonnull(&mut self, assertion: bool) -> crate::error::Result<&mut Self> {
+    pub fn test_nonnull(&mut self, assertion: bool) -> CmdResult {
         self.test_null(true, assertion)
     }
 
@@ -173,45 +114,20 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     // \a invert_test_result defines whether the result is inverted
     // (so that 'test_nonnull' can be implemented with the same function).
     // @todo tests are not implemented
-    pub fn test_null(
-        &mut self,
-        invert_test_result: bool,
-        assertion: bool,
-    ) -> crate::error::Result<&mut Self> {
-        let Some(tmp) = self.top() else {
-            return Ok(self);
-        };
+    pub fn test_null(&mut self, invert_test_result: bool, assertion: bool) -> CmdResult {
+        let tmp = self.top()?;
 
         let empty: HfstTransducer<B> = HfstTransducer::new();
         let mut value = empty.compare(self.net(tmp), false)?;
         if invert_test_result {
             value = !value;
         }
-        self.print_bool(value);
-
-        // MAYBE_ASSERT(assertion, value)
-        if !value
-            && ((self.variables["assert"] == "ON" || assertion)
-                && (self.variables["quit-on-fail"] == "ON"))
-        {
-            self.fail_flag = true;
-        }
-        self.prompt();
-        Ok(self)
+        self.report_test(value, assertion)
     }
 
     // @brief Print the result of \a operation when applied to the whole stack.
-    fn test_operation(
-        &mut self,
-        operation: TestOperation,
-        assertion: bool,
-    ) -> crate::error::Result<&mut Self> {
-        if self.stack.len() < 2 {
-            self.diag_warning("not enough networks on the stack: this operation needs two");
-            self.xfst_lesser_fail();
-            self.prompt();
-            return Ok(self);
-        }
+    fn test_operation(&mut self, operation: TestOperation, assertion: bool) -> CmdResult {
+        self.require_two()?;
         // [spec:hfst:def:xfst-compiler.hfst.xfst.copied-stack-fn]
         // [spec:hfst:sem:xfst-compiler.hfst.xfst.copied-stack-fn]
         let mut copied_stack: Vec<NetId> = self.stack.clone();
@@ -230,17 +146,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
                 TestOperation::TEST_OVERLAP_ => {
                     topmost_transducer.intersect(&next_transducer, true)?;
                     if topmost_transducer.compare(&empty, true)? {
-                        self.print_bool(false);
-                        // MAYBE_ASSERT(assertion, false)
-                        let value = false;
-                        if !value
-                            && ((self.variables["assert"] == "ON" || assertion)
-                                && (self.variables["quit-on-fail"] == "ON"))
-                        {
-                            self.fail_flag = true;
-                        }
-                        self.prompt();
-                        return Ok(self);
+                        return self.report_test(false, assertion);
                     }
                 }
                 TestOperation::TEST_SUBLANGUAGE_ => {
@@ -249,73 +155,36 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
                     let mut intersection = HfstTransducer::new_copy(&topmost_transducer)?;
                     intersection.intersect(&next_transducer, true)?;
                     if !intersection.compare(&topmost_transducer, true)? {
-                        self.print_bool(false);
-                        // MAYBE_ASSERT(assertion, false)
-                        let value = false;
-                        if !value
-                            && ((self.variables["assert"] == "ON" || assertion)
-                                && (self.variables["quit-on-fail"] == "ON"))
-                        {
-                            self.fail_flag = true;
-                        }
-                        self.prompt();
-                        return Ok(self);
+                        return self.report_test(false, assertion);
                     }
                     topmost_transducer = next_transducer;
                 }
             }
         }
-        self.print_bool(true);
-        // MAYBE_ASSERT(assertion, true)
-        let value = true;
-        if !value
-            && ((self.variables["assert"] == "ON" || assertion)
-                && (self.variables["quit-on-fail"] == "ON"))
-        {
-            self.fail_flag = true;
-        }
-        self.prompt();
-        Ok(self)
+        self.report_test(true, assertion)
     }
 
     // @brief Test top transducer in stack for overlapping
     // @todo tests are not implemented
-    pub fn test_overlap(&mut self, assertion: bool) -> crate::error::Result<&mut Self> {
+    pub fn test_overlap(&mut self, assertion: bool) -> CmdResult {
         self.test_operation(TestOperation::TEST_OVERLAP_, assertion)
     }
 
     // @brief Test top transducer in stack for sublanguage
     // @todo tests are not implemented
-    pub fn test_sublanguage(&mut self, assertion: bool) -> crate::error::Result<&mut Self> {
+    pub fn test_sublanguage(&mut self, assertion: bool) -> CmdResult {
         self.test_operation(TestOperation::TEST_SUBLANGUAGE_, assertion)
     }
 
     // @brief Test top transducer in stack for unambiguity
     // @todo tests are not implemented
-    pub fn test_unambiguous(&mut self, assertion: bool) -> &mut Self {
-        let _ = assertion;
-        self.diag_warning("test unambiguous is not implemented; no verdict was produced");
-        self.prompt();
-        self
+    pub fn test_unambiguous(&mut self, _assertion: bool) -> CmdResult {
+        Err(CommandError::not_supported("test unambiguous"))
     }
 
-    pub fn test_infinitely_ambiguous(
-        &mut self,
-        assertion: bool,
-    ) -> crate::error::Result<&mut Self> {
-        let Some(tmp) = self.top() else {
-            return Ok(self);
-        };
+    pub fn test_infinitely_ambiguous(&mut self, assertion: bool) -> CmdResult {
+        let tmp = self.top()?;
         let value = self.net(tmp).is_infinitely_ambiguous()?;
-        self.print_bool(value);
-        // MAYBE_ASSERT(assertion, value)
-        if !value
-            && ((self.variables["assert"] == "ON" || assertion)
-                && (self.variables["quit-on-fail"] == "ON"))
-        {
-            self.fail_flag = true;
-        }
-        self.prompt();
-        Ok(self)
+        self.report_test(value, assertion)
     }
 }

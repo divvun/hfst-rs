@@ -13,7 +13,7 @@ union net
 
 fn main() {
     let mut c = XfstCompiler::<StdVectorFst>::new();
-    c.parse(SRC);
+    c.parse(SRC).expect("xfst script runs");
 
     let stack = c.get_stack();
     assert!(!stack.is_empty(), "xfst script left an empty stack");

@@ -4,7 +4,7 @@
 // binary-op, define-and-reference, and name/print_name *identity* behaviour so
 // the raw-pointer -> Rc<RefCell> conversion (idiom1.parsers Task 12) is
 // validated rather than blind.
-use hfst::xfst_compiler::XfstCompiler;
+use hfst::xfst_compiler::{Flow, XfstCompiler};
 use hfst_openfst::StdVectorFst;
 
 // Number of states of the transducer on top of the stack.
@@ -25,11 +25,13 @@ fn top_arcs(c: &XfstCompiler<StdVectorFst>) -> u32 {
 #[test]
 fn minimal_off_leaves_the_result_unminimized() {
     let mut on = XfstCompiler::<StdVectorFst>::new();
-    on.parse("set minimal ON\nregex [a b c | x b c] ;\n");
+    on.parse("set minimal ON\nregex [a b c | x b c] ;\n")
+        .expect("xfst script runs");
     assert_eq!((top_states(&on), top_arcs(&on)), (4, 4));
 
     let mut off = XfstCompiler::<StdVectorFst>::new();
-    off.parse("set minimal OFF\nregex [a b c | x b c] ;\n");
+    off.parse("set minimal OFF\nregex [a b c | x b c] ;\n")
+        .expect("xfst script runs");
     assert_eq!((top_states(&off), top_arcs(&off)), (7, 6));
 }
 
@@ -37,7 +39,8 @@ fn minimal_off_leaves_the_result_unminimized() {
 #[test]
 fn minimal_on_restores_minimization_after_off() {
     let mut c = XfstCompiler::<StdVectorFst>::new();
-    c.parse("set minimal OFF\nset minimal ON\nregex [a b c | x b c] ;\n");
+    c.parse("set minimal OFF\nset minimal ON\nregex [a b c | x b c] ;\n")
+        .expect("xfst script runs");
     assert_eq!((top_states(&c), top_arcs(&c)), (4, 4));
 }
 
@@ -47,11 +50,13 @@ fn minimal_governs_stack_operations_as_well() {
     let script = "regex [a b c] ;\nregex [x b c] ;\nunion net\n";
 
     let mut off = XfstCompiler::<StdVectorFst>::new();
-    off.parse(&format!("set minimal OFF\n{script}"));
+    off.parse(&format!("set minimal OFF\n{script}"))
+        .expect("xfst script runs");
     assert_eq!((top_states(&off), top_arcs(&off)), (7, 6));
 
     let mut on = XfstCompiler::<StdVectorFst>::new();
-    on.parse(&format!("set minimal ON\n{script}"));
+    on.parse(&format!("set minimal ON\n{script}"))
+        .expect("xfst script runs");
     assert_eq!((top_states(&on), top_arcs(&on)), (4, 4));
 }
 
@@ -61,16 +66,17 @@ fn minimal_governs_stack_operations_as_well() {
 fn set_verbose_reaches_the_verbosity_flag() {
     let mut c = XfstCompiler::<StdVectorFst>::new();
     c.set_verbosity(true);
-    c.parse("set verbose OFF\n");
+    c.parse("set verbose OFF\n").expect("xfst script runs");
     assert!(!c.verbose);
-    c.parse("set verbose ON\n");
+    c.parse("set verbose ON\n").expect("xfst script runs");
     assert!(c.verbose);
 }
 
 #[test]
 fn regex_pushes_and_union_combines() {
     let mut c = XfstCompiler::<StdVectorFst>::new();
-    c.parse("regex a:b ;\nregex c:d ;\nunion net\n");
+    c.parse("regex a:b ;\nregex c:d ;\nunion net\n")
+        .expect("xfst script runs");
     // two pushes then a binary stack op -> a single combined transducer.
     assert_eq!(c.get_stack().len(), 1);
     assert!(top_states(&c) >= 1);
@@ -79,13 +85,13 @@ fn regex_pushes_and_union_combines() {
 #[test]
 fn name_then_print_name_finds_it() {
     let mut c = XfstCompiler::<StdVectorFst>::new();
-    c.parse("regex a:b ;\n");
+    c.parse("regex a:b ;\n").expect("xfst script runs");
     assert_eq!(c.get_stack().len(), 1);
     // name_net aliases the stack-top transducer into names; print_name finds
     // it by identity. This is the path the conversion must preserve.
-    c.name_net("foo");
+    c.name_net("foo").expect("command runs");
     let mut buf: Vec<u8> = Vec::new();
-    c.print_name(&mut buf);
+    c.print_name(&mut buf).expect("command runs");
     let out = String::from_utf8(buf).unwrap();
     assert!(out.contains("Name foo"), "print_name output was {out:?}");
 }
@@ -93,9 +99,10 @@ fn name_then_print_name_finds_it() {
 #[test]
 fn define_then_reference_pushes_definition() {
     let mut c = XfstCompiler::<StdVectorFst>::new();
-    c.parse("define V [ a | b | c ] ;\n");
+    c.parse("define V [ a | b | c ] ;\n")
+        .expect("xfst script runs");
     // referencing the definition in a later regex pushes an equivalent net.
-    c.parse("regex V ;\n");
+    c.parse("regex V ;\n").expect("xfst script runs");
     assert!(!c.get_stack().is_empty());
     assert!(top_states(&c) >= 1);
 }
@@ -108,9 +115,10 @@ fn define_then_reference_pushes_definition() {
 #[test]
 fn print_defined_lists_definitions_made_with_a_body() {
     let mut c = XfstCompiler::<StdVectorFst>::new();
-    c.parse("define foo a ;\ndefine bar [ a b ]* ;\n");
+    c.parse("define foo a ;\ndefine bar [ a b ]* ;\n")
+        .expect("xfst script runs");
     let mut buf: Vec<u8> = Vec::new();
-    c.print_defined(&mut buf);
+    c.print_defined(&mut buf).expect("command runs");
     let out = String::from_utf8(buf).expect("print_defined emits UTF-8");
     assert!(
         !out.contains("No defined symbols."),
@@ -134,7 +142,8 @@ fn print_defined_lists_definitions_made_with_a_body() {
 #[test]
 fn function_arguments_substitute_including_compound_ones() {
     let mut c = XfstCompiler::<StdVectorFst>::new();
-    c.parse("define Concat(x, y) x y ;\nregex Concat([ a | b ], c) ;\n");
+    c.parse("define Concat(x, y) x y ;\nregex Concat([ a | b ], c) ;\n")
+        .expect("xfst script runs");
     assert_eq!(c.get_stack().len(), 1);
     // [a|b] c: 3 states, 3 arcs. Substitution failure yielded 2 arcs.
     let top = *c.get_stack().last().expect("one net on the stack");
@@ -149,7 +158,8 @@ fn function_arguments_substitute_including_compound_ones() {
 #[test]
 fn function_argument_substitution_respects_token_boundaries() {
     let mut c = XfstCompiler::<StdVectorFst>::new();
-    c.parse("define Fn(x) x xy ;\nregex Fn(a) ;\n");
+    c.parse("define Fn(x) x xy ;\nregex Fn(a) ;\n")
+        .expect("xfst script runs");
     assert_eq!(c.get_stack().len(), 1);
     // a xy — two arcs, the second being the untouched symbol `xy`.
     let top = *c.get_stack().last().expect("one net on the stack");
@@ -281,4 +291,91 @@ fn ordinary_stray_character_gets_no_advice() {
 #[test]
 fn a_valid_script_produces_no_diagnostics() {
     assert!(diagnose("define V [ a | e ] ;\nregex V ;\nprint size\n").is_empty());
+}
+
+// [spec:hfst:req:xfst-cmd.errors-are-values/test]
+// A failing command stops the script by default, and its error comes back as
+// a value pointing at that command; nothing after it runs.
+#[test]
+fn a_failed_command_stops_the_script() {
+    let mut c = XfstCompiler::<StdVectorFst>::new();
+    let src = "regex a ;\npop stack\npop stack\nregex b ;\n";
+    let err = c.parse(src).expect_err("popping an empty stack fails");
+    let d = err.diagnostics.first().expect("the failure is described");
+    assert_eq!(&src[d.span.clone()], "pop stack");
+    assert!(d.message.contains("empty stack"), "{}", d.message);
+    assert!(c.get_stack().is_empty(), "'regex b' ran after the failure");
+}
+
+// [spec:hfst:req:xfst-cmd.errors-are-values/test]
+// With quit-on-fail OFF the failure is reported and the script goes on.
+#[test]
+fn quit_on_fail_off_keeps_going() {
+    let mut c = XfstCompiler::<StdVectorFst>::new();
+    let flow = c
+        .parse("set quit-on-fail OFF\npop stack\nregex b ;\n")
+        .expect("the script runs to its end");
+    assert_eq!(flow, Flow::Continue);
+    assert_eq!(c.get_stack().len(), 1);
+}
+
+// [spec:hfst:req:xfst-cmd.errors-are-values/test]
+// 'quit' is a flow value, not a flag: the commands after it do not run.
+#[test]
+fn quit_ends_the_run() {
+    let mut c = XfstCompiler::<StdVectorFst>::new();
+    let flow = c
+        .parse("regex a ;\nquit\nregex b ;\n")
+        .expect("quit is not a failure");
+    assert_eq!(flow, Flow::Quit);
+    assert_eq!(c.get_stack().len(), 1);
+}
+
+// [spec:hfst:req:xfst-cmd.io-errors/test]
+// A file that cannot be read is an error naming it, not an empty input.
+#[test]
+fn an_unreadable_file_names_the_path() {
+    let mut c = XfstCompiler::<StdVectorFst>::new();
+    let err = c
+        .parse("read lexc /nonexistent/x.lexc\n")
+        .expect_err("a missing lexc file fails");
+    let message = &err.diagnostics[0].message;
+    assert!(message.contains("/nonexistent/x.lexc"), "{message}");
+}
+
+// [spec:hfst:req:xfst-cmd.io-errors/test]
+// A file that cannot be created is an error, not a skipped write.
+#[test]
+fn an_unwritable_file_names_the_path() {
+    let mut c = XfstCompiler::<StdVectorFst>::new();
+    let err = c
+        .parse("regex a ;\nprint words > /nonexistent/out.txt\n")
+        .expect_err("writing into a missing directory fails");
+    let message = &err.diagnostics[0].message;
+    assert!(message.contains("/nonexistent/out.txt"), "{message}");
+}
+
+// 'rotate stack' moves the top network to the bottom; it does not reverse.
+#[test]
+fn rotate_moves_the_top_to_the_bottom() {
+    let mut c = XfstCompiler::<StdVectorFst>::new();
+    c.parse("regex a ;\nregex b b ;\nregex c c c ;\nrotate stack\n")
+        .expect("xfst script runs");
+    let states: Vec<u32> = c
+        .get_stack()
+        .iter()
+        .map(|&id| c.net(id).number_of_states())
+        .collect();
+    assert_eq!(states, vec![4, 2, 3]);
+}
+
+// Universality compares one side with ?*, not with a single ?.
+#[test]
+fn upper_universal_compares_with_sigma_star() {
+    let mut c = XfstCompiler::<StdVectorFst>::new();
+    c.parse("regex ?* ;\nassert test upper-universal\n")
+        .expect("?* is upper-universal");
+    let mut c = XfstCompiler::<StdVectorFst>::new();
+    c.parse("regex ? ;\nassert test upper-universal\n")
+        .expect_err("a single ? is not");
 }

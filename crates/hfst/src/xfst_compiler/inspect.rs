@@ -87,69 +87,42 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     }
 
     // @brief View top network
-    pub fn view_net(&mut self) -> &mut Self {
-        let Some(tmp) = self.top() else {
-            self.xfst_lesser_fail();
-            return self;
-        };
-        let dotfilename = format!(
-            "{}/hfst_view_dot_{}",
-            std::env::temp_dir().to_string_lossy(),
-            std::process::id()
-        );
-        let pngfilename = format!(
-            "{}/hfst_view_png_{}",
-            std::env::temp_dir().to_string_lossy(),
-            std::process::id()
-        );
-        if self.verbose {
-            debug!(
-                "Writing net in dot format to temporary file '{}'.",
-                dotfilename
-            );
-        }
+    pub fn view_net(&mut self) -> CmdResult {
+        let tmp = self.top()?;
+        let dir = std::env::temp_dir();
+        let dotfilename = dir.join(format!("hfst_view_dot_{}", std::process::id()));
+        let pngfilename = dir.join(format!("hfst_view_png_{}", std::process::id()));
         {
-            let mut dotfile = match std::fs::File::create(&dotfilename) {
-                Ok(f) => f,
-                Err(_) => {
-                    self.prompt();
-                    return self;
-                }
-            };
+            let mut dotfile = std::fs::File::create(&dotfilename).map_err(|e| {
+                CommandError::new(format!(
+                    "could not create '{}': {}",
+                    dotfilename.display(),
+                    e
+                ))
+            })?;
             crate::hfst_print_dot::print_dot_os(&mut dotfile, self.net_mut(tmp));
         }
-        if self.verbose {
-            debug!("Wrote net, closing file and converting into png format.");
-        }
-        let cmd1 = format!("dot -Tpng {} > {} 2> /dev/null", dotfilename, pngfilename);
+        let cmd1 = format!(
+            "dot -Tpng {} > {} 2> /dev/null",
+            dotfilename.display(),
+            pngfilename.display()
+        );
         if run_shell(&cmd1) != 0 {
-            self.diag_error_with_notes(
-                "could not render the network to png",
-                &[String::from("'view' needs graphviz 'dot' on PATH")],
-            );
-            self.xfst_lesser_fail();
+            return Err(CommandError::new("could not render the network to png")
+                .with_note("'view' needs graphviz 'dot' on PATH"));
         }
-        if self.verbose {
-            debug!("Converted to png format, viewing the graph.");
-        }
-        let cmd2 = format!("/usr/bin/xdg-open {} 2> /dev/null &", pngfilename);
+        let cmd2 = format!("/usr/bin/xdg-open {} 2> /dev/null &", pngfilename.display());
         if run_shell(&cmd2) != 0 {
-            self.diag_error_with_notes(
-                "could not open the rendered network",
-                &[String::from("'view' needs 'xdg-open' on PATH")],
-            );
-            self.xfst_lesser_fail();
+            return Err(CommandError::new("could not open the rendered network")
+                .with_note("'view' needs 'xdg-open' on PATH"));
         }
         self.prompt();
-        self
+        Ok(())
     }
 
     // @brief Interactive network traversal tool
-    pub fn inspect_net(&mut self) -> crate::error::Result<&mut Self> {
-        let Some(t) = self.top() else {
-            self.xfst_lesser_fail();
-            return Ok(self);
-        };
+    pub fn inspect_net(&mut self) -> CmdResult {
+        let t = self.top()?;
 
         let net = ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(self.net(t))?;
 
@@ -186,14 +159,14 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
                 if whole_path.len() < 2 {
                     self.ignore_history_after_index(ind);
                     self.prompt();
-                    return Ok(self);
+                    return Ok(());
                 } else {
                     let __lvl = (whole_path.len() - 1) as u32;
                     if !Self::return_to_level(&mut whole_path, &mut shortest_path, __lvl) {
-                        error!("FATAL ERROR: could not return to level '{}'", __lvl as i32);
-                        self.ignore_history_after_index(ind);
-                        self.prompt();
-                        return Ok(self);
+                        return Err(CommandError::new(format!(
+                            "could not return to level '{}'",
+                            __lvl
+                        )));
                     }
                 }
             }
@@ -204,17 +177,17 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
                     continue;
                 } else if !Self::return_to_level(&mut whole_path, &mut shortest_path, level as u32)
                 {
-                    error!("FATAL ERROR: could not return to level '{}'", level);
-                    self.ignore_history_after_index(ind);
-                    self.prompt();
-                    return Ok(self);
+                    return Err(CommandError::new(format!(
+                        "could not return to level '{}'",
+                        level
+                    )));
                 }
             }
             // case (3): exit program
             else if line == "0\n" || line == "0" {
                 self.ignore_history_after_index(ind);
                 self.prompt();
-                return Ok(self);
+                return Ok(());
             }
             // case (4): follow arc
             else {
@@ -251,7 +224,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
 
         self.ignore_history_after_index(ind);
         self.prompt();
-        Ok(self)
+        Ok(())
     }
 
     // For 'inspect_net': append state \a state to paths.

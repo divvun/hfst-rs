@@ -30,20 +30,14 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         &mut self,
         transducer: &HfstTransducer<B>,
         paths: &mut HfstTwoLevelPaths,
-    ) -> crate::error::Result<&mut Self> {
+    ) -> CmdResult {
         transducer.extract_shortest_paths(paths)?;
-        Ok(self)
+        Ok(())
     }
 
     // @brief Print shortest string of network
-    pub fn print_shortest_string(
-        &mut self,
-        oss: &mut dyn std::io::Write,
-    ) -> crate::error::Result<&mut Self> {
-        let Some(topmost) = self.top() else {
-            self.xfst_lesser_fail();
-            return Ok(self);
-        };
+    pub fn print_shortest_string(&mut self, oss: &mut dyn std::io::Write) -> CmdResult {
+        let topmost = self.top()?;
 
         let mut paths = HfstTwoLevelPaths::new();
         let net = self.net(topmost).clone();
@@ -56,18 +50,12 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         }
         self.flush();
         self.prompt();
-        Ok(self)
+        Ok(())
     }
 
     // @brief Print length of shortest string
-    pub fn print_shortest_string_size(
-        &mut self,
-        oss: &mut dyn std::io::Write,
-    ) -> crate::error::Result<&mut Self> {
-        let Some(topmost) = self.top() else {
-            self.xfst_lesser_fail();
-            return Ok(self);
-        };
+    pub fn print_shortest_string_size(&mut self, oss: &mut dyn std::io::Write) -> CmdResult {
+        let topmost = self.top()?;
 
         let mut paths = HfstTwoLevelPaths::new();
         let net = self.net(topmost).clone();
@@ -89,22 +77,16 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         }
         self.flush();
         self.prompt();
-        Ok(self)
+        Ok(())
     }
 
     // @brief Print longest string in network
-    pub fn print_longest_string(
-        &mut self,
-        oss: &mut dyn std::io::Write,
-    ) -> crate::error::Result<&mut Self> {
+    pub fn print_longest_string(&mut self, oss: &mut dyn std::io::Write) -> CmdResult {
         self.print_longest_string_or_its_size(oss, false)
     }
 
     // @brief Print length of longest string
-    pub fn print_longest_string_size(
-        &mut self,
-        oss: &mut dyn std::io::Write,
-    ) -> crate::error::Result<&mut Self> {
+    pub fn print_longest_string_size(&mut self, oss: &mut dyn std::io::Write) -> CmdResult {
         self.print_longest_string_or_its_size(oss, true)
     }
 
@@ -114,7 +96,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         name: &str,
         number: u32,
         oss: &mut dyn std::io::Write,
-    ) -> crate::error::Result<&mut Self> {
+    ) -> CmdResult {
         self.print_words_level(name, number, oss, Level::LOWER_LEVEL)
     }
 
@@ -124,24 +106,19 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         name: &str,
         number: u32,
         oss: &mut dyn std::io::Write,
-    ) -> crate::error::Result<&mut Self> {
+    ) -> CmdResult {
         let mut paths = HfstTwoLevelPaths::new();
 
         // [spec:hfst:def:xfst-compiler.hfst.xfst.tmp-fn]
         // [spec:hfst:sem:xfst-compiler.hfst.xfst.tmp-fn]
         let mut tmp: HfstTransducer<B> = HfstTransducer::new();
         if name.is_empty() {
-            let Some(temp) = self.top() else {
-                return Ok(self);
-            };
+            let temp = self.top()?;
             tmp = HfstTransducer::new_copy(self.net(temp))?;
         } else {
             match self.definitions.get(name).copied() {
                 None => {
-                    let _ = writeln!(oss, "no such definition '{}'", name);
-                    self.flush();
-                    self.prompt();
-                    return Ok(self);
+                    return Err(self.unknown_definition(name));
                 }
                 Some(it) => {
                     tmp = HfstTransducer::new_copy(self.net(it))?;
@@ -154,7 +131,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         self.print_paths_two(&paths, oss, -1);
         self.flush();
         self.prompt();
-        Ok(self)
+        Ok(())
     }
 
     // @brief Print astrings of upper language
@@ -163,7 +140,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         name: &str,
         number: u32,
         oss: &mut dyn std::io::Write,
-    ) -> crate::error::Result<&mut Self> {
+    ) -> CmdResult {
         self.print_words_level(name, number, oss, Level::UPPER_LEVEL)
     }
 
@@ -173,22 +150,17 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         name: &str,
         number: u32,
         oss: &mut dyn std::io::Write,
-    ) -> crate::error::Result<&mut Self> {
+    ) -> CmdResult {
         let mut paths = HfstTwoLevelPaths::new();
 
         let mut tmp: HfstTransducer<B> = HfstTransducer::new();
         if name.is_empty() {
-            let Some(temp) = self.top() else {
-                return Ok(self);
-            };
+            let temp = self.top()?;
             tmp = HfstTransducer::new_copy(self.net(temp))?;
         } else {
             match self.definitions.get(name).copied() {
                 None => {
-                    let _ = writeln!(oss, "no such definition '{}", name);
-                    self.flush();
-                    self.prompt();
-                    return Ok(self);
+                    return Err(self.unknown_definition(name));
                 }
                 Some(it) => {
                     tmp = HfstTransducer::new_copy(self.net(it))?;
@@ -201,7 +173,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         self.print_paths_two(&paths, oss, -1);
         self.flush();
         self.prompt();
-        Ok(self)
+        Ok(())
     }
 
     // @brief Print pair strings of language
@@ -210,7 +182,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         name: &str,
         number: u32,
         oss: &mut dyn std::io::Write,
-    ) -> crate::error::Result<&mut Self> {
+    ) -> CmdResult {
         self.print_words_level(name, number, oss, Level::BOTH_LEVELS)
     }
 
@@ -220,20 +192,15 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         name: &str,
         number: u32,
         oss: &mut dyn std::io::Write,
-    ) -> crate::error::Result<&mut Self> {
+    ) -> CmdResult {
         let tmp: NetId;
         if name.is_empty() {
-            let Some(t) = self.top() else {
-                return Ok(self);
-            };
+            let t = self.top()?;
             tmp = t;
         } else {
             match self.definitions.get(name).copied() {
                 None => {
-                    let _ = writeln!(oss, "no such definition '{}'", name);
-                    self.flush();
-                    self.prompt();
-                    return Ok(self);
+                    return Err(self.unknown_definition(name));
                 }
                 Some(it) => {
                     tmp = it;
@@ -247,7 +214,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         self.print_paths_two(&paths, oss, -1);
         self.flush();
         self.prompt();
-        Ok(self)
+        Ok(())
     }
 
     // [spec:hfst:def:xfst-compiler.hfst.xfst.xfst-compiler.print-paths-fn]
@@ -387,7 +354,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         paths: &HfstTwoLevelPaths,
         level: &str,
         print_size: bool,
-    ) -> &mut Self {
+    ) {
         let _ = write!(oss, "{}: ", level);
         if print_size {
             let _ = writeln!(
@@ -404,7 +371,6 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             self.print_paths_two(paths, oss, 1);
         }
         self.flush();
-        self
     }
 
     // @brief Print the longest string of topmost transducer in the stack
@@ -414,11 +380,8 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         &mut self,
         oss: &mut dyn std::io::Write,
         print_size: bool,
-    ) -> crate::error::Result<&mut Self> {
-        let Some(topmost) = self.top() else {
-            self.xfst_lesser_fail();
-            return Ok(self);
-        };
+    ) -> CmdResult {
+        let topmost = self.top()?;
 
         // Variables needed to find out some properties about the transducer
         let mut tmp_lower = HfstTransducer::new_copy(self.net(topmost))?;
@@ -442,7 +405,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
                 if matches!(e.kind, crate::error::ErrorKind::TransducerIsCyclic) {
                     upper_is_cyclic = true;
                 } else {
-                    return Err(e);
+                    return Err(e.into());
                 }
             }
         }
@@ -457,7 +420,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
                 if matches!(e.kind, crate::error::ErrorKind::TransducerIsCyclic) {
                     lower_is_cyclic = true;
                 } else {
-                    return Err(e);
+                    return Err(e.into());
                 }
             }
         }
@@ -497,7 +460,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
 
         self.flush();
         self.prompt();
-        Ok(self)
+        Ok(())
     }
 
     // @brief Try to extract a maximum of \a number paths from topmost
@@ -509,22 +472,17 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         number: u32,
         oss: &mut dyn std::io::Write,
         level: Level,
-    ) -> crate::error::Result<&mut Self> {
+    ) -> CmdResult {
         // [spec:hfst:def:xfst-compiler.hfst.xfst.temp-fn]
         // [spec:hfst:sem:xfst-compiler.hfst.xfst.temp-fn]
         let mut temp: HfstTransducer<B> = HfstTransducer::new();
         if name.is_empty() {
-            let Some(tmp) = self.top() else {
-                return Ok(self);
-            };
+            let tmp = self.top()?;
             temp = HfstTransducer::new_copy(self.net(tmp))?;
         } else {
             match self.definitions.get(name).copied() {
                 None => {
-                    let _ = writeln!(oss, "no such definition '{}'", name);
-                    self.flush();
-                    self.prompt();
-                    return Ok(self);
+                    return Err(self.unknown_definition(name));
                 }
                 Some(it) => {
                     temp = HfstTransducer::new_copy(self.net(it))?;
@@ -564,14 +522,14 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
                     temp.extract_paths_fd(&mut results, number as i32, cutoff as i32, true)?;
                 }
             } else {
-                return Err(e);
+                return Err(e.into());
             }
         }
 
         self.print_paths_two(&results, oss, -1);
 
         self.prompt();
-        Ok(self)
+        Ok(())
     }
 }
 

@@ -38,7 +38,7 @@ use crate::lexc::LexcCompiler;
 use crate::virtual_flag_frontends::prepare_compose_flag_overlay;
 use crate::xre::XreCompiler;
 use std::io::BufRead;
-use tracing::{debug, error, info};
+use tracing::{error, info};
 
 mod apply;
 mod compile_replace;
@@ -131,6 +131,100 @@ pub type StringMap = BTreeMap<String, String>;
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct NetId(usize);
 
+/// How a script run ended: it reached its last command, or a command asked
+/// to quit.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Flow {
+    Continue,
+    Quit,
+}
+
+/// Why a command failed: the message, and any advice to print under it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CommandError {
+    pub message: String,
+    pub notes: Vec<String>,
+    /// Set when the failure was already printed where it happened, as for an
+    /// error inside a sourced file, so the driver does not print it twice.
+    reported: bool,
+}
+
+impl CommandError {
+    pub fn new(message: impl Into<String>) -> Self {
+        CommandError {
+            message: message.into(),
+            notes: Vec::new(),
+            reported: false,
+        }
+    }
+
+    pub fn with_note(mut self, note: impl Into<String>) -> Self {
+        self.notes.push(note.into());
+        self
+    }
+
+    pub fn with_notes(mut self, notes: Vec<String>) -> Self {
+        self.notes.extend(notes);
+        self
+    }
+
+    fn empty_stack() -> Self {
+        CommandError::new("empty stack: this command needs a network on the stack")
+    }
+
+    fn need_two() -> Self {
+        CommandError::new("not enough networks on the stack: this operation needs two")
+    }
+
+    fn not_supported(command: &str) -> Self {
+        CommandError::new(format!("'{command}' is not supported"))
+    }
+}
+
+impl From<crate::error::Error> for CommandError {
+    fn from(e: crate::error::Error) -> Self {
+        CommandError::new(e.to_string())
+    }
+}
+
+impl From<std::io::Error> for CommandError {
+    fn from(e: std::io::Error) -> Self {
+        CommandError::new(e.to_string())
+    }
+}
+
+impl core::fmt::Display for CommandError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str(&self.message)
+    }
+}
+
+impl core::error::Error for CommandError {}
+
+/// The result of one command.
+pub type CmdResult<T = ()> = Result<T, CommandError>;
+
+/// A script that stopped: the file or label it came from and what went wrong
+/// where. Every diagnostic in it has already been printed.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ScriptError {
+    pub source_name: String,
+    pub diagnostics: Vec<XfstDiagnostic>,
+}
+
+impl core::fmt::Display for ScriptError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let messages: Vec<&str> = self
+            .diagnostics
+            .iter()
+            .map(|d| d.message.as_str())
+            .collect();
+        write!(f, "{}: {}", self.source_name, messages.join("; "))
+    }
+}
+
+impl core::error::Error for ScriptError {}
+
 // @brief Xfst compiler contains all the methods and variables a session of
 // XFST script parser needs.
 // [spec:hfst:def:xfst-compiler.hfst.xfst.xfst-compiler]
@@ -164,19 +258,6 @@ pub struct XfstCompiler<B: AlgebraBackend> {
     harmonize_flags: bool,
     pub verbose: bool,
     pub verbose_prompt: bool,
-    /* The latest regex that has been compiled when 'compile_regex' has been
-    called. The xfst lexer often needs to parse regexps in order to determine
-    where they end before giving them to the actual parser. By storing the result
-    in this variable, there is no need to parse a regexp again on the parse level. */
-    pub latest_regex_compiled: Option<NetId>,
-    // Whether the script has encountered the quit command ('quit', 'exit', etc.).
-    // Needed in interactive mode, where user input is read line by line.
-    pub quit_requested: bool,
-    // Whether the compiler has encountered an error when compiling input given to
-    // 'parse' function that should quit the compilation and make
-    // the function return a non-zero value. Note that if the variable 'quit-on-fail'
-    // is false, fail_flag will always be false.
-    pub fail_flag: bool,
     pub restricted_mode: bool,
     /* Engine-policy flags set by the 'set' command (was a cluster of file-static
     globals in HfstTransducer.cc). Threaded into the transducer ops this compiler
@@ -265,9 +346,6 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             harmonize_flags: false,
             verbose: false,
             verbose_prompt: false,
-            latest_regex_compiled: None,
-            quit_requested: false,
-            fail_flag: false,
             restricted_mode: false,
             engine_config: crate::hfst_transducer::EngineConfig::default(),
             nets: Vec::new(),
@@ -344,7 +422,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             PRINT_WORDS_CYCLE_CUTOFF.to_string(),
         );
         c.variables
-            .insert("quit-on-fail".to_string(), "OFF".to_string());
+            .insert("quit-on-fail".to_string(), "ON".to_string());
         c.variables
             .insert("quote-special".to_string(), "OFF".to_string());
         c.variables
@@ -373,16 +451,15 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     // [spec:hfst:sem:xfst-compiler.hfst.xfst.xfst-compiler.parse-fn]
     // [spec:hfst:def:xfst-compiler.hfst.xfst.xfst-compiler.parse-line-fn]
     // [spec:hfst:sem:xfst-compiler.hfst.xfst.xfst-compiler.parse-line-fn]
-    // @brief Parse @a src as an XFST script using nfst-xfst and walk the
-    // resulting commands. Replaces the bison-action dispatch.
-    pub fn parse(&mut self, src: &str) -> i32 {
-        // The bison parser used to be driven by hxfstparse(); here we instead
-        // parse the whole script with nfst-xfst and walk the resulting command
-        // list, calling the same ported command-handler methods. The CHECK
-        // macro that the bison actions appended ('if get_fail_flag() YYABORT')
-        // becomes a per-command fail-flag test, and the QUIT action that
-        // returned EXIT_SUCCESS becomes the quit_requested test.
-        //
+    // [spec:hfst:req:xfst-cmd.errors-are-values]
+    /// Parse `src` as an XFST script and run its commands in order.
+    ///
+    /// Every failure is reported to stderr against its span in `src` as it
+    /// happens. A failed command stops the run when `quit-on-fail` is `ON`
+    /// and the input is not the interactive prompt; otherwise the run goes
+    /// on. The returned error has already been reported, so callers use it
+    /// for the outcome, not to print it again.
+    pub fn parse(&mut self, src: &str) -> Result<Flow, ScriptError> {
         // Retaining the script text is what turns every downstream failure into
         // a located one: line and column come from ariadne rendering a span
         // against this string.
@@ -390,35 +467,54 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         let script = match nfst_xfst::parse(src) {
             Ok(s) => s,
             Err(e) => {
-                for d in parse_diagnostics(src, &e) {
+                let diagnostics = parse_diagnostics(src, &e);
+                for d in &diagnostics {
                     crate::diag::emit_with_notes(
                         &self.source_name,
                         src,
-                        d.span,
+                        d.span.clone(),
                         crate::diag::Severity::Error,
                         &d.message,
                         &d.notes,
                     );
                 }
-                return 1;
+                return Err(ScriptError {
+                    source_name: self.source_name.clone(),
+                    diagnostics,
+                });
             }
         };
         for c in &script.value.commands {
             self.current_span = c.span.range.clone();
-            if let Err(e) = self.eval_command(&c.value) {
-                self.diag_error(&e.to_string());
-                return 1;
-            }
-            // QUIT action returned EXIT_SUCCESS immediately.
-            if self.quit_requested {
-                return 0;
-            }
-            // CHECK: if get_fail_flag() { YYABORT; }
-            if self.get_fail_flag() {
-                return 1;
+            match self.eval_command(&c.value) {
+                Ok(Flow::Continue) => {}
+                Ok(Flow::Quit) => return Ok(Flow::Quit),
+                Err(e) => {
+                    if !e.reported {
+                        self.diag_error_with_notes(&e.message, &e.notes);
+                    }
+                    if !self.stops_on_failure() {
+                        continue;
+                    }
+                    let failure = XfstDiagnostic {
+                        span: self.current_span.clone(),
+                        message: e.message,
+                        notes: e.notes,
+                    };
+                    return Err(ScriptError {
+                        source_name: self.source_name.clone(),
+                        diagnostics: vec![failure],
+                    });
+                }
             }
         }
-        0
+        Ok(Flow::Continue)
+    }
+
+    /// Whether a failed command ends the run: `quit-on-fail` is `ON` and the
+    /// input is a script rather than the interactive prompt.
+    fn stops_on_failure(&self) -> bool {
+        self.variables["quit-on-fail"] == "ON" && !self.read_interactive_text_from_stdin
     }
 
     /// Name shown in source-anchored diagnostics — the script file the text

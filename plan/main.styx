@@ -7556,4 +7556,101 @@ children (
             }
         )
     }
+
+    {
+        id xfst-honest-commands
+        title "XFST commands do what they say or fail: Result-based script flow, source (hfst-rs#7), no placeholder output, the missing commands built, dead not-implemented surface removed"
+        kind @fix
+        children (
+            {
+                id xfst-result-flow
+                title "XFST script driver returns Result&lt;Flow&gt;: handlers return Result, fail_flag/quit_requested/i32 status removed, quit-on-fail handled in the driver, file I/O failures are errors"
+                kind @refactor
+                implements {
+                    target-impl ([spec:hfst:req:xfst-cmd.errors-are-values] [spec:hfst:req:xfst-cmd.io-errors])
+                }
+                log (
+                    {
+                        at 2026-10-02T10:54:59.421004Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
+                )
+            }
+
+            {
+                id xfst-source
+                title "xfst 'source FILE' runs FILE in the current session (hfst-rs#7, lang-esu)"
+                implements {
+                    target-impl ([spec:hfst:req:xfst-cmd.source])
+                }
+                deps (xfst-result-flow)
+            }
+
+            {
+                id xfst-no-placeholders
+                title "Replace placeholder output: print arc-count/sigma-tally/flags/sigma NAME/properties, write text/spaced-text; unsupported commands fail"
+                implements {
+                    target-impl ([spec:hfst:req:xfst-cmd.no-placeholders] [spec:hfst:sem:xfst-cmd.print-counts] [spec:hfst:sem:xfst-cmd.write-word-lists])
+                }
+                deps (xfst-result-flow)
+            }
+
+            {
+                id xfst-read-and-sort
+                title "read text/spaced-text from inline text, read prolog, sort net: wire to the existing readers and sort_arcs"
+                implements {
+                    target-impl ([spec:hfst:sem:xfst-cmd.read-word-lists] [spec:hfst:sem:xfst-cmd.read-prolog] [spec:hfst:sem:xfst-cmd.sort])
+                }
+                deps (xfst-result-flow)
+            }
+
+            {
+                id xfst-ambiguity-substring-med
+                title "Build test functional/unambiguous, extract (un)ambiguous, ambiguous upper, substring net, apply med"
+                kind @feat
+                implements {
+                    target-impl ([spec:hfst:sem:xfst-cmd.ambiguity] [spec:hfst:sem:xfst-cmd.substring] [spec:hfst:sem:xfst-cmd.apply-med])
+                }
+                deps (xfst-result-flow)
+            }
+
+            {
+                id xfst-variables-take-effect
+                title "Every settable xfst variable has an effect; the six inert ones are made live or removed"
+                implements {
+                    target-impl ([spec:hfst:req:xfst-cmd.variables-take-effect])
+                }
+                deps (xfst-ambiguity-substring-med)
+            }
+
+            {
+                id xre-escapes-and-list-ranges
+                title "XRE string escapes (\\u, \\x hex, octal) decode or fail with a span; 'list NAME a-b' is inclusive Unicode"
+                implements {
+                    target-impl ([spec:hfst:sem:xfst-cmd.string-escapes] [spec:hfst:sem:xfst-cmd.list-range])
+                }
+            }
+
+            {
+                id pmatch-quotient-subtract
+                title "pmatch left quotient and upper/lower subtraction compute their result instead of an empty net or a panic"
+                kind @feat
+                implements {
+                    target-impl ([spec:hfst:sem:xfst-cmd.pmatch-quotient-subtract])
+                }
+            }
+
+            {
+                id dead-not-implemented-surface
+                title "Remove dead not-implemented surface: grep flags that only fail, HfstTransition unimplemented! methods, xfsm branches, stale 'unimplemented' comments"
+                kind @refactor
+                implements {
+                    target-impl ([spec:hfst:req:xfst-cmd.no-dead-surface])
+                }
+                deps (xfst-no-placeholders xfst-read-and-sort xfst-ambiguity-substring-med)
+            }
+        )
+    }
 )

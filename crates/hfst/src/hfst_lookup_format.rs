@@ -632,9 +632,7 @@ pub fn apply_cascade(
     // go through all transducers in the cascade
     for i in 0..n_transducers {
         let is_last = (i + 1) == n_transducers;
-        let result: HfstOneLevelPaths;
-
-        if variant == CascadeVariant::Composition && i != 0 {
+        let result: HfstOneLevelPaths = if variant == CascadeVariant::Composition && i != 0 {
             let mut composed: HfstOneLevelPaths = HfstOneLevelPaths::new();
             // use previous value of 'results' as input to composition
             let prev: Vec<HfstOneLevelPath> = results.iter().cloned().collect();
@@ -674,9 +672,9 @@ pub fn apply_cascade(
                 }
                 out.flush()?;
             }
-            result = composed;
+            composed
         } else {
-            result = lookup_one(
+            lookup_one(
                 s,
                 &CascadeStep {
                     index: i,
@@ -684,8 +682,8 @@ pub fn apply_cascade(
                     composed_from: None,
                 },
                 out,
-            );
-        }
+            )
+        };
 
         // (C++ tests 'if (infinity)' on the pointer — always true here.)
         verbose(&format!("Inf results @ level {}\n", i));

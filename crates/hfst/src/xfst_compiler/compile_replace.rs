@@ -6,13 +6,10 @@ use crate::convert_transducer_format::ConversionFunctions;
 
 impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     // internal function
-    pub fn compile_replace_net(&mut self, level: Level) -> crate::error::Result<&mut Self> {
+    pub fn compile_replace_net(&mut self, level: Level) -> CmdResult {
         assert!(level != Level::BOTH_LEVELS);
 
-        let Some(tmp) = self.top() else {
-            self.xfst_lesser_fail();
-            return Ok(self);
-        };
+        let tmp = self.top()?;
         let mut tmp_cp = HfstTransducer::new_copy(self.net(tmp))?;
 
         if level == Level::UPPER_LEVEL {
@@ -22,17 +19,10 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             tmp_cp.output_project()?;
         }
 
-        if Self::is_well_formed_for_compile_replace(&tmp_cp, &mut self.xre)? {
-            if self.verbose {
-                debug!("Network is well-formed.");
-            }
-        } else {
-            if self.verbose {
-                debug!("Network is not well-formed.");
-            }
-            self.xfst_lesser_fail();
-            self.prompt();
-            return Ok(self);
+        if !Self::is_well_formed_for_compile_replace(&tmp_cp, &mut self.xre)? {
+            return Err(CommandError::new(
+                "network is not well-formed for compile-replace: every '^[' needs a matching '^]'",
+            ));
         }
 
         let level_is_upper = level == Level::UPPER_LEVEL;
@@ -41,58 +31,42 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         let cfg = self.engine_config;
 
         let mut fsm = ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(self.net(tmp))?;
-        let mut early_return = false;
-        // The C++ wrapped this block in try/catch (const char*) and demoted a
-        // malformed compile-replace regexp to a diagnostic.
-        match fsm.find_replacements(level_is_upper) {
-            Err(e) => {
-                self.diag_error(&format!(
-                    "compile-replace failed: {}",
-                    e.message.unwrap_or_default()
-                ));
-            }
-            Ok(replacement_map) => {
-                'outer: for (start_state, replacements) in replacement_map.iter() {
-                    for (end_state, sp) in replacements.iter() {
-                        let regexp = Self::to_regexp(sp, level_is_upper, retokenize_on);
-                        let literal_regexp = Self::to_literal_regexp(sp, level_not_upper);
+        let replacement_map = fsm.find_replacements(level_is_upper).map_err(|e| {
+            CommandError::new(format!(
+                "compile-replace failed: {}",
+                e.message.unwrap_or_default()
+            ))
+        })?;
+        for (start_state, replacements) in replacement_map.iter() {
+            for (end_state, sp) in replacements.iter() {
+                let regexp = Self::to_regexp(sp, level_is_upper, retokenize_on);
+                let literal_regexp = Self::to_literal_regexp(sp, level_not_upper);
 
-                        let mut cross_product_regexp = String::from("[ ");
-                        if level_is_upper {
-                            cross_product_regexp.push_str(&regexp);
-                            cross_product_regexp.push_str(" ] .x. [ ");
-                            cross_product_regexp.push_str(&literal_regexp);
-                            cross_product_regexp.push_str(" ]");
-                        } else {
-                            cross_product_regexp.push_str(&literal_regexp);
-                            cross_product_regexp.push_str(" ] .x. [ ");
-                            cross_product_regexp.push_str(&regexp);
-                            cross_product_regexp.push_str(" ]");
-                        }
-
-                        let Some(mut replacement) = self.xre.compile(&cross_product_regexp) else {
-                            self.diag_error(&format!(
-                                "compile-replace could not compile the regex it built: {}",
-                                cross_product_regexp
-                            ));
-                            early_return = true;
-                            break 'outer;
-                        };
-
-                        let _ = replacement.optimize_with_config(&cfg);
-                        let repl = ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(
-                            &replacement,
-                        )?;
-                        fsm.insert_transducer(*start_state, *end_state, &repl);
-                    }
+                let mut cross_product_regexp = String::from("[ ");
+                if level_is_upper {
+                    cross_product_regexp.push_str(&regexp);
+                    cross_product_regexp.push_str(" ] .x. [ ");
+                    cross_product_regexp.push_str(&literal_regexp);
+                    cross_product_regexp.push_str(" ]");
+                } else {
+                    cross_product_regexp.push_str(&literal_regexp);
+                    cross_product_regexp.push_str(" ] .x. [ ");
+                    cross_product_regexp.push_str(&regexp);
+                    cross_product_regexp.push_str(" ]");
                 }
-            }
-        }
 
-        if early_return {
-            self.xfst_lesser_fail();
-            self.prompt();
-            return Ok(self);
+                let Some(mut replacement) = self.xre.compile(&cross_product_regexp) else {
+                    return Err(CommandError::new(format!(
+                        "compile-replace could not compile the regex it built: {}",
+                        cross_product_regexp
+                    )));
+                };
+
+                replacement.optimize_with_config(&cfg)?;
+                let repl =
+                    ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(&replacement)?;
+                fsm.insert_transducer(*start_state, *end_state, &repl);
+            }
         }
 
         let result: NetId = self.alloc_net(HfstTransducer::new_from_basic(&fsm)?);
@@ -114,16 +88,16 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         self.stack.push(result);
 
         self.prompt();
-        Ok(self)
+        Ok(())
     }
 
     // @brief Compile-replace lower
-    pub fn compile_replace_lower_net(&mut self) -> crate::error::Result<&mut Self> {
+    pub fn compile_replace_lower_net(&mut self) -> CmdResult {
         self.compile_replace_net(Level::LOWER_LEVEL)
     }
 
     // @brief Compile-replace upper
-    pub fn compile_replace_upper_net(&mut self) -> crate::error::Result<&mut Self> {
+    pub fn compile_replace_upper_net(&mut self) -> CmdResult {
         self.compile_replace_net(Level::UPPER_LEVEL)
     }
 

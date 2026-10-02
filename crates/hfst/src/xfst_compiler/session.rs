@@ -18,65 +18,11 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     // [spec:hfst:sem:xfst-compiler.hfst.xfst.xfst-compiler.set-output-stream-fn]
     /* Set the stream where output is printed. */
     /* Get the stream where output is printed. */
-    // [spec:hfst:def:xfst-compiler.hfst.xfst.xfst-compiler.xfst-fclose-fn]
-    // [spec:hfst:sem:xfst-compiler.hfst.xfst.xfst-compiler.xfst-fclose-fn]
-    /* A wrapper around file close function. */
-    pub fn close_file(&mut self, name: &str) -> i32 {
-        // The redesigned signature carries no FILE handle (file I/O is done via
-        // std::fs / HfstInputStream elsewhere), so there is nothing to close;
-        // mirror the success path of the C++ wrapper.
-        let retval: i32 = 0;
-        if retval != 0 {
-            self.diag_error(&format!("could not close file '{}'", name));
-            self.flush();
-            self.xfst_fail();
-        }
-        retval
-    }
-
-    // [spec:hfst:def:xfst-compiler.hfst.xfst.xfst-compiler.xfst-fopen-fn]
-    // [spec:hfst:sem:xfst-compiler.hfst.xfst.xfst-compiler.xfst-fopen-fn]
-    /* A wrapper around file open function. */
-    pub fn open_file(&mut self, path: &str, mode: &str) {
-        match crate::hfst_data_types::open_file(path, mode) {
-            Err(_) => {
-                self.diag_error(&format!("could not open file '{}'", path));
-                self.flush();
-                self.xfst_fail();
-            }
-            Ok(f) => {
-                // The redesigned signature returns no handle, so the freshly
-                // opened file is closed again here (dropped).
-                drop(f);
-            }
-        }
-    }
-
     /* Get the output stream. */
     /* Get the error stream. */
     // [spec:hfst:def:xfst-compiler.hfst.xfst.xfst-compiler.flush-fn]
     // [spec:hfst:sem:xfst-compiler.hfst.xfst.xfst-compiler.flush-fn]
     /* Flush the stream. */
-
-    // [spec:hfst:def:xfst-compiler.hfst.xfst.xfst-compiler.xfst-fail-fn]
-    // [spec:hfst:sem:xfst-compiler.hfst.xfst.xfst-compiler.xfst-fail-fn]
-    // @brief Set fail flag to true if quit-on-fail is ON,
-    // else do nothing.
-    pub(super) fn xfst_fail(&mut self) {
-        if self.variables["quit-on-fail"] == "ON" {
-            self.fail_flag = true;
-        }
-    }
-
-    // [spec:hfst:def:xfst-compiler.hfst.xfst.xfst-compiler.xfst-lesser-fail-fn]
-    // [spec:hfst:sem:xfst-compiler.hfst.xfst.xfst-compiler.xfst-lesser-fail-fn]
-    // @brief Set fail flag to true if quit-on-fail is ON and hfst-xfst
-    // is not used in interactive mode, else do nothing.
-    pub(super) fn xfst_lesser_fail(&mut self) {
-        if self.variables["quit-on-fail"] == "ON" && !self.read_interactive_text_from_stdin {
-            self.fail_flag = true;
-        }
-    }
 
     // [spec:hfst:def:xfst-compiler.hfst.xfst.xfst-compiler.xfst-getline-fn]
     // [spec:hfst:sem:xfst-compiler.hfst.xfst.xfst-compiler.xfst-getline-fn]
@@ -136,44 +82,41 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     }
 
     // @brief Print @a text to stdout
-    pub fn echo(&mut self, text: &str) -> &mut Self {
+    pub fn echo(&mut self, text: &str) {
         println!("{}", text);
         self.prompt();
-        self
     }
 
-    // @brief Stop parser, print quit message
-    pub fn quit(&mut self, message: &str) -> &mut Self {
+    // @brief Print the quit message; the driver ends the run.
+    pub fn quit(&mut self, message: &str) {
         if self.verbose && (message == "dodongo") {
             println!("dislikes smoke.");
         } else if self.verbose {
             println!("{}.", message);
-        } else {
-            // ;
         }
-        self.quit_requested = true;
-        self
     }
 
-    // @brief Execute @c system()
-    pub fn system(&mut self, command: &str) -> &mut Self {
+    // @brief Run @a command through the shell
+    pub fn system(&mut self, command: &str) -> CmdResult {
         if self.restricted_mode {
-            self.diag_warning("system calls are disabled by restricted mode (--restricted-mode)");
-            self.xfst_lesser_fail();
-            self.prompt();
-            return self;
+            return Err(CommandError::new(
+                "system calls are disabled by restricted mode (--restricted-mode)",
+            ));
         }
         let rv = run_shell(command);
         if rv != 0 {
-            self.diag_warning(&format!("system '{}' returned {}", command, rv));
+            return Err(CommandError::new(format!(
+                "system '{}' returned {}",
+                command, rv
+            )));
         }
         self.prompt();
-        self
+        Ok(())
     }
 
     // @brief Search help directory
     // @todo helps have not been written or copied
-    pub fn apropos(&mut self, text: &str) -> &mut Self {
+    pub fn apropos(&mut self, text: &str) {
         let mut message = String::new();
         if !get_help_message(text, &mut message, HELP_MODE_APROPOS) {
             println!("nothing found for '{}'", text);
@@ -181,12 +124,11 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             print!("{}", message);
         }
         self.prompt();
-        self
     }
 
     // @brief Print help topics
     // @todo helps have not been written or copied
-    pub fn describe(&mut self, text: &str) -> &mut Self {
+    pub fn describe(&mut self, text: &str) {
         let help_mode = if text.is_empty() {
             HELP_MODE_ALL_COMMANDS
         } else {
@@ -199,24 +141,19 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             print!("{}", message);
         }
         self.prompt();
-        self
     }
 
     // @brief Sekrit HFST raw command mode!
-    pub fn hfst(&mut self, data: &str) -> &mut Self {
+    pub fn hfst(&mut self, data: &str) {
         info!("HFST: {}", data);
         self.prompt();
-        self
     }
 
     // @brief Explicitly print the prompt to stdout.
-    pub fn prompt(&mut self) -> &Self {
+    pub fn prompt(&self) {
         if self.verbose_prompt && self.verbose {
-            // On windows, prompt is always printed to console. On other platforms,
-            // this has no effect.
             print!("hfst[{}]: ", self.stack.len());
         }
-        self
     }
 
     // [spec:hfst:def:xfst-compiler.hfst.xfst.xfst-compiler.get-prompt-fn]
@@ -265,7 +202,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     // [spec:hfst:def:xfst-compiler.hfst.xfst.xfst-compiler.flush-fn]
     // [spec:hfst:sem:xfst-compiler.hfst.xfst.xfst-compiler.flush-fn]
     /* Flush the stream. */
-    pub fn flush(&mut self) {
+    pub fn flush(&self) {
         // On Unix and Mac this is a no-op; the WINDOWS console-buffering branch
         // is not ported.
         use std::io::Write as _;
