@@ -130,11 +130,12 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     /// The 'list' command: 'list NAME a-b' is a range, 'list NAME s1 s2 ...'
     /// a list.
     fn eval_define_list(&mut self, name: &str, members: &[String]) -> CmdResult {
+        // A lone '-' is the symbol, not an empty range.
         if let [m] = members
+            && m != "-"
             && let Some((start, end)) = m.split_once('-')
         {
-            self.define_list_by_range(name, start, end);
-            return Ok(());
+            return self.define_list_by_range(name, start, end);
         }
         self.define_list(name, &members.join(" "))
     }

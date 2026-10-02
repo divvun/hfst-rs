@@ -7659,10 +7659,18 @@ children (
 
             {
                 id xre-escapes-and-list-ranges
-                title "XRE string escapes (\\u, \\x hex, octal) decode or fail with a span; 'list NAME a-b' is inclusive Unicode"
+                title "XRE string escapes (\\u, \\x hex, octal) decode or fail with a span: done in nfst-xre 0.4.1; hfst picks it up once published"
                 implements {
-                    target-impl ([spec:hfst:sem:xfst-cmd.string-escapes] [spec:hfst:sem:xfst-cmd.list-range])
+                    target-impl ([spec:hfst:sem:xfst-cmd.string-escapes])
                 }
+                log (
+                    {
+                        at 2026-10-02T12:09:36.913629Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
+                )
             }
 
             {
@@ -7699,6 +7707,15 @@ children (
                         text "Todo → Doing (nplan start)"
                     }
                 )
+            }
+
+            {
+                id xfst-list-ranges
+                title "'list NAME a-b' is every Unicode scalar from a to b inclusive; bad ranges fail; a lone '-' is a symbol"
+                kind @fix
+                implements {
+                    target-impl ([spec:hfst:sem:xfst-cmd.list-range])
+                }
             }
         )
     }

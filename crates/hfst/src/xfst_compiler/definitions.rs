@@ -9,23 +9,32 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         self.prompt();
     }
 
-    // @brief Define list by range
-    // @todo lists are not supported by HFST
-    // @todo Unicode ranges are not supported
-    pub fn define_list_by_range(&mut self, name: &str, start: &str, end: &str) {
-        if (start.len() > 1) || (end.len() > 1) {
-            self.diag_warning(&format!("unsupported unicode range {}-{}", start, end));
+    // [spec:hfst:sem:xfst-cmd.list-range]
+    /// 'list NAME A-B': every Unicode scalar from A to B inclusive.
+    pub fn define_list_by_range(&mut self, name: &str, start: &str, end: &str) -> CmdResult {
+        let single = |s: &str| {
+            let mut chars = s.chars();
+            chars.next().filter(|_| chars.next().is_none())
+        };
+        let (Some(first), Some(last)) = (single(start), single(end)) else {
+            return Err(CommandError::new(format!(
+                "'{}-{}' is not a range: both ends must be single characters",
+                start, end
+            )));
+        };
+        if first > last {
+            return Err(CommandError::new(format!(
+                "'{}-{}' is not a range: '{}' comes after '{}'",
+                start, end, first, last
+            )));
         }
-        let mut l: BTreeSet<Symbol> = BTreeSet::new();
-        let start_c = start.as_bytes().first().copied().unwrap_or(0);
-        let end_c = end.as_bytes().first().copied().unwrap_or(0);
-        let mut c = start_c;
-        while c < end_c {
-            let s = (c as char).to_string();
-            l.insert(Symbol::from(s));
-            c += 1;
-        }
-        self.lists.insert(Symbol::new(name), l);
+        let members: BTreeSet<Symbol> = (first..=last)
+            .map(|c| Symbol::from(c.to_string()))
+            .collect();
+        self.xre.define_list(name, &members);
+        self.lists.insert(Symbol::new(name), members);
+        self.prompt();
+        Ok(())
     }
 
     // @brief Define list by labels

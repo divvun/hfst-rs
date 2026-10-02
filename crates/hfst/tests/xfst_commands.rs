@@ -480,3 +480,25 @@ fn precision_sets_weight_decimals() {
         "a\t1.23\n"
     );
 }
+
+// [spec:hfst:sem:xfst-cmd.list-range/test]
+// A range includes both ends and works beyond ASCII.
+#[test]
+fn list_ranges_are_inclusive_unicode() {
+    let ascii = printed("range", "list V a-e ;\nprint lists > OUT\n");
+    assert!(ascii.contains("a b c d e "), "{ascii}");
+    let unicode = printed("urange", "list V á-ä ;\nprint lists > OUT\n");
+    assert!(unicode.contains("á â ã ä "), "{unicode}");
+}
+
+// [spec:hfst:sem:xfst-cmd.list-range/test]
+// Reversed or multi-character ends fail; a lone '-' is a symbol.
+#[test]
+fn bad_ranges_fail_and_hyphen_is_a_symbol() {
+    for bad in ["list V e-a ;\n", "list V ab-c ;\n"] {
+        let mut c = XfstCompiler::<StdVectorFst>::new();
+        c.parse(bad).expect_err(bad);
+    }
+    let hyphen = printed("hyphen", "list V - ;\nprint lists > OUT\n");
+    assert!(hyphen.contains(" - "), "{hyphen}");
+}
