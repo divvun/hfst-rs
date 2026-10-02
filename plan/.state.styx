@@ -471,6 +471,8 @@ assertions (
     {id version-banner-one-identity, kind @complete, author "brendan@necessary.nu", at 2026-09-28T14:53:15.900988Z}
     {id twolc-ignoring-and-except, kind @complete, author "brendan@necessary.nu", at 2026-09-30T09:56:35.558749Z}
     {id xfst-quoted-percent-and-bare-regex, kind @complete, author "brendan@necessary.nu", at 2026-10-01T20:48:35.562057Z}
+    {id esu-lexc-divergence, kind @complete, author "brendan@necessary.nu", at 2026-10-02T13:14:08.554953Z}
+    {id esu-twolc-divergence, kind @complete, author "brendan@necessary.nu", at 2026-10-02T13:14:08.604125Z}
 )
 
 impl_evidence (

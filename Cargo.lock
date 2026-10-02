@@ -1546,9 +1546,9 @@ dependencies = [
 
 [[package]]
 name = "nfst-lexc"
-version = "0.4.0"
+version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d4bd02e249158df104632e7e93d60679ac6d6aa720d570cda2badd0cc19ef9fd"
+checksum = "5c4866dab18bd94e475086ffff4a3d93a1287d9c3e2ef00d1dd54dc59bf25f2a"
 dependencies = [
  "logos",
  "nfst-syntax",

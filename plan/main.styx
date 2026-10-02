@@ -7747,11 +7747,43 @@ children (
         id esu-lexc-divergence
         title "hfst-lexc on lang-esu srcV2/esu.lexc gives a network not equal to C++ (13150 vs 13154 states; each side has paths the other lacks, e.g. Rust-only 'a[NonYupik]...:1<=aar...'). Find which is right per Xerox lexc semantics and fix"
         kind @fix
+        sealed true
+        log (
+            {
+                at 2026-10-02T13:14:04.76808Z
+                author "brendan@necessary.nu"
+                kind @decision
+                text "Cause: upstream lexc strip_percents copies everything from an '@' to the next '@' verbatim, so the declared multichar '@%:~(ng)ạ' keeps its '%'. nfst-lexc unescaped everywhere, giving '@:~(ng)ạ', and lang-esu's xfst rules that match the quoted literal \"@%:~(ng)ạ\" never fired. Matched upstream in nfst-lexc 0.4.1 (nfst 165b702, published). With it, esu.lexc compiles to a network equal to C++, and the whole lang-esu orig build (esu.lexc, gen.seg, ana, seg.gen) equals the C++ build under hfst-compare."
+            }
+
+            {
+                at 2026-10-02T13:14:08.554953Z
+                author "brendan@necessary.nu"
+                kind @status
+                text "Todo → Done (nplan complete)"
+            }
+        )
     }
 
     {
         id esu-twolc-divergence
         title "hfst-twolc on lang-esu srcV2/esu.twol gives rules not equal to C++ under hfst-compare (same 64 rules, same text size). Find which rules differ and why"
         kind @fix
+        sealed true
+        log (
+            {
+                at 2026-10-02T13:14:04.815037Z
+                author "brendan@necessary.nu"
+                kind @decision
+                text "Not a Rust bug. All 64 esu.twol rules have the same language as C++ once the alphabet is pruned: C++ leaves its internal marker __HFST_TWOLC_FREELY_INSERT in each rule's sigma, on no arc, which makes hfst-compare report a difference. Rust does not leak the marker. The final lang-esu networks built from these rules equal C++, so no change."
+            }
+
+            {
+                at 2026-10-02T13:14:08.604125Z
+                author "brendan@necessary.nu"
+                kind @status
+                text "Todo → Done (nplan complete)"
+            }
+        )
     }
 )

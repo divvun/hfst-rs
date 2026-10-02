@@ -247,3 +247,19 @@ fn issue_255_real_flag_diacritic_is_a_flag() {
         &["cat"],
     );
 }
+
+// Escapes stay literal from an `@` to the next `@`, as upstream
+// strip_percents does: a declared `@%:x` keeps its percent, while `%+`
+// elsewhere is unescaped. lang-esu relies on this, matching the symbol as
+// the quoted literal "@%:~(ng)ạ" in its xfst rules.
+#[test]
+fn escapes_stay_literal_inside_at_runs() {
+    let mut compiler = LexcCompiler::<StdVectorFst>::new();
+    let compiled = compiler
+        .compile("Multichar_Symbols\n@%:x\n+N%+\n\nLEXICON Root\n@%:x # ;\n+N%+ # ;\n")
+        .expect("compiles");
+    let alphabet = compiled.get_alphabet().expect("alphabet");
+    assert!(alphabet.contains("@%:x"), "{alphabet:?}");
+    assert!(alphabet.contains("+N+"), "{alphabet:?}");
+    assert!(!alphabet.contains("@:x"), "{alphabet:?}");
+}
