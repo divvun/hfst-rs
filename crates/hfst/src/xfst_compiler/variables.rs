@@ -3,26 +3,6 @@
 use super::*;
 
 impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
-    /// Report a `set` of a variable this compiler records but never consults.
-    /// Silence is only correct while the requested value happens to describe
-    /// what the compiler does anyway; anything else is a request it cannot
-    /// honour, and the user is entitled to hear that rather than see it echoed.
-    fn warn_if_inert(&self, name: &str, text: &str) {
-        let Some((_, honest)) = INERT_VARIABLES.iter().find(|(v, _)| *v == name) else {
-            return;
-        };
-        if *honest == Some(text) {
-            return;
-        }
-        self.diag_warning_with_notes(
-            &format!("'{}' is recorded but never consulted by this build", name),
-            &[match honest {
-                Some(value) => format!("the behaviour is always '{}'", value),
-                None => String::from("no value of it changes anything"),
-            }],
-        );
-    }
-
     // [spec:hfst:def:xfst-compiler.hfst.xfst.xfst-compiler.get-precision-fn]
     // [spec:hfst:sem:xfst-compiler.hfst.xfst.xfst-compiler.get-precision-fn]
     // @brief Get the precision that is used when printing weights.
@@ -44,23 +24,6 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             return Err(self.unknown_variable(name));
         }
         self.variables.insert(name.to_string(), text.to_string());
-        if name == "hopcroft-min" {
-            if text == "ON" {
-                self.engine_config.minimization_algorithm =
-                    crate::hfst_transducer::MinimizationAlgorithm::HOPCROFT;
-            }
-            if text == "OFF" {
-                self.engine_config.minimization_algorithm =
-                    crate::hfst_transducer::MinimizationAlgorithm::BRZOZOWSKI;
-                self.diag_warning_with_notes(
-                    "this build has no Brzozowski minimizer: minimization stays Hopcroft",
-                    &[String::from(
-                        "the minimal network is the same either way; only the algorithm that \
-                         reaches it would differ",
-                    )],
-                );
-            }
-        }
         if name == "encode-weights" {
             if text == "ON" {
                 self.engine_config.encode_weights = true;
@@ -119,7 +82,6 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             self.xre.set_verbosity(self.verbose);
             self.lexc.set_verbosity(if self.verbose { 2 } else { 0 });
         }
-        self.warn_if_inert(name, text);
 
         if self.verbose {
             println!("variable {} = {}", name, text);
@@ -162,18 +124,9 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
 
     // @brief Show all variables
     pub fn show_all(&mut self) {
-        let vars: Vec<(String, String)> = self
-            .variables
-            .iter()
-            .map(|(k, v)| (k.clone(), v.clone()))
-            .collect();
-        for (first, second) in vars.iter() {
-            if first == "copyright-owner" {
-                println!("{:>20}: {}", first, second);
-            } else {
-                let explanation = variable_explanations_get(first);
-                println!("{:>20}: {:>6}: {}", first, second, explanation);
-            }
+        for (name, value) in &self.variables {
+            let explanation = variable_explanations_get(name);
+            println!("{:>20}: {:>6}: {}", name, value, explanation);
         }
         self.prompt();
     }
@@ -256,23 +209,6 @@ pub(super) fn parse_size(str: &str) -> usize {
     digits.parse::<usize>().unwrap_or(0)
 }
 
-/// Variables this compiler records but never consults, each paired with the
-/// value that does describe what it actually does (`None` where no value does).
-/// Upstream carried these too and stayed silent about most of them; `set` warns
-/// instead, because an accepted request that changes nothing is worse than a
-/// refused one.
-const INERT_VARIABLES: &[(&str, Option<&str>)] = &[
-    ("char-encoding", Some("UTF-8")),
-    ("copyright-owner", None),
-    ("directory", Some("OFF")),
-    ("quote-special", Some("OFF")),
-    ("random-seed", None),
-    ("recode-cp1252", Some("NEVER")),
-    ("recursive-define", Some("OFF")),
-    ("sort-arcs", None),
-    ("use-timer", Some("OFF")),
-];
-
 // A side table mirroring the C++ file-static 'variable_explanations' map,
 // consulted by show_all. Populated lazily on first use.
 fn variable_explanations_get(key: &str) -> String {
@@ -285,9 +221,6 @@ fn variable_explanations_get(key: &str) -> String {
             "att-epsilon",
             "epsilon symbol used when reading from att files",
         ),
-        ("char-encoding", "character encoding used, always UTF-8"),
-        ("copyright-owner", ""),
-        ("directory", "<NOT IMPLEMENTED>"),
         ("encode-weights", "encode weights when minimizing"),
         (
             "flag-is-epsilon",
@@ -296,10 +229,6 @@ fn variable_explanations_get(key: &str) -> String {
         (
             "harmonize-flags",
             "harmonize flag diacritics before composition",
-        ),
-        (
-            "hopcroft-min",
-            "use hopcroft's minimization algorithm, the only one built in",
         ),
         (
             "lexc-minimize-flags",
@@ -325,7 +254,7 @@ fn variable_explanations_get(key: &str) -> String {
             "stores the name of the network when using 'define'",
         ),
         ("obey-flags", "obey flag diacritic constraints"),
-        ("precision", "todo: precision to use when printing weights"),
+        ("precision", "decimal places shown for weights"),
         ("print-foma-sigma", "print identities as '@'"),
         ("print-pairs", "show both sides (upper and lower) of labels"),
         ("print-sigma", "show sigma when printing a network"),
@@ -342,19 +271,10 @@ fn variable_explanations_get(key: &str) -> String {
             "quit the application if a command cannot be executed",
         ),
         (
-            "quote-special",
-            "<NOT IMPLEMENTED> enclose special characters in double quotes",
-        ),
-        ("random-seed", "<NOT IMPLEMENTED>"),
-        ("recode-cp1252", "<NOT SUPPORTED>"),
-        ("recursive-define", "<NOT IMPLEMENTED>"),
-        (
             "retokenize",
             "retokenize regular expressions in 'compile-replace'",
         ),
         ("show-flags", "show flag diacritics when printing"),
-        ("sort-arcs", "<NOT IMPLEMENTED>"),
-        ("use-timer", "<NOT IMPLEMENTED>"),
         ("verbose", "print more information"),
         (
             "xerox-composition",

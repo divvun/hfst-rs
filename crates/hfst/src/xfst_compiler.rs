@@ -382,23 +382,11 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             "@0@ | @_EPSILON_SYMBOL_@".to_string(),
         );
         c.variables
-            .insert("char-encoding".to_string(), "UTF-8".to_string());
-        // Empty by design: this names the owner of the network the USER is
-        // compiling, not the owner of the compiler. Upstream defaulted it to
-        // "Copyleft (c) University of Helsinki", which stamped Helsinki onto
-        // every third-party grammar that never set it.
-        c.variables
-            .insert("copyright-owner".to_string(), String::new());
-        c.variables
-            .insert("directory".to_string(), "OFF".to_string());
-        c.variables
             .insert("encode-weights".to_string(), "OFF".to_string());
         c.variables
             .insert("flag-is-epsilon".to_string(), "OFF".to_string());
         c.variables
             .insert("harmonize-flags".to_string(), "OFF".to_string());
-        c.variables
-            .insert("hopcroft-min".to_string(), "ON".to_string());
         c.variables
             .insert("lexc-minimize-flags".to_string(), "OFF".to_string());
         c.variables
@@ -438,21 +426,9 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         c.variables
             .insert("quit-on-fail".to_string(), "ON".to_string());
         c.variables
-            .insert("quote-special".to_string(), "OFF".to_string());
-        c.variables
-            .insert("random-seed".to_string(), "ON".to_string());
-        c.variables
-            .insert("recode-cp1252".to_string(), "NEVER".to_string());
-        c.variables
-            .insert("recursive-define".to_string(), "OFF".to_string());
-        c.variables
             .insert("retokenize".to_string(), "ON".to_string());
         c.variables
             .insert("show-flags".to_string(), "OFF".to_string());
-        c.variables
-            .insert("sort-arcs".to_string(), "MAYBE".to_string());
-        c.variables
-            .insert("use-timer".to_string(), "OFF".to_string());
         c.variables.insert("verbose".to_string(), "OFF".to_string());
         c.variables
             .insert("xerox-composition".to_string(), "ON".to_string());

@@ -446,3 +446,37 @@ fn med_matches_cheapest_first() {
     c.parse("set med-cutoff 0\n").expect("set");
     assert!(c.med_matches("cst").expect("searched").is_empty());
 }
+
+// [spec:hfst:req:xfst-cmd.variables-take-effect/test]
+// A variable that would change nothing cannot be set.
+#[test]
+fn inert_variables_cannot_be_set() {
+    for name in ["recursive-define", "sort-arcs", "use-timer", "hopcroft-min"] {
+        let mut c = XfstCompiler::<StdVectorFst>::new();
+        let err = c
+            .parse(&format!("set {name} ON\n"))
+            .expect_err("an inert variable is not settable");
+        assert!(
+            err.diagnostics[0].message.contains("no such variable"),
+            "{name}"
+        );
+    }
+}
+
+// [spec:hfst:req:xfst-cmd.variables-take-effect/test]
+// 'precision' sets the decimal places of printed weights, as in C++.
+#[test]
+fn precision_sets_weight_decimals() {
+    let src = "set print-weight ON\nregex [a::1.23456789] ;\n";
+    assert_eq!(
+        printed("prec5", &format!("{src}print words > OUT\n")),
+        "a\t1.23457\n"
+    );
+    assert_eq!(
+        printed(
+            "prec2",
+            &format!("{src}set precision 2\nprint words > OUT\n")
+        ),
+        "a\t1.23\n"
+    );
+}

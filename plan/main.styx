@@ -7647,6 +7647,14 @@ children (
                     target-impl ([spec:hfst:req:xfst-cmd.variables-take-effect])
                 }
                 deps (xfst-ambiguity-substring-med)
+                log (
+                    {
+                        at 2026-10-02T12:03:38.972363Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
+                )
             }
 
             {

@@ -676,4 +676,9 @@ impl_evidence (
         {impl_name target-impl, rule xfst-cmd.apply-med}
         {impl_name target-impl, rule xfst-cmd.substring}
     )}
+    {id xfst-variables-take-effect, covered_rules (
+        xfst-cmd.variables-take-effect
+    ), covered_claims (
+        {impl_name target-impl, rule xfst-cmd.variables-take-effect}
+    )}
 )

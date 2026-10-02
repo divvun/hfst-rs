@@ -228,7 +228,8 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         mut n: i32,
     ) -> CmdResult<bool> {
         let mut retval = false; // if anything was printed
-        let _precision = self.get_precision();
+        // [spec:hfst:req:xfst-cmd.variables-take-effect]
+        let precision = usize::try_from(self.get_precision()).unwrap_or(0);
 
         // go through at most n paths
         for it in paths.iter() {
@@ -281,7 +282,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
 
             // if needed, print the weight
             if self.variables["print-weight"] == "ON" {
-                write!(oss, "\t{}", it.first)?;
+                write!(oss, "\t{:.*}", precision, it.first)?;
             }
 
             writeln!(oss)?;
@@ -301,7 +302,8 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         mut n: i32,
     ) -> CmdResult<bool> {
         let mut retval = false; // if anything was printed
-        let _precision = self.get_precision();
+        // [spec:hfst:req:xfst-cmd.variables-take-effect]
+        let precision = usize::try_from(self.get_precision()).unwrap_or(0);
 
         // go through at most n paths
         for it in paths.iter() {
@@ -336,7 +338,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
 
             // if needed, print the weight
             if self.variables["print-weight"] == "ON" {
-                write!(oss, "\t{}", it.first)?;
+                write!(oss, "\t{:.*}", precision, it.first)?;
             }
 
             writeln!(oss)?;
