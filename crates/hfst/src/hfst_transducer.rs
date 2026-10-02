@@ -69,6 +69,8 @@ mod flag_diacritics;
 mod flag_ops;
 mod intersect;
 mod io;
+#[cfg(test)]
+mod side_ops_tests;
 mod substitution;
 mod subtract;
 mod unary_ops;

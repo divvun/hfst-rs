@@ -476,10 +476,11 @@ fn build_binary_object<B: AlgebraBackend + FromAnyTransducer + 'static>(
             build_object(ctx, l)?,
             build_object(ctx, r)?,
         )),
-        NBinOp::LeftQuotient => {
-            warn!("Left quotient not implemented");
-            as_obj(PmatchEmpty::new())
-        }
+        NBinOp::LeftQuotient => as_obj(PmatchBinaryOperation::new(
+            PmatchBinaryOp::LeftQuotient,
+            build_object(ctx, l)?,
+            build_object(ctx, r)?,
+        )),
     })
 }
 // A replace-rule list: one 'PmatchReplaceRuleContainer' per parallel rule.

@@ -577,12 +577,13 @@ impl<B: AlgebraBackend + 'static> PmatchObject<B> for PmatchBinaryOperation<B> {
                 lhs.subtract(&rhs, true)?;
             }
             PmatchBinaryOp::UpperSubtract => {
-                ctx.pmatcherror("Upper subtraction not implemented.");
-                return Ok(lhs);
+                lhs.upper_subtract(&rhs)?;
             }
             PmatchBinaryOp::LowerSubtract => {
-                ctx.pmatcherror("Lower subtraction not implemented.");
-                return Ok(lhs);
+                lhs.lower_subtract(&rhs)?;
+            }
+            PmatchBinaryOp::LeftQuotient => {
+                lhs.left_quotient(&rhs)?;
             }
             PmatchBinaryOp::UpperPriorityUnion => {
                 lhs.priority_union(&rhs)?;

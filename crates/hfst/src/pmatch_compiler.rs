@@ -227,6 +227,7 @@ pub enum PmatchBinaryOp {
     Subtract,
     UpperSubtract,
     LowerSubtract,
+    LeftQuotient,
     UpperPriorityUnion,
     LowerPriorityUnion,
     Shuffle,

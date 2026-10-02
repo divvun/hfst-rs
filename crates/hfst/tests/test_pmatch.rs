@@ -381,3 +381,23 @@ fn keep_n_best_weight_ignores_unknown_reading_562() {
         outputs(&kept2)
     );
 }
+
+// [spec:hfst:sem:xfst-cmd.pmatch-quotient-subtract/test]
+// Left quotient and the side subtractions compute their result rather than
+// an empty network.
+#[test]
+fn quotient_and_side_subtractions() -> Result<(), hfst::error::Error> {
+    let top = |src: &str| -> Result<HfstTransducer<StdVectorFst>, hfst::error::Error> {
+        let mut c = PmatchCompiler::<StdVectorFst>::new();
+        let defs = c.compile(&format!("Define TOP {src} ;\n"))?;
+        Ok(defs.get("TOP").expect("TOP").clone())
+    };
+    for (got, want) in [
+        ("[a] \\\\\\ [{abc} | {ad} | e]", "[{bc} | d]"),
+        ("[a:x | b:y] .-u. [a]", "[b:y]"),
+        ("[a:x | b:y] .-l. [y]", "[a:x]"),
+    ] {
+        assert!(top(got)?.compare(&top(want)?, true)?, "{got} is not {want}");
+    }
+    Ok(())
+}

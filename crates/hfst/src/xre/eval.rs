@@ -430,12 +430,24 @@ impl<B: AlgebraBackend> XreCompiler<B> {
             }
             // Operators the C++ grammar rejects with xreerror + YYABORT.
             BinaryOp::Shuffle => crate::bail!(Hfst, "No shuffle"),
-            BinaryOp::UpperSubtract => crate::bail!(Hfst, "No upper minus"),
-            BinaryOp::LowerSubtract => crate::bail!(Hfst, "No lower minus"),
+            BinaryOp::UpperSubtract => {
+                let mut left = self.eval(l)?;
+                left.upper_subtract(&self.eval(r)?)?;
+                left
+            }
+            BinaryOp::LowerSubtract => {
+                let mut left = self.eval(l)?;
+                left.lower_subtract(&self.eval(r)?)?;
+                left
+            }
             BinaryOp::IgnoreInternally => {
                 crate::bail!(Hfst, "No ignoring internally")
             }
-            BinaryOp::LeftQuotient => crate::bail!(Hfst, "No left quotient"),
+            BinaryOp::LeftQuotient => {
+                let mut left = self.eval(l)?;
+                left.left_quotient(&self.eval(r)?)?;
+                left
+            }
         })
     }
 

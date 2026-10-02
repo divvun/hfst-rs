@@ -867,6 +867,63 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
     ) -> crate::error::Result<&mut HfstTransducer<B>> {
         self.subtract_with_flag_overlay(another, harmonize, None)
     }
+
+    /// Every string not on the given side of `other`, as an automaton: the
+    /// filter the side subtractions compose with.
+    fn side_complement(
+        other: &HfstTransducer<B>,
+        input_side: bool,
+    ) -> crate::error::Result<HfstTransducer<B>> {
+        let mut side = other.clone();
+        if input_side {
+            side.input_project()?;
+        } else {
+            side.output_project()?;
+        }
+        let mut keep = HfstTransducer::identity_pair();
+        keep.repeat_star()?;
+        keep.subtract(&side, true)?;
+        Ok(keep)
+    }
+
+    // [spec:hfst:sem:xfst-cmd.pmatch-quotient-subtract]
+    /// Upper subtraction: drop the paths whose input string is an input
+    /// string of `other`.
+    pub fn upper_subtract(&mut self, other: &HfstTransducer<B>) -> crate::error::Result<&mut Self> {
+        let mut keep = Self::side_complement(other, true)?;
+        keep.compose(self, true)?;
+        *self = keep;
+        Ok(self)
+    }
+
+    // [spec:hfst:sem:xfst-cmd.pmatch-quotient-subtract]
+    /// Lower subtraction: drop the paths whose output string is an output
+    /// string of `other`.
+    pub fn lower_subtract(&mut self, other: &HfstTransducer<B>) -> crate::error::Result<&mut Self> {
+        let keep = Self::side_complement(other, false)?;
+        self.compose(&keep, true)?;
+        Ok(self)
+    }
+
+    // [spec:hfst:sem:xfst-cmd.pmatch-quotient-subtract]
+    /// Left quotient: the strings w such that some u of `self` makes u w a
+    /// string of `other`, both read on their input sides.
+    pub fn left_quotient(&mut self, other: &HfstTransducer<B>) -> crate::error::Result<&mut Self> {
+        let mut drop_prefix = self.clone();
+        drop_prefix.input_project()?;
+        let epsilon = HfstTransducer::new_symbol(crate::hfst_symbol_defs::internal_epsilon)?;
+        drop_prefix.cross_product(&epsilon, true)?;
+        let mut rest = HfstTransducer::identity_pair();
+        rest.repeat_star()?;
+        drop_prefix.concatenate(&rest, true)?;
+        let mut quotient = other.clone();
+        quotient.input_project()?;
+        quotient.compose(&drop_prefix, true)?;
+        quotient.output_project()?;
+        quotient.minimize()?;
+        *self = quotient;
+        Ok(self)
+    }
 }
 
 // -----------------------------------------------------------------------------

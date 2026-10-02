@@ -7670,6 +7670,13 @@ children (
                         kind @status
                         text "Todo → Doing (nplan start)"
                     }
+
+                    {
+                        at 2026-10-02T12:12:21.559931Z
+                        author "brendan@necessary.nu"
+                        kind @blocker
+                        text "Implemented in nfst-xre 0.4.1 (nfst a3b6dcd). Blocked on the operator running cargo publish -p nfst-xre (and nfst-xfst 0.5.0 for the read text / apply med fixes). Then: bump hfst deps, switch eval_read to TextSource, add the hfst escape test, annotate."
+                    }
                 )
             }
 
@@ -7680,6 +7687,14 @@ children (
                 implements {
                     target-impl ([spec:hfst:sem:xfst-cmd.pmatch-quotient-subtract])
                 }
+                log (
+                    {
+                        at 2026-10-02T12:12:33.324014Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
+                )
             }
 
             {

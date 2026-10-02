@@ -687,4 +687,9 @@ impl_evidence (
     ), covered_claims (
         {impl_name target-impl, rule xfst-cmd.list-range}
     )}
+    {id pmatch-quotient-subtract, covered_rules (
+        xfst-cmd.pmatch-quotient-subtract
+    ), covered_claims (
+        {impl_name target-impl, rule xfst-cmd.pmatch-quotient-subtract}
+    )}
 )
