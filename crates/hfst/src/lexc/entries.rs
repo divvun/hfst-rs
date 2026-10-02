@@ -471,7 +471,7 @@ impl<B: AlgebraBackend> LexcCompiler<B> {
             );
             if new_alpha.chars().count() > 1 {
                 self.warning_at_current_token(&errm);
-                warn!("you shoudl add {} to Multichar_Symbols section", new_alpha);
+                warn!("you should add {} to Multichar_Symbols section", new_alpha);
             } else if self.warn_missing_alphabets && self.treat_warnings_as_errors {
                 self.error_at_current_token(&errm);
                 self.parseErrors_ = true;

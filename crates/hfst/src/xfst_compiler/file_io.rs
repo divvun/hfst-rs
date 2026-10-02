@@ -148,7 +148,6 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     }
 
     // @brief Load regex macros from file
-    // @todo Definition names cannot be stored in HFST automata binaries
     pub fn load_definitions(&mut self, infilename: &str) -> CmdResult {
         self.load_stack_or_definitions(infilename, true)
     }
@@ -159,7 +158,6 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     }
 
     // @brief Add properties from text, one property per line
-    // @todo properties cannot be stored in HFST automata
     pub fn add_props(&mut self, indata: &str) -> CmdResult {
         for line in indata.split('\n').filter(|l| !l.is_empty()) {
             self.add_prop_line(line)?;
@@ -266,7 +264,6 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     }
 
     // @brief Save definition @a name in @a outfile
-    // @todo HFST does not support saving name of definition in file
     pub fn write_definition(&mut self, name: &str, outfilename: &str) -> CmdResult {
         let Some(&def_ptr) = self.definitions.get(name) else {
             return Err(self.unknown_definition(name));
@@ -288,7 +285,6 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     }
 
     // @brief Save all definitions in @a outfile
-    // @todo HFST does not support saving name of definition in file
     pub fn write_definitions(&mut self, outfilename: &str) -> CmdResult {
         if self.definitions.is_empty() {
             return Err(CommandError::new(
@@ -337,7 +333,6 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     }
 
     // @brief Read properties from @a indata, one per line
-    // @todo HFST automata do not support properties
     pub fn read_props(&mut self, indata: &str) -> CmdResult {
         for line in indata.split('\n').filter(|l| !l.is_empty()) {
             self.add_prop_line(line)?;

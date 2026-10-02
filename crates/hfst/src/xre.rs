@@ -1,30 +1,5 @@
-//! ABSOLUTE-faithful C++->Rust port of HFST's XRE (Xerox regex) compiler,
-//! RESTRUCTURED to walk the 'nfst-xre' typed AST instead of the original
-//! Flex/Bison grammar. The AST-walk restructuring is the ONE sanctioned
-//! structural deviation in this port: the transducer-building BEHAVIOUR must
-//! still match the C++ semantic actions in 'xre_parse.yy' / 'xre_utils.cc'
-//! exactly.
-//!
-//! Ported from 'libhfst/src/parsers/XreCompiler.{h,cc}' and
-//! 'libhfst/src/parsers/xre_utils.{h,cc}'.
-//!
-//! # C++ globals folded into ['XreCompiler']
-//!
-//! The C++ implementation kept compilation state in 'xre_utils.cc' file-scope
-//! globals ('definitions', 'function_definitions', 'function_arguments',
-//! 'symbol_lists', 'format', 'expand_definitions', 'harmonize',
-//! 'harmonize_flags', 'verbose'). Because this port walks the AST directly
-//! and is re-entrant, those globals become instance fields on ['XreCompiler']
-//! and the per-compile evaluation state, instead of process-wide mutable
-//! statics.
-//!
-//! # Deferred (record as 'unimplemented!')
-//!
-//! - ['XreExpr::ReadFile'] — '@bin'/'@txt'/'@stxt'/'@pl'/'@re' file I/O loads.
-//! - The prolog/regex '@'-loads reached through the same path.
-//! - 'contains_twolc' (the two-level twolc-contains helper; "doesn't work at
-//!   the moment" in the C++ source) — kept as a documented helper that panics
-//!   with 'unimplemented!'.
+//! The Xerox regular-expression compiler: walks the 'nfst-xre' syntax tree
+//! and builds the transducer it denotes.
 
 #![allow(non_snake_case)]
 #![allow(non_upper_case_globals)]
@@ -167,139 +142,10 @@ pub struct XreCompiler<B: AlgebraBackend> {
     /// as `eval` visits each spanned node; the anchor for `diag_error`/
     /// `diag_warning`.
     pub(crate) current_span: std::ops::Range<usize>,
+    /// The multichar symbols a lexc source declared, while one is being
+    /// compiled; a regex using any other multichar symbol gets a warning.
+    pub(crate) defined_multichar_symbols: Option<BTreeSet<Symbol>>,
 }
-
-// ──────────────────────────────────────────────────────────────────────────
-// Method / helper roster filled by the body agents (declarations only here).
-//
-// Public API (XreCompiler.h surface; keep these signatures so the facade calls
-// 'XreCompiler::new(type)', 'XreCompiler::new(&args)', 'compile(&str)',
-// 'set_verbosity(bool)' keep type-checking):
-//
-//   fn new() -> XreCompiler<B>                                  // XreCompiler(ImplementationType)
-//   fn new_with_args(&XreConstructorArguments<B>) -> XreCompiler<B> // XreCompiler(const XreConstructorArguments&)
-//   [spec:hfst:def:xre-compiler.hfst.xre.xre-compiler.define-fn]
-//   fn define(&mut self, name: &str, xre: &str) -> bool
-//   [spec:hfst:def:xre-compiler.hfst.xre.xre-compiler.define-list-fn]
-//   fn define_list(&mut self, name: &str, symbol_list: &BTreeSet<String>)
-//   fn define_transducer(&mut self, name: &str, transducer: &HfstTransducer)   // define(name, HfstTransducer&)
-//   [spec:hfst:def:xre-compiler.hfst.xre.xre-compiler.define-function-fn]
-//   fn define_function(&mut self, name: &str, arguments: u32, xre: &str) -> bool
-//   [spec:hfst:def:xre-compiler.hfst.xre.xre-compiler.is-definition-fn]
-//   fn is_definition(&self, name: &str) -> bool
-//   [spec:hfst:def:xre-compiler.hfst.xre.xre-compiler.is-function-definition-fn]
-//   fn is_function_definition(&self, name: &str) -> bool
-//   [spec:hfst:def:xre-compiler.hfst.xre.xre-compiler.undefine-fn]
-//   fn undefine(&mut self, name: &str)
-//   [spec:hfst:def:xre-compiler.hfst.xre.xre-compiler.add-defined-multichar-symbol-fn]
-//   fn add_defined_multichar_symbol(&mut self, symbol: &str)
-//   [spec:hfst:def:xre-compiler.hfst.xre.xre-compiler.remove-defined-multichar-symbols-fn]
-//   fn remove_defined_multichar_symbols(&mut self)
-//   [spec:hfst:def:xre-compiler.hfst.xre.xre-compiler.compile-fn]
-//   fn compile(&mut self, xre: &str) -> Option<HfstTransducer>
-//   [spec:hfst:def:xre-compiler.hfst.xre.xre-compiler.compile-first-fn]
-//   fn compile_first(&mut self, xre: &str, chars_read: &mut u32) -> Option<HfstTransducer>
-//   [spec:hfst:def:xre-compiler.hfst.xre.xre-compiler.contained-only-comments-fn]
-//   fn contained_only_comments(&self) -> bool
-//   [spec:hfst:def:xre-compiler.hfst.xre.xre-compiler.get-positions-of-symbol-in-xre-fn]
-//   fn get_positions_of_symbol_in_xre(&mut self, symbol: &str, xre: &str, positions: &mut BTreeSet<u32>) -> bool
-//   [spec:hfst:def:xre-compiler.hfst.xre.xre-compiler.set-expand-definitions-fn]
-//   fn set_expand_definitions(&mut self, expand: bool)
-//   [spec:hfst:def:xre-compiler.hfst.xre.xre-compiler.set-harmonization-fn]
-//   fn set_harmonization(&mut self, harmonize: bool)
-//   [spec:hfst:def:xre-compiler.hfst.xre.xre-compiler.set-flag-harmonization-fn]
-//   fn set_flag_harmonization(&mut self, harmonize_flags: bool)
-//   [spec:hfst:def:xre-compiler.hfst.xre.xre-compiler.set-verbosity-fn]
-//   fn set_verbosity(&mut self, verbose: bool)
-//   [spec:hfst:def:xre-compiler.hfst.xre.xre-compiler.get-verbosity-fn]
-//   fn get_verbosity(&self) -> bool
-//   (set_error_stream / get_error_stream / setOutputToConsole / getOutputToConsole / get_stream / flush
-//    are WINDOWS/stream plumbing — omit or stub as no-ops; record if needed.)
-//
-// Top-level compile pipeline (port of xre_utils.cc compile/compile_first):
-//   fn compile_impl(&mut self, xre: &str) -> Option<HfstTransducer>             // parse() + eval root
-//   fn compile_first_impl(&mut self, xre: &str, chars_read: &mut u32) -> Option<HfstTransducer> // parse_all()/first
-//
-// AST evaluator (the sanctioned restructuring — one eval arm per XreExpr):
-//   fn eval(&mut self, node: &SpannedXre) -> HfstTransducer                     // dispatch on node.value
-//   fn eval_symbol(&mut self, s: &str) -> HfstTransducer                        // Symbol -> xfst_label_to_transducer(s,s) / definition expand
-//   fn eval_curly(&mut self, s: &str) -> HfstTransducer                         // Curly -> xfst_curly_label_to_transducer
-//   fn eval_epsilon(&self) -> HfstTransducer                                    // internal_epsilon arc
-//   fn eval_any(&self) -> HfstTransducer                                        // internal_identity ?:? arc
-//   fn eval_boundary_marker(&self) -> HfstTransducer                            // ".#." symbol
-//   fn eval_pair(&mut self, upper: &SpannedXre, lower: &SpannedXre) -> HfstTransducer
-//   fn eval_weighted(&mut self, expr: &SpannedXre, weight: f64) -> HfstTransducer // set_final_weights
-//   fn eval_read_file(&mut self, kind: ReadKind, path: &str) -> HfstTransducer    // DEFERRED: unimplemented!
-//   fn eval_function_call(&mut self, name: &str, args: &[SpannedXre]) -> HfstTransducer
-//   fn eval_group(&mut self, inner: &SpannedXre) -> HfstTransducer
-//   fn eval_optional(&mut self, inner: &SpannedXre) -> HfstTransducer           // optionalize()
-//   fn eval_bracketed_dotted(&mut self, inner: Option<&SpannedXre>) -> HfstTransducer
-//   fn eval_unary(&mut self, op: UnaryOp, inner: &SpannedXre) -> HfstTransducer
-//   fn eval_binary(&mut self, op: BinaryOp, lhs: &SpannedXre, rhs: &SpannedXre) -> HfstTransducer
-//   fn eval_repeat_n(&mut self, inner: &SpannedXre, n: u32) -> HfstTransducer
-//   fn eval_repeat_n_plus(&mut self, inner: &SpannedXre, n: u32) -> HfstTransducer
-//   fn eval_repeat_n_minus(&mut self, inner: &SpannedXre, n: u32) -> HfstTransducer
-//   fn eval_repeat_n_to_k(&mut self, inner: &SpannedXre, n: u32, k: u32) -> HfstTransducer
-//   fn eval_containment_with_weight(&mut self, expr: &SpannedXre, weight: f64) -> HfstTransducer
-//   fn eval_replace(&mut self, arrow: ReplaceArrow, rules: &[ReplaceRule]) -> HfstTransducer
-//   fn eval_restriction(&mut self, body: &SpannedXre, contexts: &[RestrContext]) -> HfstTransducer
-//   fn eval_substitute(&mut self, haystack: &SpannedXre, what: &SubstituteWhat) -> HfstTransducer
-//
-// Replace/restriction lowering helpers (build hfst_xerox_rules / hfst_rules input):
-//   fn build_rules(&mut self, rules: &[ReplaceRule]) -> Vec<crate::hfst_xerox_rules::Rule>
-//   fn build_mapping_pair(&mut self, m: &MappingPair) -> HfstTransducerPair-ish    // upper/lower or markup
-//   fn build_mapping_side(&mut self, side: &MappingSide) -> HfstTransducer
-//   fn build_replace_contexts(&mut self, ctx: &ReplaceContexts) -> (ContextMark, context vector)
-//   fn build_replace_context(&mut self, ctx: &ReplaceContext) -> HfstTransducerPair-ish
-//   fn build_restr_contexts(&mut self, contexts: &[RestrContext]) -> HfstTransducerPairVector
-//   fn apply_replace_arrow(&self, arrow: ReplaceArrow, rules: &[Rule]) -> HfstTransducer  // pick replace fn
-//
-// Ported xre_utils.cc free helpers (become &self/&mut self methods so they see
-// definitions/format/expand_definitions/verbose):
-//   [spec:hfst:def:xre-utils.hfst.xre.xfst-label-to-transducer-fn]
-//   fn xfst_label_to_transducer(&mut self, input: &str, output: &str) -> HfstTransducer
-//   [spec:hfst:def:xre-utils.hfst.xre.xfst-curly-label-to-transducer-fn]
-//   fn xfst_curly_label_to_transducer(&self, input: &str, output: &str) -> HfstTransducer
-//   [spec:hfst:def:xre-utils.hfst.xre.is-definition-fn]
-//   fn is_definition_sym(&self, symbol: &str) -> bool
-//   [spec:hfst:def:xre-utils.hfst.xre.expand-definition-fn]
-//   fn expand_definition_sym(&self, symbol: &str) -> HfstTransducer                 // expand_definition(symbol)
-//   fn expand_definition_tr(&self, tr: HfstTransducer, symbol: &str) -> HfstTransducer // expand_definition(tr, symbol)
-//   [spec:hfst:def:xre-utils.hfst.xre.contains-fn]
-//   fn contains(&self, t: &HfstTransducer) -> HfstTransducer                        // [?* t ?*]
-//   [spec:hfst:def:xre-utils.hfst.xre.contains-with-weight-fn]
-//   fn contains_with_weight(&self, t: &HfstTransducer, weight: f32) -> HfstTransducer
-//   [spec:hfst:def:xre-utils.hfst.xre.contains-twolc-fn]
-//   fn contains_twolc(&self, t: &HfstTransducer) -> HfstTransducer                  // DEFERRED: unimplemented!
-//   [spec:hfst:def:xre-utils.hfst.xre.contains-once-fn]
-//   fn contains_once(&self, c: &HfstTransducer) -> HfstTransducer
-//   [spec:hfst:def:xre-utils.hfst.xre.contains-once-optional-fn]
-//   fn contains_once_optional(&self, t: &HfstTransducer) -> HfstTransducer
-//   [spec:hfst:def:xre-utils.hfst.xre.merge-first-to-second-fn]
-//   fn merge_first_to_second(&self, tr1: &mut HfstTransducer, tr2: &mut HfstTransducer) // tr2.merge(tr1, args)
-//   [spec:hfst:def:xre-utils.hfst.xre.is-valid-function-call-fn]
-//   fn is_valid_function_call(&self, name: &str, args: &[HfstTransducer]) -> bool
-//   [spec:hfst:def:xre-utils.hfst.xre.get-function-xre-fn]
-//   fn get_function_xre(&self, name: &str) -> Option<&str>
-//   [spec:hfst:def:xre-utils.hfst.xre.define-function-args-fn]
-//   fn define_function_args(&mut self, name: &str, args: &[HfstTransducer]) -> bool
-//   [spec:hfst:def:xre-utils.hfst.xre.undefine-function-args-fn]
-//   fn undefine_function_args(&mut self, name: &str)
-//   [spec:hfst:def:xre-utils.hfst.xre.has-non-identity-pairs-fn]
-//   fn has_non_identity_pairs(&self, t: &HfstTransducer) -> bool
-//   [spec:hfst:def:xre-utils.hfst.xre.warn-fn]
-//   fn warn(&self, msg: &str)
-//   [spec:hfst:def:xre-utils.hfst.xre.warn-about-special-symbols-in-replace-fn]
-//   fn warn_about_special_symbols_in_replace(&self, t: &HfstTransducer)
-//   [spec:hfst:def:xre-utils.hfst.xre.warn-about-hfst-special-symbol-fn]
-//   fn warn_about_hfst_special_symbol(&self, symbol: &str)
-//   fn warn_about_xfst_special_symbol(&self, symbol: &str)
-//   [spec:hfst:def:xre-utils.hfst.xre.check-multichar-symbol-fn]
-//   fn check_multichar_symbol(&self, symbol: &str)
-//   (escape_enclosing_angle_brackets / unescape_enclosing_angle_brackets /
-//    set_substitution_function_symbol / substitution_function — string/symbol
-//    plumbing; port as private helpers, record if any are deferred.)
-// ──────────────────────────────────────────────────────────────────────────
 
 // ===========================================================================
 // XRE compiler: constructors and the public API (ported from XreCompiler.cc,
@@ -335,6 +181,7 @@ impl<B: AlgebraBackend> XreCompiler<B> {
             source: String::new(),
             source_name: String::from("<regex>"),
             current_span: 0..0,
+            defined_multichar_symbols: None,
         }
     }
 
@@ -357,6 +204,7 @@ impl<B: AlgebraBackend> XreCompiler<B> {
             source: String::new(),
             source_name: String::from("<regex>"),
             current_span: 0..0,
+            defined_multichar_symbols: None,
         }
     }
 }
@@ -401,6 +249,7 @@ impl<B: AlgebraBackend> XreCompiler<B> {
         );
     }
 
+    // [spec:hfst:def:xre-utils.hfst.xre.warn-fn]
     /// Render a warning about the user's regex source, anchored at the span of
     /// the node currently being evaluated (ariadne).
     fn diag_warning(&self, msg: &str) {
@@ -521,6 +370,7 @@ impl<B: AlgebraBackend> XreCompiler<B> {
 
     // [spec:hfst:def:xre-compiler.hfst.xre.xre-compiler.is-definition-fn]
     // [spec:hfst:sem:xre-compiler.hfst.xre.xre-compiler.is-definition-fn]
+    // [spec:hfst:def:xre-utils.hfst.xre.is-definition-fn]
     pub fn is_definition(&self, name: &str) -> bool {
         self.definitions.contains_key(name)
     }
@@ -541,23 +391,6 @@ impl<B: AlgebraBackend> XreCompiler<B> {
     // [spec:hfst:def:xre-compiler.hfst.xre.xre-compiler.define-fn]
     // [spec:hfst:sem:xre-compiler.hfst.xre.xre-compiler.define-fn]
     // C++ overload 'define(name, const std::string& xre)'.
-    // [spec:hfst:def:xre-compiler.hfst.xre.xre-compiler.get-positions-of-symbol-in-xre-fn]
-    // [spec:hfst:sem:xre-compiler.hfst.xre.xre-compiler.get-positions-of-symbol-in-xre-fn]
-    pub fn get_positions_of_symbol_in_xre(
-        &mut self,
-        _symbol: &str,
-        xre: &str,
-        positions: &mut std::collections::BTreeSet<u32>,
-    ) -> bool {
-        // The C++ implementation records positions through the flex/bison
-        // scanner's global position_symbol/positions state populated during
-        // compilation. That position-tracking lives in the lexer we do not port
-        // (nfst replaces it), so here we can only validate that the xre
-        // compiles; the position set stays empty.
-        positions.clear();
-        self.compile(xre).is_some()
-    }
-
     pub fn define(&mut self, name: &str, xre: &str) -> bool {
         let Some(tr) = self.compile(xre) else {
             if self.verbose {
@@ -598,14 +431,17 @@ impl<B: AlgebraBackend> XreCompiler<B> {
 
     // [spec:hfst:def:xre-compiler.hfst.xre.xre-compiler.add-defined-multichar-symbol-fn]
     // [spec:hfst:sem:xre-compiler.hfst.xre.xre-compiler.add-defined-multichar-symbol-fn]
-    // The C++ 'defined_multichar_symbols_' global set (used only for a "used but
-    // not defined" warning via check_multichar_symbol) was left off the struct;
-    // no-op until a field is added.
-    pub fn add_defined_multichar_symbol(&mut self, _symbol: &str) {}
+    pub fn add_defined_multichar_symbol(&mut self, symbol: &str) {
+        self.defined_multichar_symbols
+            .get_or_insert_with(BTreeSet::new)
+            .insert(Symbol::new(symbol));
+    }
 
     // [spec:hfst:def:xre-compiler.hfst.xre.xre-compiler.remove-defined-multichar-symbols-fn]
     // [spec:hfst:sem:xre-compiler.hfst.xre.xre-compiler.remove-defined-multichar-symbols-fn]
-    pub fn remove_defined_multichar_symbols(&mut self) {}
+    pub fn remove_defined_multichar_symbols(&mut self) {
+        self.defined_multichar_symbols = None;
+    }
 
     // [spec:hfst:def:xre-compiler.hfst.xre.xre-compiler.contained-only-comments-fn]
     // [spec:hfst:sem:xre-compiler.hfst.xre.xre-compiler.contained-only-comments-fn]

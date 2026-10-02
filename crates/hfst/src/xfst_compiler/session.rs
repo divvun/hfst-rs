@@ -115,7 +115,6 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     }
 
     // @brief Search help directory
-    // @todo helps have not been written or copied
     pub fn apropos(&mut self, text: &str) {
         let mut message = String::new();
         if !get_help_message(text, &mut message, HELP_MODE_APROPOS) {
@@ -127,7 +126,6 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     }
 
     // @brief Print help topics
-    // @todo helps have not been written or copied
     pub fn describe(&mut self, text: &str) {
         let help_mode = if text.is_empty() {
             HELP_MODE_ALL_COMMANDS

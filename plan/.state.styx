@@ -692,4 +692,9 @@ impl_evidence (
     ), covered_claims (
         {impl_name target-impl, rule xfst-cmd.pmatch-quotient-subtract}
     )}
+    {id dead-not-implemented-surface, covered_rules (
+        xfst-cmd.no-dead-surface
+    ), covered_claims (
+        {impl_name target-impl, rule xfst-cmd.no-dead-surface}
+    )}
 )

@@ -56,7 +56,10 @@ impl<B: AlgebraBackend> XreCompiler<B> {
         self.current_span = e.span.range.clone();
         Ok(match &e.value {
             // ---- atoms (LABEL: HALFARC) ----
-            XreExpr::Symbol(s) => self.label_from_halfarc(s)?,
+            XreExpr::Symbol(s) => {
+                self.check_written_symbol(s);
+                self.label_from_halfarc(s)?
+            }
             XreExpr::Epsilon => self.label_from_halfarc(internal_epsilon)?,
             XreExpr::Any => self.label_from_halfarc(internal_unknown)?,
             XreExpr::BoundaryMarker => self.label_from_halfarc(".#.")?,
@@ -163,6 +166,11 @@ impl<B: AlgebraBackend> XreCompiler<B> {
         upper: &SpannedXre,
         lower: &SpannedXre,
     ) -> crate::error::Result<HfstTransducer<B>> {
+        for side in [upper, lower] {
+            if let XreExpr::Symbol(s) = &side.value {
+                self.check_written_symbol(s);
+            }
+        }
         Ok(
             match (xre_pair_side_kind(upper), xre_pair_side_kind(lower)) {
                 (Some(XrePairSide::Half(a)), Some(XrePairSide::Half(b))) => {
@@ -508,6 +516,7 @@ impl<B: AlgebraBackend> XreCompiler<B> {
             source: self.source.clone(),
             source_name: self.source_name.clone(),
             current_span: self.current_span.clone(),
+            defined_multichar_symbols: self.defined_multichar_symbols.clone(),
         };
 
         // get_function_xre + recursive compile.

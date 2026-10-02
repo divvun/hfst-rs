@@ -6,7 +6,6 @@ use crate::convert_transducer_format::ConversionFunctions;
 
 impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     // @brief Print parts of automaton with epsilon loops
-    // @todo unimplemented yet
     pub fn collect_epsilon_loops(&mut self) -> CmdResult {
         Err(CommandError::not_supported("collect epsilon-loops"))
     }

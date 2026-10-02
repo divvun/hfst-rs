@@ -11,11 +11,11 @@
 //! Option handling is clap 4 derive through [`crate::cli`]; the tool's state
 //! lives in [`CommonOptions`] (the shared `-v/-q/-o/…` fields) and a
 //! tool-local [`Options`] built by [`Args::resolve`] and threaded into the
-//! processing functions. The old option table survives with its quirks: the
-//! GNU-grep options this clone accepts and then rejects keep their exact
-//! messages, `--directories` is a spelling of `-d`/`--debug` (its ACTION is
-//! swallowed), `--no-messages` joins the `-v`/`-q`/`-s` last-one-wins chain,
-//! and the `-A`/`-B` shorts keep their swapped before/after pairing.
+//! processing functions. The GNU grep options this clone has no
+//! implementation of (other dialects, case folding, directories, globbing,
+//! binary and MSDOS handling) are not declared, so clap rejects them like any
+//! unknown option. `--no-messages` joins the `-v`/`-q`/`-s` last-one-wins
+//! chain, and the `-A`/`-B` shorts keep their swapped before/after pairing.
 
 use crate::cli::{self, CommonArgs, ToolArgs, ToolResult};
 use crate::globals::ColourTristate;
@@ -54,9 +54,6 @@ struct Options {
     // removal.
     expfile_given: bool,
     dialect_xerox: bool,
-    dialect_posix_bre: bool,
-    dialect_posix_ere: bool,
-    dialect_perl: bool,
     dialect_fixed_strings: bool,
     match_word: bool,
     match_full_line: bool,
@@ -104,9 +101,6 @@ impl Default for Options {
             regexp: None,
             expfile_given: false,
             dialect_xerox: false,
-            dialect_posix_bre: false,
-            dialect_posix_ere: false,
-            dialect_perl: false,
             dialect_fixed_strings: false,
             match_word: false,
             match_full_line: false,
@@ -145,6 +139,7 @@ struct MatcherState {
 /// hfst-grep's command line.
 // [spec:hfst:def:hfst-grep.parse-options-fn]
 // [spec:hfst:sem:hfst-grep.parse-options-fn]
+// [spec:hfst:req:xfst-cmd.no-dead-surface]
 // [spec:hfst:req:cli.arg-parse]
 // [spec:hfst:req:cli.help]
 #[derive(clap::Parser)]
@@ -164,21 +159,9 @@ struct Args {
     )]
     format: Option<String>,
 
-    /// PATTERN is an extended regular expression (ERE) — not yet supported
-    #[arg(short = 'E', long = "extended-regexp")]
-    extended_regexp: bool,
-
     /// PATTERN is a set of newline-separated fixed strings
     #[arg(short = 'F', long = "fixed-strings")]
     fixed_strings: bool,
-
-    /// PATTERN is a basic regular expression (BRE) — not yet supported
-    #[arg(short = 'G', long = "basic-regexp")]
-    basic_regexp: bool,
-
-    /// PATTERN is a Perl regular expression — not yet supported
-    #[arg(short = 'P', long = "perl-regexp")]
-    perl_regexp: bool,
 
     /// PATTERN is a Xerox regular expression (default)
     #[arg(short = 'X', long = "xerox-regexp")]
@@ -201,10 +184,6 @@ struct Args {
         allow_hyphen_values = true
     )]
     file: Option<String>,
-
-    /// Ignore case distinctions — not supported
-    #[arg(short = 'I', long = "ignore-case")]
-    ignore_case: bool,
 
     /// Force PATTERN to match only whole words
     #[arg(short = 'w', long = "word-regexp")]
@@ -251,66 +230,13 @@ struct Args {
     #[arg(short = 'H', long = "with-filename")]
     with_filename: bool,
 
-    /// Print LABEL as filename for standard input — not implemented
-    #[arg(long = "label", value_name = "LABEL", allow_hyphen_values = true)]
-    label: Option<String>,
-
     /// Show only the part of a line matching PATTERN
     #[arg(short = 'O', long = "only-matching")]
     only_matching: bool,
 
-    /// Assume that binary files are TYPE — not implemented
-    #[arg(long = "binary-files", value_name = "TYPE", allow_hyphen_values = true)]
-    binary_files: Option<String>,
-
     /// Equivalent to --binary-files=text (all files are handled as text)
     #[arg(short = 'a', long = "text")]
     text: bool,
-
-    /// How to handle directories (a spelling of --debug; ACTION is swallowed)
-    #[arg(
-        long = "directories",
-        value_name = "ACTION",
-        allow_hyphen_values = true
-    )]
-    directories: Option<String>,
-
-    /// How to handle devices, FIFOs and sockets — not implemented
-    #[arg(
-        short = 'D',
-        long = "devices",
-        value_name = "ACTION",
-        allow_hyphen_values = true
-    )]
-    devices: Option<String>,
-
-    /// Equivalent to --directories=recurse — not implemented
-    #[arg(short = 'r', long = "recursive")]
-    recursive: bool,
-
-    /// Search only files that match FILE_PATTERN — not implemented
-    #[arg(
-        long = "include",
-        value_name = "FILE_PATTERN",
-        allow_hyphen_values = true
-    )]
-    include: Option<String>,
-
-    /// Skip files and directories matching FILE_PATTERN — not implemented
-    #[arg(
-        long = "exclude",
-        value_name = "FILE_PATTERN",
-        allow_hyphen_values = true
-    )]
-    exclude: Option<String>,
-
-    /// Search only files matching any file pattern from FILE — not implemented
-    #[arg(long = "include-from", value_name = "FILE", allow_hyphen_values = true)]
-    include_from: Option<String>,
-
-    /// Skip files matching any file pattern from FILE — not implemented
-    #[arg(long = "exclude-from", value_name = "FILE", allow_hyphen_values = true)]
-    exclude_from: Option<String>,
 
     /// Print only names of FILEs containing no match
     #[arg(short = 'L', long = "files-without-match")]
@@ -356,14 +282,6 @@ struct Args {
     )]
     context: Option<String>,
 
-    /// Do not strip CR characters at EOL (MSDOS) — not supported
-    #[arg(short = 'u', long = "binary")]
-    binary: bool,
-
-    /// Report offsets as if CRs were not there (MSDOS) — not supported
-    #[arg(short = 'U', long = "unix-byte-offset")]
-    unix_byte_offset: bool,
-
     /// The pattern (unless -e/-f gave one) followed by the input files;
     /// missing files or - read the standard input
     #[arg(value_name = "PATTERN", num_args = 0..)]
@@ -382,22 +300,12 @@ struct Args {
 #[derive(Clone, Copy)]
 enum Event {
     Format,
-    ExtendedRegexp,
-    BasicRegexp,
-    PerlRegexp,
-    IgnoreCase,
     File,
     MaxCount,
-    Label,
-    BinaryFiles,
     Text,
-    Devices,
-    Recursive,
-    Globbing,
     BeforeContext,
     AfterContext,
     Context,
-    Msdos,
 }
 
 impl Args {
@@ -440,25 +348,6 @@ impl Args {
                         parse_format_name_quiet(optarg)
                     };
                 }
-                Event::ExtendedRegexp => {
-                    error(common, 1, 0, "POSIX ERE syntax not yet supported");
-                    options.dialect_posix_ere = true;
-                    return Err(1);
-                }
-                Event::BasicRegexp => {
-                    error(common, 1, 0, "POSIX BRE syntax not yet supported");
-                    options.dialect_posix_bre = true;
-                    return Err(1);
-                }
-                Event::PerlRegexp => {
-                    error(common, 1, 0, "Perl syntax not yet supported");
-                    options.dialect_perl = true;
-                    return Err(1);
-                }
-                Event::IgnoreCase => {
-                    error(common, 1, 0, "Ignore case not supported");
-                    return Err(1);
-                }
                 Event::File => {
                     // C: expfile = hfst_fopen(optarg, "r"); the handle is
                     // never read, but hfst_fopen validates the file (erroring
@@ -474,31 +363,10 @@ impl Args {
                         parse_u64(common, self.max_count.as_deref().unwrap_or_default(), 10);
                     options.count_matches = true;
                 }
-                Event::Label => {
-                    // The option table declared --label but the switch had no
-                    // arm for it, so it fell into the getopt-cases-error.h
-                    // 'default' — an "invalid option" naming the unprintable
-                    // option value 21.
-                    print_short_help(common);
-                    error(common, 1, 0, &format!("invalid option -{}", '\u{15}'));
-                    return Err(1);
-                }
-                Event::BinaryFiles => {
-                    error(common, 1, 0, "No binary handling implemented");
-                    return Err(1);
-                }
                 Event::Text => {
                     if print {
                         warning(common, 0, 0, "All files are always handled as text");
                     }
-                }
-                Event::Devices | Event::Recursive => {
-                    error(common, 1, 0, "No directory handling implemented");
-                    return Err(1);
-                }
-                Event::Globbing => {
-                    error(common, 1, 0, "No directory/globbing implemented");
-                    return Err(1);
                 }
                 Event::BeforeContext => {
                     options.before_context = parse_u64(
@@ -519,23 +387,9 @@ impl Args {
                     options.before_context = parse_u64(common, optarg, 10);
                     options.after_context = parse_u64(common, optarg, 10);
                 }
-                Event::Msdos => {
-                    error(
-                        common,
-                        1,
-                        0,
-                        "MSDOS binary format not supported; use fromdos or dos2unix",
-                    );
-                    return Err(1);
-                }
             }
         }
-        if !options.dialect_fixed_strings
-            && !options.dialect_xerox
-            && !options.dialect_posix_bre
-            && !options.dialect_posix_ere
-            && !options.dialect_perl
-        {
+        if !options.dialect_fixed_strings && !options.dialect_xerox {
             if print {
                 warning(
                     common,
@@ -607,13 +461,7 @@ impl ToolArgs for Args {
         &self.common
     }
 
-    fn apply_io(&self, opts: &mut CommonOptions) {
-        // '--directories' rode the same option value as '-d'/'--debug' in the
-        // old table, so giving it (with any ACTION) turned debug mode on.
-        if self.directories.is_some() {
-            opts.debug = true;
-        }
-    }
+    fn apply_io(&self, _opts: &mut CommonOptions) {}
 
     fn absorb_matches(&mut self, matches: &clap::ArgMatches) {
         use clap::parser::ValueSource;
@@ -630,26 +478,12 @@ impl ToolArgs for Args {
         }
         let ids: &[(&str, Event)] = &[
             ("format", Event::Format),
-            ("extended_regexp", Event::ExtendedRegexp),
-            ("basic_regexp", Event::BasicRegexp),
-            ("perl_regexp", Event::PerlRegexp),
-            ("ignore_case", Event::IgnoreCase),
             ("file", Event::File),
             ("max_count", Event::MaxCount),
-            ("label", Event::Label),
-            ("binary_files", Event::BinaryFiles),
             ("text", Event::Text),
-            ("devices", Event::Devices),
-            ("recursive", Event::Recursive),
-            ("include", Event::Globbing),
-            ("exclude", Event::Globbing),
-            ("include_from", Event::Globbing),
-            ("exclude_from", Event::Globbing),
             ("before_context", Event::BeforeContext),
             ("after_context", Event::AfterContext),
             ("context", Event::Context),
-            ("binary", Event::Msdos),
-            ("unix_byte_offset", Event::Msdos),
         ];
         let mut ordered: Vec<(usize, Event)> = ids
             .iter()

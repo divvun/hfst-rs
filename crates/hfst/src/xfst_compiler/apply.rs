@@ -7,7 +7,6 @@ static APPLY_END_STRING: &str = "<ctrl-d>";
 
 impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     // @brief Perform lookdowns on top of the stack, one per line
-    // @todo lookdown is missing from HFST
     pub fn apply_up(&mut self, indata: &str) -> CmdResult {
         for line in indata.split('\n').filter(|s| !s.is_empty()) {
             if line == APPLY_END_STRING {
@@ -20,7 +19,6 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     }
 
     // @brief Perform lookups on top of the stack, one per line
-    // @todo lookup is missing from HFST
     pub fn apply_down(&mut self, indata: &str) -> CmdResult {
         for line in indata.split('\n').filter(|s| !s.is_empty()) {
             if line == APPLY_END_STRING {

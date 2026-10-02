@@ -7705,6 +7705,14 @@ children (
                     target-impl ([spec:hfst:req:xfst-cmd.no-dead-surface])
                 }
                 deps (xfst-no-placeholders xfst-read-and-sort xfst-ambiguity-substring-med)
+                log (
+                    {
+                        at 2026-10-02T12:19:14.944883Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
+                )
             }
 
             {

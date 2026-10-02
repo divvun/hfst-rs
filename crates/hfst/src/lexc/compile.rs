@@ -63,7 +63,6 @@ impl<B: AlgebraBackend> LexcCompiler<B> {
         match nfst_lexc::parse(lexc_source) {
             Ok(ast) => {
                 self.compile_file(&ast.value)?;
-                // mirrors 'xre.remove_defined_multichar_symbols()' in parse()
                 self.xre.remove_defined_multichar_symbols();
             }
             Err(e) => {

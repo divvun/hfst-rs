@@ -199,13 +199,6 @@ fn process_stream_typed<B: hfst::backend::AlgebraBackend>(
             );
         }
         if options.read_prolog_format {
-            if options.output_format == ImplementationType::XFSM_TYPE {
-                // XFSM output cannot get here in this build: the output
-                // stream constructor rejected XFSM_TYPE before the loop.
-                // (The C++ arm called prolog_file_to_xfsm_transducer.)
-                unreachable!("XFSM_TYPE output stream cannot be created in this build")
-            }
-
             // C: catches NotValidPrologFormatException; the Rust readers
             // panic_any rather than throw, so the catch arm is not reproduced.
             let fsm = match HfstBasicTransducer::read_in_prolog_format(input, &mut linecount) {
@@ -390,19 +383,6 @@ pub(super) fn execute(args: Vec<String>) -> ToolResult {
             "Using default output format OpenFst with tropical weight class\n",
         );
     }
-    if options.output_format == ImplementationType::XFSM_TYPE
-        && options.read_prolog_format
-        && options.check_negative_epsilon_cycles
-    {
-        hfst_error(
-            &common,
-            1,
-            0,
-            "Error: checking negative epsilon cycles not supported when reading in prolog format\nand outputting in xfsm format.\n",
-        );
-        return Err(1);
-    }
-
     // close buffers, we use streams
     let output_opened = common.output_filename != "<stdout>";
     verbose_print(
@@ -423,7 +403,8 @@ pub(super) fn execute(args: Vec<String>) -> ToolResult {
             verbose_print(&common, "Using foma as output handler\n");
         }
         ImplementationType::XFSM_TYPE => {
-            verbose_print(&common, "Using xfsm as output handler\n");
+            hfst_error(&common, 1, 0, "xfsm back-end is not available\n");
+            return Err(1);
         }
         ImplementationType::HFST_OL_TYPE => {
             verbose_print(&common, "Using optimized lookup output\n");
@@ -438,36 +419,6 @@ pub(super) fn execute(args: Vec<String>) -> ToolResult {
         | ImplementationType::UNSPECIFIED_TYPE
         | ImplementationType::ERROR_TYPE => {
             hfst_error(&common, 1, 0, "Unknown format cannot be used as output\n");
-            return Err(1);
-        }
-    }
-
-    if options.output_format == ImplementationType::XFSM_TYPE {
-        if common.output_filename == "<stdout>" {
-            hfst_error(
-                &common,
-                1,
-                0,
-                "Writing to standard output not supported for xfsm transducers,\nuse 'hfst-txt2fst [--output|-o] OUTFILE' instead",
-            );
-            return Err(1);
-        }
-        if !options.read_prolog_format {
-            hfst_error(
-                &common,
-                1,
-                0,
-                "Writing in att format not supported for xfsm transducers,\nuse '--prolog' instead",
-            );
-            return Err(1);
-        }
-        if common.input_filename == "<stdin>" {
-            hfst_error(
-                &common,
-                1,
-                0,
-                "Reading prolog format from standard input not supported for xfsm transducers,\nuse 'hfst-txt2fst [--input|-i] INFILE' instead",
-            );
             return Err(1);
         }
     }

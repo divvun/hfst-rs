@@ -67,7 +67,6 @@ pub mod hfst_strings2_fst_tokenizer;
 pub mod hfst_symbol_defs;
 pub mod hfst_tokenizer;
 pub mod hfst_transducer;
-pub mod hfst_transition;
 pub mod hfst_tropical_transducer_transition_data;
 pub mod hfst_xerox_rules;
 pub mod io_utils;

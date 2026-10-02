@@ -113,6 +113,13 @@ const SANCTIONED: &[(&str, &str, &str, &str)] = &[
          since applies_common_options is left at its default.",
     ),
     (
+        "crates/hfst-cli/src/tools/grep.rs",
+        "apply_io",
+        "{}",
+        "No UnaryIo / BinaryIo operand group to fold: grep takes its pattern \
+         and input files as positionals and resolves them itself.",
+    ),
+    (
         "crates/hfst-cli/src/tools/optimized_lookup.rs",
         "apply_io",
         "{}",

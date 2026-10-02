@@ -36,7 +36,6 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     }
 
     // @brief Name top of stack
-    // @todo HFST automata do not remember their names
     pub fn name_net(&mut self, name: &str) -> CmdResult {
         let t = self.top()?;
         self.net_mut(t).set_name(name);

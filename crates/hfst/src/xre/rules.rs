@@ -274,7 +274,40 @@ impl<B: AlgebraBackend> XreCompiler<B> {
         if !self.verbose {
             return;
         }
-        self.diag_warning(&format!("'{} ' is an ordinary symbol in hfst", symbol));
+        self.diag_warning(&format!("'{}' is an ordinary symbol in hfst", symbol));
+    }
+
+    // [spec:hfst:def:xre-utils.hfst.xre.warn-about-hfst-special-symbol-fn]
+    // [spec:hfst:sem:xre-utils.hfst.xre.warn-about-hfst-special-symbol-fn]
+    /// In verbose mode, warn that a symbol spelled like HFST's own '@_..._@'
+    /// symbols is an ordinary symbol here.
+    fn warn_about_hfst_special_symbol(&self, symbol: &str) {
+        if self.verbose && symbol.len() > 4 && symbol.starts_with("@_") && symbol.ends_with("_@") {
+            self.diag_warning(&format!("'{}' is not an ordinary symbol in hfst", symbol));
+        }
+    }
+
+    // [spec:hfst:def:xre-utils.hfst.xre.check-multichar-symbol-fn]
+    // [spec:hfst:sem:xre-utils.hfst.xre.check-multichar-symbol-fn]
+    /// While a lexc source is being compiled, warn about a multichar symbol
+    /// it never declared.
+    fn check_multichar_symbol(&self, symbol: &str) {
+        let Some(defined) = &self.defined_multichar_symbols else {
+            return;
+        };
+        if symbol.chars().nth(1).is_some() && !defined.contains(symbol) {
+            self.diag_warning(&format!(
+                "multichar symbol '{}' used but not defined",
+                symbol
+            ));
+        }
+    }
+
+    /// The checks every symbol the user writes as an arc label goes through.
+    pub(super) fn check_written_symbol(&self, symbol: &str) {
+        self.warn_about_hfst_special_symbol(symbol);
+        self.warn_about_xfst_special_symbol(symbol);
+        self.check_multichar_symbol(symbol);
     }
 
     // [spec:hfst:def:xre-utils.hfst.xre.warn-about-special-symbols-in-replace-fn]

@@ -1,8 +1,8 @@
 //! Port of 'libhfst/src/implementations/HfstBasicTransition.{h,cc}'.
 //!
-//! The concrete (non-template) transition class used by ['HfstBasicTransducer'].
-//! Structurally identical to 'HfstTransition<HfstTropicalTransducerTransitionData>',
-//! but the C++ keeps it as a separate concrete class, so it is ported as one.
+//! The transition class used by ['HfstBasicTransducer']: a target state plus
+//! tropical transition data. It also stands for the C++ template
+//! 'HfstTransition<C>', whose only instantiation in use is this one.
 //!
 //! ['HfstBasicTransducer']: crate::hfst_basic_transducer
 
@@ -14,6 +14,8 @@ use crate::hfst_tropical_transducer_transition_data::{
 };
 
 // [spec:hfst:def:hfst-basic-transition.hfst.implementations.hfst-basic-transition]
+// [spec:hfst:def:hfst-transition.hfst.hfst-basic-transition]
+// [spec:hfst:def:hfst-transition.hfst.implementations.hfst-transition]
 #[derive(Clone, Debug)]
 pub struct HfstBasicTransition {
     // the state where the transition leads
@@ -23,6 +25,8 @@ pub struct HfstBasicTransition {
 }
 
 impl HfstBasicTransition {
+    // [spec:hfst:def:hfst-transition.hfst.implementations.hfst-transition-fn]
+    // [spec:hfst:sem:hfst-transition.hfst.implementations.hfst-transition-fn]
     pub fn new() -> Self {
         HfstBasicTransition {
             target_state: 0,
@@ -48,6 +52,8 @@ impl HfstBasicTransition {
 
     // [spec:hfst:def:hfst-basic-transition.hfst.implementations.hfst-basic-transition.hfst-basic-transition-fn]
     // [spec:hfst:sem:hfst-basic-transition.hfst.implementations.hfst-basic-transition.hfst-basic-transition-fn]
+    // [spec:hfst:def:hfst-transition.hfst.implementations.hfst-transition.hfst-transition-fn]
+    // [spec:hfst:sem:hfst-transition.hfst.implementations.hfst-transition.hfst-transition-fn]
     pub fn new_numbers(
         s: HfstState,
         inumber: u32,
@@ -65,6 +71,8 @@ impl HfstBasicTransition {
 
     // [spec:hfst:def:hfst-basic-transition.hfst.implementations.hfst-basic-transition.operator-fn]
     // [spec:hfst:sem:hfst-basic-transition.hfst.implementations.hfst-basic-transition.operator-fn]
+    // [spec:hfst:def:hfst-transition.hfst.implementations.operator-fn]
+    // [spec:hfst:sem:hfst-transition.hfst.implementations.operator-fn]
     pub fn operator_lt(&self, another: &HfstBasicTransition) -> bool {
         if self.target_state == another.target_state {
             return self.transition_data.operator_lt(&another.transition_data);
@@ -74,6 +82,8 @@ impl HfstBasicTransition {
 
     // [spec:hfst:def:hfst-basic-transition.hfst.implementations.hfst-basic-transition.get-target-state-fn]
     // [spec:hfst:sem:hfst-basic-transition.hfst.implementations.hfst-basic-transition.get-target-state-fn]
+    // [spec:hfst:def:hfst-transition.hfst.implementations.get-target-state-fn]
+    // [spec:hfst:sem:hfst-transition.hfst.implementations.get-target-state-fn]
     pub fn get_target_state(&self) -> HfstState {
         self.target_state
     }
@@ -84,6 +94,8 @@ impl HfstBasicTransition {
 
     // [spec:hfst:def:hfst-basic-transition.hfst.implementations.hfst-basic-transition.get-input-symbol-fn]
     // [spec:hfst:sem:hfst-basic-transition.hfst.implementations.hfst-basic-transition.get-input-symbol-fn]
+    // [spec:hfst:def:hfst-transition.hfst.implementations.typename-c.symbol-type-get-input-symbol-fn]
+    // [spec:hfst:sem:hfst-transition.hfst.implementations.typename-c.symbol-type-get-input-symbol-fn]
     pub fn get_input_symbol(&self, coder: &SymbolCoder) -> SymbolType {
         self.transition_data.get_input_symbol(coder)
     }
@@ -96,6 +108,8 @@ impl HfstBasicTransition {
 
     // [spec:hfst:def:hfst-basic-transition.hfst.implementations.hfst-basic-transition.get-output-symbol-fn]
     // [spec:hfst:sem:hfst-basic-transition.hfst.implementations.hfst-basic-transition.get-output-symbol-fn]
+    // [spec:hfst:def:hfst-transition.hfst.implementations.typename-c.symbol-type-get-output-symbol-fn]
+    // [spec:hfst:sem:hfst-transition.hfst.implementations.typename-c.symbol-type-get-output-symbol-fn]
     pub fn get_output_symbol(&self, coder: &SymbolCoder) -> SymbolType {
         self.transition_data.get_output_symbol(coder)
     }
@@ -108,24 +122,32 @@ impl HfstBasicTransition {
 
     // [spec:hfst:def:hfst-basic-transition.hfst.implementations.hfst-basic-transition.get-input-number-fn]
     // [spec:hfst:sem:hfst-basic-transition.hfst.implementations.hfst-basic-transition.get-input-number-fn]
+    // [spec:hfst:def:hfst-transition.hfst.implementations.get-input-number-fn]
+    // [spec:hfst:sem:hfst-transition.hfst.implementations.get-input-number-fn]
     pub fn get_input_number(&self) -> u32 {
         self.transition_data.get_input_number()
     }
 
     // [spec:hfst:def:hfst-basic-transition.hfst.implementations.hfst-basic-transition.get-output-number-fn]
     // [spec:hfst:sem:hfst-basic-transition.hfst.implementations.hfst-basic-transition.get-output-number-fn]
+    // [spec:hfst:def:hfst-transition.hfst.implementations.get-output-number-fn]
+    // [spec:hfst:sem:hfst-transition.hfst.implementations.get-output-number-fn]
     pub fn get_output_number(&self) -> u32 {
         self.transition_data.get_output_number()
     }
 
     // [spec:hfst:def:hfst-basic-transition.hfst.implementations.hfst-basic-transition.get-weight-fn]
     // [spec:hfst:sem:hfst-basic-transition.hfst.implementations.hfst-basic-transition.get-weight-fn]
+    // [spec:hfst:def:hfst-transition.hfst.implementations.typename-c.weight-type-get-weight-fn]
+    // [spec:hfst:sem:hfst-transition.hfst.implementations.typename-c.weight-type-get-weight-fn]
     pub fn get_weight(&self) -> WeightType {
         self.transition_data.get_weight()
     }
 
     // [spec:hfst:def:hfst-basic-transition.hfst.implementations.hfst-basic-transition.set-weight-fn]
     // [spec:hfst:sem:hfst-basic-transition.hfst.implementations.hfst-basic-transition.set-weight-fn]
+    // [spec:hfst:def:hfst-transition.hfst.implementations.set-weight-fn]
+    // [spec:hfst:sem:hfst-transition.hfst.implementations.set-weight-fn]
     pub fn set_weight(&mut self, w: WeightType) {
         self.transition_data.set_weight(w);
     }

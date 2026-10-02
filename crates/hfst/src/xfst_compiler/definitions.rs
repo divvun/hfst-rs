@@ -38,7 +38,6 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     }
 
     // @brief Define list by labels
-    // @todo lists are not supportedd by HFST
     pub fn define_list(&mut self, name: &str, list: &str) -> CmdResult {
         if self.definitions.contains_key(name) {
             return Err(CommandError::new(format!(
@@ -102,7 +101,6 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     }
 
     // @brief Define regex macro function
-    // @todo Regex parser does not support macro functions
     pub fn define_function(&mut self, prototype: &str, xre: &str) -> CmdResult {
         let Some(name) = Self::extract_function_name(prototype) else {
             return Err(CommandError::new(format!(

@@ -21,7 +21,6 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     }
 
     // @brief Test top transducer in stack for equivalence
-    // @todo tests are not implemented
     pub fn test_eq(&mut self, assertion: bool) -> CmdResult {
         self.require_two()?;
         let first = self.stack[self.stack.len() - 1];
@@ -31,7 +30,6 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     }
 
     // @brief Test top transducer in stack for identity
-    // @todo tests are not implemented
     pub fn test_id(&mut self, assertion: bool) -> CmdResult {
         let tmp = self.top()?;
 
@@ -45,7 +43,6 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     }
 
     // @brief Test top transducer in stack for upper language boundedness
-    // @todo tests are not implemented
     pub fn test_upper_bounded(&mut self, assertion: bool) -> CmdResult {
         let temp = self.top()?;
 
@@ -74,13 +71,11 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     }
 
     // @brief Test top transducer in stack for upper language universality
-    // @todo tests are not implemented
     pub fn test_upper_uni(&mut self, assertion: bool) -> CmdResult {
         self.test_uni(Level::UPPER_LEVEL, assertion)
     }
 
     // @brief Test top transducer in stack for lower language boundedness
-    // @todo tests are not implemented
     pub fn test_lower_bounded(&mut self, assertion: bool) -> CmdResult {
         let temp = self.top()?;
 
@@ -93,13 +88,11 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     }
 
     // @brief Test top transducer in stack for lower language universality
-    // @todo tests are not implemented
     pub fn test_lower_uni(&mut self, assertion: bool) -> CmdResult {
         self.test_uni(Level::LOWER_LEVEL, assertion)
     }
 
     // @brief Test top transducer in stack for not emptiness
-    // @todo tests are not implemented
     pub fn test_nonnull(&mut self, assertion: bool) -> CmdResult {
         self.test_null(true, assertion)
     }
@@ -107,7 +100,6 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     // @brief Test top transducer in stack for emptiness
     // \a invert_test_result defines whether the result is inverted
     // (so that 'test_nonnull' can be implemented with the same function).
-    // @todo tests are not implemented
     pub fn test_null(&mut self, invert_test_result: bool, assertion: bool) -> CmdResult {
         let tmp = self.top()?;
 
@@ -159,13 +151,11 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     }
 
     // @brief Test top transducer in stack for overlapping
-    // @todo tests are not implemented
     pub fn test_overlap(&mut self, assertion: bool) -> CmdResult {
         self.test_operation(TestOperation::TEST_OVERLAP_, assertion)
     }
 
     // @brief Test top transducer in stack for sublanguage
-    // @todo tests are not implemented
     pub fn test_sublanguage(&mut self, assertion: bool) -> CmdResult {
         self.test_operation(TestOperation::TEST_SUBLANGUAGE_, assertion)
     }

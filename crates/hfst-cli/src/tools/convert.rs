@@ -619,18 +619,16 @@ pub mod fst2fst {
 
     /// One occurrence of an output-type option, in the order it was written.
     ///
-    /// Seven different options write the single `output_type`, and which
-    /// diagnostic fires depends on which of them the C's getopt loop reached
-    /// first — '-x -t' is the xfsm refusal while '-t -F' is the
-    /// defined-several-times one. A derive struct cannot carry that, so the
-    /// occurrences are recovered from the match indices and replayed.
+    /// Six different options write the single `output_type`, and the
+    /// diagnostic for giving several depends on the order they were written
+    /// in. A derive struct cannot carry that, so the occurrences are
+    /// recovered from the match indices and replayed.
     #[derive(Clone, Copy, PartialEq, Eq)]
     enum TypeOpt {
         /// '-f FMT', carrying its position among the --format values.
         Format(usize),
         Sfst,
         Foma,
-        Xfsm,
         Tropical,
         OlUnweighted,
         OlWeighted,
@@ -649,8 +647,8 @@ pub mod fst2fst {
         #[command(flatten)]
         io: UnaryIo,
 
-        /// Write result in FMT format: foma, openfst-tropical, sfst, xfsm,
-        /// thfst, optimized-lookup-weighted, optimized-lookup-unweighted
+        /// Write result in FMT format: foma, openfst-tropical, sfst, thfst,
+        /// optimized-lookup-weighted, optimized-lookup-unweighted
         #[arg(short = 'f', long = "format", value_name = "FMT", action = ArgAction::Append)]
         format: Vec<String>,
 
@@ -665,10 +663,6 @@ pub mod fst2fst {
         /// Write output in (HFST's) foma implementation
         #[arg(short = 'F', long = "foma", action = ArgAction::Count)]
         foma: u8,
-
-        /// Write output in native xfsm format
-        #[arg(short = 'x', long = "xfsm", action = ArgAction::Count)]
-        xfsm: u8,
 
         /// Write output in (HFST's) tropical weight (OpenFST) implementation
         #[arg(short = 't', long = "openfst-tropical", action = ArgAction::Count)]
@@ -717,17 +711,13 @@ pub mod fst2fst {
                             .map(String::as_str)
                             .unwrap_or_default();
                         let ty = hfst_parse_format_name(common, name);
-                        set(common, &mut output_type, ty);
-                        // HAVE_XFSM is not defined in this build.
-                        if output_type == ImplementationType::XFSM_TYPE {
+                        if ty == ImplementationType::XFSM_TYPE {
                             error(common, 1, 0, "xfsm back-end is not available");
                         }
+                        set(common, &mut output_type, ty);
                     }
                     TypeOpt::Sfst => set(common, &mut output_type, ImplementationType::SFST_TYPE),
                     TypeOpt::Foma => set(common, &mut output_type, ImplementationType::FOMA_TYPE),
-                    // HAVE_XFSM is not defined in this build: '-x' never sets
-                    // the type, it only reports.
-                    TypeOpt::Xfsm => error(common, 1, 0, "xfsm back-end is not available"),
                     TypeOpt::Tropical => set(
                         common,
                         &mut output_type,
@@ -767,7 +757,6 @@ pub mod fst2fst {
             for (id, opt) in [
                 ("sfst", TypeOpt::Sfst),
                 ("foma", TypeOpt::Foma),
-                ("xfsm", TypeOpt::Xfsm),
                 ("openfst_tropical", TypeOpt::Tropical),
                 ("optimized_lookup_unweighted", TypeOpt::OlUnweighted),
                 ("optimized_lookup_weighted", TypeOpt::OlWeighted),
@@ -900,7 +889,6 @@ pub mod fst2fst {
             }
         }
         if let Err(e) = outstream.flush() {
-            // needed for xfsm transducers whose writing is delayed
             error(common, 1, 0, &format!("{e}"));
             return 1;
         }
@@ -935,7 +923,7 @@ pub mod fst2fst {
                 common.input_filename, common.output_filename
             ),
         );
-        if options.hfst_format && (options.output_type != ImplementationType::XFSM_TYPE) {
+        if options.hfst_format {
             verbose_print(
                 &common,
                 &format!(
@@ -951,19 +939,6 @@ pub mod fst2fst {
                     hfst_strformat(options.output_type)
                 ),
             );
-        }
-
-        if options.output_type == ImplementationType::XFSM_TYPE
-            && common.output_filename == "<stdout>"
-        {
-            error(
-                &common,
-                1,
-                0,
-                "Writing to standard output not supported for xfsm transducers,\n\
-                 use 'hfst-fst2fst [--output|-o] OUTFILE' instead",
-            );
-            return Err(1);
         }
 
         // THFST is a directory format with no byte-stream encoding, so it can never
@@ -1153,7 +1128,8 @@ pub mod fst2txt {
                 }
             };
             // the one runtime dispatch per stream read ([dec:hfst:monomorphic-backends])
-            let code = crate::for_any!(any, t => process_one(common, options, t, outf, transducer_n, instream.get_type()));
+            let code =
+                crate::for_any!(any, t => process_one(common, options, t, outf, transducer_n));
             if code != 0 {
                 return code;
             }
@@ -1170,7 +1146,6 @@ pub mod fst2txt {
         mut t: HfstTransducer<B>,
         outf: &mut dyn std::io::Write,
         transducer_n: usize,
-        stream_type: ImplementationType,
     ) -> i32 {
         {
             let mut inputname = t.get_name();
@@ -1180,15 +1155,6 @@ pub mod fst2txt {
             if transducer_n == 1 {
                 verbose_print(common, &format!("Converting {}...\n", inputname));
             } else {
-                if stream_type == ImplementationType::XFSM_TYPE {
-                    error(
-                        common,
-                        1,
-                        0,
-                        "Writing more than one transducer in text format to file not supported for xfsm transducers,\nuse [hfst-head|hfst-tail|hfst-split] to extract individual transducers from input",
-                    );
-                    return 1;
-                }
                 verbose_print(
                     common,
                     &format!("Converting {}...{}\n", inputname, transducer_n),
@@ -1201,72 +1167,57 @@ pub mod fst2txt {
 
             let ty = t.get_type();
             // Weights are printed unless explicitly suppressed or the format is a
-            // non-weighted one (SFST/foma/xfsm). Weighted formats — and the
+            // non-weighted one (SFST/foma). Weighted formats — and the
             // "should not happen" fallthrough — both print, so they share the else.
             let printw: bool = if options.print_weights {
                 true
             } else {
                 !(options.do_not_print_weights
                     || ty == ImplementationType::SFST_TYPE
-                    || ty == ImplementationType::FOMA_TYPE
-                    || ty == ImplementationType::XFSM_TYPE)
+                    || ty == ImplementationType::FOMA_TYPE)
             };
             let write_result = match options.format {
                 FstTextFormat::Att => {
                     if options.use_numbers {
-                        // xfsm case checked earlier
                         t.write_in_att_format_number(outf, printw)
                     } else {
-                        // xfsm not yet supported
                         t.write_in_att_format_file(outf, printw)
                     }
                 }
-                FstTextFormat::Dot => {
-                    // xfsm case checked earlier
-                    outf.write_all(b"// This graph generated with hfst-fst2txt\n")
-                        .and_then(|()| print_dot_file(outf, &mut t))
-                }
-                FstTextFormat::Pckimmo => {
-                    // xfsm case checked earlier
-                    print_pckimmo(outf, &t)
-                }
+                FstTextFormat::Dot => outf
+                    .write_all(b"// This graph generated with hfst-fst2txt\n")
+                    .and_then(|()| print_dot_file(outf, &mut t)),
+                FstTextFormat::Pckimmo => print_pckimmo(outf, &t),
                 FstTextFormat::Prolog => {
                     // C: catches HfstException -> error "Error encountered when
                     // writing in prolog format". The Rust impl panics; the catch
                     // arm is not reproduced here.
-                    if ty == ImplementationType::XFSM_TYPE {
-                        // XFSM streams cannot be read in this build (the
-                        // backend is compiled out); the C++ arm called
-                        // write_xfsm_transducer_in_prolog_format here.
-                        unreachable!("XFSM_TYPE cannot be read from an HFST stream in this build")
-                    } else {
-                        let namestr = t.get_name();
-                        let alt_namestr = format!("NO_NAME_{}", transducer_n);
-                        let namestr = if namestr.is_empty() {
-                            if !common.silent {
-                                eprintln!(
-                                    "Transducer has no name, giving it a name '{}'...",
-                                    alt_namestr
-                                );
-                            }
-                            alt_namestr
-                        } else {
-                            if !common.silent {
-                                eprintln!("Renaming transducer into '{}'...", alt_namestr);
-                            }
-                            alt_namestr
-                        };
-                        if let Err(e) = t.write_in_prolog_format(outf, &namestr, printw) {
-                            error(
-                                common,
-                                1,
-                                0,
-                                &format!("Error encountered when writing in prolog format: {e}"),
+                    let namestr = t.get_name();
+                    let alt_namestr = format!("NO_NAME_{}", transducer_n);
+                    let namestr = if namestr.is_empty() {
+                        if !common.silent {
+                            eprintln!(
+                                "Transducer has no name, giving it a name '{}'...",
+                                alt_namestr
                             );
-                            return 1;
                         }
-                        Ok(())
+                        alt_namestr
+                    } else {
+                        if !common.silent {
+                            eprintln!("Renaming transducer into '{}'...", alt_namestr);
+                        }
+                        alt_namestr
+                    };
+                    if let Err(e) = t.write_in_prolog_format(outf, &namestr, printw) {
+                        error(
+                            common,
+                            1,
+                            0,
+                            &format!("Error encountered when writing in prolog format: {e}"),
+                        );
+                        return 1;
                     }
+                    Ok(())
                 }
             };
             if let Err(e) = write_result {
@@ -1322,63 +1273,6 @@ pub mod fst2txt {
                 return Err(1);
             }
         };
-
-        if instream.get_type() == ImplementationType::XFSM_TYPE {
-            if options.format == FstTextFormat::Dot {
-                error(
-                    &common,
-                    1,
-                    0,
-                    "Output format 'dot' not supported for xfsm transducers, use 'prolog'",
-                );
-                return Err(1);
-            }
-            if options.format == FstTextFormat::Pckimmo {
-                error(
-                    &common,
-                    1,
-                    0,
-                    "Output format 'pckimmo' not supported for xfsm transducers, use 'prolog'",
-                );
-                return Err(1);
-            }
-            if options.format == FstTextFormat::Att {
-                error(
-                    &common,
-                    1,
-                    0,
-                    "Output format 'att' not supported for xfsm transducers, use 'prolog'",
-                );
-                return Err(1);
-            }
-            if options.use_numbers {
-                error(
-                    &common,
-                    1,
-                    0,
-                    "Option '--use-numbers' not supported for xfsm transducers",
-                );
-                return Err(1);
-            }
-            if common.input_filename == "<stdin>" {
-                error(
-                    &common,
-                    1,
-                    0,
-                    "Reading from standard input not supported for xfsm transducers,\nuse 'hfst-fst2txt [--input|-i] INFILE' instead",
-                );
-                return Err(1);
-            }
-            if common.output_filename == "<stdout>" {
-                error(
-                    &common,
-                    1,
-                    0,
-                    "Writing to standard output not supported for xfsm transducers,\nuse 'hfst-fst2txt [--output|-o] OUTFILE' instead",
-                );
-                return Err(1);
-            }
-        }
 
         let mut out = match common.output_writer() {
             Ok(w) => w,

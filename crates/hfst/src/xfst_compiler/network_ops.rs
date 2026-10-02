@@ -6,7 +6,6 @@ use crate::convert_transducer_format::ConversionFunctions;
 
 impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     // @brief Sort top network of the stack
-    // @todo HFST automata sort or not by default
     // [spec:hfst:sem:xfst-cmd.sort]
     /// 'sort net': order every state's arcs by input label, output label,
     /// then target.
@@ -207,7 +206,6 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     }
 
     // @brief Remove unnecessary symbols using ?
-    // @todo HFST does not support ?
     pub fn compact_sigma(&mut self) -> CmdResult {
         let top = self.top()?;
         self.net_mut(top).prune_alphabet(true)?;
@@ -216,7 +214,6 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     }
 
     // @brief Eliminate flag diacritic
-    // @todo unimplemented yet
     pub fn eliminate_flag(&mut self, name: &str) -> CmdResult {
         let tmp = self.top()?;
         self.net_mut(tmp).eliminate_flag(name).map_err(|e| {
@@ -231,7 +228,6 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     }
 
     // @brief Eliminate all flag diacritics
-    // @todo unimplemented yet
     pub fn eliminate_flags(&mut self) -> CmdResult {
         let tmp = self.top()?;
         self.net_mut(tmp).eliminate_flags()?;
@@ -247,13 +243,11 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     }
 
     // @brief do some label pushing
-    // @todo HFST automata cannot push labels
     pub fn cleanup_net(&mut self) -> CmdResult {
         Err(CommandError::not_supported("cleanup net"))
     }
 
     // @brief Make transducer functional
-    // @todo unimplemented
     pub fn complete_net(&mut self) -> CmdResult {
         let topmost = self.top()?;
         let mut fsm =
@@ -285,7 +279,6 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     }
 
     // @brief Make top of stack label network
-    // @todo Find out wtf this is
     pub fn label_net(&mut self) -> CmdResult {
         let topmost = self.top()?;
         let result: NetId = self.alloc_net(HfstTransducer::new());
@@ -361,7 +354,6 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     }
 
     // @brief Prune top network of stack
-    // @todo Most of HFST automata are pruned by default?
     pub fn prune_net(&mut self) -> CmdResult {
         self.apply_unary_operation(UnaryOperation::PRUNE_NET_)
     }
@@ -372,7 +364,6 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     }
 
     // @brief Sigma top network of stack
-    // @todo Find out wtf this is
     pub fn sigma_net(&mut self) -> CmdResult {
         let tmp = self.top()?;
         let mut alpha: StringSet = self.net(tmp).get_alphabet()?;

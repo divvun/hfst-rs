@@ -1,24 +1,5 @@
-//! ABSOLUTE-faithful C++->Rust port of HFST's LEXC (lexicon) compiler,
-//! RESTRUCTURED to walk the 'nfst-lexc' typed AST instead of the original
-//! Flex/Bison grammar. The AST-walk restructuring is the ONE sanctioned
-//! structural deviation in this port: the trie/transducer-building BEHAVIOUR of
-//! 'compileLexical' and the 'add*Entry' accumulators must still match the C++
-//! semantic actions in 'lexc-parser.yy' / 'LexcCompiler.cc' exactly.
-//!
-//! Ported from 'libhfst/src/parsers/LexcCompiler.{h,cc}' and
-//! 'libhfst/src/parsers/lexc-utils.{h,cc}'.
-//!
-//! # C++ globals / file-statics folded onto the instance
-//!   * the 'lexc' singleton becomes '&mut self';
-//!   * 'static bool firstLexicon' becomes the 'first_lexicon' field;
-//!   * the unused 'static StringVector multichar_symbols' is dropped.
-//!
-//! # Stream / WINDOWS plumbing dropped — error text via 'tracing'.
-//!
-//! # Deferred (record as 'unimplemented!')
-//! - 'parse(FILE*)' / 'parse(const char*)' REPLACED by the AST-walk 'compile(&str)'.
-//! - lexc-utils.cc Flex bookkeeping helpers (token positions, hand-lexer percent stripping).
-//! - 'getStringTries()' / 'getRegexpUnions()' — header-declared, never defined in .cc.
+//! The lexc lexicon compiler: walks the 'nfst-lexc' syntax tree, collects
+//! its lexicons and entries, and builds the lexicon transducer.
 
 #![allow(non_snake_case)]
 #![allow(non_upper_case_globals)]
