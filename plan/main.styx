@@ -382,6 +382,21 @@ children (
                 title "AT&T format reader/writer (not covered by nfst)"
                 priority 8
                 deps (facade)
+                children (
+                    {
+                        id att-unicode-space-roundtrip
+                        title "AT&T text round-trips symbols that are Unicode spaces: fst2txt writes U+00A0 / U+202F raw, and txt2fst rejects the line (\"not valid AT&T format\") because it splits fields with split_whitespace, not on tabs"
+                        kind @fix
+                        log (
+                            {
+                                at 2026-10-02T00:17:20.868246Z
+                                author "brendan@necessary.nu"
+                                kind @note
+                                text "Reproduced 2026-10-02 with the debug build: `printf 'a<U+00A0>b\\n' | hfst strings2fst | hfst fst2txt | hfst txt2fst` fails with `not valid AT&T format: 1\t2\t \t \t0.000000`; same for U+202F; ASCII space round-trips because the writer escapes it as @_SPACE_@. Cause: crates/hfst/src/hfst_basic_transducer/att_format.rs:201 reads fields with `line.split_whitespace()`, which splits on every Unicode White_Space character (U+00A0 and U+202F included). AT&T text is tab-separated: split on tabs (and accept the space-separated legacy form only for ASCII spaces, if that is kept at all), so any non-tab symbol survives. Add a round-trip test over all Unicode White_Space code points. Found while converting the North Sámi error model (its alphabet carries both characters)."
+                            }
+                        )
+                    }
+                )
                 log (
                     {
                         at 2026-07-17T15:40:39.941618Z
