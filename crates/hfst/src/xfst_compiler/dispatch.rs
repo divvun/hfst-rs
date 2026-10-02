@@ -67,9 +67,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             XfstCommand::Show(None) => self.show_all(),
             XfstCommand::Echo(text) => self.echo(text),
             XfstCommand::System(command) => self.system(command)?,
-            XfstCommand::Source(_path) => {
-                return Err(CommandError::not_supported("source"));
-            }
+            XfstCommand::Source(path) => return self.source_file(path),
             XfstCommand::Quit => {
                 self.quit("bye");
                 return Ok(Flow::Quit);

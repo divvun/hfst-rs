@@ -639,4 +639,9 @@ impl_evidence (
         {impl_name target-impl, rule xfst-cmd.errors-are-values}
         {impl_name target-impl, rule xfst-cmd.io-errors}
     )}
+    {id xfst-source, covered_rules (
+        xfst-cmd.source
+    ), covered_claims (
+        {impl_name target-impl, rule xfst-cmd.source}
+    )}
 )

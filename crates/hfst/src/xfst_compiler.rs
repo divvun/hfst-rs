@@ -278,7 +278,13 @@ pub struct XfstCompiler<B: AlgebraBackend> {
     /// command-level diagnostic anchors here, so the many sites that only
     /// report a failure gain a source position without each carrying one.
     current_span: std::ops::Range<usize>,
+    /// How many 'source' commands deep the running script is.
+    source_depth: u32,
 }
+
+/// The deepest 'source' nesting allowed, so a script that sources itself
+/// fails instead of overflowing the stack.
+const MAX_SOURCE_DEPTH: u32 = 64;
 
 /// Source label for xfst input that came from no file — a line typed at the
 /// interactive prompt, or a script handed straight to the library.
@@ -352,6 +358,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             source: String::new(),
             source_name: String::from(REPL_SOURCE_NAME),
             current_span: 0..0,
+            source_depth: 0,
         };
         c.xre.set_expand_definitions(true);
         c.xre.set_verbosity(c.verbose);
@@ -509,6 +516,37 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             }
         }
         Ok(Flow::Continue)
+    }
+
+    // [spec:hfst:req:xfst-cmd.source]
+    /// Run the script in `path`, resolved against the working directory, as
+    /// part of this session. Its diagnostics name `path` and point into it.
+    pub fn source_file(&mut self, path: &str) -> CmdResult<Flow> {
+        if self.source_depth >= MAX_SOURCE_DEPTH {
+            return Err(CommandError::new(format!(
+                "'source' is nested more than {} deep; does a script source itself?",
+                MAX_SOURCE_DEPTH
+            )));
+        }
+        self.check_filename(path)?;
+        let text = std::fs::read_to_string(path)
+            .map_err(|e| CommandError::new(format!("could not read '{}': {}", path, e)))?;
+
+        let saved_source = std::mem::take(&mut self.source);
+        let saved_name = std::mem::replace(&mut self.source_name, path.to_string());
+        let saved_span = self.current_span.clone();
+        self.source_depth += 1;
+        let outcome = self.parse(&text);
+        self.source_depth -= 1;
+        self.source = saved_source;
+        self.source_name = saved_name;
+        self.current_span = saved_span;
+
+        outcome.map_err(|e| CommandError {
+            message: e.to_string(),
+            notes: Vec::new(),
+            reported: true,
+        })
     }
 
     /// Whether a failed command ends the run: `quit-on-fail` is `ON` and the

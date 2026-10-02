@@ -7586,6 +7586,14 @@ children (
                     target-impl ([spec:hfst:req:xfst-cmd.source])
                 }
                 deps (xfst-result-flow)
+                log (
+                    {
+                        at 2026-10-02T11:21:07.384862Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
+                )
             }
 
             {

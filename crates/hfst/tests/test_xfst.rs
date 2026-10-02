@@ -379,3 +379,94 @@ fn upper_universal_compares_with_sigma_star() {
     c.parse("regex ? ;\nassert test upper-universal\n")
         .expect_err("a single ? is not");
 }
+
+// A scratch directory for the 'source' tests, unique to one test.
+fn source_dir(test: &str) -> std::path::PathBuf {
+    let dir =
+        std::env::temp_dir().join(format!("hfst-xfst-source-{}-{}", test, std::process::id()));
+    std::fs::create_dir_all(&dir).expect("scratch directory");
+    dir
+}
+
+// [spec:hfst:req:xfst-cmd.source/test]
+// 'source' shares the caller's compiler state: what it defines and pushes is
+// visible afterwards, and what was defined before is visible inside it.
+#[test]
+fn source_shares_the_session() {
+    let dir = source_dir("shares");
+    let inner = dir.join("inner.xfst");
+    std::fs::write(&inner, "regex A b ;\ndefine C c ;\n").expect("write script");
+    let mut c = XfstCompiler::<StdVectorFst>::new();
+    c.parse(&format!(
+        "define A a ;\nsource {}\nregex C ;\n",
+        inner.display()
+    ))
+    .expect("the sourced script runs");
+    assert_eq!(c.get_stack().len(), 2);
+    let first = c.get_stack()[0];
+    assert_eq!(
+        c.net(first).number_of_states(),
+        3,
+        "A b is two symbols long"
+    );
+}
+
+// [spec:hfst:req:xfst-cmd.source/test]
+// A failure inside the sourced file fails 'source', and the calling script
+// stops there.
+#[test]
+fn sourced_failure_stops_the_caller() {
+    let dir = source_dir("fails");
+    let inner = dir.join("inner.xfst");
+    std::fs::write(&inner, "pop stack\n").expect("write script");
+    let mut c = XfstCompiler::<StdVectorFst>::new();
+    let err = c
+        .parse(&format!("source {}\nregex a ;\n", inner.display()))
+        .expect_err("the sourced failure propagates");
+    assert!(err.diagnostics[0].message.contains("empty stack"));
+    assert!(c.get_stack().is_empty());
+}
+
+// [spec:hfst:req:xfst-cmd.source/test]
+// 'quit' inside a sourced file ends the whole session.
+#[test]
+fn quit_in_a_sourced_file_ends_the_session() {
+    let dir = source_dir("quit");
+    let inner = dir.join("inner.xfst");
+    std::fs::write(&inner, "regex a ;\nquit\n").expect("write script");
+    let mut c = XfstCompiler::<StdVectorFst>::new();
+    let flow = c
+        .parse(&format!("source {}\nregex b ;\n", inner.display()))
+        .expect("quit is not a failure");
+    assert_eq!(flow, Flow::Quit);
+    assert_eq!(c.get_stack().len(), 1);
+}
+
+// [spec:hfst:req:xfst-cmd.source/test]
+// A script that sources itself fails at the nesting limit.
+#[test]
+fn a_self_sourcing_script_fails() {
+    let dir = source_dir("self");
+    let inner = dir.join("loop.xfst");
+    std::fs::write(&inner, format!("source {}\n", inner.display())).expect("write script");
+    let mut c = XfstCompiler::<StdVectorFst>::new();
+    let err = c
+        .parse(&format!("source {}\n", inner.display()))
+        .expect_err("the recursion is cut off");
+    assert!(err.diagnostics[0].message.contains("nested"), "{:?}", err);
+}
+
+// [spec:hfst:req:xfst-cmd.source/test]
+// A missing file is an error naming it.
+#[test]
+fn sourcing_a_missing_file_names_it() {
+    let mut c = XfstCompiler::<StdVectorFst>::new();
+    let err = c
+        .parse("source /nonexistent/script.xfst\n")
+        .expect_err("a missing file fails");
+    assert!(
+        err.diagnostics[0]
+            .message
+            .contains("/nonexistent/script.xfst")
+    );
+}
