@@ -438,8 +438,8 @@ fn substring_net_accepts_every_substring() {
 #[test]
 fn med_matches_cheapest_first() {
     let mut c = XfstCompiler::<StdVectorFst>::new();
-    c.parse("regex [c a t | c o t | d o g] ;\n")
-        .expect("network");
+    c.parse("regex [c a t | c o t | d o g] ;\napply med cst\n")
+        .expect("'apply med WORD' on one line parses and runs");
     let matches = c.med_matches("cst").expect("searched");
     assert_eq!(&matches[..2], &[("cat".into(), 1), ("cot".into(), 1)]);
     assert!(matches.len() <= 3);
@@ -501,4 +501,38 @@ fn bad_ranges_fail_and_hyphen_is_a_symbol() {
     }
     let hyphen = printed("hyphen", "list V - ;\nprint lists > OUT\n");
     assert!(hyphen.contains(" - "), "{hyphen}");
+}
+
+// [spec:hfst:sem:xfst-cmd.read-word-lists/test]
+// 'read text FILE' reads the file and the commands after it still run.
+#[test]
+fn read_text_file_leaves_later_commands_alone() {
+    let dir = source_dir("readfile");
+    let file = dir.join("words.txt");
+    std::fs::write(&file, "cat\ndog\n").expect("write words");
+    let mut c = XfstCompiler::<StdVectorFst>::new();
+    c.parse(&format!(
+        "read text {}\nregex [c a t | d o g] ;\nassert test equivalent\n",
+        file.display()
+    ))
+    .expect("the file is read and the script goes on");
+}
+
+// [spec:hfst:sem:xfst-cmd.string-escapes/test]
+// Escapes in quoted strings name characters; malformed ones fail.
+#[test]
+fn quoted_string_escapes() {
+    for (quoted, plain) in [(r#""\x41""#, "A"), (r#""\101""#, "A"), (r#""é""#, "é")] {
+        let mut c = XfstCompiler::<StdVectorFst>::new();
+        c.parse(&format!(
+            "regex {quoted} ;\nregex {plain} ;\nassert test equivalent\n"
+        ))
+        .unwrap_or_else(|e| panic!("{quoted} is not {plain}: {e}"));
+    }
+    let tab = printed("tab", "regex \"a\\tb\" ;\nprint words > OUT\n");
+    assert_eq!(tab, "a\tb\n");
+    for bad in [r#""\x4""#, r#""\u12""#, r#""\x00""#] {
+        let mut c = XfstCompiler::<StdVectorFst>::new();
+        c.parse(&format!("regex {bad} ;\n")).expect_err(bad);
+    }
 }

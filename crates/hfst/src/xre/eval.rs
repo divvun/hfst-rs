@@ -56,6 +56,9 @@ impl<B: AlgebraBackend> XreCompiler<B> {
         self.current_span = e.span.range.clone();
         Ok(match &e.value {
             // ---- atoms (LABEL: HALFARC) ----
+            // [spec:hfst:sem:xfst-cmd.string-escapes]
+            // A quoted literal arrives here with its escapes already decoded
+            // by the nfst-xre lexer, which fails on a malformed one.
             XreExpr::Symbol(s) => {
                 self.check_written_symbol(s);
                 self.label_from_halfarc(s)?

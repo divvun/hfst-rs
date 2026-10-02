@@ -3,7 +3,7 @@
 
 use super::*;
 use nfst_xfst::{
-    ApplyKind, NetworkOp, ReadCmd, Redirect, RedirectKind, SubstituteCmd, XfstCommand,
+    ApplyKind, NetworkOp, ReadCmd, Redirect, RedirectKind, SubstituteCmd, TextSource, XfstCommand,
 };
 
 impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
@@ -210,10 +210,10 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     /// Dispatch a parsed ReadCmd to the corresponding read_* method.
     fn eval_read(&mut self, rc: &ReadCmd) -> CmdResult {
         match rc {
-            ReadCmd::Text(s) if s.contains('\n') => self.read_text(s),
-            ReadCmd::Text(s) => self.read_text_from_file(s),
-            ReadCmd::Spaced(s) if s.contains('\n') => self.read_spaced(s),
-            ReadCmd::Spaced(s) => self.read_spaced_from_file(s),
+            ReadCmd::Text(TextSource::Inline(s)) => self.read_text(s),
+            ReadCmd::Text(TextSource::File(p)) => self.read_text_from_file(p),
+            ReadCmd::Spaced(TextSource::Inline(s)) => self.read_spaced(s),
+            ReadCmd::Spaced(TextSource::File(p)) => self.read_spaced_from_file(p),
             ReadCmd::Prolog(p) => {
                 let s = self.read_input_file(p)?;
                 self.read_prolog(&s)
@@ -319,6 +319,12 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             | (RedirectKind::In, XfstCommand::Read(ReadCmd::Props(_))) => {
                 let s = self.read_input_file(path)?;
                 self.add_props(&s)?;
+            }
+            (RedirectKind::In, XfstCommand::Read(ReadCmd::Text(_))) => {
+                self.read_text_from_file(path)?
+            }
+            (RedirectKind::In, XfstCommand::Read(ReadCmd::Spaced(_))) => {
+                self.read_spaced_from_file(path)?
             }
             (RedirectKind::In, XfstCommand::LoadStack(_)) => self.load_stack(path)?,
             (RedirectKind::In, XfstCommand::LoadDefinitions(_)) => self.load_definitions(path)?,

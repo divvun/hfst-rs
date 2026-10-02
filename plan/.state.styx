@@ -471,7 +471,6 @@ assertions (
     {id version-banner-one-identity, kind @complete, author "brendan@necessary.nu", at 2026-09-28T14:53:15.900988Z}
     {id twolc-ignoring-and-except, kind @complete, author "brendan@necessary.nu", at 2026-09-30T09:56:35.558749Z}
     {id xfst-quoted-percent-and-bare-regex, kind @complete, author "brendan@necessary.nu", at 2026-10-01T20:48:35.562057Z}
-    {id xre-escapes-and-list-ranges, kind @doing, author "brendan@necessary.nu", at 2026-10-02T12:09:36.913629Z}
 )
 
 impl_evidence (
@@ -696,5 +695,10 @@ impl_evidence (
         xfst-cmd.no-dead-surface
     ), covered_claims (
         {impl_name target-impl, rule xfst-cmd.no-dead-surface}
+    )}
+    {id xre-escapes-and-list-ranges, covered_rules (
+        xfst-cmd.string-escapes
+    ), covered_claims (
+        {impl_name target-impl, rule xfst-cmd.string-escapes}
     )}
 )
