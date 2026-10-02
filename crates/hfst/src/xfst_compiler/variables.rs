@@ -314,6 +314,11 @@ fn variable_explanations_get(key: &str) -> String {
             "use flags to hyperminimize result from lexc files",
         ),
         ("maximum-weight", "maximum weight of paths printed in apply"),
+        (
+            "med-cutoff",
+            "the largest edit distance 'apply med' searches",
+        ),
+        ("med-limit", "the most matches 'apply med' prints"),
         ("minimal", "minimize networks after operations"),
         (
             "name-nets",

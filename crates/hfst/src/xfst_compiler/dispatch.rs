@@ -173,11 +173,9 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             NetworkOp::CollectEpsilonLoops => self.collect_epsilon_loops(),
             NetworkOp::CompactSigma => self.compact_sigma(),
             NetworkOp::View => self.view_net(),
-            NetworkOp::ExtractAmbiguous => Err(CommandError::not_supported("extract ambiguous")),
-            NetworkOp::ExtractUnambiguous => {
-                Err(CommandError::not_supported("extract unambiguous"))
-            }
-            NetworkOp::Ambiguous => Err(CommandError::not_supported("ambiguous upper")),
+            NetworkOp::ExtractAmbiguous => self.extract_ambiguous(),
+            NetworkOp::ExtractUnambiguous => self.extract_unambiguous(),
+            NetworkOp::Ambiguous => self.ambiguous_upper(),
             NetworkOp::CompileReplaceLower => self.compile_replace_lower_net(),
             NetworkOp::CompileReplaceUpper => self.compile_replace_upper_net(),
             NetworkOp::EliminateFlag(name) => self.eliminate_flag(name),

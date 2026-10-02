@@ -116,9 +116,9 @@ what the C++ code did. Where they disagree with this file, this file wins.
 
 > [spec:hfst:sem:xfst-cmd.apply-med]
 > `apply med WORD` prints the strings of the top network's upper side
-> closest to WORD by edit distance, cheapest first, each with its cost. It
-> stops after `med-limit` matches and does not search past cost
-> `med-cutoff`.
+> closest to WORD by edit distance, cheapest first and equal costs in
+> string order, each with its cost. It prints at most `med-limit` distinct
+> strings and does not search past cost `med-cutoff`.
 
 ## Variables
 

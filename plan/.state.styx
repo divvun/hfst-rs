@@ -667,4 +667,13 @@ impl_evidence (
         {impl_name target-impl, rule xfst-cmd.read-word-lists}
         {impl_name target-impl, rule xfst-cmd.sort}
     )}
+    {id xfst-ambiguity-substring-med, covered_rules (
+        xfst-cmd.ambiguity
+        xfst-cmd.apply-med
+        xfst-cmd.substring
+    ), covered_claims (
+        {impl_name target-impl, rule xfst-cmd.ambiguity}
+        {impl_name target-impl, rule xfst-cmd.apply-med}
+        {impl_name target-impl, rule xfst-cmd.substring}
+    )}
 )

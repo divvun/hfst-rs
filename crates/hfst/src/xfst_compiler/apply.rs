@@ -32,12 +32,6 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         Ok(())
     }
 
-    // @brief Perform lookmeds on top of the stack, one per line
-    // @todo lookmed is missing from HFST
-    pub fn apply_med(&mut self, _indata: &str) -> CmdResult {
-        Err(CommandError::not_supported("apply med"))
-    }
-
     pub fn lookup_optimize(&mut self) -> CmdResult {
         self.top()?;
         Err(CommandError::new(

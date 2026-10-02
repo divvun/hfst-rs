@@ -40,6 +40,7 @@ use crate::xre::XreCompiler;
 use std::io::BufRead;
 use tracing::{error, info};
 
+mod ambiguity;
 mod apply;
 mod compile_replace;
 mod definitions;
@@ -417,6 +418,9 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             .insert("obey-flags".to_string(), "ON".to_string());
         c.variables
             .insert("precision".to_string(), WEIGHT_PRECISION.to_string());
+        c.variables
+            .insert("med-cutoff".to_string(), "15".to_string());
+        c.variables.insert("med-limit".to_string(), "3".to_string());
         c.variables
             .insert("print-foma-sigma".to_string(), "OFF".to_string());
         c.variables

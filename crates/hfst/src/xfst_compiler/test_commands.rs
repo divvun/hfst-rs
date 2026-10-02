@@ -11,7 +11,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
 
     /// Print a test's verdict, and fail when it is false under an
     /// assertion (the 'assert' prefix or the 'assert' variable).
-    fn report_test(&mut self, value: bool, assertion: bool) -> CmdResult {
+    pub(super) fn report_test(&mut self, value: bool, assertion: bool) -> CmdResult {
         self.print_bool(value);
         if !value && (assertion || self.variables["assert"] == "ON") {
             return Err(CommandError::new("assertion failed: the test is false"));
@@ -28,12 +28,6 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         let second = self.stack[self.stack.len() - 2];
         let result = self.net(first).compare(self.net(second), false)?;
         self.report_test(result, assertion)
-    }
-
-    // @brief Test top transducer in stack for functionality
-    // @todo tests are not implemented
-    pub fn test_funct(&mut self, _assertion: bool) -> CmdResult {
-        Err(CommandError::not_supported("test functional"))
     }
 
     // @brief Test top transducer in stack for identity
@@ -174,12 +168,6 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     // @todo tests are not implemented
     pub fn test_sublanguage(&mut self, assertion: bool) -> CmdResult {
         self.test_operation(TestOperation::TEST_SUBLANGUAGE_, assertion)
-    }
-
-    // @brief Test top transducer in stack for unambiguity
-    // @todo tests are not implemented
-    pub fn test_unambiguous(&mut self, _assertion: bool) -> CmdResult {
-        Err(CommandError::not_supported("test unambiguous"))
     }
 
     pub fn test_infinitely_ambiguous(&mut self, assertion: bool) -> CmdResult {

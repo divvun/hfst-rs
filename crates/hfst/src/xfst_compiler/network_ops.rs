@@ -37,12 +37,6 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         Ok(())
     }
 
-    // @brief Substring top network of stack
-    // @todo unimplementedd
-    pub fn substring_net(&mut self) -> CmdResult {
-        Err(CommandError::not_supported("substring net"))
-    }
-
     // @brief Compose stack
     pub fn compose_net(&mut self) -> CmdResult {
         self.apply_binary_operation_iteratively(BinaryOperation::COMPOSE_NET)
