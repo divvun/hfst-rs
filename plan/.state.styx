@@ -658,4 +658,13 @@ impl_evidence (
         {impl_name target-impl, rule xfst-cmd.print-counts}
         {impl_name target-impl, rule xfst-cmd.write-word-lists}
     )}
+    {id xfst-read-and-sort, covered_rules (
+        xfst-cmd.read-prolog
+        xfst-cmd.read-word-lists
+        xfst-cmd.sort
+    ), covered_claims (
+        {impl_name target-impl, rule xfst-cmd.read-prolog}
+        {impl_name target-impl, rule xfst-cmd.read-word-lists}
+        {impl_name target-impl, rule xfst-cmd.sort}
+    )}
 )

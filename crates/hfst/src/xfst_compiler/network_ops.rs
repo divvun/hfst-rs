@@ -7,8 +7,34 @@ use crate::convert_transducer_format::ConversionFunctions;
 impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     // @brief Sort top network of the stack
     // @todo HFST automata sort or not by default
+    // [spec:hfst:sem:xfst-cmd.sort]
+    /// 'sort net': order every state's arcs by input label, output label,
+    /// then target.
     pub fn sort_net(&mut self) -> CmdResult {
-        Err(CommandError::not_supported("sort net"))
+        let top = self.top()?;
+        let mut fsm = ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(self.net(top))?;
+        let coder = fsm.coder().clone();
+        for arcs in fsm.states_and_transitions_mut() {
+            arcs.sort_by(|a, b| {
+                (
+                    a.get_input_symbol(&coder),
+                    a.get_output_symbol(&coder),
+                    a.get_target_state(),
+                )
+                    .cmp(&(
+                        b.get_input_symbol(&coder),
+                        b.get_output_symbol(&coder),
+                        b.get_target_state(),
+                    ))
+            });
+        }
+        let name = self.net(top).get_name();
+        let mut sorted = HfstTransducer::new_from_basic(&fsm)?;
+        sorted.set_name(&name);
+        *self.net_mut(top) = sorted;
+        self.print_transducer_info();
+        self.prompt();
+        Ok(())
     }
 
     // @brief Substring top network of stack

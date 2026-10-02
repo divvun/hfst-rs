@@ -63,8 +63,10 @@ what the C++ code did. Where they disagree with this file, this file wins.
 
 > [spec:hfst:sem:xfst-cmd.read-prolog]
 > `read prolog FILE` pushes every network in FILE, written in the prolog
-> format `write prolog` produces, onto the stack in file order. A file
-> that does not parse as prolog fails with the line at fault.
+> format `write prolog` produces. `write prolog` writes the stack from the
+> top down, so `read prolog` leaves the file's first network on top and
+> restores the stack it came from. A file that does not parse as prolog
+> fails with the line at fault.
 
 > [spec:hfst:sem:xfst-cmd.write-word-lists]
 > `write text` writes each string of the top network's upper side on its

@@ -347,8 +347,43 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     }
 
     // @brief Read prolog form transducer from @a indata
-    pub fn read_prolog(&mut self, _indata: &str) -> CmdResult {
-        Err(CommandError::not_supported("read prolog"))
+    // [spec:hfst:sem:xfst-cmd.read-prolog]
+    /// 'read prolog': push every network in `indata`, the first on top.
+    pub fn read_prolog(&mut self, indata: &str) -> CmdResult {
+        let mut reader = std::io::Cursor::new(indata.as_bytes());
+        let mut linecount: u32 = 0;
+        let mut read = Vec::new();
+        loop {
+            // Blank lines separate networks; stop at the end of the text.
+            while let Some(&b) = reader.fill_buf()?.first() {
+                if b == b'\n' || b == b'\r' {
+                    reader.consume(1);
+                    linecount += u32::from(b == b'\n');
+                } else {
+                    break;
+                }
+            }
+            if reader.fill_buf()?.is_empty() {
+                break;
+            }
+            let fsm = HfstBasicTransducer::read_in_prolog_format(&mut reader, &mut linecount)
+                .map_err(|e| {
+                    CommandError::new(format!("not valid prolog at line {}: {}", linecount, e))
+                })?;
+            let mut t = HfstTransducer::new_from_basic(&fsm)?;
+            if !fsm.name.is_empty() {
+                t.set_name(&fsm.name);
+            }
+            read.push(t);
+        }
+        // The file lists the stack from the top down.
+        for t in read.into_iter().rev() {
+            let id = self.alloc_net(t);
+            self.stack.push(id);
+            self.print_transducer_info();
+        }
+        self.prompt();
+        Ok(())
     }
 
     // @brief Read spaced form transducer from @a infile
@@ -357,10 +392,10 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     }
 
     // @brief Read spaced form transducer from @a indata
-    pub fn read_spaced(&mut self, _indata: &str) -> CmdResult {
-        Err(CommandError::not_supported(
-            "read spaced-text from inline text",
-        ))
+    // [spec:hfst:sem:xfst-cmd.read-word-lists]
+    /// 'read spaced-text' with the words given inline.
+    pub fn read_spaced(&mut self, indata: &str) -> CmdResult {
+        self.read_word_list(indata, true)
     }
 
     // @brief Read text form transducer from @a infile
@@ -369,8 +404,10 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     }
 
     // @brief Read text form transducer from @a indata
-    pub fn read_text(&mut self, _indata: &str) -> CmdResult {
-        Err(CommandError::not_supported("read text from inline text"))
+    // [spec:hfst:sem:xfst-cmd.read-word-lists]
+    /// 'read text' with the words given inline.
+    pub fn read_text(&mut self, indata: &str) -> CmdResult {
+        self.read_word_list(indata, false)
     }
 
     // @brief Read lexicons from @a infile
@@ -453,13 +490,20 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     // @brief Read strings (with or without spaces between the symbols,
     // as defined by \a spaces) from \a infile, disjunct them into
     // a single transducer and push it to the stack.
+    /// Read the word list in file `filename`; see `read_word_list`.
     fn read_text_or_spaced(&mut self, filename: &str, spaces: bool) -> CmdResult {
         self.check_filename(filename)?;
         // [spec:hfst:req:xfst-cmd.io-errors]
-        let infile = std::fs::File::open(filename)
-            .map_err(|e| CommandError::new(format!("could not open file '{}': {}", filename, e)))?;
+        let text = std::fs::read_to_string(filename)
+            .map_err(|e| CommandError::new(format!("could not read '{}': {}", filename, e)))?;
+        self.read_word_list(&text, spaces)
+    }
 
-        let tmp: NetId = self.alloc_net(HfstTransducer::new());
+    // [spec:hfst:sem:xfst-cmd.read-word-lists]
+    /// Push the network accepting each non-empty line of `text`: one symbol
+    /// per character, or with `spaces`, symbols separated by spaces. A
+    /// symbol written 'a:b' is a pair either way.
+    fn read_word_list(&mut self, text: &str, spaces: bool) -> CmdResult {
         let mcs: Vec<Symbol> = Vec::new(); // no multichar symbols
         // [spec:hfst:def:xfst-compiler.hfst.xfst.tok-fn]
         // [spec:hfst:sem:xfst-compiler.hfst.xfst.tok-fn]
@@ -467,22 +511,21 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             &mcs,
             crate::hfst_symbol_defs::internal_epsilon,
         )?;
-        let reader = std::io::BufReader::new(infile);
-
-        for line in reader.lines() {
-            let line =
-                line.map_err(|e| CommandError::new(format!("reading '{}': {}", filename, e)))?;
-            let line = self.remove_newline(line);
-            let spv = tok.tokenize_pair_string(&line, spaces)?;
+        let mut words: HfstTransducer<B> = HfstTransducer::new();
+        for line in text.lines() {
+            let line = line.trim_end_matches('\r');
+            if line.is_empty() {
+                continue;
+            }
+            let spv = tok.tokenize_pair_string(line, spaces)?;
             // [spec:hfst:def:xfst-compiler.hfst.xfst.line-tr-fn]
             // [spec:hfst:sem:xfst-compiler.hfst.xfst.line-tr-fn]
             let line_tr = HfstTransducer::new_string_pair_vector(&spv)?;
-            self.net_mut(tmp).disjunct(&line_tr, true)?;
+            words.disjunct(&line_tr, true)?;
         }
-
-        let cfg = self.engine_config;
-        self.net_mut(tmp).minimize_with_config(&cfg)?; // a trie is easily minimizable
-        self.stack.push(tmp);
+        words.minimize_with_config(&self.engine_config)?; // a trie is easily minimizable
+        let id = self.alloc_net(words);
+        self.stack.push(id);
         self.print_transducer_info();
         self.prompt();
         Ok(())

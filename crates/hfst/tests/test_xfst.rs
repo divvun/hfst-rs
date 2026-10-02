@@ -602,3 +602,79 @@ fn unsupported_commands_fail_by_name() {
             .contains("'print label-maps' is not supported")
     );
 }
+
+// [spec:hfst:sem:xfst-cmd.read-word-lists/test]
+// Inline words build the same network as the same words read from a file,
+// blank lines skipped, pairs honoured.
+#[test]
+fn inline_and_file_word_lists_agree() {
+    let dir = source_dir("wordlist");
+    let file = dir.join("words.txt");
+    std::fs::write(&file, "cat\n\ndog\nc:do\n").expect("write words");
+    let mut c = XfstCompiler::<StdVectorFst>::new();
+    c.parse(&format!("read text {}", file.display()))
+        .expect("file read");
+    c.parse("read text\ncat\n\ndog\nc:do\n<ctrl-d>\n")
+        .expect("inline read");
+    c.parse("assert test equivalent\n").expect("same network");
+    c.parse("regex [c a t | d o g | c:d o] ;\nassert test equivalent\n")
+        .expect("and it is the word list");
+
+    let mut c = XfstCompiler::<StdVectorFst>::new();
+    c.parse("read spaced-text\nc a t\nd:t o g\n<ctrl-d>\n")
+        .expect("inline spaced read");
+    c.parse("regex [c a t | d:t o g] ;\nassert test equivalent\n")
+        .expect("spaced words with a pair");
+}
+
+// [spec:hfst:sem:xfst-cmd.read-prolog/test]
+// write prolog then read prolog restores the stack, top first.
+#[test]
+fn prolog_round_trips_the_stack() {
+    let dir = source_dir("prolog");
+    let file = dir.join("stack.pl");
+    let mut c = XfstCompiler::<StdVectorFst>::new();
+    c.parse(&format!(
+        "regex a b ;\nregex c:d e ;\nwrite prolog {}\nclear stack\nread prolog {}\n",
+        file.display(),
+        file.display()
+    ))
+    .expect("written and read back");
+    c.parse("regex c:d e ;\nassert test equivalent\npop stack\npop stack\n")
+        .expect("the top network comes back on top");
+    c.parse("regex a b ;\nassert test equivalent\n")
+        .expect("and the one under it below");
+}
+
+// [spec:hfst:sem:xfst-cmd.read-prolog/test]
+// Text that is not prolog fails and says where.
+#[test]
+fn bad_prolog_names_the_line() {
+    let dir = source_dir("badprolog");
+    let file = dir.join("bad.pl");
+    std::fs::write(&file, "network(x).\narc(x, 0, 1, \"a\").\nnonsense\n").expect("write");
+    let mut c = XfstCompiler::<StdVectorFst>::new();
+    let err = c
+        .parse(&format!("read prolog {}\n", file.display()))
+        .expect_err("not prolog");
+    assert!(err.diagnostics[0].message.contains("line 3"), "{:?}", err);
+}
+
+// [spec:hfst:sem:xfst-cmd.sort/test]
+// sort net orders arcs by label and leaves the language alone.
+#[test]
+fn sort_net_orders_arcs_and_keeps_the_language() {
+    let dir = source_dir("sort");
+    let mut c = XfstCompiler::<StdVectorFst>::new();
+    c.parse("regex [z | b | a | y] ;\nregex [z | b | a | y] ;\nsort net\nassert test equivalent\n")
+        .expect("sorting keeps the language");
+    let out = dir.join("net.txt");
+    c.parse(&format!("print net > {}\n", out.display()))
+        .expect("printed");
+    let net = std::fs::read_to_string(&out).expect("written");
+    let arcs = net.lines().find(|l| l.contains("->")).expect("an arc line");
+    assert!(
+        arcs.find('a') < arcs.find('b') && arcs.find('b') < arcs.find('y'),
+        "{net}"
+    );
+}
