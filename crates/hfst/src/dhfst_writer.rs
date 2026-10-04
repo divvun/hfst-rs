@@ -2,7 +2,8 @@
 //! against `docs/spec/port/back-ends/dhfst/dhfst.md`; the algorithm is
 //! divvunspell's DHFST writer (`src/transducer/dhfst/writer.rs`) for plain
 //! version 1 files, and for the same optimized-lookup input the bytes are the
-//! bytes `dhfst-tools write` writes.
+//! bytes `dhfst-tools write` writes, but for the program `meta` names as the
+//! writer.
 //!
 //! The source model is [`SourceModel`]. The writer finds, for every state, at most one default arc per kind and a
 //! fallback state whose row it mostly repeats, then stores only what is left.
@@ -26,11 +27,11 @@ use crate::dhfst::{
 };
 pub use crate::dhfst_source::{SourceArc, SourceModel, SourceState};
 
-/// The encoder the `meta` section names. The bytes this module writes are,
-/// for the same input, the bytes this release of divvunspell's DHFST writer
-/// writes, so a file says which encoding it holds whichever program wrote it.
-// [spec:hfst:sem:dhfst.meta]
-pub const ENCODER: &str = "divvun-fst 1.0.0-beta.13";
+/// The writer the `meta` section names: hfst and its version, the number
+/// `--version` prints, without the build date or commit so that the bytes
+/// stay the same within a version.
+// [spec:hfst:sem:dhfst.meta+1]
+pub const WRITER: &str = concat!("Divvun HFST v", env!("CARGO_PKG_VERSION"));
 
 fn verification(detail: impl std::fmt::Display) -> crate::error::Error {
     crate::err!(
@@ -108,7 +109,7 @@ pub struct Written {
 /// Encode `model`, check the encoding against it, serialise, read the bytes
 /// back and check them against it again.
 // [spec:hfst:def:dhfst.write]
-// [spec:hfst:sem:dhfst.write]
+// [spec:hfst:sem:dhfst.write+1]
 pub fn write(model: &SourceModel, options: &WriteOptions) -> crate::error::Result<Written> {
     let threads = match options.threads {
         0 => std::thread::available_parallelism()
@@ -1025,14 +1026,14 @@ fn counted_section(count: u32, records: &[u8]) -> Vec<u8> {
 
 /// The `meta` section: one line of JSON saying how the file was written.
 // [spec:hfst:def:dhfst.meta]
-// [spec:hfst:sem:dhfst.meta]
+// [spec:hfst:sem:dhfst.meta+1]
 fn meta_section(model: &SourceModel, options: &WriteOptions, report: &WriteReport) -> Vec<u8> {
     let bound = match options.max_fallback_depth {
         Some(d) => d.to_string(),
         None => "null".to_string(),
     };
     format!(
-        "{{\"writer\":\"{ENCODER}\",\"source\":\"{}\",\"max-fallback-depth-bound\":{},\"source-states\":{},\"source-arcs\":{},\"source-duplicate-arcs\":{}}}",
+        "{{\"writer\":\"{WRITER}\",\"source\":\"{}\",\"max-fallback-depth-bound\":{},\"source-states\":{},\"source-arcs\":{},\"source-duplicate-arcs\":{}}}",
         json_escape(&options.source_name),
         bound,
         report.states,
@@ -1193,7 +1194,7 @@ pub(crate) mod tests {
         write(model, options).expect("the edit model writes")
     }
 
-    // [spec:hfst:sem:dhfst.write/test]
+    // [spec:hfst:sem:dhfst.write+1/test]
     #[test]
     fn bytes_do_not_depend_on_thread_count() {
         let model = edit_model();
@@ -1278,9 +1279,9 @@ pub(crate) mod tests {
     }
 
     // [spec:hfst:def:dhfst.meta/test]
-    // [spec:hfst:sem:dhfst.meta/test]
+    // [spec:hfst:sem:dhfst.meta+1/test]
     #[test]
-    fn meta_names_the_encoder_and_the_source() {
+    fn meta_names_hfst_and_the_source() {
         let model = edit_model();
         let options = WriteOptions {
             source_name: "edit \"model\".hfst".into(),
@@ -1289,7 +1290,8 @@ pub(crate) mod tests {
         let w = written(&model, &options);
         let reader = DhfstReader::parse(&w.bytes).expect("the written file parses");
         let expected = format!(
-            "{{\"writer\":\"divvun-fst 1.0.0-beta.13\",\"source\":\"edit \\\"model\\\".hfst\",\"max-fallback-depth-bound\":4,\"source-states\":6,\"source-arcs\":{},\"source-duplicate-arcs\":1}}",
+            "{{\"writer\":\"Divvun HFST v{}\",\"source\":\"edit \\\"model\\\".hfst\",\"max-fallback-depth-bound\":4,\"source-states\":6,\"source-arcs\":{},\"source-duplicate-arcs\":1}}",
+            env!("CARGO_PKG_VERSION"),
             model.arc_count()
         );
         assert_eq!(reader.meta(), Some(expected.as_str()));

@@ -94,10 +94,11 @@ of `hfst-fst2fst`, not an implementation type.
 > The options are the longest fallback chain allowed (default 4, or no
 > bound), the worker thread count, and the source name for `meta`.
 
-> [spec:hfst:sem:dhfst.write]
-> The output is the bytes `dhfst-tools write` writes from the same
-> optimized-lookup input with the same depth bound and the same source name.
-> It does not depend on the thread count.
+> [spec:hfst:sem:dhfst.write+1]
+> For the same optimized-lookup input, depth bound and source name, the
+> output is the bytes `dhfst-tools write` writes in every section but
+> `meta`, and the two `meta` sections differ only in the `writer` value. The
+> output does not depend on the thread count.
 
 > [spec:hfst:sem:dhfst.encoding]
 > The encoding is divvunspell's writer's. Per state and kind, the default is
@@ -121,13 +122,13 @@ of `hfst-fst2fst`, not an implementation type.
 > `max-fallback-depth-bound` (a number, or `null` for no bound),
 > `source-states`, `source-arcs` and `source-duplicate-arcs`, in that order.
 
-> [spec:hfst:sem:dhfst.meta]
-> `writer` names the encoding the file holds, `divvun-fst 1.0.0-beta.13`:
-> the release of divvunspell's writer whose bytes hfst's writer reproduces.
-> `source` is what the caller names the source; `hfst-fst2fst` gives the
-> input's file name without its directory, as `dhfst-tools` does, and the
-> empty string for standard input. Only `"`, `\` and control characters are
-> escaped.
+> [spec:hfst:sem:dhfst.meta+1]
+> `writer` names the program that wrote the file: `Divvun HFST v` and the
+> hfst crate version, the number `--version` prints, with no date or commit,
+> so the bytes are stable within a version. `source` is what the caller
+> names the source; `hfst-fst2fst` gives the input's file name without its
+> directory, as `dhfst-tools` does, and the empty string for standard input.
+> Only `"`, `\` and control characters are escaped.
 
 ## Tools
 
@@ -135,14 +136,14 @@ of `hfst-fst2fst`, not an implementation type.
 > `hfst-fst2fst -f dhfst [--max-fallback-depth N | --unbounded-fallback]`
 > writes the input transducer as a DHFST error model.
 
-> [spec:hfst:sem:dhfst.fst2fst]
+> [spec:hfst:sem:dhfst.fst2fst+1]
 > The transducer is first converted exactly as `-f olw` converts it (`-Q`
 > included), so `hfst-fst2fst -f dhfst -i X` writes what `dhfst-tools write`
-> writes from the output of `hfst-fst2fst -f olw -i X`. The input must hold
-> one transducer. The output, a file or standard output, is created only
-> once the self-check has passed. `-v` prints the writer's report. The depth
-> options are refused without `-f dhfst` and together, and `-b` is refused
-> with it.
+> writes from the output of `hfst-fst2fst -f olw -i X`, but for the `meta`
+> `writer` value (see `.write`). The input must hold one transducer. The
+> output, a file or standard output, is created only once the self-check
+> has passed. `-v` prints the writer's report. The depth options are refused
+> without `-f dhfst` and together, and `-b` is refused with it.
 
 > [spec:hfst:def:dhfst.bhfst-member]
 > In a BHFST archive a DHFST error model is the single member

@@ -3,8 +3,8 @@
 //! `tests/fixtures/dhfst/` holds a small error model (`errmodel.att`, and
 //! `errmodel.hfst`, its weighted optimized lookup) and what divvunspell's
 //! `dhfst-tools write` writes from `errmodel.hfst` with the default depth
-//! bound, `--max-depth 1` and `--unbounded`. hfst must write the same bytes.
-//! The model has explicit arcs, blockers, defaults of every kind, fallback
+//! bound, `--max-depth 1` and `--unbounded`. hfst must write the same bytes,
+//! but for the writer the `meta` section names. The model has explicit arcs, blockers, defaults of every kind, fallback
 //! chains of four, and a pair with two arcs.
 
 use std::path::{Path, PathBuf};
@@ -33,6 +33,40 @@ fn output(command: &mut Command) -> Output {
 
 fn stderr(out: &Output) -> String {
     String::from_utf8_lossy(&out.stderr).into_owned()
+}
+
+/// `bytes` with the `meta` section's writer value, which must be `writer`,
+/// cut out, and the section's length in the section table zeroed. The writer
+/// puts `meta` last, so nothing else moves.
+fn without_writer(bytes: &[u8], writer: &str) -> Vec<u8> {
+    let u64_at =
+        |at: usize| u64::from_le_bytes(bytes[at..at + 8].try_into().expect("eight bytes")) as usize;
+    let n_sections = u32::from_le_bytes(bytes[12..16].try_into().expect("four bytes")) as usize;
+    let record = (0..n_sections)
+        .map(|s| 24 + 24 * s)
+        .find(|at| &bytes[*at..*at + 4] == b"meta")
+        .expect("the file has a meta section");
+    let (offset, len) = (u64_at(record + 8), u64_at(record + 16));
+    assert_eq!((offset + len).div_ceil(8) * 8, bytes.len(), "meta is last");
+    let meta = std::str::from_utf8(&bytes[offset..offset + len]).expect("meta is UTF-8");
+    let rest = meta
+        .strip_prefix(&format!("{{\"writer\":\"{writer}\""))
+        .unwrap_or_else(|| panic!("{meta} does not name {writer} as the writer"));
+    let mut out = bytes[..offset].to_vec();
+    out[record + 16..record + 24].fill(0);
+    out.extend_from_slice(rest.as_bytes());
+    out
+}
+
+/// `written` is what dhfst-tools wrote to the fixture `expected` in every
+/// section but `meta`, and the two `meta` sections differ only in the writer.
+fn assert_dhfst_tools_but_writer(written: &[u8], expected: &str) {
+    let hfst = format!("Divvun HFST v{}", env!("CARGO_PKG_VERSION"));
+    assert!(
+        without_writer(written, &hfst)
+            == without_writer(&read(&fixture(expected)), "divvun-fst 1.0.0-beta.13"),
+        "hfst's output differs from {expected} beyond the writer"
+    );
 }
 
 /// Compile AT&T text to a tropical transducer file.
@@ -66,7 +100,7 @@ fn write_dhfst(dir: &Path, input: &Path, extra: &[&str]) -> Vec<u8> {
     read(&out)
 }
 
-// [spec:hfst:sem:dhfst.write/test]
+// [spec:hfst:sem:dhfst.write+1/test]
 // [spec:hfst:def:dhfst.fst2fst/test]
 #[test]
 fn writes_what_dhfst_tools_writes() {
@@ -77,14 +111,11 @@ fn writes_what_dhfst_tools_writes() {
         (&["--max-fallback-depth", "1"][..], "errmodel.depth1.dhfst"),
         (&["--unbounded-fallback"][..], "errmodel.unbounded.dhfst"),
     ] {
-        assert!(
-            write_dhfst(tmp.path(), &input, extra) == read(&fixture(expected)),
-            "{extra:?} does not write {expected}"
-        );
+        assert_dhfst_tools_but_writer(&write_dhfst(tmp.path(), &input, extra), expected);
     }
 }
 
-// [spec:hfst:sem:dhfst.fst2fst/test]
+// [spec:hfst:sem:dhfst.fst2fst+1/test]
 // [spec:hfst:sem:dhfst.source-model/test]
 #[test]
 fn converts_other_formats_as_olw_does() {
@@ -93,11 +124,11 @@ fn converts_other_formats_as_olw_does() {
     // that the meta section names the same source.
     let tropical = tmp.path().join("errmodel.hfst");
     txt2fst(&fixture("errmodel.att"), &tropical);
-    assert!(write_dhfst(tmp.path(), &tropical, &[]) == read(&fixture("errmodel.dhfst")));
+    assert_dhfst_tools_but_writer(&write_dhfst(tmp.path(), &tropical, &[]), "errmodel.dhfst");
 }
 
-// [spec:hfst:sem:dhfst.fst2fst/test]
-// [spec:hfst:sem:dhfst.meta/test]
+// [spec:hfst:sem:dhfst.fst2fst+1/test]
+// [spec:hfst:sem:dhfst.meta+1/test]
 #[test]
 fn writes_standard_output_and_reports_with_verbose() {
     let input = fixture("errmodel.hfst");
@@ -111,7 +142,7 @@ fn writes_standard_output_and_reports_with_verbose() {
         "fst2fst failed: {}",
         stderr(&result)
     );
-    assert!(result.stdout == read(&fixture("errmodel.dhfst")));
+    assert_dhfst_tools_but_writer(&result.stdout, "errmodel.dhfst");
     assert!(stderr(&result).contains("read back from the written bytes: all equal to the source"));
 
     // From standard input the source has no name.
@@ -125,7 +156,7 @@ fn writes_standard_output_and_reports_with_verbose() {
     assert!(reader.meta().is_some_and(|m| m.contains("\"source\":\"\"")));
 }
 
-// [spec:hfst:sem:dhfst.fst2fst/test]
+// [spec:hfst:sem:dhfst.fst2fst+1/test]
 #[test]
 fn refuses_what_it_cannot_write() {
     let tmp = tempfile::tempdir().expect("tempdir");

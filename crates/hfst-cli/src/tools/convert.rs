@@ -733,7 +733,7 @@ pub mod fst2fst {
                             .unwrap_or_default();
                         // DHFST is written from weighted optimized lookup, so
                         // that is the type the transducers convert to.
-                        // [spec:hfst:sem:dhfst.fst2fst]
+                        // [spec:hfst:sem:dhfst.fst2fst+1]
                         let ty = if name.eq_ignore_ascii_case(DHFST_FORMAT) {
                             ImplementationType::HFST_OLW_TYPE
                         } else {
@@ -779,7 +779,7 @@ pub mod fst2fst {
         }
 
         /// Refuse the DHFST options anywhere they would do nothing.
-        // [spec:hfst:sem:dhfst.fst2fst]
+        // [spec:hfst:sem:dhfst.fst2fst+1]
         fn validate_dhfst(&self, opts: &CommonOptions) -> ToolResult {
             let depth_given = self.max_fallback_depth.is_some() || self.unbounded_fallback;
             let refusal = if !self.writes_dhfst() && depth_given {
@@ -973,7 +973,7 @@ pub mod fst2fst {
     /// optimized lookup exactly as `-f olw` converts it, then encoded and
     /// self-checked by the DHFST writer. Nothing is written unless the check
     /// passes.
-    // [spec:hfst:sem:dhfst.fst2fst]
+    // [spec:hfst:sem:dhfst.fst2fst+1]
     fn write_dhfst(
         common: &CommonOptions,
         options: &Options,
@@ -1039,7 +1039,7 @@ pub mod fst2fst {
         };
         drop(olw);
         // The meta section names the source by its file name, as dhfst-tools
-        // does, so the two write the same bytes from the same file.
+        // does, so from the same file the two differ only in the writer.
         let source_name = match common.input_filename.as_str() {
             "<stdin>" => String::new(),
             path => std::path::Path::new(path)

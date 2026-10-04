@@ -197,6 +197,7 @@ assertions (
     {id core.util, kind @complete, author "brendan@necessary.nu", at 2026-07-17T15:39:56.891521Z}
     {id dead-code-allow-census, kind @complete, author "brendan@necessary.nu", at 2026-08-12T11:04:45.730918Z}
     {id determinize-intermediate, kind @complete, author "brendan@necessary.nu", at 2026-07-17T21:52:45.388723Z}
+    {id dhfst-writer-name, kind @complete, author "brendan@necessary.nu", at 2026-10-04T22:32:59.72173Z}
     {id diag-parse-error-spans, kind @complete, author "brendan@necessary.nu", at 2026-07-19T19:26:30.125695Z}
     {id divvun-hfst-branding, kind @complete, author "brendan@necessary.nu", at 2026-08-11T10:39:34.984866Z}
     {id drop-dead-commandline-def, kind @complete, author "brendan@necessary.nu", at 2026-07-17T19:45:16.969208Z}

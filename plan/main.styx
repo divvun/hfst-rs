@@ -2767,6 +2767,29 @@ children (
                     }
                 )
             }
+
+            {
+                id dhfst-writer-name
+                title "DHFST meta names hfst as the writer (\"Divvun HFST v<version>\"), not divvun-fst; the dhfst-tools oracle becomes: every section but meta byte-identical, meta differing only in the writer value"
+                kind @fix
+                deps (dhfst)
+                sealed true
+                log (
+                    {
+                        at 2026-10-04T22:29:07.328264Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
+
+                    {
+                        at 2026-10-04T22:32:59.72173Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan complete)"
+                    }
+                )
+            }
         )
     }
 
