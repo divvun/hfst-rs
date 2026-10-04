@@ -265,7 +265,6 @@ fn main() -> hfst::error::Result<()> {
     let mut symbols = Symbols::new();
     let a = Machine::load(classic, &mut symbols)?;
     let b = Machine::load(pass, &mut symbols)?;
-    let mut trie = Outputs::new();
     let (mut words, mut skipped, mut outputs, mut differing) = (0usize, 0usize, 0usize, 0usize);
     for line in std::io::stdin().lock().lines() {
         let line = line.map_err(|e| hfst::err!(Hfst, format!("reading words: {e}")))?;
@@ -278,6 +277,9 @@ fn main() -> hfst::error::Result<()> {
             continue;
         }
         words += 1;
+        // One output trie per word, so memory follows the largest word, not
+        // the sum of all of them.
+        let mut trie = Outputs::new();
         let (Some(x), Some(y)) = (
             outputs_of(&a, &word, cap, &mut trie),
             outputs_of(&b, &word, cap, &mut trie),
