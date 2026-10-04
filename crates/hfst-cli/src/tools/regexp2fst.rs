@@ -83,6 +83,13 @@ struct Args {
     /// Determinize result instead of minimizing it
     #[arg(short = 'M', long = "do-not-minimize")]
     do_not_minimize: bool,
+
+    /// Compile each expression, which must be one parallel optional replace
+    /// rule P, as one rewrite pass: the relation of ?* P ?* as a small
+    /// automaton that is not determinised
+    // [spec:hfst:req:xre-replace-pass.cli]
+    #[arg(long = "replace-pass")]
+    replace_pass: bool,
 }
 
 impl Args {
@@ -173,6 +180,8 @@ struct Options {
     /// '--xerox-composition' (was the 'xerox_composition' file-static global;
     /// now threaded into the XRE compiler via 'set_xerox_composition').
     xerox_composition: bool,
+    /// '--replace-pass': compile each expression as one rewrite pass.
+    replace_pass: bool,
 }
 
 // [spec:hfst:def:hfst-regexp2fst.process-stream-fn]
@@ -220,6 +229,7 @@ fn process_stream_typed<B: hfst::backend::AlgebraBackend>(
     comp.set_flag_is_epsilon(options.flag_is_epsilon);
     comp.set_xerox_composition(options.xerox_composition);
     comp.set_encode_weights(options.encode_weights);
+    comp.set_replace_pass(options.replace_pass);
     let _ = &options.epsilonname;
     let mut disjunction: HfstTransducer<B> = HfstTransducer::new();
 
@@ -240,8 +250,7 @@ fn process_stream_typed<B: hfst::backend::AlgebraBackend>(
                 common,
                 &format!("Compiling expression #{}\n", transducer_n as i32),
             );
-            let remaining = &content[offset..];
-            let compiled = comp.compile_first(remaining, &mut chars_read);
+            let compiled = comp.compile_first_at(&content, offset, &mut chars_read);
             // (the C wraps compile_first in try/catch on HfstException; the
             // Rust path currently panics rather than throwing, so the catch
             // arm that calls hfst_error is not reproduced here.)
@@ -397,6 +406,7 @@ pub(super) fn execute(args: Vec<String>) -> ToolResult {
         minimize_result: !args.do_not_minimize,
         flag_is_epsilon: args.flag_is_epsilon(&common)?,
         xerox_composition: args.xerox_composition(&common)?,
+        replace_pass: args.replace_pass,
     };
     // The default the C applied after the parameter checks.
     if options.output_format == ImplementationType::UNSPECIFIED_TYPE {

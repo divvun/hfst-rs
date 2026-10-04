@@ -424,7 +424,7 @@ impl<B: AlgebraBackend> XreCompiler<B> {
     }
 
     // xre_parse.yy MAPPINGPAIR alternatives.
-    fn build_mapping_pair(
+    pub(super) fn build_mapping_pair(
         &mut self,
         mp: &MappingPair,
     ) -> crate::error::Result<(HfstTransducer<B>, HfstTransducer<B>)> {

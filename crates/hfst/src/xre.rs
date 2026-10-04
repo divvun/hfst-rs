@@ -19,6 +19,7 @@ mod eval;
 mod finalization;
 mod labels;
 mod lexer_support;
+mod replace_pass;
 mod rules;
 
 /// Arguments bundle mirroring 'hfst::xre::XreConstructorArguments'
@@ -145,6 +146,14 @@ pub struct XreCompiler<B: AlgebraBackend> {
     /// The multichar symbols a lexc source declared, while one is being
     /// compiled; a regex using any other multichar symbol gets a warning.
     pub(crate) defined_multichar_symbols: Option<BTreeSet<Symbol>>,
+    /// Byte offset in `source` of the text the parser was handed. A
+    /// semicolon-separated file is compiled one expression at a time from a
+    /// slice of the whole file, so AST spans count from the slice; adding
+    /// this puts diagnostics on the file's own lines.
+    pub(crate) span_base: usize,
+    /// Compile each root as one rewrite pass instead of a transducer
+    /// ([`Self::set_replace_pass`]).
+    pub(crate) replace_pass: bool,
 }
 
 // ===========================================================================
@@ -182,6 +191,8 @@ impl<B: AlgebraBackend> XreCompiler<B> {
             source_name: String::from("<regex>"),
             current_span: 0..0,
             defined_multichar_symbols: None,
+            span_base: 0,
+            replace_pass: false,
         }
     }
 
@@ -205,6 +216,8 @@ impl<B: AlgebraBackend> XreCompiler<B> {
             source_name: String::from("<regex>"),
             current_span: 0..0,
             defined_multichar_symbols: None,
+            span_base: 0,
+            replace_pass: false,
         }
     }
 }
@@ -237,25 +250,24 @@ impl<B: AlgebraBackend> XreCompiler<B> {
         self
     }
 
+    /// Render a diagnostic about the user's regex source, anchored at `span`
+    /// of the text the parser was handed (ariadne).
+    fn diag_at(&self, span: std::ops::Range<usize>, severity: crate::diag::Severity, msg: &str) {
+        let span = span.start + self.span_base..span.end + self.span_base;
+        crate::diag::emit(&self.source_name, &self.source, span, severity, msg);
+    }
+
     /// Render an error about a problem in the user's regex source, anchored at
     /// the span of the node currently being evaluated (ariadne).
     fn diag_error(&self, msg: &str) {
-        crate::diag::emit(
-            &self.source_name,
-            &self.source,
-            self.current_span.clone(),
-            crate::diag::Severity::Error,
-            msg,
-        );
+        self.diag_at(self.current_span.clone(), crate::diag::Severity::Error, msg);
     }
 
     // [spec:hfst:def:xre-utils.hfst.xre.warn-fn]
     /// Render a warning about the user's regex source, anchored at the span of
     /// the node currently being evaluated (ariadne).
     fn diag_warning(&self, msg: &str) {
-        crate::diag::emit(
-            &self.source_name,
-            &self.source,
+        self.diag_at(
             self.current_span.clone(),
             crate::diag::Severity::Warning,
             msg,
@@ -268,9 +280,7 @@ impl<B: AlgebraBackend> XreCompiler<B> {
     /// one-liner is all the user sees of a syntax error.
     fn diag_parse_error(&self, e: &ParseError) {
         for d in &e.diagnostics {
-            crate::diag::emit(
-                &self.source_name,
-                &self.source,
+            self.diag_at(
                 d.span.range.clone(),
                 crate::diag::Severity::Error,
                 &d.message,
@@ -345,6 +355,15 @@ impl<B: AlgebraBackend> XreCompiler<B> {
     /// '--xerox-composition' option of hfst-regexp2fst toggles it).
     pub fn set_xerox_composition(&mut self, xerox_composition: bool) {
         self.xerox_composition = xerox_composition;
+    }
+
+    /// Compile each expression as one rewrite pass. The expression must be one
+    /// parallel optional replace rule `P`, and the result is the relation of
+    /// `?* P ?*` as a small automaton that is not determinised: copying loops
+    /// and the rules' minimised cross-products. Anything that is not such a
+    /// rule is refused with a diagnostic at the offending rule.
+    pub fn set_replace_pass(&mut self, replace_pass: bool) {
+        self.replace_pass = replace_pass;
     }
 
     /// Set whether minimization encodes weights into labels first (was the

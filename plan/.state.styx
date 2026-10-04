@@ -175,307 +175,312 @@ derived_priorities (
 )
 
 assertions (
-    {id scaffold, kind @complete, author "brendan@necessary.nu", at 2026-06-24T17:12:44.389107Z}
-    {id literal-port, kind @complete, author "brendan@necessary.nu", at 2026-06-28T12:00:14.477746Z}
-    {id idiom1.backend-enum, kind @complete, author "brendan@necessary.nu", at 2026-06-28T13:20:51.755641Z}
-    {id idiom1.parsers, kind @complete, author "brendan@necessary.nu", at 2026-06-28T14:38:04.130403Z}
-    {id idiom1.pmatch, kind @complete, author "brendan@necessary.nu", at 2026-06-28T16:15:44.322893Z}
-    {id idiom1.core, kind @complete, author "brendan@necessary.nu", at 2026-06-28T17:16:23.203852Z}
-    {id idiom2.io, kind @complete, author "brendan@necessary.nu", at 2026-06-29T17:19:06.714162Z}
-    {id librarify.ol-reuse, kind @complete, author "brendan@necessary.nu", at 2026-06-29T12:22:25.850919Z}
-    {id librarify.fix-roundtrip, kind @complete, author "brendan@necessary.nu", at 2026-06-29T12:08:37.826618Z}
-    {id librarify.symbols-used, kind @complete, author "brendan@necessary.nu", at 2026-06-29T13:04:11.919358Z}
-    {id librarify.renumber-states, kind @complete, author "brendan@necessary.nu", at 2026-06-29T13:04:13.350904Z}
-    {id librarify.label-parse, kind @complete, author "brendan@necessary.nu", at 2026-06-29T13:04:14.571506Z}
-    {id is-weighted, kind @complete, author "brendan@necessary.nu", at 2026-06-29T13:04:16.201789Z}
-    {id kill-paths, kind @complete, author "brendan@necessary.nu", at 2026-06-29T13:13:25.58945Z}
-    {id fix-sparse-symt, kind @complete, author "brendan@necessary.nu", at 2026-06-29T13:38:55.194731Z}
-    {id realign, kind @complete, author "brendan@necessary.nu", at 2026-06-29T13:51:34.278644Z}
-    {id substitute-by-composition, kind @complete, author "brendan@necessary.nu", at 2026-06-29T13:58:21.308055Z}
-    {id compose-intersect-diagnostics, kind @complete, author "brendan@necessary.nu", at 2026-06-29T14:09:41.317897Z}
-    {id pair-recognizer, kind @complete, author "brendan@necessary.nu", at 2026-06-29T14:21:40.342852Z}
-    {id reweight-transform, kind @complete, author "brendan@necessary.nu", at 2026-06-29T14:33:10.179488Z}
-    {id summarize-stats, kind @complete, author "brendan@necessary.nu", at 2026-06-29T14:46:23.423823Z}
-    {id strip-header, kind @complete, author "brendan@necessary.nu", at 2026-06-29T15:01:44.033048Z}
     {id affix-guessify, kind @complete, author "brendan@necessary.nu", at 2026-06-29T15:22:54.434532Z}
-    {id expand-equivalences, kind @complete, author "brendan@necessary.nu", at 2026-06-29T15:34:43.599269Z}
-    {id guess-generator, kind @complete, author "brendan@necessary.nu", at 2026-06-29T15:39:22.172305Z}
-    {id librarify.io-foundation, kind @complete, author "brendan@necessary.nu", at 2026-06-29T17:15:13.930502Z}
-    {id idiom2.cstr, kind @complete, author "brendan@necessary.nu", at 2026-06-29T18:57:46.174762Z}
-    {id idiom2.cli, kind @complete, author "brendan@necessary.nu", at 2026-06-29T18:58:01.785472Z}
-    {id idiom2.drop-libc, kind @complete, author "brendan@necessary.nu", at 2026-06-29T18:58:23.868042Z}
-    {id idiom3.getopt, kind @complete, author "brendan@necessary.nu", at 2026-06-29T22:41:34.521867Z}
-    {id idiom3.tools, kind @complete, author "brendan@necessary.nu", at 2026-06-29T22:41:52.602462Z}
-    {id idiom3.lib-strings, kind @complete, author "brendan@necessary.nu", at 2026-06-29T22:42:46.358388Z}
-    {id idiom3.gate, kind @complete, author "brendan@necessary.nu", at 2026-06-29T22:43:00.388411Z}
-    {id idiom4.lib, kind @complete, author "brendan@necessary.nu", at 2026-06-29T23:46:49.341466Z}
-    {id idiom4.gate, kind @complete, author "brendan@necessary.nu", at 2026-06-29T23:46:51.392884Z}
-    {id idiom5.warning-stream, kind @complete, author "brendan@necessary.nu", at 2026-06-30T00:27:52.319428Z}
-    {id idiom5.rawptr-returns, kind @complete, author "brendan@necessary.nu", at 2026-06-30T00:35:35.518012Z}
-    {id idiom5.exception-slot, kind @complete, author "brendan@necessary.nu", at 2026-06-30T00:44:11.600653Z}
-    {id idiom5.diacritic-registry, kind @complete, author "brendan@necessary.nu", at 2026-06-30T00:53:13.737829Z}
-    {id idiom5.symbol-coding, kind @complete, author "brendan@necessary.nu", at 2026-06-30T03:51:41.74194Z}
-    {id idiom6.foundation, kind @complete, author "brendan@necessary.nu", at 2026-06-30T01:54:30.890999Z}
-    {id idiom5.xfst-lexc-flag, kind @complete, author "brendan@necessary.nu", at 2026-06-30T11:34:06.146425Z}
-    {id idiom5.config-flags, kind @complete, author "brendan@necessary.nu", at 2026-06-30T15:54:49.844942Z}
-    {id idiom5.scratch, kind @complete, author "brendan@necessary.nu", at 2026-06-30T15:54:55.01457Z}
-    {id idiom5.op-local-scratch, kind @complete, author "brendan@necessary.nu", at 2026-06-30T15:54:57.334131Z}
-    {id idiom7.warning-stream-tracing, kind @complete, author "brendan@necessary.nu", at 2026-06-30T16:27:48.331076Z}
-    {id idiom7.lib-logging, kind @complete, author "brendan@necessary.nu", at 2026-06-30T17:10:08.308899Z}
-    {id idiom5.convert-arena, kind @complete, author "brendan@necessary.nu", at 2026-06-30T17:51:18.09784Z}
-    {id idiom5.lexer-cgtag-globals, kind @complete, author "brendan@necessary.nu", at 2026-06-30T18:52:35.95305Z}
-    {id idiom6.rename, kind @complete, author "brendan@necessary.nu", at 2026-06-30T19:34:53.986091Z}
-    {id idiom6.unify, kind @complete, author "brendan@necessary.nu", at 2026-06-30T19:50:32.954779Z}
-    {id idiom6.resultify.internal-catches, kind @complete, author "brendan@necessary.nu", at 2026-07-02T11:25:15.656515Z}
-    {id idiom6.resultify.facade, kind @complete, author "brendan@necessary.nu", at 2026-07-02T11:25:22.036572Z}
-    {id idiom6.resultify.compilers, kind @complete, author "brendan@necessary.nu", at 2026-07-02T11:25:28.769206Z}
-    {id librarify.binary-fold, kind @complete, author "brendan@necessary.nu", at 2026-07-02T19:41:22.044238Z}
-    {id idiom8, kind @complete, author "brendan@necessary.nu", at 2026-07-02T12:31:09.979133Z}
-    {id idiom9.mechanical, kind @complete, author "brendan@necessary.nu", at 2026-07-02T13:17:04.592704Z}
-    {id idiom9.control-flow, kind @complete, author "brendan@necessary.nu", at 2026-07-02T13:39:32.203607Z}
-    {id idiom9.parsers, kind @complete, author "brendan@necessary.nu", at 2026-07-02T13:47:41.040901Z}
-    {id idiom9.io-shape, kind @complete, author "brendan@necessary.nu", at 2026-07-02T14:09:09.59678Z}
-    {id idiom9.signatures, kind @complete, author "brendan@necessary.nu", at 2026-07-02T14:40:52.013796Z}
-    {id idiom9.sentinels, kind @complete, author "brendan@necessary.nu", at 2026-07-02T17:46:58.446377Z}
+    {id backend-counts-zero, kind @complete, author "brendan@necessary.nu", at 2026-08-12T11:17:33.375314Z}
     {id c-names, kind @complete, author "brendan@necessary.nu", at 2026-07-02T18:31:47.770684Z}
-    {id librarify.lookup-family, kind @complete, author "brendan@necessary.nu", at 2026-07-02T20:13:27.349829Z}
-    {id librarify.pmatch-family, kind @complete, author "brendan@necessary.nu", at 2026-07-02T20:48:01.88415Z}
-    {id tool-runs, kind @complete, author "brendan@necessary.nu", at 2026-07-02T21:14:29.187513Z}
-    {id multiplex, kind @complete, author "brendan@necessary.nu", at 2026-07-02T21:14:32.53336Z}
-    {id giella-tools, kind @complete, author "brendan@necessary.nu", at 2026-07-02T22:28:58.543152Z}
-    {id mono.ol-core, kind @complete, author "brendan@necessary.nu", at 2026-07-04T17:45:34.760025Z}
-    {id mono.backend-traits, kind @complete, author "brendan@necessary.nu", at 2026-07-04T17:45:38.136038Z}
-    {id mono.facade, kind @complete, author "brendan@necessary.nu", at 2026-07-04T17:45:40.449906Z}
-    {id mono.compilers, kind @complete, author "brendan@necessary.nu", at 2026-07-04T17:45:42.188804Z}
-    {id mono.cli, kind @complete, author "brendan@necessary.nu", at 2026-07-04T17:45:43.662793Z}
-    {id smolstr, kind @complete, author "brendan@necessary.nu", at 2026-07-05T00:05:12.309338Z}
-    {id idiom-islands, kind @complete, author "brendan@necessary.nu", at 2026-07-06T12:34:35.317146Z}
-    {id foma-backend.spec, kind @complete, author "brendan@necessary.nu", at 2026-07-06T14:41:23.517029Z}
-    {id foma-backend.seam, kind @complete, author "brendan@necessary.nu", at 2026-07-06T15:02:41.817069Z}
+    {id clap-migration, kind @complete, author "brendan@necessary.nu", at 2026-08-21T20:31:39.110378Z}
+    {id cli-alias-shadowing, kind @complete, author "brendan@necessary.nu", at 2026-08-11T21:45:03.502421Z}
+    {id cli-gpl-license, kind @complete, author "brendan@necessary.nu", at 2026-09-14T13:07:28.238383Z}
+    {id cli-invocation-timing, kind @complete, author "brendan@necessary.nu", at 2026-09-15T16:33:21.133561Z}
+    {id cli-residual-fixes, kind @complete, author "brendan@necessary.nu", at 2026-08-21T20:53:38.377963Z}
+    {id cli-timing-as-info, kind @complete, author "brendan@necessary.nu", at 2026-09-15T17:03:30.995247Z}
+    {id clippy-deny-gate, kind @complete, author "brendan@necessary.nu", at 2026-07-17T19:49:59.63991Z}
+    {id compose-facade-nativize, kind @complete, author "brendan@necessary.nu", at 2026-07-19T16:26:17.752081Z}
+    {id compose-intersect-diagnostics, kind @complete, author "brendan@necessary.nu", at 2026-06-29T14:09:41.317897Z}
+    {id compose-intersect-empty-panic, kind @complete, author "brendan@necessary.nu", at 2026-08-13T23:41:01.321301Z}
+    {id compose-intersect-map-drop, kind @complete, author "brendan@necessary.nu", at 2026-07-19T22:02:32.717767Z}
+    {id compose-intersect-product-memory, kind @complete, author "brendan@necessary.nu", at 2026-08-20T08:58:24.418049Z}
+    {id compose-peak-memory, kind @complete, author "brendan@necessary.nu", at 2026-08-17T22:46:57.246529Z}
+    {id conversion-churn, kind @complete, author "brendan@necessary.nu", at 2026-07-17T21:31:21.739203Z}
+    {id core.basic, kind @complete, author "brendan@necessary.nu", at 2026-07-17T15:39:58.83577Z}
+    {id core.convert, kind @complete, author "brendan@necessary.nu", at 2026-07-17T15:40:02.153106Z}
+    {id core.util, kind @complete, author "brendan@necessary.nu", at 2026-07-17T15:39:56.891521Z}
+    {id dead-code-allow-census, kind @complete, author "brendan@necessary.nu", at 2026-08-12T11:04:45.730918Z}
+    {id determinize-intermediate, kind @complete, author "brendan@necessary.nu", at 2026-07-17T21:52:45.388723Z}
+    {id diag-parse-error-spans, kind @complete, author "brendan@necessary.nu", at 2026-07-19T19:26:30.125695Z}
+    {id divvun-hfst-branding, kind @complete, author "brendan@necessary.nu", at 2026-08-11T10:39:34.984866Z}
+    {id drop-dead-commandline-def, kind @complete, author "brendan@necessary.nu", at 2026-07-17T19:45:16.969208Z}
+    {id esu-lexc-divergence, kind @complete, author "brendan@necessary.nu", at 2026-10-02T13:14:08.554953Z}
+    {id esu-twolc-divergence, kind @complete, author "brendan@necessary.nu", at 2026-10-02T13:14:08.604125Z}
+    {id expand-equivalences, kind @complete, author "brendan@necessary.nu", at 2026-06-29T15:34:43.599269Z}
+    {id facade.compose-intersect, kind @complete, author "brendan@necessary.nu", at 2026-07-17T15:40:16.772229Z}
+    {id facade.io, kind @complete, author "brendan@necessary.nu", at 2026-07-17T15:40:18.601781Z}
+    {id facade.print, kind @complete, author "brendan@necessary.nu", at 2026-07-17T15:40:23.255662Z}
+    {id facade.rules, kind @complete, author "brendan@necessary.nu", at 2026-07-17T15:40:21.417928Z}
+    {id facade.transducer, kind @complete, author "brendan@necessary.nu", at 2026-07-17T15:40:11.943242Z}
+    {id facade.weight, kind @complete, author "brendan@necessary.nu", at 2026-07-17T15:40:14.450576Z}
+    {id family-files, kind @complete, author "brendan@necessary.nu", at 2026-08-20T13:11:09.513061Z}
+    {id fix-sparse-symt, kind @complete, author "brendan@necessary.nu", at 2026-06-29T13:38:55.194731Z}
+    {id flag-complement.audit, kind @complete, author "brendan@necessary.nu", at 2026-07-10T22:09:10.825079Z}
+    {id flag-complement.fix, kind @complete, author "brendan@necessary.nu", at 2026-07-10T21:58:29.947351Z}
+    {id flag-encode-diverge, kind @complete, author "brendan@necessary.nu", at 2026-07-19T18:31:03.682621Z}
+    {id foma-alphabet-set-ops, kind @complete, author "brendan@necessary.nu", at 2026-08-14T00:16:19.396105Z}
+    {id foma-alphabet-specials, kind @complete, author "brendan@necessary.nu", at 2026-09-15T12:42:55.562522Z}
+    {id foma-audit-sweep, kind @complete, author "brendan@necessary.nu", at 2026-09-15T12:25:07.87621Z}
+    {id foma-backend.algebra, kind @complete, author "brendan@necessary.nu", at 2026-07-06T16:09:39.432369Z}
+    {id foma-backend.cli, kind @complete, author "brendan@necessary.nu", at 2026-07-06T20:47:55.472649Z}
     {id foma-backend.convert, kind @complete, author "brendan@necessary.nu", at 2026-07-06T15:02:41.864201Z}
     {id foma-backend.io, kind @complete, author "brendan@necessary.nu", at 2026-07-06T16:09:39.380577Z}
-    {id foma-backend.algebra, kind @complete, author "brendan@necessary.nu", at 2026-07-06T16:09:39.432369Z}
     {id foma-backend.lookup, kind @complete, author "brendan@necessary.nu", at 2026-07-06T16:09:39.474168Z}
-    {id foma-backend.tests, kind @complete, author "brendan@necessary.nu", at 2026-07-06T16:30:52.612506Z}
     {id foma-backend.output-stream, kind @complete, author "brendan@necessary.nu", at 2026-07-06T16:41:24.749689Z}
-    {id hfst-write-rename, kind @complete, author "brendan@necessary.nu", at 2026-07-06T17:18:32.465522Z}
-    {id sme-validation-fixes, kind @complete, author "brendan@necessary.nu", at 2026-07-06T20:30:16.960378Z}
-    {id foma-backend.cli, kind @complete, author "brendan@necessary.nu", at 2026-07-06T20:47:55.472649Z}
-    {id thfst.spec, kind @complete, author "brendan@necessary.nu", at 2026-07-10T13:42:26.337614Z}
-    {id thfst.type, kind @complete, author "brendan@necessary.nu", at 2026-07-10T14:19:23.887105Z}
-    {id thfst.seam, kind @complete, author "brendan@necessary.nu", at 2026-07-10T14:39:09.701676Z}
-    {id thfst.io, kind @complete, author "brendan@necessary.nu", at 2026-07-10T16:51:25.863726Z}
-    {id thfst.streams, kind @complete, author "brendan@necessary.nu", at 2026-07-10T17:17:35.633124Z}
-    {id thfst.bhfst, kind @complete, author "brendan@necessary.nu", at 2026-07-10T21:26:42.429296Z}
-    {id thfst.oracle, kind @complete, author "brendan@necessary.nu", at 2026-07-10T21:32:07.099264Z}
-    {id flag-complement.fix, kind @complete, author "brendan@necessary.nu", at 2026-07-10T21:58:29.947351Z}
-    {id flag-complement.audit, kind @complete, author "brendan@necessary.nu", at 2026-07-10T22:09:10.825079Z}
-    {id upstream-bugs.t1.i571, kind @complete, author "brendan@necessary.nu", at 2026-07-11T10:50:13.10867Z}
-    {id upstream-bugs.t1.i399, kind @complete, author "brendan@necessary.nu", at 2026-07-11T10:51:57.226943Z}
-    {id upstream-bugs.t1.i341, kind @complete, author "brendan@necessary.nu", at 2026-07-11T15:45:51.055464Z}
-    {id upstream-bugs.t1.i435, kind @complete, author "brendan@necessary.nu", at 2026-07-11T15:48:34.394935Z}
-    {id smolstr-symbols, kind @complete, author "brendan@necessary.nu", at 2026-07-11T22:37:13.276052Z}
-    {id upstream-bugs.t1.i143, kind @complete, author "brendan@necessary.nu", at 2026-07-11T20:18:42.883424Z}
-    {id upstream-bugs.t1.i383, kind @complete, author "brendan@necessary.nu", at 2026-07-11T20:18:52.913288Z}
-    {id upstream-bugs.t1.i467, kind @complete, author "brendan@necessary.nu", at 2026-07-11T20:19:03.72794Z}
-    {id upstream-bugs.t1.i426, kind @complete, author "brendan@necessary.nu", at 2026-07-11T20:19:11.501316Z}
+    {id foma-backend.seam, kind @complete, author "brendan@necessary.nu", at 2026-07-06T15:02:41.817069Z}
+    {id foma-backend.spec, kind @complete, author "brendan@necessary.nu", at 2026-07-06T14:41:23.517029Z}
+    {id foma-backend.tests, kind @complete, author "brendan@necessary.nu", at 2026-07-06T16:30:52.612506Z}
     {id foma-backend.wave9-api, kind @complete, author "brendan@necessary.nu", at 2026-07-12T19:25:14.878192Z}
-    {id idiom-ratchet.unwrap, kind @complete, author "brendan@necessary.nu", at 2026-07-12T20:46:50.356785Z}
-    {id idiom-ratchet.snake-case, kind @complete, author "brendan@necessary.nu", at 2026-07-12T20:47:24.116096Z}
+    {id foma-compose-resource-contract, kind @complete, author "brendan@necessary.nu", at 2026-08-18T08:59:05.581108Z}
+    {id foma-extract-paths-alignment, kind @complete, author "brendan@necessary.nu", at 2026-08-12T09:08:25.345187Z}
+    {id foma-extract-paths-fd-filter, kind @complete, author "brendan@necessary.nu", at 2026-08-12T09:08:27.825912Z}
+    {id foma-first-vs-initial-symbols, kind @complete, author "brendan@necessary.nu", at 2026-08-15T16:44:42.880799Z}
+    {id foma-generic-path-parity-tests, kind @complete, author "brendan@necessary.nu", at 2026-08-15T16:44:59.995342Z}
+    {id foma-lookup-ambiguity-approx, kind @complete, author "brendan@necessary.nu", at 2026-08-12T09:08:35.644925Z}
+    {id foma-substitute-noop, kind @complete, author "brendan@necessary.nu", at 2026-08-14T00:16:15.020576Z}
+    {id foma-tokeniser-build, kind @complete, author "brendan@necessary.nu", at 2026-07-19T18:46:39.134465Z}
+    {id fork-property-propagation, kind @complete, author "brendan@necessary.nu", at 2026-07-18T12:17:52.96897Z}
+    {id format-labels-grep-flag, kind @complete, author "brendan@necessary.nu", at 2026-09-15T12:32:09.208617Z}
+    {id function-key-normalise, kind @complete, author "brendan@necessary.nu", at 2026-08-12T00:13:26.917038Z}
+    {id getopt-clustered-shorts, kind @complete, author "brendan@necessary.nu", at 2026-08-12T13:32:17.359197Z}
+    {id getopt-optarg-stale, kind @complete, author "brendan@necessary.nu", at 2026-08-12T08:55:00.496786Z}
+    {id giella-tools, kind @complete, author "brendan@necessary.nu", at 2026-07-02T22:28:58.543152Z}
+    {id guess-generator, kind @complete, author "brendan@necessary.nu", at 2026-06-29T15:39:22.172305Z}
+    {id hfst-info-bogus, kind @complete, author "brendan@necessary.nu", at 2026-08-12T08:51:34.541479Z}
+    {id hfst-info-compat-version, kind @complete, author "brendan@necessary.nu", at 2026-08-20T10:50:10.610793Z}
+    {id hfst-write-rename, kind @complete, author "brendan@necessary.nu", at 2026-07-06T17:18:32.465522Z}
+    {id idiom-clippy-clean, kind @complete, author "brendan@necessary.nu", at 2026-07-17T19:07:42.762516Z}
+    {id idiom-islands, kind @complete, author "brendan@necessary.nu", at 2026-07-06T12:34:35.317146Z}
     {id idiom-ratchet.control-flow, kind @complete, author "brendan@necessary.nu", at 2026-07-12T20:47:25.507632Z}
     {id idiom-ratchet.new-code-cshape, kind @complete, author "brendan@necessary.nu", at 2026-07-12T20:47:26.877751Z}
-    {id upstream-bugs.t4.ol-union-panic, kind @complete, author "brendan@necessary.nu", at 2026-07-16T10:53:05.049264Z}
-    {id upstream-bugs.t3.i287, kind @complete, author "brendan@necessary.nu", at 2026-07-16T10:53:06.424918Z}
-    {id upstream-bugs.limits.i458, kind @complete, author "brendan@necessary.nu", at 2026-07-16T10:53:08.193724Z}
-    {id upstream-bugs.t4.rtn-pmc-panic, kind @complete, author "brendan@necessary.nu", at 2026-07-16T12:01:39.065461Z}
-    {id upstream-bugs.t4.pmatch2fst-robustness, kind @complete, author "brendan@necessary.nu", at 2026-07-16T12:22:35.890166Z}
+    {id idiom-ratchet.snake-case, kind @complete, author "brendan@necessary.nu", at 2026-07-12T20:47:24.116096Z}
+    {id idiom-ratchet.unwrap, kind @complete, author "brendan@necessary.nu", at 2026-07-12T20:46:50.356785Z}
+    {id idiom1.backend-enum, kind @complete, author "brendan@necessary.nu", at 2026-06-28T13:20:51.755641Z}
+    {id idiom1.core, kind @complete, author "brendan@necessary.nu", at 2026-06-28T17:16:23.203852Z}
+    {id idiom1.parsers, kind @complete, author "brendan@necessary.nu", at 2026-06-28T14:38:04.130403Z}
+    {id idiom1.pmatch, kind @complete, author "brendan@necessary.nu", at 2026-06-28T16:15:44.322893Z}
+    {id idiom2.cli, kind @complete, author "brendan@necessary.nu", at 2026-06-29T18:58:01.785472Z}
+    {id idiom2.cstr, kind @complete, author "brendan@necessary.nu", at 2026-06-29T18:57:46.174762Z}
+    {id idiom2.drop-libc, kind @complete, author "brendan@necessary.nu", at 2026-06-29T18:58:23.868042Z}
+    {id idiom2.io, kind @complete, author "brendan@necessary.nu", at 2026-06-29T17:19:06.714162Z}
+    {id idiom3.gate, kind @complete, author "brendan@necessary.nu", at 2026-06-29T22:43:00.388411Z}
+    {id idiom3.getopt, kind @complete, author "brendan@necessary.nu", at 2026-06-29T22:41:34.521867Z}
+    {id idiom3.lib-strings, kind @complete, author "brendan@necessary.nu", at 2026-06-29T22:42:46.358388Z}
+    {id idiom3.tools, kind @complete, author "brendan@necessary.nu", at 2026-06-29T22:41:52.602462Z}
+    {id idiom4.gate, kind @complete, author "brendan@necessary.nu", at 2026-06-29T23:46:51.392884Z}
+    {id idiom4.lib, kind @complete, author "brendan@necessary.nu", at 2026-06-29T23:46:49.341466Z}
+    {id idiom5.config-flags, kind @complete, author "brendan@necessary.nu", at 2026-06-30T15:54:49.844942Z}
+    {id idiom5.convert-arena, kind @complete, author "brendan@necessary.nu", at 2026-06-30T17:51:18.09784Z}
+    {id idiom5.diacritic-registry, kind @complete, author "brendan@necessary.nu", at 2026-06-30T00:53:13.737829Z}
+    {id idiom5.exception-slot, kind @complete, author "brendan@necessary.nu", at 2026-06-30T00:44:11.600653Z}
+    {id idiom5.lexer-cgtag-globals, kind @complete, author "brendan@necessary.nu", at 2026-06-30T18:52:35.95305Z}
+    {id idiom5.op-local-scratch, kind @complete, author "brendan@necessary.nu", at 2026-06-30T15:54:57.334131Z}
+    {id idiom5.rawptr-returns, kind @complete, author "brendan@necessary.nu", at 2026-06-30T00:35:35.518012Z}
+    {id idiom5.scratch, kind @complete, author "brendan@necessary.nu", at 2026-06-30T15:54:55.01457Z}
+    {id idiom5.symbol-coding, kind @complete, author "brendan@necessary.nu", at 2026-06-30T03:51:41.74194Z}
+    {id idiom5.warning-stream, kind @complete, author "brendan@necessary.nu", at 2026-06-30T00:27:52.319428Z}
+    {id idiom5.xfst-lexc-flag, kind @complete, author "brendan@necessary.nu", at 2026-06-30T11:34:06.146425Z}
+    {id idiom6.foundation, kind @complete, author "brendan@necessary.nu", at 2026-06-30T01:54:30.890999Z}
+    {id idiom6.rename, kind @complete, author "brendan@necessary.nu", at 2026-06-30T19:34:53.986091Z}
+    {id idiom6.resultify.compilers, kind @complete, author "brendan@necessary.nu", at 2026-07-02T11:25:28.769206Z}
+    {id idiom6.resultify.facade, kind @complete, author "brendan@necessary.nu", at 2026-07-02T11:25:22.036572Z}
+    {id idiom6.resultify.internal-catches, kind @complete, author "brendan@necessary.nu", at 2026-07-02T11:25:15.656515Z}
+    {id idiom6.unify, kind @complete, author "brendan@necessary.nu", at 2026-06-30T19:50:32.954779Z}
+    {id idiom7.lib-logging, kind @complete, author "brendan@necessary.nu", at 2026-06-30T17:10:08.308899Z}
+    {id idiom7.warning-stream-tracing, kind @complete, author "brendan@necessary.nu", at 2026-06-30T16:27:48.331076Z}
+    {id idiom8, kind @complete, author "brendan@necessary.nu", at 2026-07-02T12:31:09.979133Z}
+    {id idiom9.control-flow, kind @complete, author "brendan@necessary.nu", at 2026-07-02T13:39:32.203607Z}
+    {id idiom9.io-shape, kind @complete, author "brendan@necessary.nu", at 2026-07-02T14:09:09.59678Z}
+    {id idiom9.mechanical, kind @complete, author "brendan@necessary.nu", at 2026-07-02T13:17:04.592704Z}
+    {id idiom9.parsers, kind @complete, author "brendan@necessary.nu", at 2026-07-02T13:47:41.040901Z}
+    {id idiom9.sentinels, kind @complete, author "brendan@necessary.nu", at 2026-07-02T17:46:58.446377Z}
+    {id idiom9.signatures, kind @complete, author "brendan@necessary.nu", at 2026-07-02T14:40:52.013796Z}
+    {id invert-symbol-table-duplication, kind @complete, author "brendan@necessary.nu", at 2026-08-12T13:37:20.126947Z}
+    {id is-weighted, kind @complete, author "brendan@necessary.nu", at 2026-06-29T13:04:16.201789Z}
+    {id istream-retirement, kind @complete, author "brendan@necessary.nu", at 2026-09-14T16:32:05.759792Z}
+    {id kill-paths, kind @complete, author "brendan@necessary.nu", at 2026-06-29T13:13:25.58945Z}
+    {id lexc-diagnostic-accuracy, kind @complete, author "brendan@necessary.nu", at 2026-08-19T14:25:21.571126Z}
+    {id lexc-morphotax-memory, kind @complete, author "brendan@necessary.nu", at 2026-08-20T00:08:21.287187Z}
+    {id lexc-unicode-check-diagnostic, kind @complete, author "brendan@necessary.nu", at 2026-08-12T11:09:01.560795Z}
+    {id librarify.binary-fold, kind @complete, author "brendan@necessary.nu", at 2026-07-02T19:41:22.044238Z}
+    {id librarify.fix-roundtrip, kind @complete, author "brendan@necessary.nu", at 2026-06-29T12:08:37.826618Z}
+    {id librarify.io-foundation, kind @complete, author "brendan@necessary.nu", at 2026-06-29T17:15:13.930502Z}
+    {id librarify.label-parse, kind @complete, author "brendan@necessary.nu", at 2026-06-29T13:04:14.571506Z}
+    {id librarify.lookup-family, kind @complete, author "brendan@necessary.nu", at 2026-07-02T20:13:27.349829Z}
+    {id librarify.ol-reuse, kind @complete, author "brendan@necessary.nu", at 2026-06-29T12:22:25.850919Z}
+    {id librarify.pmatch-family, kind @complete, author "brendan@necessary.nu", at 2026-07-02T20:48:01.88415Z}
+    {id librarify.renumber-states, kind @complete, author "brendan@necessary.nu", at 2026-06-29T13:04:13.350904Z}
+    {id librarify.symbols-used, kind @complete, author "brendan@necessary.nu", at 2026-06-29T13:04:11.919358Z}
+    {id librarify2, kind @complete, author "brendan@necessary.nu", at 2026-08-20T14:59:19.432788Z}
+    {id literal-port, kind @complete, author "brendan@necessary.nu", at 2026-06-28T12:00:14.477746Z}
+    {id minimize-consume-input, kind @complete, author "brendan@necessary.nu", at 2026-07-17T23:29:34.552998Z}
+    {id mono.backend-traits, kind @complete, author "brendan@necessary.nu", at 2026-07-04T17:45:38.136038Z}
+    {id mono.cli, kind @complete, author "brendan@necessary.nu", at 2026-07-04T17:45:43.662793Z}
+    {id mono.compilers, kind @complete, author "brendan@necessary.nu", at 2026-07-04T17:45:42.188804Z}
+    {id mono.facade, kind @complete, author "brendan@necessary.nu", at 2026-07-04T17:45:40.449906Z}
+    {id mono.ol-core, kind @complete, author "brendan@necessary.nu", at 2026-07-04T17:45:34.760025Z}
+    {id multiplex, kind @complete, author "brendan@necessary.nu", at 2026-07-02T21:14:32.53336Z}
+    {id naive-tokenizer-harmonizer-alphabet, kind @complete, author "brendan@necessary.nu", at 2026-08-12T11:15:05.78157Z}
+    {id native-alphabet-ops, kind @complete, author "brendan@necessary.nu", at 2026-07-18T00:03:06.06518Z}
+    {id nfst-0-2-publish, kind @complete, author "brendan@necessary.nu", at 2026-08-11T10:52:54.094366Z}
+    {id nfst-patch-restore, kind @complete, author "brendan@necessary.nu", at 2026-08-11T10:44:59.566181Z}
+    {id nfst-pmatch-concat-associativity, kind @complete, author "brendan@necessary.nu", at 2026-08-15T21:43:50.350056Z}
+    {id no-default-features-ungated, kind @complete, author "brendan@necessary.nu", at 2026-08-15T16:15:25.879206Z}
+    {id nuke-cpp-isms, kind @complete, author "brendan@necessary.nu", at 2026-09-24T18:38:14.695024Z}
+    {id ol, kind @complete, author "brendan@necessary.nu", at 2026-07-17T15:39:54.297773Z}
+    {id ol-fast-mode-silent, kind @complete, author "brendan@necessary.nu", at 2026-08-14T00:07:39.017992Z}
+    {id ol-header-flags-always-false, kind @complete, author "brendan@necessary.nu", at 2026-08-13T14:52:56.645145Z}
+    {id ol-header-flags-hardcoded-true, kind @complete, author "brendan@necessary.nu", at 2026-08-13T23:50:30.334693Z}
+    {id ol-variant-fd-unreachable, kind @complete, author "brendan@necessary.nu", at 2026-08-15T16:45:17.169609Z}
+    {id olw-direct-conversion, kind @complete, author "brendan@necessary.nu", at 2026-07-18T01:10:31.649143Z}
+    {id olw-flat-groups, kind @complete, author "brendan@necessary.nu", at 2026-07-18T01:44:06.272618Z}
+    {id oov-four-byte-tests, kind @complete, author "brendan@necessary.nu", at 2026-09-14T20:12:50.098996Z}
+    {id openfst.algo, kind @complete, author "brendan@necessary.nu", at 2026-07-17T15:40:06.420885Z}
+    {id openfst.containers, kind @complete, author "brendan@necessary.nu", at 2026-07-17T15:40:04.744749Z}
+    {id openfst.io, kind @complete, author "brendan@necessary.nu", at 2026-07-17T15:40:09.690693Z}
+    {id pair-recognizer, kind @complete, author "brendan@necessary.nu", at 2026-06-29T14:21:40.342852Z}
+    {id panic-on-malformed-input, kind @complete, author "brendan@necessary.nu", at 2026-08-12T09:14:32.188148Z}
+    {id parsers.att, kind @complete, author "brendan@necessary.nu", at 2026-07-17T15:40:39.941618Z}
+    {id parsers.lexc, kind @complete, author "brendan@necessary.nu", at 2026-07-17T15:40:27.405204Z}
+    {id parsers.pmatch, kind @complete, author "brendan@necessary.nu", at 2026-07-17T15:40:30.060472Z}
+    {id parsers.twolc, kind @complete, author "brendan@necessary.nu", at 2026-07-17T15:40:35.119766Z}
+    {id parsers.xfst, kind @complete, author "brendan@necessary.nu", at 2026-07-17T15:40:38.213645Z}
+    {id parsers.xre, kind @complete, author "brendan@necessary.nu", at 2026-07-17T15:40:25.868324Z}
+    {id perf-ol-epsilon-guard, kind @complete, author "brendan@necessary.nu", at 2026-07-17T16:41:05.632955Z}
+    {id performance-language-gates, kind @complete, author "brendan@necessary.nu", at 2026-08-19T23:38:36.054793Z}
+    {id plan-node-kinds, kind @complete, author "brendan@necessary.nu", at 2026-08-18T11:07:48.927105Z}
+    {id pmatch-duplicate-path-readings, kind @complete, author "brendan@necessary.nu", at 2026-08-15T22:43:51.575711Z}
+    {id pmatch-encode-weights, kind @complete, author "brendan@necessary.nu", at 2026-07-18T01:21:40.617004Z}
+    {id pmatch-epsilon-guard-performance, kind @complete, author "brendan@necessary.nu", at 2026-08-19T23:43:27.46316Z}
+    {id pmatch-initial-symbols-dead, kind @complete, author "brendan@necessary.nu", at 2026-08-12T11:45:24.453062Z}
+    {id pmatch-middot-loses-punct-reading, kind @complete, author "brendan@necessary.nu", at 2026-08-15T22:43:56.279798Z}
+    {id pmatch-tokenize-runtime-divergence, kind @complete, author "brendan@necessary.nu", at 2026-08-15T19:11:22.718785Z}
+    {id quality-burndown.alias-sweep, kind @complete, author "brendan@necessary.nu", at 2026-09-24T17:14:45.498921Z}
+    {id quality-burndown.cli-api, kind @complete, author "brendan@necessary.nu", at 2026-09-24T15:41:51.262071Z}
+    {id quality-burndown.lib-api, kind @complete, author "brendan@necessary.nu", at 2026-09-24T15:54:02.502712Z}
+    {id quality-burndown.split-backends, kind @complete, author "brendan@necessary.nu", at 2026-09-24T16:27:53.475744Z}
+    {id quality-burndown.split-basic-transducer, kind @complete, author "brendan@necessary.nu", at 2026-09-24T16:13:39.020773Z}
+    {id quality-burndown.split-cli-tools, kind @complete, author "brendan@necessary.nu", at 2026-09-24T16:28:13.629397Z}
+    {id quality-burndown.split-hfst-transducer, kind @complete, author "brendan@necessary.nu", at 2026-09-24T16:10:35.025993Z}
+    {id quality-burndown.split-lib-tests, kind @complete, author "brendan@necessary.nu", at 2026-09-24T16:32:30.852923Z}
+    {id quality-burndown.split-ol-transducer, kind @complete, author "brendan@necessary.nu", at 2026-09-24T16:24:43.363011Z}
+    {id quality-burndown.split-parsers, kind @complete, author "brendan@necessary.nu", at 2026-09-24T16:31:53.675003Z}
+    {id quality-burndown.split-pmatch-compiler, kind @complete, author "brendan@necessary.nu", at 2026-09-24T16:25:32.440991Z}
+    {id quality-burndown.split-pmatch-runtime, kind @complete, author "brendan@necessary.nu", at 2026-09-24T16:27:35.516027Z}
+    {id quality-burndown.split-tropical, kind @complete, author "brendan@necessary.nu", at 2026-09-24T16:25:14.83917Z}
+    {id quality-burndown.split-twolc, kind @complete, author "brendan@necessary.nu", at 2026-09-24T16:20:40.375984Z}
+    {id quality-burndown.split-xfst-compiler, kind @complete, author "brendan@necessary.nu", at 2026-09-24T16:16:07.971615Z}
+    {id realign, kind @complete, author "brendan@necessary.nu", at 2026-06-29T13:51:34.278644Z}
+    {id reweight-transform, kind @complete, author "brendan@necessary.nu", at 2026-06-29T14:33:10.179488Z}
+    {id rustfst-determinize-table, kind @complete, author "brendan@necessary.nu", at 2026-07-18T01:49:37.328055Z}
+    {id rustfst-ffi-max-states, kind @complete, author "brendan@necessary.nu", at 2026-07-19T21:49:22.21658Z}
+    {id rustfst-lazy-demutex, kind @complete, author "brendan@necessary.nu", at 2026-07-18T15:04:00.06994Z}
+    {id rustfst-lazy-direct-materialize, kind @complete, author "brendan@necessary.nu", at 2026-07-19T15:50:37.960012Z}
+    {id rustfst-lazy-statetable-fxhash, kind @complete, author "brendan@necessary.nu", at 2026-07-18T13:48:43.752087Z}
+    {id rustfst-noop-gates, kind @complete, author "brendan@necessary.nu", at 2026-07-18T02:43:15.133819Z}
     {id rustfst-perf, kind @complete, author "brendan@necessary.nu", at 2026-07-16T12:58:47.77958Z}
+    {id rustfst-trsvec-csr, kind @complete, author "brendan@necessary.nu", at 2026-07-17T23:19:40.508684Z}
+    {id scaffold, kind @complete, author "brendan@necessary.nu", at 2026-06-24T17:12:44.389107Z}
+    {id silent-stub-lint-gate, kind @complete, author "brendan@necessary.nu", at 2026-08-12T13:42:56.796308Z}
+    {id sme-validation-fixes, kind @complete, author "brendan@necessary.nu", at 2026-07-06T20:30:16.960378Z}
+    {id smolstr, kind @complete, author "brendan@necessary.nu", at 2026-07-05T00:05:12.309338Z}
+    {id smolstr-symbols, kind @complete, author "brendan@necessary.nu", at 2026-07-11T22:37:13.276052Z}
+    {id spec-rewrite, kind @complete, author "brendan@necessary.nu", at 2026-08-20T16:26:52.346169Z}
+    {id strip-header, kind @complete, author "brendan@necessary.nu", at 2026-06-29T15:01:44.033048Z}
+    {id strtoweight-strtod-semantics, kind @complete, author "brendan@necessary.nu", at 2026-08-11T22:10:40.026858Z}
+    {id substitute-by-composition, kind @complete, author "brendan@necessary.nu", at 2026-06-29T13:58:21.308055Z}
+    {id substitute-foma-dispatch, kind @complete, author "brendan@necessary.nu", at 2026-09-15T11:48:23.712566Z}
+    {id summarize-stats, kind @complete, author "brendan@necessary.nu", at 2026-06-29T14:46:23.423823Z}
+    {id test-health.census-scanner, kind @complete, author "brendan@necessary.nu", at 2026-08-21T23:07:30.829777Z}
+    {id test-health.delete-ignored, kind @complete, author "brendan@necessary.nu", at 2026-08-22T00:10:08.174189Z}
+    {id test-health.foma-subtract, kind @complete, author "brendan@necessary.nu", at 2026-08-22T00:10:05.44238Z}
+    {id thfst.bhfst, kind @complete, author "brendan@necessary.nu", at 2026-07-10T21:26:42.429296Z}
+    {id thfst.io, kind @complete, author "brendan@necessary.nu", at 2026-07-10T16:51:25.863726Z}
+    {id thfst.oracle, kind @complete, author "brendan@necessary.nu", at 2026-07-10T21:32:07.099264Z}
+    {id thfst.seam, kind @complete, author "brendan@necessary.nu", at 2026-07-10T14:39:09.701676Z}
+    {id thfst.spec, kind @complete, author "brendan@necessary.nu", at 2026-07-10T13:42:26.337614Z}
+    {id thfst.streams, kind @complete, author "brendan@necessary.nu", at 2026-07-10T17:17:35.633124Z}
+    {id thfst.type, kind @complete, author "brendan@necessary.nu", at 2026-07-10T14:19:23.887105Z}
+    {id tokenize-drops-unmatched, kind @complete, author "brendan@necessary.nu", at 2026-08-15T17:32:24.247021Z}
+    {id tokenize-space-separated-unreachable, kind @complete, author "brendan@necessary.nu", at 2026-08-12T08:54:57.804134Z}
+    {id tool-runs, kind @complete, author "brendan@necessary.nu", at 2026-07-02T21:14:29.187513Z}
+    {id twolc-boundary-arc-divergence, kind @complete, author "brendan@necessary.nu", at 2026-07-19T21:06:08.063322Z}
+    {id twolc-escaped-specials, kind @complete, author "brendan@necessary.nu", at 2026-07-19T21:32:00.766372Z}
+    {id twolc-ignoring-and-except, kind @complete, author "brendan@necessary.nu", at 2026-09-30T09:56:35.558749Z}
+    {id twolc-name-sigma-cosmetic, kind @complete, author "brendan@necessary.nu", at 2026-07-19T20:44:44.889873Z}
+    {id twolc-paircolon-context-divergence, kind @complete, author "brendan@necessary.nu", at 2026-07-19T21:42:16.969938Z}
+    {id twolc-pointed-diagnostics, kind @complete, author "brendan@necessary.nu", at 2026-09-24T18:10:42.944198Z}
+    {id twolc-set-centre-declares-pairs, kind @complete, author "brendan@necessary.nu", at 2026-09-24T19:23:12.786528Z}
+    {id twolc-sigma-numbering-permutation, kind @complete, author "brendan@necessary.nu", at 2026-07-19T21:42:18.589647Z}
+    {id types, kind @complete, author "brendan@necessary.nu", at 2026-07-17T15:39:49.934253Z}
+    {id unary-driver, kind @complete, author "brendan@necessary.nu", at 2026-08-20T12:55:41.677038Z}
+    {id upstream-bug-report, kind @complete, author "brendan@necessary.nu", at 2026-08-15T16:15:27.620318Z}
+    {id upstream-bugs.limits.i123, kind @complete, author "brendan@necessary.nu", at 2026-07-17T15:17:06.632051Z}
+    {id upstream-bugs.limits.i328, kind @complete, author "brendan@necessary.nu", at 2026-07-17T15:17:09.519427Z}
+    {id upstream-bugs.limits.i458, kind @complete, author "brendan@necessary.nu", at 2026-07-16T10:53:08.193724Z}
+    {id upstream-bugs.t1.i143, kind @complete, author "brendan@necessary.nu", at 2026-07-11T20:18:42.883424Z}
+    {id upstream-bugs.t1.i341, kind @complete, author "brendan@necessary.nu", at 2026-07-11T15:45:51.055464Z}
+    {id upstream-bugs.t1.i383, kind @complete, author "brendan@necessary.nu", at 2026-07-11T20:18:52.913288Z}
+    {id upstream-bugs.t1.i399, kind @complete, author "brendan@necessary.nu", at 2026-07-11T10:51:57.226943Z}
+    {id upstream-bugs.t1.i426, kind @complete, author "brendan@necessary.nu", at 2026-07-11T20:19:11.501316Z}
+    {id upstream-bugs.t1.i435, kind @complete, author "brendan@necessary.nu", at 2026-07-11T15:48:34.394935Z}
+    {id upstream-bugs.t1.i467, kind @complete, author "brendan@necessary.nu", at 2026-07-11T20:19:03.72794Z}
+    {id upstream-bugs.t1.i571, kind @complete, author "brendan@necessary.nu", at 2026-07-11T10:50:13.10867Z}
     {id upstream-bugs.t2.i354, kind @complete, author "brendan@necessary.nu", at 2026-07-16T14:03:46.475834Z}
     {id upstream-bugs.t2.i367, kind @complete, author "brendan@necessary.nu", at 2026-07-16T14:54:29.37002Z}
     {id upstream-bugs.t2.i439, kind @complete, author "brendan@necessary.nu", at 2026-07-16T16:04:39.495798Z}
     {id upstream-bugs.t2.i483, kind @complete, author "brendan@necessary.nu", at 2026-07-17T13:52:18.645292Z}
     {id upstream-bugs.t2.i500, kind @complete, author "brendan@necessary.nu", at 2026-07-17T13:54:46.703475Z}
     {id upstream-bugs.t2.i562, kind @complete, author "brendan@necessary.nu", at 2026-07-17T13:56:57.030148Z}
-    {id upstream-bugs.t3.i281, kind @complete, author "brendan@necessary.nu", at 2026-07-17T14:17:36.025593Z}
-    {id upstream-bugs.t3.i274, kind @complete, author "brendan@necessary.nu", at 2026-07-17T14:17:38.046688Z}
-    {id upstream-bugs.t3.i211, kind @complete, author "brendan@necessary.nu", at 2026-07-17T14:17:40.744873Z}
-    {id upstream-bugs.t3.i255, kind @complete, author "brendan@necessary.nu", at 2026-07-17T14:17:42.40958Z}
     {id upstream-bugs.t3.i189, kind @complete, author "brendan@necessary.nu", at 2026-07-17T14:17:45.052128Z}
-    {id upstream-bugs.t3.i570, kind @complete, author "brendan@necessary.nu", at 2026-07-17T14:17:47.491277Z}
-    {id upstream-bugs.t3.i334, kind @complete, author "brendan@necessary.nu", at 2026-07-17T14:17:48.979224Z}
+    {id upstream-bugs.t3.i211, kind @complete, author "brendan@necessary.nu", at 2026-07-17T14:17:40.744873Z}
     {id upstream-bugs.t3.i253, kind @complete, author "brendan@necessary.nu", at 2026-07-17T14:17:51.189438Z}
+    {id upstream-bugs.t3.i255, kind @complete, author "brendan@necessary.nu", at 2026-07-17T14:17:42.40958Z}
+    {id upstream-bugs.t3.i274, kind @complete, author "brendan@necessary.nu", at 2026-07-17T14:17:38.046688Z}
+    {id upstream-bugs.t3.i281, kind @complete, author "brendan@necessary.nu", at 2026-07-17T14:17:36.025593Z}
+    {id upstream-bugs.t3.i287, kind @complete, author "brendan@necessary.nu", at 2026-07-16T10:53:06.424918Z}
+    {id upstream-bugs.t3.i334, kind @complete, author "brendan@necessary.nu", at 2026-07-17T14:17:48.979224Z}
+    {id upstream-bugs.t3.i570, kind @complete, author "brendan@necessary.nu", at 2026-07-17T14:17:47.491277Z}
+    {id upstream-bugs.t3.rs2-3, kind @complete, author "brendan@necessary.nu", at 2026-08-19T15:08:18.091748Z}
+    {id upstream-bugs.t3.rs3-centre, kind @complete, author "brendan@necessary.nu", at 2026-08-21T22:55:55.310677Z}
+    {id upstream-bugs.t3.slh-set-centre, kind @complete, author "brendan@necessary.nu", at 2026-09-24T14:56:25.737395Z}
     {id upstream-bugs.t4.i170, kind @complete, author "brendan@necessary.nu", at 2026-07-17T14:53:10.423556Z}
-    {id upstream-bugs.t4.i327, kind @complete, author "brendan@necessary.nu", at 2026-07-17T14:53:13.354641Z}
-    {id upstream-bugs.t4.i490, kind @complete, author "brendan@necessary.nu", at 2026-07-17T14:53:18.285459Z}
     {id upstream-bugs.t4.i222, kind @complete, author "brendan@necessary.nu", at 2026-07-17T14:53:25.592419Z}
-    {id upstream-bugs.t4.i444, kind @complete, author "brendan@necessary.nu", at 2026-07-17T14:53:30.809175Z}
-    {id upstream-bugs.t4.i441, kind @complete, author "brendan@necessary.nu", at 2026-07-17T14:53:33.09747Z}
-    {id upstream-bugs.t4.i476, kind @complete, author "brendan@necessary.nu", at 2026-07-17T14:53:37.874627Z}
-    {id upstream-bugs.t4.i293, kind @complete, author "brendan@necessary.nu", at 2026-07-17T14:53:42.990931Z}
     {id upstream-bugs.t4.i225, kind @complete, author "brendan@necessary.nu", at 2026-07-17T14:53:47.239403Z}
-    {id upstream-bugs.t4.i445, kind @complete, author "brendan@necessary.nu", at 2026-07-17T14:53:52.524607Z}
-    {id upstream-bugs.t4.i395, kind @complete, author "brendan@necessary.nu", at 2026-07-17T14:53:59.561157Z}
-    {id upstream-bugs.t4.i409, kind @complete, author "brendan@necessary.nu", at 2026-07-17T14:54:02.836999Z}
-    {id upstream-bugs.t4.i460, kind @complete, author "brendan@necessary.nu", at 2026-07-17T14:54:10.071652Z}
-    {id upstream-bugs.t4.i587, kind @complete, author "brendan@necessary.nu", at 2026-07-17T14:54:17.495107Z}
+    {id upstream-bugs.t4.i293, kind @complete, author "brendan@necessary.nu", at 2026-07-17T14:53:42.990931Z}
+    {id upstream-bugs.t4.i327, kind @complete, author "brendan@necessary.nu", at 2026-07-17T14:53:13.354641Z}
     {id upstream-bugs.t4.i335, kind @complete, author "brendan@necessary.nu", at 2026-07-17T14:54:24.66865Z}
     {id upstream-bugs.t4.i357, kind @complete, author "brendan@necessary.nu", at 2026-07-17T14:54:27.590874Z}
-    {id upstream-bugs.limits.i123, kind @complete, author "brendan@necessary.nu", at 2026-07-17T15:17:06.632051Z}
-    {id upstream-bugs.limits.i328, kind @complete, author "brendan@necessary.nu", at 2026-07-17T15:17:09.519427Z}
-    {id types, kind @complete, author "brendan@necessary.nu", at 2026-07-17T15:39:49.934253Z}
-    {id ol, kind @complete, author "brendan@necessary.nu", at 2026-07-17T15:39:54.297773Z}
-    {id core.util, kind @complete, author "brendan@necessary.nu", at 2026-07-17T15:39:56.891521Z}
-    {id core.basic, kind @complete, author "brendan@necessary.nu", at 2026-07-17T15:39:58.83577Z}
-    {id core.convert, kind @complete, author "brendan@necessary.nu", at 2026-07-17T15:40:02.153106Z}
-    {id openfst.containers, kind @complete, author "brendan@necessary.nu", at 2026-07-17T15:40:04.744749Z}
-    {id openfst.algo, kind @complete, author "brendan@necessary.nu", at 2026-07-17T15:40:06.420885Z}
-    {id openfst.io, kind @complete, author "brendan@necessary.nu", at 2026-07-17T15:40:09.690693Z}
-    {id facade.transducer, kind @complete, author "brendan@necessary.nu", at 2026-07-17T15:40:11.943242Z}
-    {id facade.weight, kind @complete, author "brendan@necessary.nu", at 2026-07-17T15:40:14.450576Z}
-    {id facade.compose-intersect, kind @complete, author "brendan@necessary.nu", at 2026-07-17T15:40:16.772229Z}
-    {id facade.io, kind @complete, author "brendan@necessary.nu", at 2026-07-17T15:40:18.601781Z}
-    {id facade.rules, kind @complete, author "brendan@necessary.nu", at 2026-07-17T15:40:21.417928Z}
-    {id facade.print, kind @complete, author "brendan@necessary.nu", at 2026-07-17T15:40:23.255662Z}
-    {id parsers.xre, kind @complete, author "brendan@necessary.nu", at 2026-07-17T15:40:25.868324Z}
-    {id parsers.lexc, kind @complete, author "brendan@necessary.nu", at 2026-07-17T15:40:27.405204Z}
-    {id parsers.pmatch, kind @complete, author "brendan@necessary.nu", at 2026-07-17T15:40:30.060472Z}
-    {id parsers.twolc, kind @complete, author "brendan@necessary.nu", at 2026-07-17T15:40:35.119766Z}
-    {id parsers.xfst, kind @complete, author "brendan@necessary.nu", at 2026-07-17T15:40:38.213645Z}
-    {id parsers.att, kind @complete, author "brendan@necessary.nu", at 2026-07-17T15:40:39.941618Z}
-    {id perf-ol-epsilon-guard, kind @complete, author "brendan@necessary.nu", at 2026-07-17T16:41:05.632955Z}
-    {id idiom-clippy-clean, kind @complete, author "brendan@necessary.nu", at 2026-07-17T19:07:42.762516Z}
-    {id drop-dead-commandline-def, kind @complete, author "brendan@necessary.nu", at 2026-07-17T19:45:16.969208Z}
-    {id clippy-deny-gate, kind @complete, author "brendan@necessary.nu", at 2026-07-17T19:49:59.63991Z}
-    {id conversion-churn, kind @complete, author "brendan@necessary.nu", at 2026-07-17T21:31:21.739203Z}
-    {id determinize-intermediate, kind @complete, author "brendan@necessary.nu", at 2026-07-17T21:52:45.388723Z}
-    {id rustfst-trsvec-csr, kind @complete, author "brendan@necessary.nu", at 2026-07-17T23:19:40.508684Z}
-    {id minimize-consume-input, kind @complete, author "brendan@necessary.nu", at 2026-07-17T23:29:34.552998Z}
-    {id native-alphabet-ops, kind @complete, author "brendan@necessary.nu", at 2026-07-18T00:03:06.06518Z}
-    {id olw-direct-conversion, kind @complete, author "brendan@necessary.nu", at 2026-07-18T01:10:31.649143Z}
-    {id pmatch-encode-weights, kind @complete, author "brendan@necessary.nu", at 2026-07-18T01:21:40.617004Z}
-    {id olw-flat-groups, kind @complete, author "brendan@necessary.nu", at 2026-07-18T01:44:06.272618Z}
-    {id rustfst-determinize-table, kind @complete, author "brendan@necessary.nu", at 2026-07-18T01:49:37.328055Z}
-    {id rustfst-noop-gates, kind @complete, author "brendan@necessary.nu", at 2026-07-18T02:43:15.133819Z}
-    {id fork-property-propagation, kind @complete, author "brendan@necessary.nu", at 2026-07-18T12:17:52.96897Z}
-    {id rustfst-lazy-statetable-fxhash, kind @complete, author "brendan@necessary.nu", at 2026-07-18T13:48:43.752087Z}
-    {id rustfst-lazy-demutex, kind @complete, author "brendan@necessary.nu", at 2026-07-18T15:04:00.06994Z}
-    {id rustfst-lazy-direct-materialize, kind @complete, author "brendan@necessary.nu", at 2026-07-19T15:50:37.960012Z}
-    {id compose-facade-nativize, kind @complete, author "brendan@necessary.nu", at 2026-07-19T16:26:17.752081Z}
-    {id xfst-flag-encode-nativize, kind @complete, author "brendan@necessary.nu", at 2026-07-19T17:12:24.943388Z}
-    {id flag-encode-diverge, kind @complete, author "brendan@necessary.nu", at 2026-07-19T18:31:03.682621Z}
-    {id foma-tokeniser-build, kind @complete, author "brendan@necessary.nu", at 2026-07-19T18:46:39.134465Z}
-    {id diag-parse-error-spans, kind @complete, author "brendan@necessary.nu", at 2026-07-19T19:26:30.125695Z}
-    {id twolc-name-sigma-cosmetic, kind @complete, author "brendan@necessary.nu", at 2026-07-19T20:44:44.889873Z}
-    {id twolc-boundary-arc-divergence, kind @complete, author "brendan@necessary.nu", at 2026-07-19T21:06:08.063322Z}
-    {id twolc-escaped-specials, kind @complete, author "brendan@necessary.nu", at 2026-07-19T21:32:00.766372Z}
-    {id twolc-paircolon-context-divergence, kind @complete, author "brendan@necessary.nu", at 2026-07-19T21:42:16.969938Z}
-    {id twolc-sigma-numbering-permutation, kind @complete, author "brendan@necessary.nu", at 2026-07-19T21:42:18.589647Z}
-    {id rustfst-ffi-max-states, kind @complete, author "brendan@necessary.nu", at 2026-07-19T21:49:22.21658Z}
-    {id compose-intersect-map-drop, kind @complete, author "brendan@necessary.nu", at 2026-07-19T22:02:32.717767Z}
-    {id divvun-hfst-branding, kind @complete, author "brendan@necessary.nu", at 2026-08-11T10:39:34.984866Z}
-    {id nfst-patch-restore, kind @complete, author "brendan@necessary.nu", at 2026-08-11T10:44:59.566181Z}
-    {id nfst-0-2-publish, kind @complete, author "brendan@necessary.nu", at 2026-08-11T10:52:54.094366Z}
-    {id xfst-copyright-owner-plain, kind @complete, author "brendan@necessary.nu", at 2026-08-11T11:00:23.068557Z}
-    {id xfst-print-defined-body, kind @complete, author "brendan@necessary.nu", at 2026-08-11T11:09:08.271704Z}
-    {id cli-alias-shadowing, kind @complete, author "brendan@necessary.nu", at 2026-08-11T21:45:03.502421Z}
-    {id strtoweight-strtod-semantics, kind @complete, author "brendan@necessary.nu", at 2026-08-11T22:10:40.026858Z}
-    {id xfst-prototype-adjacency, kind @complete, author "brendan@necessary.nu", at 2026-08-12T00:04:11.724393Z}
-    {id xre-function-as-network-error, kind @complete, author "brendan@necessary.nu", at 2026-08-12T00:04:55.496721Z}
-    {id version-line-provenance, kind @complete, author "brendan@necessary.nu", at 2026-08-12T00:05:48.497893Z}
-    {id function-key-normalise, kind @complete, author "brendan@necessary.nu", at 2026-08-12T00:13:26.917038Z}
-    {id xfst-function-arg-substitution, kind @complete, author "brendan@necessary.nu", at 2026-08-12T06:51:38.839319Z}
-    {id foma-substitute-noop, kind @complete, author "brendan@necessary.nu", at 2026-08-14T00:16:15.020576Z}
-    {id compose-intersect-empty-panic, kind @complete, author "brendan@necessary.nu", at 2026-08-13T23:41:01.321301Z}
-    {id hfst-info-bogus, kind @complete, author "brendan@necessary.nu", at 2026-08-12T08:51:34.541479Z}
-    {id tokenize-space-separated-unreachable, kind @complete, author "brendan@necessary.nu", at 2026-08-12T08:54:57.804134Z}
-    {id getopt-optarg-stale, kind @complete, author "brendan@necessary.nu", at 2026-08-12T08:55:00.496786Z}
-    {id foma-extract-paths-alignment, kind @complete, author "brendan@necessary.nu", at 2026-08-12T09:08:25.345187Z}
-    {id foma-extract-paths-fd-filter, kind @complete, author "brendan@necessary.nu", at 2026-08-12T09:08:27.825912Z}
-    {id foma-lookup-ambiguity-approx, kind @complete, author "brendan@necessary.nu", at 2026-08-12T09:08:35.644925Z}
-    {id panic-on-malformed-input, kind @complete, author "brendan@necessary.nu", at 2026-08-12T09:14:32.188148Z}
-    {id xfst-diagnostics, kind @complete, author "brendan@necessary.nu", at 2026-08-12T09:21:47.266775Z}
-    {id dead-code-allow-census, kind @complete, author "brendan@necessary.nu", at 2026-08-12T11:04:45.730918Z}
-    {id lexc-unicode-check-diagnostic, kind @complete, author "brendan@necessary.nu", at 2026-08-12T11:09:01.560795Z}
-    {id xfst-set-minimal-unwired, kind @complete, author "brendan@necessary.nu", at 2026-08-12T11:15:03.860264Z}
-    {id naive-tokenizer-harmonizer-alphabet, kind @complete, author "brendan@necessary.nu", at 2026-08-12T11:15:05.78157Z}
-    {id backend-counts-zero, kind @complete, author "brendan@necessary.nu", at 2026-08-12T11:17:33.375314Z}
-    {id pmatch-initial-symbols-dead, kind @complete, author "brendan@necessary.nu", at 2026-08-12T11:45:24.453062Z}
-    {id getopt-clustered-shorts, kind @complete, author "brendan@necessary.nu", at 2026-08-12T13:32:17.359197Z}
-    {id invert-symbol-table-duplication, kind @complete, author "brendan@necessary.nu", at 2026-08-12T13:37:20.126947Z}
-    {id silent-stub-lint-gate, kind @complete, author "brendan@necessary.nu", at 2026-08-12T13:42:56.796308Z}
-    {id ol-header-flags-always-false, kind @complete, author "brendan@necessary.nu", at 2026-08-13T14:52:56.645145Z}
-    {id ol-header-flags-hardcoded-true, kind @complete, author "brendan@necessary.nu", at 2026-08-13T23:50:30.334693Z}
-    {id ol-fast-mode-silent, kind @complete, author "brendan@necessary.nu", at 2026-08-14T00:07:39.017992Z}
-    {id foma-alphabet-set-ops, kind @complete, author "brendan@necessary.nu", at 2026-08-14T00:16:19.396105Z}
-    {id no-default-features-ungated, kind @complete, author "brendan@necessary.nu", at 2026-08-15T16:15:25.879206Z}
-    {id upstream-bug-report, kind @complete, author "brendan@necessary.nu", at 2026-08-15T16:15:27.620318Z}
-    {id foma-first-vs-initial-symbols, kind @complete, author "brendan@necessary.nu", at 2026-08-15T16:44:42.880799Z}
-    {id foma-generic-path-parity-tests, kind @complete, author "brendan@necessary.nu", at 2026-08-15T16:44:59.995342Z}
-    {id ol-variant-fd-unreachable, kind @complete, author "brendan@necessary.nu", at 2026-08-15T16:45:17.169609Z}
-    {id tokenize-drops-unmatched, kind @complete, author "brendan@necessary.nu", at 2026-08-15T17:32:24.247021Z}
-    {id pmatch-tokenize-runtime-divergence, kind @complete, author "brendan@necessary.nu", at 2026-08-15T19:11:22.718785Z}
-    {id nfst-pmatch-concat-associativity, kind @complete, author "brendan@necessary.nu", at 2026-08-15T21:43:50.350056Z}
-    {id pmatch-duplicate-path-readings, kind @complete, author "brendan@necessary.nu", at 2026-08-15T22:43:51.575711Z}
-    {id pmatch-middot-loses-punct-reading, kind @complete, author "brendan@necessary.nu", at 2026-08-15T22:43:56.279798Z}
-    {id compose-peak-memory, kind @complete, author "brendan@necessary.nu", at 2026-08-17T22:46:57.246529Z}
-    {id foma-compose-resource-contract, kind @complete, author "brendan@necessary.nu", at 2026-08-18T08:59:05.581108Z}
-    {id plan-node-kinds, kind @complete, author "brendan@necessary.nu", at 2026-08-18T11:07:48.927105Z}
-    {id virtual-flag-contract, kind @complete, author "brendan@necessary.nu", at 2026-08-18T11:19:28.704235Z}
-    {id lexc-diagnostic-accuracy, kind @complete, author "brendan@necessary.nu", at 2026-08-19T14:25:21.571126Z}
-    {id upstream-bugs.t3.rs2-3, kind @complete, author "brendan@necessary.nu", at 2026-08-19T15:08:18.091748Z}
-    {id performance-language-gates, kind @complete, author "brendan@necessary.nu", at 2026-08-19T23:38:36.054793Z}
-    {id pmatch-epsilon-guard-performance, kind @complete, author "brendan@necessary.nu", at 2026-08-19T23:43:27.46316Z}
-    {id xre-intermediate-optimization, kind @complete, author "brendan@necessary.nu", at 2026-08-19T23:55:03.286981Z}
-    {id lexc-morphotax-memory, kind @complete, author "brendan@necessary.nu", at 2026-08-20T00:08:21.287187Z}
-    {id weighted-determinize-fallback, kind @complete, author "brendan@necessary.nu", at 2026-08-20T00:54:06.249109Z}
-    {id compose-intersect-product-memory, kind @complete, author "brendan@necessary.nu", at 2026-08-20T08:58:24.418049Z}
-    {id hfst-info-compat-version, kind @complete, author "brendan@necessary.nu", at 2026-08-20T10:50:10.610793Z}
-    {id unary-driver, kind @complete, author "brendan@necessary.nu", at 2026-08-20T12:55:41.677038Z}
-    {id family-files, kind @complete, author "brendan@necessary.nu", at 2026-08-20T13:11:09.513061Z}
-    {id librarify2, kind @complete, author "brendan@necessary.nu", at 2026-08-20T14:59:19.432788Z}
-    {id spec-rewrite, kind @complete, author "brendan@necessary.nu", at 2026-08-20T16:26:52.346169Z}
-    {id clap-migration, kind @complete, author "brendan@necessary.nu", at 2026-08-21T20:31:39.110378Z}
-    {id cli-residual-fixes, kind @complete, author "brendan@necessary.nu", at 2026-08-21T20:53:38.377963Z}
-    {id upstream-bugs.t3.rs3-centre, kind @complete, author "brendan@necessary.nu", at 2026-08-21T22:55:55.310677Z}
-    {id test-health.census-scanner, kind @complete, author "brendan@necessary.nu", at 2026-08-21T23:07:30.829777Z}
-    {id test-health.foma-subtract, kind @complete, author "brendan@necessary.nu", at 2026-08-22T00:10:05.44238Z}
-    {id test-health.delete-ignored, kind @complete, author "brendan@necessary.nu", at 2026-08-22T00:10:08.174189Z}
-    {id cli-gpl-license, kind @complete, author "brendan@necessary.nu", at 2026-09-14T13:07:28.238383Z}
-    {id istream-retirement, kind @complete, author "brendan@necessary.nu", at 2026-09-14T16:32:05.759792Z}
-    {id oov-four-byte-tests, kind @complete, author "brendan@necessary.nu", at 2026-09-14T20:12:50.098996Z}
-    {id substitute-foma-dispatch, kind @complete, author "brendan@necessary.nu", at 2026-09-15T11:48:23.712566Z}
-    {id foma-audit-sweep, kind @complete, author "brendan@necessary.nu", at 2026-09-15T12:25:07.87621Z}
-    {id format-labels-grep-flag, kind @complete, author "brendan@necessary.nu", at 2026-09-15T12:32:09.208617Z}
-    {id foma-alphabet-specials, kind @complete, author "brendan@necessary.nu", at 2026-09-15T12:42:55.562522Z}
-    {id cli-invocation-timing, kind @complete, author "brendan@necessary.nu", at 2026-09-15T16:33:21.133561Z}
-    {id cli-timing-as-info, kind @complete, author "brendan@necessary.nu", at 2026-09-15T17:03:30.995247Z}
-    {id upstream-bugs.t3.slh-set-centre, kind @complete, author "brendan@necessary.nu", at 2026-09-24T14:56:25.737395Z}
-    {id quality-burndown.cli-api, kind @complete, author "brendan@necessary.nu", at 2026-09-24T15:41:51.262071Z}
-    {id quality-burndown.lib-api, kind @complete, author "brendan@necessary.nu", at 2026-09-24T15:54:02.502712Z}
-    {id quality-burndown.split-hfst-transducer, kind @complete, author "brendan@necessary.nu", at 2026-09-24T16:10:35.025993Z}
-    {id quality-burndown.split-basic-transducer, kind @complete, author "brendan@necessary.nu", at 2026-09-24T16:13:39.020773Z}
-    {id quality-burndown.split-xfst-compiler, kind @complete, author "brendan@necessary.nu", at 2026-09-24T16:16:07.971615Z}
-    {id quality-burndown.split-twolc, kind @complete, author "brendan@necessary.nu", at 2026-09-24T16:20:40.375984Z}
-    {id quality-burndown.split-ol-transducer, kind @complete, author "brendan@necessary.nu", at 2026-09-24T16:24:43.363011Z}
-    {id quality-burndown.split-tropical, kind @complete, author "brendan@necessary.nu", at 2026-09-24T16:25:14.83917Z}
-    {id quality-burndown.split-pmatch-compiler, kind @complete, author "brendan@necessary.nu", at 2026-09-24T16:25:32.440991Z}
-    {id quality-burndown.split-pmatch-runtime, kind @complete, author "brendan@necessary.nu", at 2026-09-24T16:27:35.516027Z}
-    {id quality-burndown.split-backends, kind @complete, author "brendan@necessary.nu", at 2026-09-24T16:27:53.475744Z}
-    {id quality-burndown.split-cli-tools, kind @complete, author "brendan@necessary.nu", at 2026-09-24T16:28:13.629397Z}
-    {id quality-burndown.split-parsers, kind @complete, author "brendan@necessary.nu", at 2026-09-24T16:31:53.675003Z}
-    {id quality-burndown.split-lib-tests, kind @complete, author "brendan@necessary.nu", at 2026-09-24T16:32:30.852923Z}
-    {id quality-burndown.alias-sweep, kind @complete, author "brendan@necessary.nu", at 2026-09-24T17:14:45.498921Z}
-    {id twolc-pointed-diagnostics, kind @complete, author "brendan@necessary.nu", at 2026-09-24T18:10:42.944198Z}
-    {id nuke-cpp-isms, kind @complete, author "brendan@necessary.nu", at 2026-09-24T18:38:14.695024Z}
-    {id twolc-set-centre-declares-pairs, kind @complete, author "brendan@necessary.nu", at 2026-09-24T19:23:12.786528Z}
+    {id upstream-bugs.t4.i395, kind @complete, author "brendan@necessary.nu", at 2026-07-17T14:53:59.561157Z}
+    {id upstream-bugs.t4.i409, kind @complete, author "brendan@necessary.nu", at 2026-07-17T14:54:02.836999Z}
+    {id upstream-bugs.t4.i441, kind @complete, author "brendan@necessary.nu", at 2026-07-17T14:53:33.09747Z}
+    {id upstream-bugs.t4.i444, kind @complete, author "brendan@necessary.nu", at 2026-07-17T14:53:30.809175Z}
+    {id upstream-bugs.t4.i445, kind @complete, author "brendan@necessary.nu", at 2026-07-17T14:53:52.524607Z}
+    {id upstream-bugs.t4.i460, kind @complete, author "brendan@necessary.nu", at 2026-07-17T14:54:10.071652Z}
+    {id upstream-bugs.t4.i476, kind @complete, author "brendan@necessary.nu", at 2026-07-17T14:53:37.874627Z}
+    {id upstream-bugs.t4.i490, kind @complete, author "brendan@necessary.nu", at 2026-07-17T14:53:18.285459Z}
+    {id upstream-bugs.t4.i587, kind @complete, author "brendan@necessary.nu", at 2026-07-17T14:54:17.495107Z}
+    {id upstream-bugs.t4.ol-union-panic, kind @complete, author "brendan@necessary.nu", at 2026-07-16T10:53:05.049264Z}
+    {id upstream-bugs.t4.pmatch2fst-robustness, kind @complete, author "brendan@necessary.nu", at 2026-07-16T12:22:35.890166Z}
+    {id upstream-bugs.t4.rtn-pmc-panic, kind @complete, author "brendan@necessary.nu", at 2026-07-16T12:01:39.065461Z}
     {id version-banner-one-identity, kind @complete, author "brendan@necessary.nu", at 2026-09-28T14:53:15.900988Z}
-    {id twolc-ignoring-and-except, kind @complete, author "brendan@necessary.nu", at 2026-09-30T09:56:35.558749Z}
+    {id version-line-provenance, kind @complete, author "brendan@necessary.nu", at 2026-08-12T00:05:48.497893Z}
+    {id virtual-flag-contract, kind @complete, author "brendan@necessary.nu", at 2026-08-18T11:19:28.704235Z}
+    {id weighted-determinize-fallback, kind @complete, author "brendan@necessary.nu", at 2026-08-20T00:54:06.249109Z}
+    {id xfst-copyright-owner-plain, kind @complete, author "brendan@necessary.nu", at 2026-08-11T11:00:23.068557Z}
+    {id xfst-diagnostics, kind @complete, author "brendan@necessary.nu", at 2026-08-12T09:21:47.266775Z}
+    {id xfst-flag-encode-nativize, kind @complete, author "brendan@necessary.nu", at 2026-07-19T17:12:24.943388Z}
+    {id xfst-function-arg-substitution, kind @complete, author "brendan@necessary.nu", at 2026-08-12T06:51:38.839319Z}
+    {id xfst-print-defined-body, kind @complete, author "brendan@necessary.nu", at 2026-08-11T11:09:08.271704Z}
+    {id xfst-prototype-adjacency, kind @complete, author "brendan@necessary.nu", at 2026-08-12T00:04:11.724393Z}
     {id xfst-quoted-percent-and-bare-regex, kind @complete, author "brendan@necessary.nu", at 2026-10-01T20:48:35.562057Z}
-    {id esu-lexc-divergence, kind @complete, author "brendan@necessary.nu", at 2026-10-02T13:14:08.554953Z}
-    {id esu-twolc-divergence, kind @complete, author "brendan@necessary.nu", at 2026-10-02T13:14:08.604125Z}
+    {id xfst-set-minimal-unwired, kind @complete, author "brendan@necessary.nu", at 2026-08-12T11:15:03.860264Z}
+    {id xre-function-as-network-error, kind @complete, author "brendan@necessary.nu", at 2026-08-12T00:04:55.496721Z}
+    {id xre-intermediate-optimization, kind @complete, author "brendan@necessary.nu", at 2026-08-19T23:55:03.286981Z}
 )
 
 impl_evidence (
+    {id dead-not-implemented-surface, covered_rules (
+        xfst-cmd.no-dead-surface
+    ), covered_claims (
+        {impl_name target-impl, rule xfst-cmd.no-dead-surface}
+    )}
     {id determinize-scaled-floors, covered_rules (
         determinize-envelope.input-scaled-floors
     ), covered_claims (
@@ -495,6 +500,31 @@ impl_evidence (
         {id determinize-envelope.bounded-strategies, version 0}
         {id determinize-envelope.relation-preserved, version 0}
         {id determinize-envelope.transition-axis, version 0}
+    )}
+    {id dhfst, covered_rules (
+        dhfst.bhfst-member
+        dhfst.encoding
+        dhfst.fst2fst
+        dhfst.header
+        dhfst.layout
+        dhfst.meta
+        dhfst.reader
+        dhfst.regular-symbol
+        dhfst.self-check
+        dhfst.source-model
+        dhfst.write
+    ), covered_claims (
+        {impl_name target-impl, rule dhfst.bhfst-member}
+        {impl_name target-impl, rule dhfst.encoding}
+        {impl_name target-impl, rule dhfst.fst2fst}
+        {impl_name target-impl, rule dhfst.header}
+        {impl_name target-impl, rule dhfst.layout}
+        {impl_name target-impl, rule dhfst.meta}
+        {impl_name target-impl, rule dhfst.reader}
+        {impl_name target-impl, rule dhfst.regular-symbol}
+        {impl_name target-impl, rule dhfst.self-check}
+        {impl_name target-impl, rule dhfst.source-model}
+        {impl_name target-impl, rule dhfst.write}
     )}
     {id flag-encode-table-parity, covered_rules (
         flag-encode-symbol-tables.table-parity
@@ -563,6 +593,11 @@ impl_evidence (
         {id ol-lookup-enumeration.out-of-alphabet-input, version 0}
         {id ol-lookup-enumeration.representation-independence, version 0}
     )}
+    {id pmatch-quotient-subtract, covered_rules (
+        xfst-cmd.pmatch-quotient-subtract
+    ), covered_claims (
+        {impl_name target-impl, rule xfst-cmd.pmatch-quotient-subtract}
+    )}
     {id pmatch-shared-core, covered_rules (
         lookup-run-state.pmatch-shared-core
     ), covered_claims (
@@ -570,6 +605,11 @@ impl_evidence (
     ), rule_versions_seen (
         {id lookup-run-state.pmatch-shared-core, version 0}
         {id table-residency.single-copy-load, version 0}
+    )}
+    {id replace-context-any-symbol, covered_rules (
+        xfst-cmd.replace-context-symbol
+    ), covered_claims (
+        {impl_name target-impl, rule xfst-cmd.replace-context-symbol}
     )}
     {id table-copy-elimination, covered_rules (
         table-residency.single-copy-load
@@ -583,6 +623,11 @@ impl_evidence (
         {id table-residency.single-copy-load, version 0}
         {id table-residency.untrusted-size-fields, version 0}
         {id table-residency.views-not-copies, version 0}
+    )}
+    {id upstream-bugs.t3.i334, covered_rules (
+        twolc-compiler.hfst.twolcpre2.complete-alphabet-fn
+    ), covered_claims (
+        {impl_name target-impl, rule twolc-compiler.hfst.twolcpre2.complete-alphabet-fn}
     )}
     {id virtual-flag-core, covered_rules (
         virtual-flag-algebra.backend-core
@@ -622,34 +667,19 @@ impl_evidence (
     ), rule_versions_seen (
         {id virtual-flag-algebra.subtraction, version 0}
     )}
-    {id xre-root-finalization, covered_rules (
-        xre-finalization.root-optimize
+    {id xfst-ambiguity-substring-med, covered_rules (
+        xfst-cmd.ambiguity
+        xfst-cmd.apply-med
+        xfst-cmd.substring
     ), covered_claims (
-        {impl_name target-impl, rule xre-finalization.root-optimize}
-    ), rule_versions_seen (
-        {id xre-finalization.root-optimize, version 0}
+        {impl_name target-impl, rule xfst-cmd.ambiguity}
+        {impl_name target-impl, rule xfst-cmd.apply-med}
+        {impl_name target-impl, rule xfst-cmd.substring}
     )}
-    {id upstream-bugs.t3.i334, covered_rules (
-        twolc-compiler.hfst.twolcpre2.complete-alphabet-fn
+    {id xfst-list-ranges, covered_rules (
+        xfst-cmd.list-range
     ), covered_claims (
-        {impl_name target-impl, rule twolc-compiler.hfst.twolcpre2.complete-alphabet-fn}
-    )}
-    {id xfst-result-flow, covered_rules (
-        xfst-cmd.errors-are-values
-        xfst-cmd.io-errors
-    ), covered_claims (
-        {impl_name target-impl, rule xfst-cmd.errors-are-values}
-        {impl_name target-impl, rule xfst-cmd.io-errors}
-    )}
-    {id xfst-source, covered_rules (
-        xfst-cmd.source
-    ), covered_claims (
-        {impl_name target-impl, rule xfst-cmd.source}
-    )}
-    {id replace-context-any-symbol, covered_rules (
-        xfst-cmd.replace-context-symbol
-    ), covered_claims (
-        {impl_name target-impl, rule xfst-cmd.replace-context-symbol}
+        {impl_name target-impl, rule xfst-cmd.list-range}
     )}
     {id xfst-no-placeholders, covered_rules (
         xfst-cmd.no-placeholders
@@ -669,63 +699,46 @@ impl_evidence (
         {impl_name target-impl, rule xfst-cmd.read-word-lists}
         {impl_name target-impl, rule xfst-cmd.sort}
     )}
-    {id xfst-ambiguity-substring-med, covered_rules (
-        xfst-cmd.ambiguity
-        xfst-cmd.apply-med
-        xfst-cmd.substring
+    {id xfst-result-flow, covered_rules (
+        xfst-cmd.errors-are-values
+        xfst-cmd.io-errors
     ), covered_claims (
-        {impl_name target-impl, rule xfst-cmd.ambiguity}
-        {impl_name target-impl, rule xfst-cmd.apply-med}
-        {impl_name target-impl, rule xfst-cmd.substring}
+        {impl_name target-impl, rule xfst-cmd.errors-are-values}
+        {impl_name target-impl, rule xfst-cmd.io-errors}
+    )}
+    {id xfst-source, covered_rules (
+        xfst-cmd.source
+    ), covered_claims (
+        {impl_name target-impl, rule xfst-cmd.source}
     )}
     {id xfst-variables-take-effect, covered_rules (
         xfst-cmd.variables-take-effect
     ), covered_claims (
         {impl_name target-impl, rule xfst-cmd.variables-take-effect}
     )}
-    {id xfst-list-ranges, covered_rules (
-        xfst-cmd.list-range
-    ), covered_claims (
-        {impl_name target-impl, rule xfst-cmd.list-range}
-    )}
-    {id pmatch-quotient-subtract, covered_rules (
-        xfst-cmd.pmatch-quotient-subtract
-    ), covered_claims (
-        {impl_name target-impl, rule xfst-cmd.pmatch-quotient-subtract}
-    )}
-    {id dead-not-implemented-surface, covered_rules (
-        xfst-cmd.no-dead-surface
-    ), covered_claims (
-        {impl_name target-impl, rule xfst-cmd.no-dead-surface}
-    )}
     {id xre-escapes-and-list-ranges, covered_rules (
         xfst-cmd.string-escapes
     ), covered_claims (
         {impl_name target-impl, rule xfst-cmd.string-escapes}
     )}
-    {id dhfst, covered_rules (
-        dhfst.bhfst-member
-        dhfst.encoding
-        dhfst.fst2fst
-        dhfst.header
-        dhfst.layout
-        dhfst.meta
-        dhfst.reader
-        dhfst.regular-symbol
-        dhfst.self-check
-        dhfst.source-model
-        dhfst.write
+    {id xre-replace-pass, covered_rules (
+        xre-replace-pass.boundary-contexts
+        xre-replace-pass.cli
+        xre-replace-pass.refusals
+        xre-replace-pass.relation
+        xre-replace-pass.shape
     ), covered_claims (
-        {impl_name target-impl, rule dhfst.bhfst-member}
-        {impl_name target-impl, rule dhfst.encoding}
-        {impl_name target-impl, rule dhfst.fst2fst}
-        {impl_name target-impl, rule dhfst.header}
-        {impl_name target-impl, rule dhfst.layout}
-        {impl_name target-impl, rule dhfst.meta}
-        {impl_name target-impl, rule dhfst.reader}
-        {impl_name target-impl, rule dhfst.regular-symbol}
-        {impl_name target-impl, rule dhfst.self-check}
-        {impl_name target-impl, rule dhfst.source-model}
-        {impl_name target-impl, rule dhfst.write}
+        {impl_name target-impl, rule xre-replace-pass.boundary-contexts}
+        {impl_name target-impl, rule xre-replace-pass.cli}
+        {impl_name target-impl, rule xre-replace-pass.refusals}
+        {impl_name target-impl, rule xre-replace-pass.relation}
+        {impl_name target-impl, rule xre-replace-pass.shape}
+    )}
+    {id xre-root-finalization, covered_rules (
+        xre-finalization.root-optimize
+    ), covered_claims (
+        {impl_name target-impl, rule xre-finalization.root-optimize}
+    ), rule_versions_seen (
+        {id xre-finalization.root-optimize, version 0}
     )}
 )

@@ -15,6 +15,7 @@ impl<B: AlgebraBackend> XreCompiler<B> {
     pub fn compile(&mut self, src: &str) -> Option<HfstTransducer<B>> {
         // Retain the source so diagnostics can render the offending snippet.
         self.source = src.to_string();
+        self.span_base = 0;
         self.contains_only_comments = false;
         if is_only_whitespace_or_comments(src) {
             self.contains_only_comments = true;
@@ -58,8 +59,23 @@ impl<B: AlgebraBackend> XreCompiler<B> {
         expression: &str,
         chars_read: &mut u32,
     ) -> Option<HfstTransducer<B>> {
+        self.compile_first_at(expression, 0, chars_read)
+    }
+
+    /// [`Self::compile_first`] on `text[offset..]`, for a caller walking a
+    /// file one expression at a time. Diagnostics are placed in the whole
+    /// `text`, so they name the file's own line and column rather than ones
+    /// counted from the slice. `chars_read` counts from `offset`.
+    pub fn compile_first_at(
+        &mut self,
+        text: &str,
+        offset: usize,
+        chars_read: &mut u32,
+    ) -> Option<HfstTransducer<B>> {
+        let expression = &text[offset..];
         // Retain the source so diagnostics can render the offending snippet.
-        self.source = expression.to_string();
+        self.source = text.to_string();
+        self.span_base = offset;
         self.contains_only_comments = false;
         // Whitespace/comment-only input: the C++ lexer consumed it to EOF and
         // set contains_only_comments; nfst's parse_all errors on it instead.

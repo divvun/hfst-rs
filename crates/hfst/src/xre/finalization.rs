@@ -26,6 +26,11 @@ impl<B: AlgebraBackend> XreCompiler<B> {
         &mut self,
         expression: &SpannedXre,
     ) -> crate::error::Result<HfstTransducer<B>> {
+        // A pass is deliberately left undeterminised; optimizing it would
+        // rebuild the expanded machine it exists to avoid.
+        if self.replace_pass {
+            return self.eval_replace_pass(expression);
+        }
         let already_optimized = matches!(
             &expression.value,
             XreExpr::Binary(

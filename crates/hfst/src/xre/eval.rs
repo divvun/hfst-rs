@@ -520,6 +520,8 @@ impl<B: AlgebraBackend> XreCompiler<B> {
             source_name: self.source_name.clone(),
             current_span: self.current_span.clone(),
             defined_multichar_symbols: self.defined_multichar_symbols.clone(),
+            span_base: self.span_base,
+            replace_pass: false,
         };
 
         // get_function_xre + recursive compile.

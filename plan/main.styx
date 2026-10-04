@@ -406,6 +406,29 @@ children (
                     }
                 )
             }
+
+            {
+                id xre-replace-pass
+                title "hfst regexp2fst --replace-pass: compile one parallel optional replace rule P as the weighted relation of ?* P ?* without determinising it (copying loops + minimised rule bodies entered by epsilon), for speller strings files; exact against the classic compile, everything else refused at its source position"
+                kind @feat
+                implements {
+                    target-impl (
+                        [spec:hfst:req:xre-replace-pass.relation]
+                        [spec:hfst:req:xre-replace-pass.boundary-contexts]
+                        [spec:hfst:req:xre-replace-pass.shape]
+                        [spec:hfst:req:xre-replace-pass.refusals]
+                        [spec:hfst:req:xre-replace-pass.cli]
+                    )
+                }
+                log (
+                    {
+                        at 2026-10-04T22:25:07.687974Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
+                )
+            }
         )
     }
 
