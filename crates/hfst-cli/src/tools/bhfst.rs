@@ -1,6 +1,6 @@
-//! `hfst-bhfst` — pack a THFST acceptor/errmodel pair (+ speller metadata) into
-//! a BHFST speller archive, convert a whole zhfst into one, or inspect an
-//! existing one. There is NO C++ HFST ancestor: this tool is authored greenfield
+//! `hfst-bhfst` — pack a THFST acceptor and an error model (THFST, or DHFST
+//! stored as it is) plus speller metadata into a BHFST speller archive,
+//! convert a whole zhfst into one, or inspect an existing one. There is NO C++ HFST ancestor: this tool is authored greenfield
 //! against `docs/spec/port/back-ends/thfst/thfst-backend.md`, and its contract
 //! is divvunspell compatibility — the archives it writes are consumed by
 //! `github.com/divvun/divvunspell` (its `src/archive/boxf.rs` loader), and the
@@ -42,6 +42,11 @@ const ERRMODEL_DIRNAME: &str = "errmodel.default.thfst";
 /// The three THFST member files, in the order they must enter the archive.
 const THFST_MEMBERS: [&str; 3] = ["alphabet", "index", "transition"];
 
+/// The single-file member divvunspell reads a DHFST error model from, in
+/// place of the THFST error-model directory.
+// [spec:hfst:def:dhfst.bhfst-member]
+const DHFST_ERRMODEL_MEMBER: &str = "errmodel.default.dhfst";
+
 /// The meta.json key the speller runtime configuration rides under, and the
 /// zhfst member it comes from.
 // [spec:hfst:def:thfst-backend.speller-config]
@@ -60,7 +65,7 @@ const DEFAULT_ERRMODEL_MEMBER: &str = "errmodel.default.hfst";
 // [spec:hfst:req:cli.help]
 #[derive(clap::Parser)]
 #[command(
-    about = "Pack a THFST acceptor/errmodel pair (+ speller metadata) into a BHFST archive",
+    about = "Pack a THFST acceptor and a THFST or DHFST error model (+ speller metadata) into a BHFST archive",
     after_help = "Pack mode needs -a, -e and -o, or -z and -o. Info mode needs only -I."
 )]
 struct Args {
@@ -77,7 +82,8 @@ struct Args {
     )]
     acceptor: Option<String>,
 
-    /// Error model: same as --acceptor
+    /// Error model: a DHFST file (stored as it is), or anything --acceptor
+    /// takes
     #[arg(
         short = 'e',
         long = "errmodel",
@@ -299,6 +305,15 @@ fn is_thfst_dir(dir: &Path) -> bool {
 /// [spec:hfst:sem:thfst-backend.bhfst-tool]
 fn resolve_thfst_source(common: &CommonOptions, path_str: &str) -> Result<ThfstSource, i32> {
     let path = Path::new(path_str);
+    if is_dhfst_file(path) {
+        error(
+            common,
+            1,
+            0,
+            &format!("{path_str} is a DHFST error model; only --errmodel can be DHFST"),
+        );
+        return Err(1);
+    }
     if is_thfst_dir(path) {
         verbose_print(common, &format!("Using ready THFST directory {path_str}\n"));
         return Ok(ThfstSource {
@@ -388,6 +403,88 @@ fn resolve_thfst_source(common: &CommonOptions, path_str: &str) -> Result<ThfstS
         dir,
         _tempdir: Some(tempdir),
     })
+}
+
+/// Whether `path` is a file that starts the way a DHFST file does.
+// [spec:hfst:sem:dhfst.bhfst-member]
+fn is_dhfst_file(path: &Path) -> bool {
+    let mut head = [0u8; 5];
+    std::fs::File::open(path)
+        .and_then(|mut f| f.read_exact(&mut head))
+        .is_ok_and(|()| hfst::dhfst::has_magic(&head))
+}
+
+/// An error model resolved for packing.
+enum ErrmodelSource {
+    /// A THFST directory, entered as `errmodel.default.thfst`.
+    Thfst(ThfstSource),
+    /// A validated DHFST file's bytes, entered as they are as
+    /// `errmodel.default.dhfst`.
+    Dhfst(Vec<u8>),
+}
+
+/// The id meta.json gives the error model at `path`, when it is not the
+/// THFST directory's.
+fn errmodel_meta_id(path: &str) -> Option<&'static str> {
+    is_dhfst_file(Path::new(path)).then_some(DHFST_ERRMODEL_MEMBER)
+}
+
+/// Resolve a `-e` source: a DHFST file, told by its header, is read and
+/// validated as divvunspell validates it before loading; anything else
+/// resolves as [`resolve_thfst_source`] does.
+// [spec:hfst:sem:dhfst.bhfst-member]
+fn resolve_errmodel(common: &CommonOptions, path_str: &str) -> Result<ErrmodelSource, i32> {
+    if !is_dhfst_file(Path::new(path_str)) {
+        return resolve_thfst_source(common, path_str).map(ErrmodelSource::Thfst);
+    }
+    verbose_print(
+        common,
+        &format!("Using DHFST error model {path_str} as it is\n"),
+    );
+    let bytes = read_file(common, path_str)?;
+    if let Err(e) = hfst::dhfst::DhfstReader::parse(&bytes) {
+        error(
+            common,
+            1,
+            0,
+            &format!("{path_str} is not a DHFST error model divvunspell can load: {e}"),
+        );
+        return Err(1);
+    }
+    Ok(ErrmodelSource::Dhfst(bytes))
+}
+
+/// Insert a DHFST error model as the single member `errmodel.default.dhfst`,
+/// Stored.
+// [spec:hfst:sem:dhfst.bhfst-member]
+fn insert_dhfst(common: &CommonOptions, boxfile: &mut BoxWriter, bytes: &[u8]) -> Result<(), i32> {
+    let member = match BoxPath::new(DHFST_ERRMODEL_MEMBER) {
+        Ok(p) => p,
+        Err(e) => {
+            error(
+                common,
+                1,
+                0,
+                &format!("invalid box path '{DHFST_ERRMODEL_MEMBER}': {e}"),
+            );
+            return Err(1);
+        }
+    };
+    if let Err(e) = boxfile.insert(
+        &CompressionConfig::new(Compression::Stored),
+        member,
+        std::io::Cursor::new(bytes),
+        BoxHashMap::new(),
+    ) {
+        error(
+            common,
+            1,
+            0,
+            &format!("cannot insert '{DHFST_ERRMODEL_MEMBER}': {e}"),
+        );
+        return Err(1);
+    }
+    Ok(())
 }
 
 /// Insert the three THFST member files of `source.dir` into the archive under
@@ -595,6 +692,8 @@ fn resolve_speller_config(
 
 /// Build the meta.json bytes from `source`, merging `config` in under
 /// `spellerConfig` when there is one. Returns None when there is no metadata.
+/// `errmodel_id` overrides the id an index.xml's error model is given, which
+/// otherwise has `.hfst` rewritten to `.thfst`.
 ///
 /// A `Verbatim` source is embedded VERBATIM (the raw file bytes), validated only
 /// as well-formed JSON (parsed into `serde_json::Value` and discarded) so that
@@ -608,6 +707,7 @@ fn build_meta_json(
     common: &CommonOptions,
     source: MetaSource,
     config: Option<serde_json::Value>,
+    errmodel_id: Option<&str>,
 ) -> Result<Option<Vec<u8>>, i32> {
     match source {
         MetaSource::IndexXml { origin, bytes } => {
@@ -618,10 +718,15 @@ fn build_meta_json(
                     return Err(1);
                 }
             };
-            // Rewrite acceptor.id and errmodel.id: .hfst -> .thfst.
+            // Rewrite acceptor.id and errmodel.id: .hfst -> .thfst, unless the
+            // error model is DHFST, whose member name is fixed.
             // [spec:hfst:sem:thfst-backend.meta-json]
+            // [spec:hfst:sem:dhfst.bhfst-member]
             meta.acceptor.id = meta.acceptor.id.replace(".hfst", ".thfst");
-            meta.errmodel.id = meta.errmodel.id.replace(".hfst", ".thfst");
+            meta.errmodel.id = match errmodel_id {
+                Some(id) => id.to_string(),
+                None => meta.errmodel.id.replace(".hfst", ".thfst"),
+            };
             meta.speller_config = config;
             let json = match serde_json::to_string_pretty(&meta) {
                 Ok(s) => s,
@@ -849,7 +954,7 @@ fn pack(
     common: &CommonOptions,
     meta_json: Option<Vec<u8>>,
     acceptor: &ThfstSource,
-    errmodel: &ThfstSource,
+    errmodel: &ErrmodelSource,
     output: &str,
 ) -> i32 {
     // BoxWriter::create_with_alignment refuses an existing file (create_new);
@@ -872,8 +977,17 @@ fn pack(
     if let Err(code) = insert_thfst_dir(common, &mut boxfile, &acceptor.dir, ACCEPTOR_DIRNAME) {
         return code;
     }
-    verbose_print(common, &format!("Inserting {ERRMODEL_DIRNAME}...\n"));
-    if let Err(code) = insert_thfst_dir(common, &mut boxfile, &errmodel.dir, ERRMODEL_DIRNAME) {
+    let inserted = match errmodel {
+        ErrmodelSource::Thfst(source) => {
+            verbose_print(common, &format!("Inserting {ERRMODEL_DIRNAME}...\n"));
+            insert_thfst_dir(common, &mut boxfile, &source.dir, ERRMODEL_DIRNAME)
+        }
+        ErrmodelSource::Dhfst(bytes) => {
+            verbose_print(common, &format!("Inserting {DHFST_ERRMODEL_MEMBER}...\n"));
+            insert_dhfst(common, &mut boxfile, bytes)
+        }
+    };
+    if let Err(code) = inserted {
         return code;
     }
 
@@ -1059,9 +1173,10 @@ pub(super) fn execute(args: Vec<String>) -> ToolResult {
                 bytes: zhfst.index_xml.clone(),
             },
             config,
+            errmodel_meta_id(&zhfst.errmodel),
         )?;
         let acceptor = resolve_thfst_source(&common, &zhfst.acceptor)?;
-        let errmodel = resolve_thfst_source(&common, &zhfst.errmodel)?;
+        let errmodel = resolve_errmodel(&common, &zhfst.errmodel)?;
         return cli::from_code(pack(&common, meta_json, &acceptor, &errmodel, &output));
     }
 
@@ -1093,10 +1208,46 @@ pub(super) fn execute(args: Vec<String>) -> ToolResult {
 
     let meta_source = MetaSource::from_options(&common, &options)?;
     let config = resolve_speller_config(&common, &options, None)?;
-    let meta_json = build_meta_json(&common, meta_source, config)?;
+    let meta_json = build_meta_json(
+        &common,
+        meta_source,
+        config,
+        errmodel_meta_id(errmodel_path),
+    )?;
 
     let acceptor = resolve_thfst_source(&common, acceptor_path)?;
-    let errmodel = resolve_thfst_source(&common, errmodel_path)?;
+    let errmodel = resolve_errmodel(&common, errmodel_path)?;
 
     cli::from_code(pack(&common, meta_json, &acceptor, &errmodel, &output))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{errmodel_meta_id, is_dhfst_file};
+
+    // [spec:hfst:sem:dhfst.bhfst-member/test]
+    #[test]
+    fn tells_dhfst_files_by_their_header() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let dhfst = dir.path().join("errmodel.dhfst");
+        let hfst = dir.path().join("errmodel.hfst");
+        let short = dir.path().join("short");
+        std::fs::write(&dhfst, b"DHFST\x01\0\0").expect("write errmodel.dhfst");
+        std::fs::write(&hfst, b"HFST\0\0\0\0").expect("write errmodel.hfst");
+        std::fs::write(&short, b"DHF").expect("write short");
+        assert!(is_dhfst_file(&dhfst));
+        for not_dhfst in [
+            &hfst,
+            &short,
+            &dir.path().join("missing"),
+            &dir.path().to_path_buf(),
+        ] {
+            assert!(!is_dhfst_file(not_dhfst), "{}", not_dhfst.display());
+        }
+        assert_eq!(
+            errmodel_meta_id(&dhfst.to_string_lossy()),
+            Some("errmodel.default.dhfst")
+        );
+        assert_eq!(errmodel_meta_id(&hfst.to_string_lossy()), None);
+    }
 }

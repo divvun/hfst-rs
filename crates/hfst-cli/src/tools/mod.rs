@@ -149,7 +149,7 @@ pub const TOOLS: &[(&str, ToolRun, &str)] = &[
     (
         "hfst-bhfst",
         bhfst::execute,
-        "Pack a THFST acceptor/errmodel pair (+ speller metadata) into a BHFST archive",
+        "Pack a THFST acceptor and a THFST or DHFST error model (+ speller metadata) into a BHFST archive",
     ),
     (
         "hfst-check-alpha",

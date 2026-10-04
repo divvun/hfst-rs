@@ -2707,6 +2707,43 @@ children (
                     }
                 )
             }
+
+            {
+                id dhfst
+                title "DHFST writer: hfst fst2fst -f dhfst writes divvunspell's compact error model, byte-identical to dhfst-tools write and self-checked; hfst bhfst -e stores a DHFST file as errmodel.default.dhfst"
+                kind @feat
+                implements {
+                    target-impl (
+                        [spec:hfst:def:dhfst.header]
+                        [spec:hfst:sem:dhfst.header]
+                        [spec:hfst:def:dhfst.layout]
+                        [spec:hfst:sem:dhfst.layout]
+                        [spec:hfst:def:dhfst.regular-symbol]
+                        [spec:hfst:def:dhfst.reader]
+                        [spec:hfst:sem:dhfst.reader]
+                        [spec:hfst:def:dhfst.source-model]
+                        [spec:hfst:sem:dhfst.source-model]
+                        [spec:hfst:def:dhfst.write]
+                        [spec:hfst:sem:dhfst.write]
+                        [spec:hfst:sem:dhfst.encoding]
+                        [spec:hfst:sem:dhfst.self-check]
+                        [spec:hfst:def:dhfst.meta]
+                        [spec:hfst:sem:dhfst.meta]
+                        [spec:hfst:def:dhfst.fst2fst]
+                        [spec:hfst:sem:dhfst.fst2fst]
+                        [spec:hfst:def:dhfst.bhfst-member]
+                        [spec:hfst:sem:dhfst.bhfst-member]
+                    )
+                }
+                log (
+                    {
+                        at 2026-10-04T22:19:36.329872Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
+                )
+            }
         )
     }
 

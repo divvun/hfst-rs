@@ -703,4 +703,29 @@ impl_evidence (
     ), covered_claims (
         {impl_name target-impl, rule xfst-cmd.string-escapes}
     )}
+    {id dhfst, covered_rules (
+        dhfst.bhfst-member
+        dhfst.encoding
+        dhfst.fst2fst
+        dhfst.header
+        dhfst.layout
+        dhfst.meta
+        dhfst.reader
+        dhfst.regular-symbol
+        dhfst.self-check
+        dhfst.source-model
+        dhfst.write
+    ), covered_claims (
+        {impl_name target-impl, rule dhfst.bhfst-member}
+        {impl_name target-impl, rule dhfst.encoding}
+        {impl_name target-impl, rule dhfst.fst2fst}
+        {impl_name target-impl, rule dhfst.header}
+        {impl_name target-impl, rule dhfst.layout}
+        {impl_name target-impl, rule dhfst.meta}
+        {impl_name target-impl, rule dhfst.reader}
+        {impl_name target-impl, rule dhfst.regular-symbol}
+        {impl_name target-impl, rule dhfst.self-check}
+        {impl_name target-impl, rule dhfst.source-model}
+        {impl_name target-impl, rule dhfst.write}
+    )}
 )
