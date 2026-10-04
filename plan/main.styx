@@ -429,6 +429,12 @@ children (
                     }
                 )
             }
+
+            {
+                id xre-eval-error-message
+                title "regexp2fst reports evaluation errors as \"XRE parsing failed\": XreCompiler::compile discards the reason when the syntax parses but evaluation fails (e.g. `a -> b || c:d _` → \"Contexts need to be automata\"; `[a:b c] -> d`), so the user gets no cause and no position. The --replace-pass path already surfaces them; do the same for the normal compile"
+                kind @fix
+            }
         )
     }
 
