@@ -22,9 +22,10 @@
 use std::collections::HashMap;
 
 use crate::dhfst::{
-    DefaultKind, DhfstReader, FLAG_DEFAULTS, FLAG_FALLBACK, FLAG_TROPICAL, HEADER_LEN, MAGIC, NONE,
-    SECTION_ENTRY_LEN, VERSION, is_regular_name, tag,
+    DefaultKind, DhfstReader, FLAG_DEFAULTS, FLAG_FALLBACK, FLAG_TROPICAL, HEADER_LEN, NONE,
+    SECTION_ENTRY_LEN, is_regular_name, tag,
 };
+use crate::dhfst_header::DhfstType;
 pub use crate::dhfst_source::{SourceArc, SourceModel, SourceState};
 
 /// The writer the `meta` section names: hfst and its version, the number
@@ -108,7 +109,7 @@ pub struct Written {
 
 /// Encode `model`, check the encoding against it, serialise, read the bytes
 /// back and check them against it again.
-// [spec:hfst:def:dhfst.write]
+// [spec:hfst:def:dhfst.write+1]
 // [spec:hfst:sem:dhfst.write+1]
 pub fn write(model: &SourceModel, options: &WriteOptions) -> crate::error::Result<Written> {
     let threads = match options.threads {
@@ -1025,7 +1026,7 @@ fn counted_section(count: u32, records: &[u8]) -> Vec<u8> {
 }
 
 /// The `meta` section: one line of JSON saying how the file was written.
-// [spec:hfst:def:dhfst.meta]
+// [spec:hfst:def:dhfst.meta+1]
 // [spec:hfst:sem:dhfst.meta+1]
 fn meta_section(model: &SourceModel, options: &WriteOptions, report: &WriteReport) -> Vec<u8> {
     let bound = match options.max_fallback_depth {
@@ -1045,13 +1046,12 @@ fn meta_section(model: &SourceModel, options: &WriteOptions, report: &WriteRepor
 
 /// The header, the section table and the sections, each section at a
 /// multiple of 8 and zero-padded to one.
+// [spec:hfst:sem:dhfst.header+1]
 // [spec:hfst:sem:dhfst.layout]
 fn assemble(sections: &[([u8; 4], Vec<u8>)], flags: u32, max_depth: u32) -> Vec<u8> {
     let table_len = sections.len() * SECTION_ENTRY_LEN;
     let mut out: Vec<u8> = Vec::new();
-    out.extend_from_slice(MAGIC);
-    out.push(VERSION);
-    out.extend_from_slice(&[0u8; 2]);
+    out.extend_from_slice(&DhfstType::ErrorModel.prefix());
     out.extend_from_slice(&flags.to_le_bytes());
     out.extend_from_slice(&(sections.len() as u32).to_le_bytes());
     out.extend_from_slice(&max_depth.to_le_bytes());
@@ -1241,7 +1241,7 @@ pub(crate) mod tests {
         );
     }
 
-    // [spec:hfst:def:dhfst.write/test]
+    // [spec:hfst:def:dhfst.write+1/test]
     #[test]
     fn keeps_the_fallback_depth_bound() {
         let model = edit_model();
@@ -1278,7 +1278,7 @@ pub(crate) mod tests {
         );
     }
 
-    // [spec:hfst:def:dhfst.meta/test]
+    // [spec:hfst:def:dhfst.meta+1/test]
     // [spec:hfst:sem:dhfst.meta+1/test]
     #[test]
     fn meta_names_hfst_and_the_source() {

@@ -623,7 +623,7 @@ pub mod fst2fst {
     /// The format name `-f` takes for the DHFST error-model format. DHFST is
     /// an output mode, not an implementation type: hfst writes it but never
     /// reads it, so it has no place in the type-name vocabulary.
-    // [spec:hfst:def:dhfst.fst2fst]
+    // [spec:hfst:def:dhfst.fst2fst+1]
     const DHFST_FORMAT: &str = "dhfst";
 
     /// The fallback depth bound `-f dhfst` writes with unless told otherwise.
@@ -1243,7 +1243,7 @@ pub mod fst2fst {
             Args::try_parse_from(argv).expect("the options parse")
         }
 
-        // [spec:hfst:def:dhfst.fst2fst/test]
+        // [spec:hfst:def:dhfst.fst2fst+1/test]
         #[test]
         fn resolves_the_dhfst_options() {
             assert!(!args(&["hfst-fst2fst", "-f", "olw"]).writes_dhfst());

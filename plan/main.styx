@@ -2796,6 +2796,28 @@ children (
                     }
                 )
             }
+
+            {
+                id dhfst-type-header
+                title "DHFST header names what the file holds: byte 5 type (1 error model, 2 acceptor, others reserved), byte 6 version 1, byte 7 reserved 0; the reader refuses unknown types by number and loads only type 1; hfst bhfst takes only type 1 as -e and refuses type 2 as -e or -a; fixtures regenerated with the matching dhfst-tools"
+                kind @feat
+                sealed true
+                log (
+                    {
+                        at 2026-10-05T11:26:57.152926Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
+
+                    {
+                        at 2026-10-05T12:05:20.55688Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan complete)"
+                    }
+                )
+            }
         )
     }
 

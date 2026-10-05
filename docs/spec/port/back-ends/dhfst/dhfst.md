@@ -8,24 +8,29 @@ divvunspell's `dhfst-tools`.
 
 There is no C++ HFST ancestor. The contract is divvunspell compatibility:
 the consumer of record is divvunspell's `src/transducer/dhfst/` reader, and
-the reference producer is `dhfst-tools write`. hfst writes plain version 1
-files only. It never reads DHFST as a transducer, so DHFST is an output mode
-of `hfst-fst2fst`, not an implementation type.
+the reference producer is `dhfst-tools write`. hfst writes plain error
+models only (type 1, version 1). It never reads DHFST as a transducer, so
+DHFST is an output mode of `hfst-fst2fst`, not an implementation type.
 
 ## The format
 
-> [spec:hfst:def:dhfst.header]
-> A DHFST file starts with the five bytes `DHFST` and a `u8` format version,
-> which is 1. The 24-byte header then holds two reserved zero bytes, `u32`
-> flags (bit 0 tropical `f32` weights, bit 1 fallback rows used, bit 2
-> default records used, bit 3 a `RULE` section), the `u32` section count,
-> the `u32` longest fallback chain, and a reserved zero `u32`. Every field is
-> little-endian.
+> [spec:hfst:def:dhfst.header+1]
+> A DHFST file starts with the five bytes `DHFST`, a `u8` type, a `u8`
+> format version and a reserved zero byte. Type 1 is an error model and type
+> 2 an acceptor; every other type is reserved. The version is 1 for both
+> types. An error model's 24-byte header then holds `u32` flags (bit 0
+> tropical `f32` weights, bit 1 fallback rows used, bit 2 default records
+> used, bit 3 a `RULE` section), the `u32` section count, the `u32` longest
+> fallback chain, and a reserved zero `u32`. Every field is little-endian.
+> What an acceptor holds after its first eight bytes is not defined here.
 
-> [spec:hfst:sem:dhfst.header]
-> A file is told to be DHFST by its first five bytes. A reader refuses any
-> other version, any flag it does not know, a file without the tropical
-> flag, and a file with a `RULE` section.
+> [spec:hfst:sem:dhfst.header+1]
+> A file is told to be DHFST by its first five bytes. A reader refuses a
+> type it does not know, naming the number, a version it does not read, and
+> a reserved byte that is not zero. The error-model reader refuses any type
+> but 1, saying what the file holds instead, and then any flag it does not
+> know, a file without the tropical flag, and a file with a `RULE` section.
+> The writer writes type 1, version 1.
 
 > [spec:hfst:def:dhfst.layout]
 > After the header comes a table of 24-byte section records (tag, zero `u32`
@@ -150,10 +155,12 @@ of `hfst-fst2fst`, not an implementation type.
 > `errmodel.default.dhfst`, in place of the `errmodel.default.thfst`
 > directory.
 
-> [spec:hfst:sem:dhfst.bhfst-member]
-> `hfst-bhfst -e FILE`, and the error model of `-z`, is a DHFST error model
-> when FILE starts with `DHFST`. It is validated with the reader and stored,
-> unchanged and uncompressed, as `errmodel.default.dhfst`, between the
-> acceptor directory and `meta.json`. Metadata converted from index.xml
+> [spec:hfst:sem:dhfst.bhfst-member+1]
+> `hfst-bhfst -e FILE`, and the error model of `-z`, is DHFST when FILE
+> starts with `DHFST`. It must be an error model (type 1); a file of another
+> type is refused, naming its type. It is validated with the reader and
+> stored, unchanged and uncompressed, as `errmodel.default.dhfst`, between
+> the acceptor directory and `meta.json`. Metadata converted from index.xml
 > gets the error-model id `errmodel.default.dhfst`; a `-m` meta.json stays
-> verbatim. A DHFST file given as the acceptor is refused.
+> verbatim. A DHFST file of any type given as the acceptor is refused,
+> naming its type.

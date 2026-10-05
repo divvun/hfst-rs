@@ -2,8 +2,8 @@
 //! reader. Authored greenfield against
 //! `docs/spec/port/back-ends/dhfst/dhfst.md`. The consumer of record is
 //! divvunspell's `src/transducer/dhfst/` reader, and this reader is a port of
-//! the part of it a plain version 1 file needs: the validation every load
-//! runs, and the arc walk the suggestion search does.
+//! the part of it a plain error model needs: the validation every load runs,
+//! and the arc walk the suggestion search does.
 //!
 //! A state holds explicit entries, at most one default arc per kind (identity
 //! `x:x`, substitution `x:y`, deletion `x:ε`, insertion `ε:y`, over regular
@@ -13,18 +13,17 @@
 //! the pair, else whatever its fallback state answers. Finality is never
 //! inherited.
 //!
-//! The file is a 24-byte header (`DHFST`, version byte 1, flags, section
-//! count, the longest fallback chain), a table of 24-byte section records,
-//! and the sections at 8-byte boundaries: `SYMS`, `CLAS`, `CPAI`, `STAT`,
-//! `ENTR` and the ancillary `meta`. Every field is little-endian. The writer
-//! is [`crate::dhfst_writer`].
+//! Every DHFST file starts with `DHFST`, a type byte (1 an error model, 2 an
+//! acceptor), a version byte (1 for both) and a reserved zero byte. An error
+//! model goes on to a 24-byte header (flags, section count, the longest
+//! fallback chain), a table of 24-byte section records, and the sections at
+//! 8-byte boundaries: `SYMS`, `CLAS`, `CPAI`, `STAT`, `ENTR` and the
+//! ancillary `meta`. Every field is little-endian. The first eight bytes are
+//! read by [`crate::dhfst_header`], and the writer is [`crate::dhfst_writer`].
 
-/// The first five bytes of a DHFST file.
-// [spec:hfst:def:dhfst.header]
-pub const MAGIC: &[u8; 5] = b"DHFST";
-/// The format version this reader reads and the writer writes.
-pub const VERSION: u8 = 1;
-/// Bytes before the section table.
+use crate::dhfst_header::{DhfstType, read_type};
+
+/// Bytes before the section table of an error model.
 pub const HEADER_LEN: usize = 24;
 /// Bytes per section table record.
 pub const SECTION_ENTRY_LEN: usize = 24;
@@ -134,12 +133,6 @@ pub fn pair_kind(
     }
 }
 
-/// Whether `bytes` start the way a DHFST file does, whatever its version.
-// [spec:hfst:sem:dhfst.header]
-pub fn has_magic(bytes: &[u8]) -> bool {
-    bytes.starts_with(MAGIC)
-}
-
 fn u16_at(b: &[u8], at: usize) -> u16 {
     u16::from_le_bytes([b[at], b[at + 1]])
 }
@@ -154,7 +147,7 @@ fn u64_at(b: &[u8], at: usize) -> u64 {
     u64::from_le_bytes(bytes)
 }
 
-fn corrupt(detail: impl std::fmt::Display) -> crate::error::Error {
+pub(crate) fn corrupt(detail: impl std::fmt::Display) -> crate::error::Error {
     crate::err!(Hfst, format!("not a valid DHFST file: {detail}"))
 }
 
@@ -687,26 +680,18 @@ fn check_order(q: u32, previous: &Entry, entry: &Entry) -> crate::error::Result<
     Ok(())
 }
 
-/// The header: magic, version, reserved fields and flags. Answers `(flags,
-/// section count, longest fallback chain)`.
-// [spec:hfst:sem:dhfst.header]
+/// The header: magic, type, version, reserved fields and flags. Answers
+/// `(flags, section count, longest fallback chain)`.
+// [spec:hfst:sem:dhfst.header+1]
 fn parse_header(b: &[u8]) -> crate::error::Result<(u32, usize, u32)> {
-    if !has_magic(b) {
-        return Err(corrupt("it does not start with \"DHFST\""));
-    }
-    match b.get(MAGIC.len()) {
-        Some(&VERSION) => {}
-        Some(version) => {
-            return Err(corrupt(format!(
-                "DHFST version {version}; this reader supports version {VERSION}"
-            )));
-        }
-        None => return Err(corrupt("the header is truncated before its version byte")),
+    let kind = read_type(b)?;
+    if kind != DhfstType::ErrorModel {
+        return Err(crate::dhfst_header::wrong_type(kind, DhfstType::ErrorModel));
     }
     if b.len() < HEADER_LEN {
         return Err(corrupt("the header is truncated"));
     }
-    if u16_at(b, 6) != 0 || u32_at(b, 20) != 0 {
+    if u32_at(b, 20) != 0 {
         return Err(corrupt("reserved header fields are not zero"));
     }
     let flags = u32_at(b, 8);
@@ -891,6 +876,7 @@ fn parse_counted(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::dhfst_header::{PREFIX_LEN, has_magic};
     use crate::dhfst_writer::tests::edit_model;
     use crate::dhfst_writer::{WriteOptions, verify_reader, write};
 
@@ -970,21 +956,48 @@ mod tests {
         assert_eq!(pair_kind(0, 0, false, false), None);
     }
 
-    // [spec:hfst:def:dhfst.header/test]
-    // [spec:hfst:sem:dhfst.header/test]
+    /// `bytes` with byte `at` set to `value`.
+    fn with_byte(bytes: &[u8], at: usize, value: u8) -> Vec<u8> {
+        let mut out = bytes.to_vec();
+        out[at] = value;
+        out
+    }
+
+    // [spec:hfst:def:dhfst.header+1/test]
+    // [spec:hfst:sem:dhfst.header+1/test]
     #[test]
     fn refuses_headers_it_does_not_read() {
         let bytes = written();
-        let mut version_2 = bytes.clone();
-        version_2[5] = 2;
-        let mut reserved = bytes.clone();
-        reserved[6] = 1;
+        assert_eq!(bytes[..PREFIX_LEN], DhfstType::ErrorModel.prefix());
+        assert_eq!(&DhfstType::ErrorModel.prefix(), b"DHFST\x01\x01\0");
+        assert_eq!(&DhfstType::Acceptor.prefix(), b"DHFST\x02\x01\0");
         let flags = u32_at(&bytes, 8);
         for (file, reason) in [
             (b"HFST\0\0\0\0".to_vec(), "does not start with"),
-            (version_2, "DHFST version 2"),
+            (
+                with_byte(&bytes, 5, 2),
+                "this DHFST file is an acceptor (type 2); an error model is type 1",
+            ),
+            (
+                with_byte(&bytes, 5, 9),
+                "DHFST type 9 is not a type this reader knows",
+            ),
+            (with_byte(&bytes, 5, 0), "DHFST type 0 is not a type"),
+            (
+                with_byte(&bytes, 6, 2),
+                "DHFST error model version 2; this reader reads version 1",
+            ),
+            (
+                with_byte(&bytes, 6, 0),
+                "DHFST error model version 0; this reader reads version 1",
+            ),
+            (
+                with_byte(&bytes, 7, 1),
+                "header byte 7 is 1; it is reserved",
+            ),
+            (bytes[..7].to_vec(), "truncated before its type and version"),
             (bytes[..12].to_vec(), "truncated"),
-            (reserved, "reserved"),
+            (with_byte(&bytes, 20, 1), "reserved"),
             (patched(&bytes, 8, flags | 1 << 4), "unknown header flags"),
             (patched(&bytes, 8, flags | FLAG_RULES), "RULE"),
             (patched(&bytes, 8, flags & !FLAG_TROPICAL), "tropical"),
@@ -992,6 +1005,10 @@ mod tests {
             assert_refused(&file, reason);
         }
         assert!(has_magic(&bytes) && !has_magic(b"HFST\0"));
+        assert_eq!(
+            read_type(&with_byte(&bytes, 5, 2)).expect("type 2 is known"),
+            DhfstType::Acceptor
+        );
     }
 
     // [spec:hfst:def:dhfst.layout/test]

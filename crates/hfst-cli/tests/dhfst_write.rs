@@ -101,7 +101,7 @@ fn write_dhfst(dir: &Path, input: &Path, extra: &[&str]) -> Vec<u8> {
 }
 
 // [spec:hfst:sem:dhfst.write+1/test]
-// [spec:hfst:def:dhfst.fst2fst/test]
+// [spec:hfst:def:dhfst.fst2fst+1/test]
 #[test]
 fn writes_what_dhfst_tools_writes() {
     let tmp = tempfile::tempdir().expect("tempdir");
@@ -268,8 +268,8 @@ fn bhfst(acceptor: &Path, errmodel: &Path, index_xml: Option<&Path>, out: &Path)
     output(command.arg("-o").arg(out))
 }
 
-// [spec:hfst:def:dhfst.bhfst-member/test]
-// [spec:hfst:sem:dhfst.bhfst-member/test]
+// [spec:hfst:def:dhfst.bhfst-member+1/test]
+// [spec:hfst:sem:dhfst.bhfst-member+1/test]
 #[test]
 fn bhfst_stores_dhfst_error_model_unchanged() {
     let tmp = tempfile::tempdir().expect("tempdir");
@@ -298,16 +298,53 @@ fn bhfst_stores_dhfst_error_model_unchanged() {
     assert_eq!(meta["acceptor"]["id"], "acceptor.default.thfst");
 }
 
-// [spec:hfst:sem:dhfst.bhfst-member/test]
+// [spec:hfst:sem:dhfst.bhfst-member+1/test]
+// [spec:hfst:sem:dhfst.header+1/test]
 #[test]
 fn bhfst_refuses_a_broken_or_misplaced_dhfst() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let dhfst = fixture("errmodel.dhfst");
     let broken = tmp.path().join("broken.dhfst");
     std::fs::write(&broken, &read(&dhfst)[..100]).expect("write broken.dhfst");
+    // The same bytes under other header type and version bytes.
+    let retyped = |name: &str, type_byte: u8, version: u8| {
+        let path = tmp.path().join(name);
+        let mut bytes = read(&dhfst);
+        bytes[5] = type_byte;
+        bytes[6] = version;
+        std::fs::write(&path, bytes).unwrap_or_else(|e| panic!("write {name}: {e}"));
+        path
+    };
+    let acceptor = retyped("acceptor.dhfst", 2, 1);
+    let type_9 = retyped("type9.dhfst", 9, 1);
+    let untyped = retyped("untyped.dhfst", 1, 0);
     let out = tmp.path().join("out.bhfst");
     for (acceptor, errmodel, reason) in [
-        (dhfst.clone(), dhfst.clone(), "only --errmodel can be DHFST"),
+        (
+            dhfst.clone(),
+            dhfst.clone(),
+            "is a DHFST error model (type 1); only --errmodel can be DHFST",
+        ),
+        (
+            acceptor.clone(),
+            dhfst.clone(),
+            "is a DHFST acceptor (type 2); a BHFST archive stores its acceptor as THFST",
+        ),
+        (
+            fixture("errmodel.hfst"),
+            acceptor,
+            "is a DHFST acceptor (type 2); an error model is type 1",
+        ),
+        (
+            fixture("errmodel.hfst"),
+            type_9,
+            "DHFST type 9 is not a type this reader knows",
+        ),
+        (
+            fixture("errmodel.hfst"),
+            untyped,
+            "DHFST error model version 0; this reader reads version 1",
+        ),
         (fixture("errmodel.hfst"), broken, "not a DHFST error model"),
     ] {
         let result = bhfst(&acceptor, &errmodel, None, &out);

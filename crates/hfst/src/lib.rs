@@ -43,6 +43,7 @@ pub mod convert_ol_transducer;
 pub mod convert_transducer_format;
 pub mod convert_tropical_weight_transducer;
 pub mod dhfst;
+pub mod dhfst_header;
 pub mod dhfst_source;
 pub mod dhfst_writer;
 pub mod diag;
