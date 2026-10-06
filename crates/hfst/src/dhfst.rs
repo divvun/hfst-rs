@@ -133,15 +133,15 @@ pub fn pair_kind(
     }
 }
 
-fn u16_at(b: &[u8], at: usize) -> u16 {
+pub(crate) fn u16_at(b: &[u8], at: usize) -> u16 {
     u16::from_le_bytes([b[at], b[at + 1]])
 }
 
-fn u32_at(b: &[u8], at: usize) -> u32 {
+pub(crate) fn u32_at(b: &[u8], at: usize) -> u32 {
     u32::from_le_bytes([b[at], b[at + 1], b[at + 2], b[at + 3]])
 }
 
-fn u64_at(b: &[u8], at: usize) -> u64 {
+pub(crate) fn u64_at(b: &[u8], at: usize) -> u64 {
     let mut bytes = [0u8; 8];
     bytes.copy_from_slice(&b[at..at + 8]);
     u64::from_le_bytes(bytes)
@@ -219,7 +219,7 @@ impl<'a> DhfstReader<'a> {
             })
         };
 
-        let names = parse_symbols(bytes, need(tag::SYMS)?)?;
+        let names = parse_symbols(bytes, need(tag::SYMS)?, MAX_SYMBOLS)?;
         let n_symbols = names.len() as u32;
         let words = names.len().div_ceil(64);
         let mut regular = vec![0u64; words];
@@ -682,7 +682,7 @@ fn check_order(q: u32, previous: &Entry, entry: &Entry) -> crate::error::Result<
 
 /// The header: magic, type, version, reserved fields and flags. Answers
 /// `(flags, section count, longest fallback chain)`.
-// [spec:hfst:sem:dhfst.header+1]
+// [spec:hfst:sem:dhfst.header+2]
 fn parse_header(b: &[u8]) -> crate::error::Result<(u32, usize, u32)> {
     let kind = read_type(b)?;
     if kind != DhfstType::ErrorModel {
@@ -757,13 +757,17 @@ fn parse_sections(b: &[u8], n_sections: usize) -> crate::error::Result<Vec<Secti
 }
 
 /// `SYMS`: `u32 n; u32 offsets[n + 1]; u8 names[]`, UTF-8, symbol 0 being
-/// `@_EPSILON_SYMBOL_@`.
-fn parse_symbols(b: &[u8], (syms, syms_end): (usize, usize)) -> crate::error::Result<Vec<String>> {
+/// `@_EPSILON_SYMBOL_@`, and at most `max_symbols` symbols.
+pub(crate) fn parse_symbols(
+    b: &[u8],
+    (syms, syms_end): (usize, usize),
+    max_symbols: u32,
+) -> crate::error::Result<Vec<String>> {
     if syms_end - syms < 4 {
         return Err(corrupt("SYMS is truncated"));
     }
     let n_symbols = u32_at(b, syms);
-    if n_symbols == 0 || n_symbols > MAX_SYMBOLS {
+    if n_symbols == 0 || n_symbols > max_symbols {
         return Err(corrupt(format!("{n_symbols} symbols is out of range")));
     }
     let blob = syms + 4 + 4 * (n_symbols as usize + 1);
@@ -963,8 +967,8 @@ mod tests {
         out
     }
 
-    // [spec:hfst:def:dhfst.header+1/test]
-    // [spec:hfst:sem:dhfst.header+1/test]
+    // [spec:hfst:def:dhfst.header+2/test]
+    // [spec:hfst:sem:dhfst.header+2/test]
     #[test]
     fn refuses_headers_it_does_not_read() {
         let bytes = written();

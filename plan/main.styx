@@ -2818,6 +2818,38 @@ children (
                     }
                 )
             }
+
+            {
+                id dhfst-acceptor
+                title "DHFST acceptor writer (type 2): hfst fst2fst -f dhfst --dhfst-type acceptor writes divvunspell's acceptor layout, byte-identical to dhfst-tools acceptor but for the meta writer, self-checked incl. lookahead distances; hfst bhfst -a stores a type-2 file as acceptor.default.dhfst"
+                kind @feat
+                implements {
+                    target-impl (
+                        [spec:hfst:def:dhfst.acceptor-layout]
+                        [spec:hfst:sem:dhfst.acceptor-layout]
+                        [spec:hfst:sem:dhfst.acceptor-placement]
+                        [spec:hfst:def:dhfst.acceptor-reader]
+                        [spec:hfst:sem:dhfst.acceptor-reader]
+                        [spec:hfst:def:dhfst.acceptor-source]
+                        [spec:hfst:sem:dhfst.acceptor-source]
+                        [spec:hfst:def:dhfst.acceptor-distance]
+                        [spec:hfst:sem:dhfst.acceptor-distance]
+                        [spec:hfst:def:dhfst.acceptor-write]
+                        [spec:hfst:sem:dhfst.acceptor-write]
+                        [spec:hfst:sem:dhfst.acceptor-self-check]
+                        [spec:hfst:def:dhfst.acceptor-meta]
+                        [spec:hfst:sem:dhfst.acceptor-meta]
+                    )
+                }
+                log (
+                    {
+                        at 2026-10-06T10:24:11.450836Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
+                )
+            }
         )
     }
 

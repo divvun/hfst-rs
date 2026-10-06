@@ -743,4 +743,23 @@ impl_evidence (
     ), rule_versions_seen (
         {id xre-finalization.root-optimize, version 0}
     )}
+    {id dhfst-acceptor, covered_rules (
+        dhfst.acceptor-distance
+        dhfst.acceptor-layout
+        dhfst.acceptor-meta
+        dhfst.acceptor-placement
+        dhfst.acceptor-reader
+        dhfst.acceptor-self-check
+        dhfst.acceptor-source
+        dhfst.acceptor-write
+    ), covered_claims (
+        {impl_name target-impl, rule dhfst.acceptor-distance}
+        {impl_name target-impl, rule dhfst.acceptor-layout}
+        {impl_name target-impl, rule dhfst.acceptor-meta}
+        {impl_name target-impl, rule dhfst.acceptor-placement}
+        {impl_name target-impl, rule dhfst.acceptor-reader}
+        {impl_name target-impl, rule dhfst.acceptor-self-check}
+        {impl_name target-impl, rule dhfst.acceptor-source}
+        {impl_name target-impl, rule dhfst.acceptor-write}
+    )}
 )

@@ -613,6 +613,7 @@ pub mod fst2fst {
     };
     use crate::hfst_tool_metadata::{hfst_get_name, hfst_set_formula_unary, hfst_set_name_unary};
     use clap::ArgAction;
+    use hfst::dhfst_acceptor_writer::{AcceptorOptions, AcceptorSource, WrittenAcceptor};
     use hfst::dhfst_writer::{SourceModel, WriteOptions, Written};
     use hfst::hfst_data_types::ImplementationType;
     use hfst::hfst_input_stream::HfstInputStream;
@@ -620,11 +621,22 @@ pub mod fst2fst {
     use hfst::hfst_transducer::AnyTransducer;
     use std::io::Write;
 
-    /// The format name `-f` takes for the DHFST error-model format. DHFST is
-    /// an output mode, not an implementation type: hfst writes it but never
-    /// reads it, so it has no place in the type-name vocabulary.
-    // [spec:hfst:def:dhfst.fst2fst+1]
+    /// The format name `-f` takes for DHFST. DHFST is an output mode, not an
+    /// implementation type: hfst writes it but never reads it, so it has no
+    /// place in the type-name vocabulary.
+    // [spec:hfst:def:dhfst.fst2fst+2]
     const DHFST_FORMAT: &str = "dhfst";
+
+    /// What a DHFST file is to hold, as `--dhfst-type` names it. The type is
+    /// never guessed from the transducer.
+    // [spec:hfst:def:dhfst.fst2fst+2]
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    enum DhfstKind {
+        /// `--dhfst-type errmodel`: an error model, type 1
+        ErrorModel,
+        /// `--dhfst-type acceptor`: an acceptor, type 2
+        Acceptor,
+    }
 
     /// The fallback depth bound `-f dhfst` writes with unless told otherwise.
     const DHFST_DEFAULT_DEPTH: u32 = 4;
@@ -664,12 +676,18 @@ pub mod fst2fst {
         #[arg(short = 'f', long = "format", value_name = "FMT", action = ArgAction::Append)]
         format: Vec<String>,
 
-        /// With -f dhfst, the longest fallback chain a state may have
-        /// (default 4)
+        /// With -f dhfst, what the file holds: errmodel or acceptor
+        /// (required)
+        #[arg(long = "dhfst-type", value_name = "TYPE")]
+        dhfst_type: Option<String>,
+
+        /// With -f dhfst --dhfst-type errmodel, the longest fallback chain a
+        /// state may have (default 4)
         #[arg(long = "max-fallback-depth", value_name = "N")]
         max_fallback_depth: Option<u32>,
 
-        /// With -f dhfst, allow fallback chains of any length
+        /// With -f dhfst --dhfst-type errmodel, allow fallback chains of any
+        /// length
         #[arg(long = "unbounded-fallback")]
         unbounded_fallback: bool,
 
@@ -733,7 +751,7 @@ pub mod fst2fst {
                             .unwrap_or_default();
                         // DHFST is written from weighted optimized lookup, so
                         // that is the type the transducers convert to.
-                        // [spec:hfst:sem:dhfst.fst2fst+1]
+                        // [spec:hfst:sem:dhfst.fst2fst+2]
                         let ty = if name.eq_ignore_ascii_case(DHFST_FORMAT) {
                             ImplementationType::HFST_OLW_TYPE
                         } else {
@@ -769,6 +787,15 @@ pub mod fst2fst {
                 .any(|f| f.eq_ignore_ascii_case(DHFST_FORMAT))
         }
 
+        /// What `--dhfst-type` names, if it was given.
+        fn dhfst_kind(&self) -> Option<DhfstKind> {
+            match self.dhfst_type.as_deref() {
+                Some("errmodel") => Some(DhfstKind::ErrorModel),
+                Some("acceptor") => Some(DhfstKind::Acceptor),
+                _ => None,
+            }
+        }
+
         /// The fallback depth bound for DHFST output; `None` for no bound.
         fn dhfst_depth(&self) -> Option<u32> {
             if self.unbounded_fallback {
@@ -778,12 +805,24 @@ pub mod fst2fst {
             }
         }
 
-        /// Refuse the DHFST options anywhere they would do nothing.
-        // [spec:hfst:sem:dhfst.fst2fst+1]
+        /// Refuse the DHFST options anywhere they would do nothing, and
+        /// `-f dhfst` without its type.
+        // [spec:hfst:sem:dhfst.fst2fst+2]
         fn validate_dhfst(&self, opts: &CommonOptions) -> ToolResult {
             let depth_given = self.max_fallback_depth.is_some() || self.unbounded_fallback;
-            let refusal = if !self.writes_dhfst() && depth_given {
+            let refusal = if self.dhfst_type.is_some() && self.dhfst_kind().is_none() {
+                Some("--dhfst-type takes errmodel or acceptor")
+            } else if !self.writes_dhfst() && self.dhfst_type.is_some() {
+                Some("--dhfst-type applies only to -f dhfst")
+            } else if self.writes_dhfst() && self.dhfst_type.is_none() {
+                Some("-f dhfst needs --dhfst-type errmodel or --dhfst-type acceptor")
+            } else if !self.writes_dhfst() && depth_given {
                 Some("--max-fallback-depth and --unbounded-fallback apply only to -f dhfst")
+            } else if self.dhfst_kind() == Some(DhfstKind::Acceptor) && depth_given {
+                Some(
+                    "--max-fallback-depth and --unbounded-fallback apply only to \
+                     --dhfst-type errmodel",
+                )
             } else if self.max_fallback_depth.is_some() && self.unbounded_fallback {
                 Some("--max-fallback-depth and --unbounded-fallback are mutually exclusive")
             } else if self.writes_dhfst() && self.use_backend_format {
@@ -878,9 +917,9 @@ pub mod fst2fst {
         hfst_format: bool,
         /// '-Q/--quick': relax optimized-lookup table packing.
         options: String,
-        /// '-f dhfst': write DHFST from the weighted optimized lookup the
-        /// transducer converts to.
-        dhfst: bool,
+        /// '-f dhfst --dhfst-type': write DHFST of this type from the weighted
+        /// optimized lookup the transducer converts to.
+        dhfst: Option<DhfstKind>,
         /// '--max-fallback-depth' / '--unbounded-fallback': the DHFST fallback
         /// depth bound, `None` for no bound.
         dhfst_depth: Option<u32>,
@@ -969,14 +1008,15 @@ pub mod fst2fst {
         0
     }
 
-    /// Write the one transducer of `instream` as DHFST: converted to weighted
-    /// optimized lookup exactly as `-f olw` converts it, then encoded and
-    /// self-checked by the DHFST writer. Nothing is written unless the check
-    /// passes.
-    // [spec:hfst:sem:dhfst.fst2fst+1]
+    /// Write the one transducer of `instream` as DHFST of the type asked
+    /// for: converted to weighted optimized lookup exactly as `-f olw`
+    /// converts it, then encoded and self-checked by the DHFST writer.
+    /// Nothing is written unless the check passes.
+    // [spec:hfst:sem:dhfst.fst2fst+2]
     fn write_dhfst(
         common: &CommonOptions,
         options: &Options,
+        kind: DhfstKind,
         instream: &mut HfstInputStream<'_>,
     ) -> i32 {
         let orig = match instream.read() {
@@ -1030,14 +1070,6 @@ pub mod fst2fst {
                 return 1;
             }
         };
-        let model = match SourceModel::from_olw(&olw) {
-            Ok(m) => m,
-            Err(e) => {
-                error(common, 1, 0, &format!("{e}"));
-                return 1;
-            }
-        };
-        drop(olw);
         // The meta section names the source by its file name, as dhfst-tools
         // does, so from the same file the two differ only in the writer.
         let source_name = match common.input_filename.as_str() {
@@ -1047,12 +1079,11 @@ pub mod fst2fst {
                 .map(|n| n.to_string_lossy().into_owned())
                 .unwrap_or_default(),
         };
-        let write_options = WriteOptions {
-            max_fallback_depth: options.dhfst_depth,
-            threads: 0,
-            source_name,
+        let written = match kind {
+            DhfstKind::ErrorModel => write_errmodel(options, olw, source_name),
+            DhfstKind::Acceptor => write_acceptor(&olw, source_name),
         };
-        let written = match hfst::dhfst_writer::write(&model, &write_options) {
+        let (bytes, report) = match written {
             Ok(w) => w,
             Err(e) => {
                 error(common, 1, 0, &format!("{e}"));
@@ -1061,7 +1092,7 @@ pub mod fst2fst {
         };
         let saved = common
             .output_writer()
-            .and_then(|mut out| out.write_all(&written.bytes).and_then(|()| out.flush()));
+            .and_then(|mut out| out.write_all(&bytes).and_then(|()| out.flush()));
         if let Err(e) = saved {
             error(
                 common,
@@ -1071,8 +1102,78 @@ pub mod fst2fst {
             );
             return 1;
         }
-        verbose_print(common, &dhfst_report(&model, &written, options.dhfst_depth));
+        verbose_print(common, &report);
         0
+    }
+
+    /// Write `olw` as a DHFST error model. Answers the bytes and the
+    /// writer's report.
+    fn write_errmodel(
+        options: &Options,
+        olw: hfst::hfst_transducer::HfstTransducer<
+            hfst::transducer::Transducer<hfst::transducer::WeightedTables>,
+        >,
+        source_name: String,
+    ) -> hfst::error::Result<(Vec<u8>, String)> {
+        let model = SourceModel::from_olw(&olw)?;
+        drop(olw);
+        let write_options = WriteOptions {
+            max_fallback_depth: options.dhfst_depth,
+            threads: 0,
+            source_name,
+        };
+        let written = hfst::dhfst_writer::write(&model, &write_options)?;
+        let report = dhfst_report(&model, &written, options.dhfst_depth);
+        Ok((written.bytes, report))
+    }
+
+    /// Write `olw` as a DHFST acceptor. Answers the bytes and the writer's
+    /// report.
+    fn write_acceptor(
+        olw: &hfst::hfst_transducer::HfstTransducer<
+            hfst::transducer::Transducer<hfst::transducer::WeightedTables>,
+        >,
+        source_name: String,
+    ) -> hfst::error::Result<(Vec<u8>, String)> {
+        let source = AcceptorSource::new(olw)?;
+        let written = hfst::dhfst_acceptor_writer::write(
+            &source,
+            &AcceptorOptions {
+                threads: 0,
+                source_name,
+            },
+        )?;
+        let report = acceptor_report(&written);
+        Ok((written.bytes, report))
+    }
+
+    /// The DHFST acceptor writer's report, as `-v` prints it.
+    fn acceptor_report(w: &WrittenAcceptor) -> String {
+        format!(
+            "DHFST acceptor: {} states numbered below {}, {} arcs ({} free) in {} slots \
+             ({} used, {:.1}%), {} list records, {} weights, {} free pairs, {}\n\
+             checked: {} (state, symbol) answers read back from the written bytes, \
+             all equal to the source ({} free-symbol quirks)\n\
+             wrote {} bytes of DHFST\n",
+            w.states,
+            w.ids,
+            w.arcs,
+            w.free_arcs,
+            w.slots,
+            w.used_slots,
+            100.0 * w.used_slots as f64 / w.slots.max(1) as f64,
+            w.list_records,
+            w.weights,
+            w.free_pairs,
+            if w.distances {
+                "distances to a final state stored"
+            } else {
+                "every distance to a final state 0, none stored"
+            },
+            w.checked,
+            w.free_symbol_quirks,
+            w.bytes.len(),
+        )
     }
 
     /// The DHFST writer's report, as `-v` prints it.
@@ -1139,7 +1240,7 @@ pub mod fst2fst {
             } else {
                 String::new()
             },
-            dhfst: args.writes_dhfst(),
+            dhfst: args.dhfst_kind().filter(|_| args.writes_dhfst()),
             dhfst_depth: args.dhfst_depth(),
         };
         // close buffers, we use streams
@@ -1152,8 +1253,14 @@ pub mod fst2fst {
                 common.input_filename, common.output_filename
             ),
         );
-        if options.dhfst {
-            verbose_print(&common, "Writing a DHFST error model\n");
+        if let Some(kind) = options.dhfst {
+            verbose_print(
+                &common,
+                match kind {
+                    DhfstKind::ErrorModel => "Writing a DHFST error model\n",
+                    DhfstKind::Acceptor => "Writing a DHFST acceptor\n",
+                },
+            );
         } else if options.hfst_format {
             verbose_print(
                 &common,
@@ -1206,8 +1313,8 @@ pub mod fst2fst {
 
         // DHFST bypasses the transducer output stream: the output is created
         // only once the written bytes have passed the self-check.
-        if options.dhfst {
-            return cli::from_code(write_dhfst(&common, &options, &mut instream));
+        if let Some(kind) = options.dhfst {
+            return cli::from_code(write_dhfst(&common, &options, kind, &mut instream));
         }
 
         let mut outstream = match if output_opened {
@@ -1236,14 +1343,14 @@ pub mod fst2fst {
 
     #[cfg(test)]
     mod tests {
-        use super::Args;
+        use super::{Args, DhfstKind};
         use clap::Parser;
 
         fn args(argv: &[&str]) -> Args {
             Args::try_parse_from(argv).expect("the options parse")
         }
 
-        // [spec:hfst:def:dhfst.fst2fst+1/test]
+        // [spec:hfst:def:dhfst.fst2fst+2/test]
         #[test]
         fn resolves_the_dhfst_options() {
             assert!(!args(&["hfst-fst2fst", "-f", "olw"]).writes_dhfst());
@@ -1254,6 +1361,16 @@ pub mod fst2fst {
             assert_eq!(bounded.dhfst_depth(), Some(1));
             let unbounded = args(&["hfst-fst2fst", "-f", "dhfst", "--unbounded-fallback"]);
             assert_eq!(unbounded.dhfst_depth(), None);
+            assert_eq!(default.dhfst_kind(), None);
+            for (name, kind) in [
+                ("errmodel", DhfstKind::ErrorModel),
+                ("acceptor", DhfstKind::Acceptor),
+            ] {
+                let typed = args(&["hfst-fst2fst", "-f", "dhfst", "--dhfst-type", name]);
+                assert_eq!(typed.dhfst_kind(), Some(kind));
+            }
+            let unknown = args(&["hfst-fst2fst", "-f", "dhfst", "--dhfst-type", "x"]);
+            assert_eq!(unknown.dhfst_kind(), None);
         }
     }
 }

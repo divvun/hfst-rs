@@ -1,21 +1,21 @@
 //! The eight bytes every DHFST file starts with: `DHFST`, a type byte, a
 //! version byte and a reserved zero byte. Authored greenfield against
 //! `docs/spec/port/back-ends/dhfst/dhfst.md`, after divvunspell's
-//! `TransducerFormat::detect`. The type says what the file holds; this crate
-//! reads and writes only error models, type 1. The rest of an error model is
-//! [`crate::dhfst`].
+//! `TransducerFormat::detect`. The type says what the file holds: the rest of
+//! an error model, type 1, is [`crate::dhfst`], and the rest of an acceptor,
+//! type 2, is [`crate::dhfst_acceptor`].
 
 use crate::dhfst::corrupt;
 
 /// The first five bytes of a DHFST file.
-// [spec:hfst:def:dhfst.header+1]
+// [spec:hfst:def:dhfst.header+2]
 pub const MAGIC: &[u8; 5] = b"DHFST";
 /// Bytes every DHFST file starts with: the magic, the type, the version and
 /// a reserved byte.
 pub const PREFIX_LEN: usize = 8;
 
 /// What a DHFST file holds, as byte 5 of its header says.
-// [spec:hfst:def:dhfst.header+1]
+// [spec:hfst:def:dhfst.header+2]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum DhfstType {
     /// An error model, type 1.
@@ -80,7 +80,7 @@ impl std::fmt::Display for DhfstType {
 
 /// Whether `bytes` start the way a DHFST file does, whatever its type and
 /// version.
-// [spec:hfst:sem:dhfst.header+1]
+// [spec:hfst:sem:dhfst.header+2]
 pub fn has_magic(bytes: &[u8]) -> bool {
     bytes.starts_with(MAGIC)
 }
@@ -88,7 +88,7 @@ pub fn has_magic(bytes: &[u8]) -> bool {
 /// The type a DHFST file's first eight bytes declare. A type this reader does
 /// not know is refused by its number, and so is a version of a known type
 /// other than the one it reads, and a reserved byte that is not zero.
-// [spec:hfst:sem:dhfst.header+1]
+// [spec:hfst:sem:dhfst.header+2]
 pub fn read_type(b: &[u8]) -> crate::error::Result<DhfstType> {
     if !has_magic(b) {
         return Err(corrupt("it does not start with \"DHFST\""));

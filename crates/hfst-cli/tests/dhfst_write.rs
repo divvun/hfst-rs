@@ -1,4 +1,5 @@
-//! `hfst fst2fst -f dhfst` and `hfst bhfst -e FILE.dhfst`, end to end.
+//! `hfst fst2fst -f dhfst --dhfst-type errmodel` and `hfst bhfst -e
+//! FILE.dhfst`, end to end.
 //!
 //! `tests/fixtures/dhfst/` holds a small error model (`errmodel.att`, and
 //! `errmodel.hfst`, its weighted optimized lookup) and what divvunspell's
@@ -79,13 +80,13 @@ fn txt2fst(att: &Path, out: &Path) {
     );
 }
 
-/// `hfst fst2fst -f dhfst` of `input` with `extra` options, written to a file
-/// in `dir`; answers the bytes.
+/// `hfst fst2fst -f dhfst --dhfst-type errmodel` of `input` with `extra`
+/// options, written to a file in `dir`; answers the bytes.
 fn write_dhfst(dir: &Path, input: &Path, extra: &[&str]) -> Vec<u8> {
     let out = dir.join("out.dhfst");
     let result = output(
         hfst()
-            .args(["fst2fst", "-f", "dhfst"])
+            .args(["fst2fst", "-f", "dhfst", "--dhfst-type", "errmodel"])
             .args(extra)
             .arg("-i")
             .arg(input)
@@ -101,7 +102,7 @@ fn write_dhfst(dir: &Path, input: &Path, extra: &[&str]) -> Vec<u8> {
 }
 
 // [spec:hfst:sem:dhfst.write+1/test]
-// [spec:hfst:def:dhfst.fst2fst+1/test]
+// [spec:hfst:def:dhfst.fst2fst+2/test]
 #[test]
 fn writes_what_dhfst_tools_writes() {
     let tmp = tempfile::tempdir().expect("tempdir");
@@ -115,7 +116,7 @@ fn writes_what_dhfst_tools_writes() {
     }
 }
 
-// [spec:hfst:sem:dhfst.fst2fst+1/test]
+// [spec:hfst:sem:dhfst.fst2fst+2/test]
 // [spec:hfst:sem:dhfst.source-model/test]
 #[test]
 fn converts_other_formats_as_olw_does() {
@@ -127,14 +128,22 @@ fn converts_other_formats_as_olw_does() {
     assert_dhfst_tools_but_writer(&write_dhfst(tmp.path(), &tropical, &[]), "errmodel.dhfst");
 }
 
-// [spec:hfst:sem:dhfst.fst2fst+1/test]
+// [spec:hfst:sem:dhfst.fst2fst+2/test]
 // [spec:hfst:sem:dhfst.meta+1/test]
 #[test]
 fn writes_standard_output_and_reports_with_verbose() {
     let input = fixture("errmodel.hfst");
     let result = output(
         hfst()
-            .args(["fst2fst", "-v", "-f", "dhfst", "-i"])
+            .args([
+                "fst2fst",
+                "-v",
+                "-f",
+                "dhfst",
+                "--dhfst-type",
+                "errmodel",
+                "-i",
+            ])
             .arg(&input),
     );
     assert!(
@@ -148,7 +157,7 @@ fn writes_standard_output_and_reports_with_verbose() {
     // From standard input the source has no name.
     let piped = output(
         hfst()
-            .args(["fst2fst", "-f", "dhfst"])
+            .args(["fst2fst", "-f", "dhfst", "--dhfst-type", "errmodel"])
             .stdin(std::fs::File::open(&input).expect("open the fixture")),
     );
     assert!(piped.status.success(), "fst2fst failed: {}", stderr(&piped));
@@ -156,7 +165,7 @@ fn writes_standard_output_and_reports_with_verbose() {
     assert!(reader.meta().is_some_and(|m| m.contains("\"source\":\"\"")));
 }
 
-// [spec:hfst:sem:dhfst.fst2fst+1/test]
+// [spec:hfst:sem:dhfst.fst2fst+2/test]
 #[test]
 fn refuses_what_it_cannot_write() {
     let tmp = tempfile::tempdir().expect("tempdir");
@@ -171,13 +180,40 @@ fn refuses_what_it_cannot_write() {
             &[
                 "-f",
                 "dhfst",
+                "--dhfst-type",
+                "errmodel",
                 "--max-fallback-depth",
                 "2",
                 "--unbounded-fallback",
             ][..],
             "mutually exclusive",
         ),
-        (&["-f", "dhfst", "-b"][..], "-b does not apply"),
+        (
+            &["-f", "dhfst", "--dhfst-type", "errmodel", "-b"][..],
+            "-b does not apply",
+        ),
+        (
+            &["-f", "dhfst"][..],
+            "-f dhfst needs --dhfst-type errmodel or --dhfst-type acceptor",
+        ),
+        (
+            &["-f", "olw", "--dhfst-type", "errmodel"][..],
+            "--dhfst-type applies only to -f dhfst",
+        ),
+        (
+            &[
+                "-f",
+                "dhfst",
+                "--dhfst-type",
+                "acceptor",
+                "--unbounded-fallback",
+            ][..],
+            "apply only to --dhfst-type errmodel",
+        ),
+        (
+            &["-f", "dhfst", "--dhfst-type", "lexicon"][..],
+            "--dhfst-type takes errmodel or acceptor",
+        ),
     ] {
         let result = output(
             hfst()
@@ -207,7 +243,7 @@ fn refuses_what_it_cannot_write() {
     for (source, reason) in [(&twice, "more than one"), (&flagged, "flag diacritic")] {
         let result = output(
             hfst()
-                .args(["fst2fst", "-f", "dhfst", "-i"])
+                .args(["fst2fst", "-f", "dhfst", "--dhfst-type", "errmodel", "-i"])
                 .arg(source)
                 .arg("-o")
                 .arg(&out),
@@ -268,8 +304,8 @@ fn bhfst(acceptor: &Path, errmodel: &Path, index_xml: Option<&Path>, out: &Path)
     output(command.arg("-o").arg(out))
 }
 
-// [spec:hfst:def:dhfst.bhfst-member+1/test]
-// [spec:hfst:sem:dhfst.bhfst-member+1/test]
+// [spec:hfst:def:dhfst.bhfst-member+2/test]
+// [spec:hfst:sem:dhfst.bhfst-member+2/test]
 #[test]
 fn bhfst_stores_dhfst_error_model_unchanged() {
     let tmp = tempfile::tempdir().expect("tempdir");
@@ -298,8 +334,8 @@ fn bhfst_stores_dhfst_error_model_unchanged() {
     assert_eq!(meta["acceptor"]["id"], "acceptor.default.thfst");
 }
 
-// [spec:hfst:sem:dhfst.bhfst-member+1/test]
-// [spec:hfst:sem:dhfst.header+1/test]
+// [spec:hfst:sem:dhfst.bhfst-member+2/test]
+// [spec:hfst:sem:dhfst.header+2/test]
 #[test]
 fn bhfst_refuses_a_broken_or_misplaced_dhfst() {
     let tmp = tempfile::tempdir().expect("tempdir");
@@ -323,12 +359,12 @@ fn bhfst_refuses_a_broken_or_misplaced_dhfst() {
         (
             dhfst.clone(),
             dhfst.clone(),
-            "is a DHFST error model (type 1); only --errmodel can be DHFST",
+            "is a DHFST error model (type 1); an acceptor is type 2",
         ),
         (
             acceptor.clone(),
             dhfst.clone(),
-            "is a DHFST acceptor (type 2); a BHFST archive stores its acceptor as THFST",
+            "is not a DHFST acceptor divvunspell can load",
         ),
         (
             fixture("errmodel.hfst"),

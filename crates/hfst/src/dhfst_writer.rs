@@ -34,7 +34,7 @@ pub use crate::dhfst_source::{SourceArc, SourceModel, SourceState};
 // [spec:hfst:sem:dhfst.meta+1]
 pub const WRITER: &str = concat!("Divvun HFST v", env!("CARGO_PKG_VERSION"));
 
-fn verification(detail: impl std::fmt::Display) -> crate::error::Error {
+pub(crate) fn verification(detail: impl std::fmt::Display) -> crate::error::Error {
     crate::err!(
         Hfst,
         format!("DHFST self-check failed, nothing was written: {detail}")
@@ -223,7 +223,7 @@ fn verify_reader_state(
 
 /// Run `work` over `0..n` split into one contiguous range per thread, and
 /// answer the results in range order.
-fn in_chunks<T, F>(n: usize, threads: usize, work: F) -> Vec<Result<T, String>>
+pub(crate) fn in_chunks<T, F>(n: usize, threads: usize, work: F) -> Vec<Result<T, String>>
 where
     T: Send,
     F: Fn(std::ops::Range<usize>) -> Result<T, String> + Sync,
@@ -975,7 +975,7 @@ fn chain_report(enc: &Encoded, report: &mut WriteReport) -> u32 {
 }
 
 /// `SYMS`: `u32 n; u32 offsets[n + 1]; u8 names[]`.
-fn symbols_section(symbols: &[String]) -> Vec<u8> {
+pub(crate) fn symbols_section(symbols: &[String]) -> Vec<u8> {
     let mut syms: Vec<u8> = Vec::new();
     syms.extend_from_slice(&(symbols.len() as u32).to_le_bytes());
     let mut off = 0u32;
@@ -1046,7 +1046,7 @@ fn meta_section(model: &SourceModel, options: &WriteOptions, report: &WriteRepor
 
 /// The header, the section table and the sections, each section at a
 /// multiple of 8 and zero-padded to one.
-// [spec:hfst:sem:dhfst.header+1]
+// [spec:hfst:sem:dhfst.header+2]
 // [spec:hfst:sem:dhfst.layout]
 fn assemble(sections: &[([u8; 4], Vec<u8>)], flags: u32, max_depth: u32) -> Vec<u8> {
     let table_len = sections.len() * SECTION_ENTRY_LEN;

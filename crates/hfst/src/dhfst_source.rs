@@ -217,7 +217,7 @@ fn check_state(
 /// parser tells one: `@`, an operator, `.`, at least five bytes, `@` last.
 /// `Err` for a name of that shape whose operator divvunspell does not know,
 /// since it then refuses to load the whole model.
-fn flag_name(name: &str) -> crate::error::Result<bool> {
+pub(crate) fn flag_name(name: &str) -> crate::error::Result<bool> {
     let shaped = name.len() >= 5
         && name.starts_with('@')
         && name.ends_with('@')
@@ -231,21 +231,21 @@ fn flag_name(name: &str) -> crate::error::Result<bool> {
 }
 
 /// The transition-table half of the optimized-lookup address space.
-const TARGET_TABLE: u32 = TRANSITION_TARGET_TABLE_START;
+pub(crate) const TARGET_TABLE: u32 = TRANSITION_TARGET_TABLE_START;
 
 /// The weighted optimized-lookup tables as divvunspell's HFST reader walks
 /// them: the same cursor moves, bounded by the header's table sizes, with
 /// `0xFFFF` and `0xFFFFFFFF` read as "no symbol" and "no target".
-struct OlView<'a> {
+pub(crate) struct OlView<'a> {
     t: &'a Transducer<WeightedTables>,
-    symbols: &'a [crate::hfst_data_types::Symbol],
-    index_size: u32,
-    target_size: u32,
+    pub(crate) symbols: &'a [crate::hfst_data_types::Symbol],
+    pub(crate) index_size: u32,
+    pub(crate) target_size: u32,
     flags: Vec<bool>,
 }
 
 impl<'a> OlView<'a> {
-    fn new(t: &'a Transducer<WeightedTables>) -> crate::error::Result<OlView<'a>> {
+    pub(crate) fn new(t: &'a Transducer<WeightedTables>) -> crate::error::Result<OlView<'a>> {
         let header = t.get_header();
         let symbols = t.get_symbol_table();
         if symbols.len() != header.symbol_count() as usize {
@@ -268,65 +268,81 @@ impl<'a> OlView<'a> {
         })
     }
 
-    fn is_flag(&self, symbol: u16) -> bool {
+    pub(crate) fn is_flag(&self, symbol: u16) -> bool {
         self.flags.get(symbol as usize).copied().unwrap_or(false)
     }
 
-    fn index_input(&self, i: u32) -> Option<u16> {
+    pub(crate) fn index_input(&self, i: u32) -> Option<u16> {
         (i < self.index_size)
             .then(|| self.t.get_index_input(i))
             .filter(|s| *s != NO_SYMBOL_NUMBER)
     }
 
-    fn index_target(&self, i: u32) -> Option<u32> {
+    pub(crate) fn index_target(&self, i: u32) -> Option<u32> {
         (i < self.index_size)
             .then(|| self.t.get_index_target(i))
             .filter(|v| *v != NO_TABLE_INDEX)
     }
 
-    fn trans_input(&self, i: u32) -> Option<u16> {
+    pub(crate) fn trans_input(&self, i: u32) -> Option<u16> {
         (i < self.target_size)
             .then(|| self.t.get_transition_input(i))
             .filter(|s| *s != NO_SYMBOL_NUMBER)
     }
 
-    fn trans_output(&self, i: u32) -> Option<u16> {
+    pub(crate) fn trans_output(&self, i: u32) -> Option<u16> {
         (i < self.target_size)
             .then(|| self.t.get_transition_output(i))
             .filter(|s| *s != NO_SYMBOL_NUMBER)
     }
 
-    fn trans_target(&self, i: u32) -> Option<u32> {
+    pub(crate) fn trans_target(&self, i: u32) -> Option<u32> {
         (i < self.target_size)
             .then(|| self.t.get_transition_target(i))
             .filter(|v| *v != NO_TABLE_INDEX)
     }
 
-    fn trans_weight(&self, i: u32) -> Option<f32> {
+    pub(crate) fn trans_weight(&self, i: u32) -> Option<f32> {
         (i < self.target_size).then(|| self.t.get_transition_weight(i))
     }
 
-    fn is_final(&self, address: u32) -> bool {
+    /// Whether index-table entry `i` marks a final state: no symbol, and a
+    /// target field that is not "no target".
+    pub(crate) fn index_is_final(&self, i: u32) -> bool {
+        self.index_input(i).is_none() && self.index_target(i).is_some()
+    }
+
+    /// The final weight index-table entry `i` holds in its target field.
+    pub(crate) fn index_final_weight(&self, i: u32) -> Option<f32> {
+        (i < self.index_size).then(|| f32::from_bits(self.t.get_index_target(i)))
+    }
+
+    /// Whether transition-table record `i` marks a final state: no symbols,
+    /// and target 1.
+    pub(crate) fn trans_is_final(&self, i: u32) -> bool {
+        self.trans_input(i).is_none()
+            && self.trans_output(i).is_none()
+            && self.trans_target(i) == Some(1)
+    }
+
+    pub(crate) fn is_final(&self, address: u32) -> bool {
         if address >= TARGET_TABLE {
-            let i = address - TARGET_TABLE;
-            self.trans_input(i).is_none()
-                && self.trans_output(i).is_none()
-                && self.trans_target(i) == Some(1)
+            self.trans_is_final(address - TARGET_TABLE)
         } else {
-            self.index_input(address).is_none() && self.index_target(address).is_some()
+            self.index_is_final(address)
         }
     }
 
-    fn final_weight(&self, address: u32) -> Option<f32> {
+    pub(crate) fn final_weight(&self, address: u32) -> Option<f32> {
         if address >= TARGET_TABLE {
             self.trans_weight(address - TARGET_TABLE)
         } else {
-            (address < self.index_size).then(|| f32::from_bits(self.t.get_index_target(address)))
+            self.index_final_weight(address)
         }
     }
 
     /// Whether the cursor at `i` (one past a state) has arcs on `symbol`.
-    fn has_transitions(&self, i: u32, symbol: u16) -> bool {
+    pub(crate) fn has_transitions(&self, i: u32, symbol: u16) -> bool {
         if i >= TARGET_TABLE {
             self.trans_input(i - TARGET_TABLE) == Some(symbol)
         } else {
@@ -336,7 +352,7 @@ impl<'a> OlView<'a> {
 
     /// The first transition of `state` on `symbol`, as a transition-table
     /// offset.
-    fn next(&self, state: u32, symbol: u16) -> Option<u32> {
+    pub(crate) fn next(&self, state: u32, symbol: u16) -> Option<u32> {
         if state >= TARGET_TABLE {
             Some(state - TARGET_TABLE + 1)
         } else {
@@ -347,7 +363,12 @@ impl<'a> OlView<'a> {
 
     /// The arcs of `state` on `input`, as divvunspell's
     /// `Transducer::for_each_arc` hands them over.
-    fn for_each_arc<V: FnMut(u16, u32, f32)>(&self, state: u32, input: u16, mut visit: V) {
+    pub(crate) fn for_each_arc<V: FnMut(u16, u32, f32)>(
+        &self,
+        state: u32,
+        input: u16,
+        mut visit: V,
+    ) {
         if !self.has_transitions(state.wrapping_add(1), input) {
             return;
         }
