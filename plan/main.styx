@@ -4912,6 +4912,12 @@ children (
                     }
                 )
             }
+
+            {
+                id eliminate-flags-acyclic-hang
+                title "hfst eliminate-flags did not finish in 300 s on a 9,428-state ACYCLIC transducer (an Err/Orth error:correct pair relation: analyser composed with an Err/Orth filter, tag removed, composed with the generator, minimised); after minimising the cyclic relation first it ran over 9 min. fst2strings -X obey-flags on the same relation finishes in under 1 s, so the flag semantics are cheap — the elimination itself blows up. Reproducer not saved: rebuild it from any Giella lang with Err/Orth entries (lang-sme's errorth-pairs recipe is the template) and time eliminate-flags against the C++ tool"
+                kind @fix
+            }
         )
     }
 
