@@ -4929,6 +4929,12 @@ children (
                     }
                 )
             }
+
+            {
+                id eliminate-flags-unconstrained-flags
+                title "eliminate-flags disagrees with runtime obey-flags semantics in three inherited ways (kept as-is by fe0353e, now spec'd): (1) a U/R/D flag that no flag makes fail or succeed is not checked — @R.X.v@ with X never set passes, the runtime fails it; (2) a setter flag_build classes as unrelated is skipped — @P.F.b@ @N.F.c@ @U.F.a@ is refused, the runtime accepts it; (3) an arc with an eliminated flag on one side loses the real symbol on the other (@P.F.a@:x becomes eps:eps). Decide per case; (3) looks like plain data loss"
+                kind @fix
+            }
         )
     }
 
