@@ -1,12 +1,33 @@
 schema_version 7
 
-last_sync_at 2026-09-15T19:49:38.312413Z
+last_sync_at 2026-10-06T21:03:19.004443Z
 
 rule_versions (
     {id determinize-envelope.bounded-strategies, version 0}
     {id determinize-envelope.input-scaled-floors, version 0}
     {id determinize-envelope.relation-preserved, version 0}
     {id determinize-envelope.transition-axis, version 0}
+    {id dhfst.acceptor-distance, version 0}
+    {id dhfst.acceptor-layout, version 0}
+    {id dhfst.acceptor-meta, version 0}
+    {id dhfst.acceptor-placement, version 0}
+    {id dhfst.acceptor-reader, version 0}
+    {id dhfst.acceptor-self-check, version 0}
+    {id dhfst.acceptor-source, version 0}
+    {id dhfst.acceptor-write, version 0}
+    {id dhfst.bhfst-member, version 2}
+    {id dhfst.encoding, version 0}
+    {id dhfst.fst2fst, version 2}
+    {id dhfst.header, version 2}
+    {id dhfst.layout, version 0}
+    {id dhfst.meta, version 1}
+    {id dhfst.reader, version 0}
+    {id dhfst.regular-symbol, version 0}
+    {id dhfst.self-check, version 0}
+    {id dhfst.source-model, version 0}
+    {id dhfst.write, version 1}
+    {id flag-elimination.reachable-product, version 0}
+    {id flag-elimination.relation, version 0}
     {id flag-encode-symbol-tables.table-parity, version 0}
     {id foma-transducer.hfst.implementations.foma-transducer.resource-controlled-compose, version 0}
     {id general-lookup-termination.enumeration-divergence, version 0}
@@ -25,7 +46,6 @@ rule_versions (
     {id table-residency.single-copy-load, version 0}
     {id table-residency.untrusted-size-fields, version 0}
     {id table-residency.views-not-copies, version 0}
-    {id twolc-compiler.hfst.twolcpre2.complete-alphabet-fn, version 1}
     {id virtual-flag-algebra.backend-core, version 0}
     {id virtual-flag-algebra.frontend-compose, version 0}
     {id virtual-flag-algebra.intersection, version 0}
@@ -33,10 +53,34 @@ rule_versions (
     {id virtual-flag-algebra.materialized-reference, version 0}
     {id virtual-flag-algebra.special-compose, version 0}
     {id virtual-flag-algebra.subtraction, version 0}
+    {id xfst-cmd.ambiguity, version 0}
+    {id xfst-cmd.apply-med, version 0}
+    {id xfst-cmd.errors-are-values, version 0}
+    {id xfst-cmd.io-errors, version 0}
+    {id xfst-cmd.list-range, version 0}
+    {id xfst-cmd.no-dead-surface, version 0}
+    {id xfst-cmd.no-placeholders, version 0}
+    {id xfst-cmd.pmatch-quotient-subtract, version 0}
+    {id xfst-cmd.print-counts, version 0}
+    {id xfst-cmd.read-prolog, version 0}
+    {id xfst-cmd.read-word-lists, version 0}
+    {id xfst-cmd.replace-context-symbol, version 0}
+    {id xfst-cmd.sort, version 0}
+    {id xfst-cmd.source, version 0}
+    {id xfst-cmd.string-escapes, version 0}
+    {id xfst-cmd.substring, version 0}
+    {id xfst-cmd.variables-take-effect, version 0}
+    {id xfst-cmd.write-word-lists, version 0}
     {id xre-finalization.root-optimize, version 0}
+    {id xre-replace-pass.boundary-contexts, version 0}
+    {id xre-replace-pass.cli, version 0}
+    {id xre-replace-pass.refusals, version 0}
+    {id xre-replace-pass.relation, version 0}
+    {id xre-replace-pass.shape, version 0}
 )
 
 derived_priorities (
+    {id att-unicode-space-roundtrip, priority 0, derived_at 2026-10-06T21:03:19.004443Z}
     {id c-names, priority 0, derived_at 2026-07-11T20:19:58.119495Z}
     {id clap-migration, priority 3, derived_at 2026-08-21T21:18:14.374864Z}
     {id cli-alias-shadowing, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
@@ -48,12 +92,20 @@ derived_priorities (
     {id compose-facade-nativize, priority 3, derived_at 2026-08-18T11:19:03.814367Z}
     {id compose-intersect-product-memory, priority 2, derived_at 2026-08-21T21:18:14.374864Z}
     {id conversion-churn, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
+    {id dead-not-implemented-surface, priority 2, derived_at 2026-10-06T21:03:19.004443Z}
     {id determinize-intermediate, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
     {id determinize-scaled-floors, priority 3, derived_at 2026-09-15T19:46:58.963189Z}
     {id determinize-transition-budget, priority 2, derived_at 2026-08-21T21:18:14.374864Z}
+    {id dhfst, priority 0, derived_at 2026-10-06T21:03:19.004443Z}
+    {id dhfst-acceptor, priority 0, derived_at 2026-10-06T21:03:19.004443Z}
+    {id dhfst-type-header, priority 0, derived_at 2026-10-06T21:03:19.004443Z}
+    {id dhfst-writer-name, priority 1, derived_at 2026-10-06T21:03:19.004443Z}
     {id diag-parse-error-spans, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
     {id divvun-hfst-branding, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
     {id drop-dead-commandline-def, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
+    {id eliminate-flags-acyclic-hang, priority 0, derived_at 2026-10-06T21:03:19.004443Z}
+    {id esu-lexc-divergence, priority 0, derived_at 2026-10-06T21:03:19.004443Z}
+    {id esu-twolc-divergence, priority 0, derived_at 2026-10-06T21:03:19.004443Z}
     {id family-files, priority 1, derived_at 2026-08-21T21:18:14.374864Z}
     {id flag-complement.audit, priority 1, derived_at 2026-07-11T20:19:58.119495Z}
     {id flag-complement.fix, priority 0, derived_at 2026-07-11T20:19:58.119495Z}
@@ -120,6 +172,7 @@ derived_priorities (
     {id native-alphabet-ops, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
     {id nfst-0-2-publish, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
     {id nfst-patch-restore, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
+    {id nuke-cpp-isms, priority 0, derived_at 2026-10-06T21:03:19.004443Z}
     {id ol-lookup-unknown-identity, priority 0, derived_at 2026-08-21T21:18:14.374864Z}
     {id olw-direct-conversion, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
     {id olw-flat-groups, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
@@ -129,7 +182,25 @@ derived_priorities (
     {id plan-node-kinds, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
     {id pmatch-encode-weights, priority 1, derived_at 2026-08-18T11:19:03.814367Z}
     {id pmatch-epsilon-guard-performance, priority 1, derived_at 2026-08-21T21:18:14.374864Z}
+    {id pmatch-quotient-subtract, priority 0, derived_at 2026-10-06T21:03:19.004443Z}
     {id pmatch-shared-core, priority 2, derived_at 2026-09-15T19:46:58.963189Z}
+    {id pmatch2fst-syntax-error-exit-zero, priority 0, derived_at 2026-10-06T21:03:19.004443Z}
+    {id quality-burndown.alias-sweep, priority 2, derived_at 2026-10-06T21:03:19.004443Z}
+    {id quality-burndown.cli-api, priority 0, derived_at 2026-10-06T21:03:19.004443Z}
+    {id quality-burndown.lib-api, priority 0, derived_at 2026-10-06T21:03:19.004443Z}
+    {id quality-burndown.split-backends, priority 1, derived_at 2026-10-06T21:03:19.004443Z}
+    {id quality-burndown.split-basic-transducer, priority 1, derived_at 2026-10-06T21:03:19.004443Z}
+    {id quality-burndown.split-cli-tools, priority 1, derived_at 2026-10-06T21:03:19.004443Z}
+    {id quality-burndown.split-hfst-transducer, priority 1, derived_at 2026-10-06T21:03:19.004443Z}
+    {id quality-burndown.split-lib-tests, priority 1, derived_at 2026-10-06T21:03:19.004443Z}
+    {id quality-burndown.split-ol-transducer, priority 1, derived_at 2026-10-06T21:03:19.004443Z}
+    {id quality-burndown.split-parsers, priority 1, derived_at 2026-10-06T21:03:19.004443Z}
+    {id quality-burndown.split-pmatch-compiler, priority 1, derived_at 2026-10-06T21:03:19.004443Z}
+    {id quality-burndown.split-pmatch-runtime, priority 1, derived_at 2026-10-06T21:03:19.004443Z}
+    {id quality-burndown.split-tropical, priority 1, derived_at 2026-10-06T21:03:19.004443Z}
+    {id quality-burndown.split-twolc, priority 1, derived_at 2026-10-06T21:03:19.004443Z}
+    {id quality-burndown.split-xfst-compiler, priority 1, derived_at 2026-10-06T21:03:19.004443Z}
+    {id replace-context-any-symbol, priority 0, derived_at 2026-10-06T21:03:19.004443Z}
     {id rustfst-determinize-table, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
     {id rustfst-lazy-demutex, priority 1, derived_at 2026-08-18T11:19:03.814367Z}
     {id rustfst-lazy-direct-materialize, priority 2, derived_at 2026-08-18T11:19:03.814367Z}
@@ -156,21 +227,37 @@ derived_priorities (
     {id tool-runs, priority 0, derived_at 2026-07-11T20:19:58.119495Z}
     {id twolc-boundary-arc-divergence, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
     {id twolc-escaped-specials, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
+    {id twolc-ignoring-and-except, priority 0, derived_at 2026-10-06T21:03:19.004443Z}
     {id twolc-name-sigma-cosmetic, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
     {id twolc-paircolon-context-divergence, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
+    {id twolc-pointed-diagnostics, priority 0, derived_at 2026-10-06T21:03:19.004443Z}
+    {id twolc-set-centre-declares-pairs, priority 0, derived_at 2026-10-06T21:03:19.004443Z}
     {id twolc-sigma-numbering-permutation, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
     {id unary-driver, priority 0, derived_at 2026-08-21T21:18:14.374864Z}
     {id upstream-bugs.t3.rs2-3, priority 0, derived_at 2026-08-21T21:18:14.374864Z}
     {id upstream-bugs.t3.rs3-centre, priority 0, derived_at 2026-08-24T19:58:10.172058Z}
+    {id upstream-bugs.t3.slh-set-centre, priority 0, derived_at 2026-10-06T21:03:19.004443Z}
+    {id version-banner-one-identity, priority 0, derived_at 2026-10-06T21:03:19.004443Z}
     {id version-line-provenance, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
     {id weighted-determinize-fallback, priority 1, derived_at 2026-08-21T21:18:14.374864Z}
+    {id xfst-ambiguity-substring-med, priority 1, derived_at 2026-10-06T21:03:19.004443Z}
     {id xfst-copyright-owner-plain, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
     {id xfst-flag-encode-nativize, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
     {id xfst-function-arg-substitution, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
+    {id xfst-list-ranges, priority 0, derived_at 2026-10-06T21:03:19.004443Z}
+    {id xfst-no-placeholders, priority 1, derived_at 2026-10-06T21:03:19.004443Z}
     {id xfst-print-defined-body, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
     {id xfst-prototype-adjacency, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
+    {id xfst-quoted-percent-and-bare-regex, priority 0, derived_at 2026-10-06T21:03:19.004443Z}
+    {id xfst-read-and-sort, priority 1, derived_at 2026-10-06T21:03:19.004443Z}
+    {id xfst-result-flow, priority 0, derived_at 2026-10-06T21:03:19.004443Z}
+    {id xfst-source, priority 1, derived_at 2026-10-06T21:03:19.004443Z}
+    {id xfst-variables-take-effect, priority 2, derived_at 2026-10-06T21:03:19.004443Z}
+    {id xre-escapes-and-list-ranges, priority 0, derived_at 2026-10-06T21:03:19.004443Z}
+    {id xre-eval-error-message, priority 0, derived_at 2026-10-06T21:03:19.004443Z}
     {id xre-function-as-network-error, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
     {id xre-intermediate-optimization, priority 1, derived_at 2026-08-21T21:18:14.374864Z}
+    {id xre-replace-pass, priority 0, derived_at 2026-10-06T21:03:19.004443Z}
     {id xre-root-finalization, priority 0, derived_at 2026-08-24T19:58:10.172058Z}
 )
 
@@ -482,6 +569,8 @@ impl_evidence (
         xfst-cmd.no-dead-surface
     ), covered_claims (
         {impl_name target-impl, rule xfst-cmd.no-dead-surface}
+    ), rule_versions_seen (
+        {id xfst-cmd.no-dead-surface, version 0}
     )}
     {id determinize-scaled-floors, covered_rules (
         determinize-envelope.input-scaled-floors
@@ -527,6 +616,53 @@ impl_evidence (
         {impl_name target-impl, rule dhfst.self-check}
         {impl_name target-impl, rule dhfst.source-model}
         {impl_name target-impl, rule dhfst.write}
+    ), rule_versions_seen (
+        {id dhfst.bhfst-member, version 2}
+        {id dhfst.encoding, version 0}
+        {id dhfst.fst2fst, version 2}
+        {id dhfst.header, version 2}
+        {id dhfst.layout, version 0}
+        {id dhfst.meta, version 1}
+        {id dhfst.reader, version 0}
+        {id dhfst.regular-symbol, version 0}
+        {id dhfst.self-check, version 0}
+        {id dhfst.source-model, version 0}
+        {id dhfst.write, version 1}
+    )}
+    {id dhfst-acceptor, covered_rules (
+        dhfst.acceptor-distance
+        dhfst.acceptor-layout
+        dhfst.acceptor-meta
+        dhfst.acceptor-placement
+        dhfst.acceptor-reader
+        dhfst.acceptor-self-check
+        dhfst.acceptor-source
+        dhfst.acceptor-write
+    ), covered_claims (
+        {impl_name target-impl, rule dhfst.acceptor-distance}
+        {impl_name target-impl, rule dhfst.acceptor-layout}
+        {impl_name target-impl, rule dhfst.acceptor-meta}
+        {impl_name target-impl, rule dhfst.acceptor-placement}
+        {impl_name target-impl, rule dhfst.acceptor-reader}
+        {impl_name target-impl, rule dhfst.acceptor-self-check}
+        {impl_name target-impl, rule dhfst.acceptor-source}
+        {impl_name target-impl, rule dhfst.acceptor-write}
+    ), rule_versions_seen (
+        {id dhfst.acceptor-distance, version 0}
+        {id dhfst.acceptor-layout, version 0}
+        {id dhfst.acceptor-meta, version 0}
+        {id dhfst.acceptor-placement, version 0}
+        {id dhfst.acceptor-reader, version 0}
+        {id dhfst.acceptor-self-check, version 0}
+        {id dhfst.acceptor-source, version 0}
+        {id dhfst.acceptor-write, version 0}
+    )}
+    {id eliminate-flags-acyclic-hang, covered_rules (
+        flag-elimination.reachable-product
+        flag-elimination.relation
+    ), covered_claims (
+        {impl_name target-impl, rule flag-elimination.reachable-product}
+        {impl_name target-impl, rule flag-elimination.relation}
     )}
     {id flag-encode-table-parity, covered_rules (
         flag-encode-symbol-tables.table-parity
@@ -570,11 +706,6 @@ impl_evidence (
         {id lookup-run-state.caller-owned-scratch, version 0}
         {id lookup-run-state.immutable-core, version 0}
         {id lookup-run-state.out-of-alphabet-overlay, version 0}
-        {id ol-lookup-enumeration.meta-arc-output, version 0}
-        {id ol-lookup-enumeration.meta-arc-restriction, version 0}
-        {id ol-lookup-enumeration.no-internal-work-cap, version 0}
-        {id ol-lookup-enumeration.out-of-alphabet-input, version 0}
-        {id ol-lookup-enumeration.representation-independence, version 0}
     )}
     {id ol-lookup-unknown-identity, covered_rules (
         ol-lookup-enumeration.meta-arc-output
@@ -599,6 +730,8 @@ impl_evidence (
         xfst-cmd.pmatch-quotient-subtract
     ), covered_claims (
         {impl_name target-impl, rule xfst-cmd.pmatch-quotient-subtract}
+    ), rule_versions_seen (
+        {id xfst-cmd.pmatch-quotient-subtract, version 0}
     )}
     {id pmatch-shared-core, covered_rules (
         lookup-run-state.pmatch-shared-core
@@ -606,12 +739,13 @@ impl_evidence (
         {impl_name target-impl, rule lookup-run-state.pmatch-shared-core}
     ), rule_versions_seen (
         {id lookup-run-state.pmatch-shared-core, version 0}
-        {id table-residency.single-copy-load, version 0}
     )}
     {id replace-context-any-symbol, covered_rules (
         xfst-cmd.replace-context-symbol
     ), covered_claims (
         {impl_name target-impl, rule xfst-cmd.replace-context-symbol}
+    ), rule_versions_seen (
+        {id xfst-cmd.replace-context-symbol, version 0}
     )}
     {id table-copy-elimination, covered_rules (
         table-residency.single-copy-load
@@ -677,11 +811,17 @@ impl_evidence (
         {impl_name target-impl, rule xfst-cmd.ambiguity}
         {impl_name target-impl, rule xfst-cmd.apply-med}
         {impl_name target-impl, rule xfst-cmd.substring}
+    ), rule_versions_seen (
+        {id xfst-cmd.ambiguity, version 0}
+        {id xfst-cmd.apply-med, version 0}
+        {id xfst-cmd.substring, version 0}
     )}
     {id xfst-list-ranges, covered_rules (
         xfst-cmd.list-range
     ), covered_claims (
         {impl_name target-impl, rule xfst-cmd.list-range}
+    ), rule_versions_seen (
+        {id xfst-cmd.list-range, version 0}
     )}
     {id xfst-no-placeholders, covered_rules (
         xfst-cmd.no-placeholders
@@ -691,6 +831,10 @@ impl_evidence (
         {impl_name target-impl, rule xfst-cmd.no-placeholders}
         {impl_name target-impl, rule xfst-cmd.print-counts}
         {impl_name target-impl, rule xfst-cmd.write-word-lists}
+    ), rule_versions_seen (
+        {id xfst-cmd.no-placeholders, version 0}
+        {id xfst-cmd.print-counts, version 0}
+        {id xfst-cmd.write-word-lists, version 0}
     )}
     {id xfst-read-and-sort, covered_rules (
         xfst-cmd.read-prolog
@@ -700,6 +844,10 @@ impl_evidence (
         {impl_name target-impl, rule xfst-cmd.read-prolog}
         {impl_name target-impl, rule xfst-cmd.read-word-lists}
         {impl_name target-impl, rule xfst-cmd.sort}
+    ), rule_versions_seen (
+        {id xfst-cmd.read-prolog, version 0}
+        {id xfst-cmd.read-word-lists, version 0}
+        {id xfst-cmd.sort, version 0}
     )}
     {id xfst-result-flow, covered_rules (
         xfst-cmd.errors-are-values
@@ -707,21 +855,30 @@ impl_evidence (
     ), covered_claims (
         {impl_name target-impl, rule xfst-cmd.errors-are-values}
         {impl_name target-impl, rule xfst-cmd.io-errors}
+    ), rule_versions_seen (
+        {id xfst-cmd.errors-are-values, version 0}
+        {id xfst-cmd.io-errors, version 0}
     )}
     {id xfst-source, covered_rules (
         xfst-cmd.source
     ), covered_claims (
         {impl_name target-impl, rule xfst-cmd.source}
+    ), rule_versions_seen (
+        {id xfst-cmd.source, version 0}
     )}
     {id xfst-variables-take-effect, covered_rules (
         xfst-cmd.variables-take-effect
     ), covered_claims (
         {impl_name target-impl, rule xfst-cmd.variables-take-effect}
+    ), rule_versions_seen (
+        {id xfst-cmd.variables-take-effect, version 0}
     )}
     {id xre-escapes-and-list-ranges, covered_rules (
         xfst-cmd.string-escapes
     ), covered_claims (
         {impl_name target-impl, rule xfst-cmd.string-escapes}
+    ), rule_versions_seen (
+        {id xfst-cmd.string-escapes, version 0}
     )}
     {id xre-replace-pass, covered_rules (
         xre-replace-pass.boundary-contexts
@@ -735,6 +892,12 @@ impl_evidence (
         {impl_name target-impl, rule xre-replace-pass.refusals}
         {impl_name target-impl, rule xre-replace-pass.relation}
         {impl_name target-impl, rule xre-replace-pass.shape}
+    ), rule_versions_seen (
+        {id xre-replace-pass.boundary-contexts, version 0}
+        {id xre-replace-pass.cli, version 0}
+        {id xre-replace-pass.refusals, version 0}
+        {id xre-replace-pass.relation, version 0}
+        {id xre-replace-pass.shape, version 0}
     )}
     {id xre-root-finalization, covered_rules (
         xre-finalization.root-optimize
@@ -742,24 +905,5 @@ impl_evidence (
         {impl_name target-impl, rule xre-finalization.root-optimize}
     ), rule_versions_seen (
         {id xre-finalization.root-optimize, version 0}
-    )}
-    {id dhfst-acceptor, covered_rules (
-        dhfst.acceptor-distance
-        dhfst.acceptor-layout
-        dhfst.acceptor-meta
-        dhfst.acceptor-placement
-        dhfst.acceptor-reader
-        dhfst.acceptor-self-check
-        dhfst.acceptor-source
-        dhfst.acceptor-write
-    ), covered_claims (
-        {impl_name target-impl, rule dhfst.acceptor-distance}
-        {impl_name target-impl, rule dhfst.acceptor-layout}
-        {impl_name target-impl, rule dhfst.acceptor-meta}
-        {impl_name target-impl, rule dhfst.acceptor-placement}
-        {impl_name target-impl, rule dhfst.acceptor-reader}
-        {impl_name target-impl, rule dhfst.acceptor-self-check}
-        {impl_name target-impl, rule dhfst.acceptor-source}
-        {impl_name target-impl, rule dhfst.acceptor-write}
     )}
 )

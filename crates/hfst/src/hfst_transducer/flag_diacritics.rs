@@ -2,6 +2,8 @@
 
 use super::*;
 use crate::convert_transducer_format::ConversionFunctions;
+use crate::hfst_tropical_transducer_transition_data::WeightType;
+use std::collections::HashMap;
 
 impl<B: Backend> HfstTransducer<B> {
     /*
@@ -244,34 +246,14 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
     // ----- Flag elimination -----
     // -------------------------------------------------------------------------
 
+    // [spec:hfst:req:flag-elimination.relation]
     pub fn eliminate_flags(&mut self) -> crate::error::Result<&mut HfstTransducer<B>> {
         let basic = ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(self)?;
         let flags = basic.get_flags();
-        let filter = get_flag_filter(self, &flags, "")?;
-
-        if let Some(filter) = filter {
-            let mut filter_copy = HfstTransducer::new_copy(&filter)?;
-            {
-                let self_copy = HfstTransducer::new_copy(self)?;
-                let filter_deref = HfstTransducer::new_copy(&filter)?;
-                // Compose the symbol-level flag-constraint filter with flags
-                // encoded as ordinary symbols (see eliminate_flag for why).
-                let cfg = EngineConfig {
-                    xerox_composition: true,
-                    ..EngineConfig::default()
-                };
-                filter_copy.compose_with_config(&self_copy, true, &cfg)?;
-                filter_copy.compose_with_config(&filter_deref, true, &cfg)?;
-            }
-            flag_purge(&mut filter_copy, "")?;
-            *self = filter_copy;
-        } else {
-            flag_purge(self, "")?;
-        }
-
-        self.optimize()
+        self.eliminate_flags_in(basic, &flags, "")
     }
 
+    // [spec:hfst:req:flag-elimination.relation]
     pub fn eliminate_flag(&mut self, flag: &str) -> crate::error::Result<&mut HfstTransducer<B>> {
         let basic = ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(self)?;
         let flags = basic.get_flags();
@@ -298,32 +280,31 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
             }
         }
 
-        let filter = get_flag_filter(self, &flags, flag)?;
-        if let Some(filter) = filter {
-            let mut filter_copy = HfstTransducer::new_copy(&filter)?;
-            {
-                let self_copy = HfstTransducer::new_copy(self)?;
-                let filter_deref = HfstTransducer::new_copy(&filter)?;
-                // The filter is a symbol-level constraint (built over escaped
-                // flags so the flag features are ordinary symbols); apply it
-                // with flag diacritics encoded as ordinary symbols in the
-                // composition. Otherwise flag harmonization drops any path that
-                // carries a flag of some OTHER feature, since the filter's
-                // '?' (identity) will not match a foreign flag once that flag
-                // is added to the filter's alphabet without an explicit arc.
-                let cfg = EngineConfig {
-                    xerox_composition: true,
-                    ..EngineConfig::default()
-                };
-                filter_copy.compose_with_config(&self_copy, true, &cfg)?;
-                filter_copy.compose_with_config(&filter_deref, true, &cfg)?;
-            }
-            flag_purge(&mut filter_copy, flag)?;
-            *self = filter_copy;
-        } else {
-            flag_purge(self, flag)?;
-        }
+        self.eliminate_flags_in(basic, &flags, flag)
+    }
 
+    /// Replace this transducer with the paths of `basic` whose flags of feature
+    /// `flag` (of every feature when `flag` is empty) are consistent on both
+    /// tapes, those flags turned into epsilons. The filter is applied while
+    /// walking `basic`, so the work follows the (state, input flag state,
+    /// output flag state) triples reachable from the start, not the size of a
+    /// filter over every combination of flag values.
+    // [spec:hfst:req:flag-elimination.relation]
+    // [spec:hfst:req:flag-elimination.reachable-product]
+    fn eliminate_flags_in(
+        &mut self,
+        basic: HfstBasicTransducer,
+        flags: &StringSet,
+        flag: &str,
+    ) -> crate::error::Result<&mut HfstTransducer<B>> {
+        let mut net = match get_flag_filter(&basic, flags, flag) {
+            Some(filter) => filter.apply(basic),
+            None => basic,
+        };
+        // [spec:hfst:def:hfst-transducer.hfst.flag-purge-fn]
+        // [spec:hfst:sem:hfst-transducer.hfst.flag-purge-fn]
+        net.flag_purge(flag);
+        *self = HfstTransducer::new_from_basic_owned(net)?;
         self.optimize()
     }
 
@@ -395,57 +376,6 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
 // -----------------------------------------------------------------------------
 // Flag-elimination helpers (file-scope free functions in the C++).
 // -----------------------------------------------------------------------------
-
-// if (required): return ~[(?* FAIL_FLAGS) ~$SUCCEED_FLAGS SELF ?*]
-// if (! required): return ~[?* FAIL_FLAGS ~$SUCCEED_FLAGS SELF ?*]
-// [spec:hfst:def:hfst-transducer.hfst.new-filter-fn]
-// [spec:hfst:sem:hfst-transducer.hfst.new-filter-fn]
-fn new_filter<B: AlgebraBackend>(
-    fail_flags: &HfstTransducer<B>,
-    succeed_flags: &HfstTransducer<B>,
-    this: &HfstTransducer<B>,
-    required: bool,
-) -> crate::error::Result<HfstTransducer<B>> {
-    let mut comp = crate::xre::XreCompiler::<B>::new();
-    comp.set_expand_definitions(true);
-    comp.define_transducer("Fail", fail_flags);
-    comp.define_transducer("Succeed", succeed_flags);
-    comp.define_transducer("Self", this);
-    let mut result: HfstTransducer<B> = if required {
-        comp.compile("~[(?* Fail) ~$Succeed Self ?*]")
-    } else {
-        comp.compile("~[?* Fail ~$Succeed Self ?*]")
-    }
-    .expect("the flag-filter xre is well-formed");
-
-    // Should the xre compiler do this?
-    result.remove_from_alphabet_string("Fail")?;
-    result.remove_from_alphabet_string("Succeed")?;
-    result.remove_from_alphabet_string("Self")?;
-
-    Ok(result)
-}
-
-// Substitute each symbol '_@FLAG@' with '@FLAG@'
-// [spec:hfst:def:hfst-transducer.hfst.substitute-escaped-flags-fn]
-// [spec:hfst:sem:hfst-transducer.hfst.substitute-escaped-flags-fn]
-fn substitute_escaped_flags<B: AlgebraBackend>(
-    filter: &mut HfstTransducer<B>,
-) -> crate::error::Result<()> {
-    let alpha = filter.get_alphabet()?;
-    for it in alpha.iter() {
-        if it.len() > 1 {
-            let bytes = it.as_bytes();
-            if bytes[0] == b'_' && bytes[1] == b'@' {
-                // 'std::string::erase(0)' drops the leading '_'; rebuild the
-                // SmolStr from the remaining bytes instead of mutating in place.
-                let s = Symbol::new(&it[1..]);
-                filter.substitute_string(it, &s, true, true)?;
-            }
-        }
-    }
-    Ok(())
-}
 
 const FLAG_UNIFY: i32 = 1;
 const FLAG_CLEAR: i32 = 2;
@@ -640,83 +570,260 @@ fn is_valid_flag_combination(flag1: &str, flag2: &str) -> i32 {
     flag_build(operator1, &feature1, &value1, operator2, &feature2, &value2)
 }
 
-/* @brief Get flag filter for transducer \a transducer. */
-// [spec:hfst:def:hfst-transducer.hfst.get-flag-filter-fn]
-// [spec:hfst:sem:hfst-transducer.hfst.get-flag-filter-fn]
-fn get_flag_filter<B: AlgebraBackend>(
-    transducer: &HfstTransducer<B>,
-    flags: &crate::hfst_symbol_defs::StringSet,
-    flag: &str,
-) -> crate::error::Result<Option<HfstTransducer<B>>> {
-    let _ = transducer;
-    let mut flag_found = false;
-    let mut filter: Option<HfstTransducer<B>> = None;
-
-    for f in flags.iter() {
-        let this = HfstTransducer::new_symbol(&format!("_{}", f))?; // escape flags
-        let mut succeed_flags = HfstTransducer::new();
-        let mut fail_flags = HfstTransducer::new();
-
-        let op = crate::hfst_flag_diacritics::FdOperation::get_operator(f).as_bytes()[0];
-        if (flag.is_empty() || crate::hfst_flag_diacritics::FdOperation::get_feature(f) == flag)
-            && (op == b'U' || op == b'R' || op == b'D')
-        // Equal flag?
-        {
-            for flag2 in flags.iter() {
-                let fstatus = is_valid_flag_combination(f, flag2);
-
-                if fstatus == 1 {
-                    fail_flags
-                        .disjunct(&HfstTransducer::new_symbol(&format!("_{}", flag2))?, true)?;
-                    flag_found = true;
-                } else if fstatus == 2 {
-                    succeed_flags
-                        .disjunct(&HfstTransducer::new_symbol(&format!("_{}", flag2))?, true)?;
-                    flag_found = true;
-                }
-            }
-        }
-
-        if flag_found {
-            let newfilter = new_filter(
-                &fail_flags,
-                &succeed_flags,
-                &this,
-                crate::hfst_flag_diacritics::FdOperation::get_operator(f).as_bytes()[0] == b'R',
-            )?;
-
-            // intersect filter with newfilter
-            match filter.as_mut() {
-                None => filter = Some(newfilter),
-                Some(filt) => {
-                    filt.intersect(&newfilter, true)?;
-                }
-            }
-        }
-        flag_found = false;
-    }
-
-    if let Some(filt) = filter.as_mut() {
-        substitute_escaped_flags(filt)?; // unescape the flags
-        filt.optimize()?;
-    }
-
-    Ok(filter)
+// One constrained flag: the U, R or D flag `this` with the flags of its
+// feature that make it fail or succeed (see flag_build). Reading `this` is
+// allowed unless the last of those flags read before it was a fail flag; an R
+// flag (`required`) is also refused when none of them was read at all.
+// Upstream compiles each constraint into a transducer,
+// `~[?* FAIL_FLAGS ~$SUCCEED_FLAGS SELF ?*]`, or with `(?* FAIL_FLAGS)` for R.
+// [spec:hfst:def:hfst-transducer.hfst.new-filter-fn+1]
+// [spec:hfst:sem:hfst-transducer.hfst.new-filter-fn+1]
+struct FlagConstraint {
+    this: usize,
+    fail_flags: Vec<usize>,
+    succeed_flags: Vec<usize>,
+    required: bool,
 }
 
-// Replace arcs in \a transducer that use flag \a flag with epsilon arcs
-// and remove \a flag from alphabet of \a transducer. If \a flag is the empty
-// string, replace/remove all flags.
-// [spec:hfst:def:hfst-transducer.hfst.flag-purge-fn]
-// [spec:hfst:sem:hfst-transducer.hfst.flag-purge-fn]
-fn flag_purge<B: Backend>(
-    transducer: &mut HfstTransducer<B>,
+/* @brief Get flag filter for transducer \a transducer. */
+// [spec:hfst:def:hfst-transducer.hfst.get-flag-filter-fn+1]
+// [spec:hfst:sem:hfst-transducer.hfst.get-flag-filter-fn+1]
+fn get_flag_filter(
+    transducer: &HfstBasicTransducer,
+    flags: &crate::hfst_symbol_defs::StringSet,
     flag: &str,
-) -> crate::error::Result<()> {
-    let mut net = ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(transducer)?;
-    net.flag_purge(flag);
-    *transducer = HfstTransducer::new_from_basic(&net)?;
-    Ok(())
+) -> Option<FlagFilter> {
+    let flags: Vec<&Symbol> = flags.iter().collect();
+    let mut constraints: Vec<FlagConstraint> = Vec::new();
+
+    for (this, f) in flags.iter().enumerate() {
+        let op = crate::hfst_flag_diacritics::FdOperation::get_operator(f).as_bytes()[0];
+        if !(flag.is_empty() || crate::hfst_flag_diacritics::FdOperation::get_feature(f) == flag)
+            || !(op == b'U' || op == b'R' || op == b'D')
+        {
+            continue;
+        }
+        let mut fail_flags = Vec::new();
+        let mut succeed_flags = Vec::new();
+        for (other, flag2) in flags.iter().enumerate() {
+            match is_valid_flag_combination(f, flag2) {
+                FLAG_FAIL => fail_flags.push(other),
+                FLAG_SUCCEED => succeed_flags.push(other),
+                _ => {}
+            }
+        }
+        if !fail_flags.is_empty() || !succeed_flags.is_empty() {
+            constraints.push(FlagConstraint {
+                this,
+                fail_flags,
+                succeed_flags,
+                required: op == b'R',
+            });
+        }
+    }
+
+    if constraints.is_empty() {
+        return None;
+    }
+    Some(FlagFilter::new(transducer, &flags, &constraints))
+}
+
+// What reading one flag does to a tape's filter state.
+struct FlagEffect {
+    // The constraint bit this flag is checked against, if it is constrained.
+    check: Option<usize>,
+    // Constraint bits it sets (a succeed flag for them) and clears (a fail flag).
+    set: Vec<u64>,
+    clear: Vec<u64>,
+}
+
+// The intersection of every flag constraint, as a deterministic automaton
+// whose state is one bit per constraint: set while the constrained flag may be
+// read. Its states are built only as the walk in `apply` reaches them.
+struct FlagFilter {
+    // Per symbol number of the transducer's coder, the flag it names, if any.
+    flag_of_symbol: Vec<Option<u32>>,
+    effects: Vec<FlagEffect>,
+    initial: Vec<u64>,
+}
+
+impl FlagFilter {
+    fn new(
+        transducer: &HfstBasicTransducer,
+        flags: &[&Symbol],
+        constraints: &[FlagConstraint],
+    ) -> FlagFilter {
+        let words = constraints.len().div_ceil(64);
+        let mut effects: Vec<FlagEffect> = flags
+            .iter()
+            .map(|_| FlagEffect {
+                check: None,
+                set: vec![0; words],
+                clear: vec![0; words],
+            })
+            .collect();
+        let mut initial = vec![0; words];
+        for (bit, constraint) in constraints.iter().enumerate() {
+            let (word, mask) = (bit / 64, 1u64 << (bit % 64));
+            effects[constraint.this].check = Some(bit);
+            for &other in &constraint.succeed_flags {
+                effects[other].set[word] |= mask;
+            }
+            for &other in &constraint.fail_flags {
+                effects[other].clear[word] |= mask;
+            }
+            if !constraint.required {
+                initial[word] |= mask;
+            }
+        }
+
+        // The constraints name flags by position; the arcs name them by symbol
+        // number. Upstream needs this step because it escapes the flags in the
+        // filter it compiles and has to substitute them back.
+        // [spec:hfst:def:hfst-transducer.hfst.substitute-escaped-flags-fn+1]
+        // [spec:hfst:sem:hfst-transducer.hfst.substitute-escaped-flags-fn+1]
+        let position: HashMap<&str, u32> = flags
+            .iter()
+            .enumerate()
+            .map(|(i, f)| (f.as_str(), i as u32))
+            .collect();
+        let flag_of_symbol = transducer
+            .coder()
+            .number2symbol_slice()
+            .iter()
+            .map(|symbol| position.get(symbol.as_str()).copied())
+            .collect();
+
+        FlagFilter {
+            flag_of_symbol,
+            effects,
+            initial,
+        }
+    }
+
+    // The state after reading flag `flag` in state `bits`, or None if the
+    // flag's constraint refuses it there.
+    fn read(&self, bits: &[u64], flag: u32) -> Option<Vec<u64>> {
+        let effect = &self.effects[flag as usize];
+        if let Some(bit) = effect.check
+            && bits[bit / 64] & (1u64 << (bit % 64)) == 0
+        {
+            return None;
+        }
+        Some(
+            bits.iter()
+                .zip(effect.set.iter().zip(&effect.clear))
+                .map(|(b, (set, clear))| (b & !clear) | set)
+                .collect(),
+        )
+    }
+
+    // Keep the paths of `net` that the filter accepts on its input tape and on
+    // its output tape. A state of the result is a reachable triple (state of
+    // `net`, input filter state, output filter state); arcs and final weights
+    // are copied unchanged.
+    fn apply(&self, mut net: HfstBasicTransducer) -> HfstBasicTransducer {
+        let finals: Vec<Option<WeightType>> = (0..net.state_vector.len())
+            .map(|s| net.get_final_weight(s as HfstState).ok())
+            .collect();
+        let source = std::mem::take(&mut net.state_vector);
+        for (s, weight) in finals.iter().enumerate() {
+            if weight.is_some() {
+                net.remove_final_weight(s as HfstState);
+            }
+        }
+
+        let mut tapes = FilterStates::new(self);
+        let start = tapes.intern(self.initial.clone());
+        let mut triples: Vec<(HfstState, u32, u32)> = vec![(0, start, start)];
+        let mut ids: HashMap<(HfstState, u32, u32), HfstState> = HashMap::new();
+        ids.insert(triples[0], 0);
+        let mut states: Vec<Vec<HfstBasicTransition>> = Vec::new();
+
+        let mut next = 0;
+        while next < triples.len() {
+            let (q, input, output) = triples[next];
+            let mut arcs = Vec::new();
+            for tr in &source[q as usize] {
+                let Some(target_input) = tapes.step(input, tr.get_input_number()) else {
+                    continue;
+                };
+                let Some(target_output) = tapes.step(output, tr.get_output_number()) else {
+                    continue;
+                };
+                let key = (tr.get_target_state(), target_input, target_output);
+                let target = *ids.entry(key).or_insert_with(|| {
+                    triples.push(key);
+                    (triples.len() - 1) as HfstState
+                });
+                arcs.push(HfstBasicTransition::new_numbers(
+                    target,
+                    tr.get_input_number(),
+                    tr.get_output_number(),
+                    tr.get_weight(),
+                    false,
+                ));
+            }
+            states.push(arcs);
+            next += 1;
+        }
+
+        net.state_vector = states;
+        for (s, (q, _, _)) in triples.iter().enumerate() {
+            if let Some(weight) = finals[*q as usize] {
+                net.set_final_weight(s as HfstState, &weight);
+            }
+        }
+        net
+    }
+}
+
+// The filter states one `FlagFilter::apply` walk has reached, numbered, with
+// the transitions between them computed once each.
+struct FilterStates<'a> {
+    filter: &'a FlagFilter,
+    states: Vec<Vec<u64>>,
+    ids: HashMap<Vec<u64>, u32>,
+    steps: HashMap<(u32, u32), Option<u32>>,
+}
+
+impl<'a> FilterStates<'a> {
+    fn new(filter: &'a FlagFilter) -> Self {
+        FilterStates {
+            filter,
+            states: Vec::new(),
+            ids: HashMap::new(),
+            steps: HashMap::new(),
+        }
+    }
+
+    fn intern(&mut self, bits: Vec<u64>) -> u32 {
+        if let Some(&id) = self.ids.get(&bits) {
+            return id;
+        }
+        let id = self.states.len() as u32;
+        self.states.push(bits.clone());
+        self.ids.insert(bits, id);
+        id
+    }
+
+    // The filter state after reading symbol number `symbol` in state `state`:
+    // unchanged for epsilon and every symbol that is not a filtered flag, None
+    // when the filter refuses the flag.
+    fn step(&mut self, state: u32, symbol: u32) -> Option<u32> {
+        let Some(&Some(flag)) = self.filter.flag_of_symbol.get(symbol as usize) else {
+            return Some(state);
+        };
+        if let Some(&next) = self.steps.get(&(state, flag)) {
+            return next;
+        }
+        let next = self
+            .filter
+            .read(&self.states[state as usize], flag)
+            .map(|bits| self.intern(bits));
+        self.steps.insert((state, flag), next);
+        next
+    }
 }
 
 // Composition with this transducer restricts _1_flags ($X.Y_1.Z$) so

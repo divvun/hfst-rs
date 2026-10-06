@@ -370,4 +370,7 @@ pub enum MinimizationAlgorithm {
 mod flag_compose_overlay_tests;
 
 #[cfg(test)]
+mod flag_elimination_tests;
+
+#[cfg(test)]
 mod flag_encode_tests;

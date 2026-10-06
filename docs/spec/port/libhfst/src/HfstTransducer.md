@@ -148,10 +148,22 @@
 > [spec:hfst:def:hfst-transducer.hfst.get-flag-filter-fn]
 > static HfstTransducer *
 
-> [spec:hfst:sem:hfst-transducer.hfst.get-flag-filter-fn]
+> [spec:hfst:sem:hfst-transducer.hfst.get-flag-filter-fn+1]
 > Builds a filter transducer that enforces valid flag-diacritic combinations for `transducer`. Parameters: `transducer`, `flags` (set of all flag-diacritic strings in it), and `flag` (a feature name to filter, or empty to filter all features). Returns a newly-allocated HfstTransducer* (caller owns), or NULL if nothing to filter.
 > Captures `type = transducer->get_type()`; sets `flag_found=false`, `filter=NULL`. For each flag `f` in `flags`: builds self = HfstTransducer("_"+f, type) (an escaped-flag acceptor) and empty `succeed_flags`/`fail_flags` transducers. Reads the operator char `op = FdOperation::get_operator(f)[0]`. If (flag empty OR FdOperation::get_feature(f)==flag) AND op is one of 'U','R','D': iterate over every flag `g` in `flags`, compute `fstatus = is_valid_flag_combination(f, g)`; if fstatus==1 (FAIL) disjunct HfstTransducer("_"+g,type) into `fail_flags` and set flag_found=true; if fstatus==2 (SUCCEED) disjunct it into `succeed_flags` and set flag_found=true; otherwise ignore. If flag_found, call new_filter(fail_flags, succeed_flags, self, (op=='R')) to build `newfilter`; if `filter` is NULL set filter=newfilter, else filter->intersect(*newfilter) and delete newfilter. Reset flag_found=false for next f.
 > After the loop, if filter != NULL: call substitute_escaped_flags(filter) to unescape the "_"-prefixed flags and call filter->optimize(). Return filter.
+>
+> PORT DIVERGENCE (upstream blow-up fixed, per [dec:hfst:independent-fork]).
+> The port collects the same constraints, one for each flag `f` that upstream
+> calls `new_filter` for, with the same fail and succeed sets, but compiles and
+> intersects nothing. It returns them as a deterministic automaton that is
+> evaluated on demand: a state holds one bit per constraint, set while that
+> constraint's flag may be read, and a state is only built when elimination
+> reaches it. `None` stands for NULL. Upstream's intersection holds every
+> combination of every feature's states at once. On a 9,428-state acyclic
+> error-correction pair relation with 84 flags in 29 features, upstream and the
+> earlier port both ran for minutes past 20 GB without finishing. See
+> [spec:hfst:req:flag-elimination.reachable-product].
 
 > [spec:hfst:def:hfst-transducer.hfst.get-flag-is-epsilon-in-composition-fn]
 > bool
@@ -785,8 +797,15 @@
 > [spec:hfst:def:hfst-transducer.hfst.new-filter-fn]
 > static HfstTransducer *
 
-> [spec:hfst:sem:hfst-transducer.hfst.new-filter-fn]
+> [spec:hfst:sem:hfst-transducer.hfst.new-filter-fn+1]
 > Static helper returning a newly-allocated HfstTransducer* (caller owns) that filters out invalid flag-diacritic sequences. Parameters: `fail_flags`, `succeed_flags`, `self` (HfstTransducer) and `required` (bool). Gets type = fail_flags.get_type(). Builds an XRE compiler comp(type) with set_expand_definitions(true), and defines three XRE symbols: "Fail" = fail_flags, "Succeed" = succeed_flags, "Self" = self. If `required` is true, compiles `~[(?* Fail) ~$Succeed Self ?*]`; else compiles `~[?* Fail ~$Succeed Self ?*]` (the complement of strings where a failing flag, no intervening succeeding flag, then the self flag appear). Then removes the placeholder symbols "Fail", "Succeed", "Self" from the result's alphabet via remove_from_alphabet. Returns the compiled filter transducer pointer.
+>
+> PORT DIVERGENCE. The port keeps the constraint as data, not as a compiled
+> transducer: the flag `self`, its fail flags, its succeed flags and
+> `required`. The meaning is the same. Reading `self` is refused when the last
+> fail or succeed flag read before it on the same tape was a fail flag, and,
+> when `required`, also when there was none. See
+> [spec:hfst:sem:hfst-transducer.hfst.get-flag-filter-fn+1].
 
 > [spec:hfst:def:hfst-transducer.hfst.rename-flag-diacritics-fn]
 > void
@@ -1255,7 +1274,7 @@
 > [spec:hfst:def:hfst-transducer.hfst.substitute-escaped-flags-fn]
 > static void
 
-> [spec:hfst:sem:hfst-transducer.hfst.substitute-escaped-flags-fn]
+> [spec:hfst:sem:hfst-transducer.hfst.substitute-escaped-flags-fn+1]
 > Static helper that un-escapes flag-diacritic-like symbols in a transducer's
 > alphabet. Parameter: `HfstTransducer *filter`. Steps:
 > 1. Get `alpha = filter->get_alphabet()` (a StringSet).
@@ -1265,6 +1284,14 @@
 >    `filter->substitute(it, str)` to replace the escaped symbol with the
 >    un-escaped one in place.
 > 3. Mutates `filter` via substitute; returns void.
+>
+> PORT DIVERGENCE. The port never escapes the flags, because its filter is not
+> a transducer whose own flag arcs would take part in flag handling. Its
+> constraints name flags by position, and building the filter maps each symbol
+> number of the transducer being filtered to the flag it names, if any. That
+> mapping makes the filter act on the transducer's own flag symbols, which is
+> what this step is for upstream. See
+> [spec:hfst:sem:hfst-transducer.hfst.get-flag-filter-fn+1].
 
 > [spec:hfst:def:hfst-transducer.hfst.substitute-input-flag-with-epsilon-fn]
 > static bool
