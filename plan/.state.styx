@@ -1,6 +1,6 @@
 schema_version 7
 
-last_sync_at 2026-10-28T22:53:57.333859Z
+last_sync_at 2026-10-28T23:41:20.225993Z
 
 rule_versions (
     {id determinize-envelope.bounded-strategies, version 0}
@@ -849,6 +849,8 @@ impl_evidence (
         javascript.named-file-resolver
     ), covered_claims (
         {impl_name target-impl, rule javascript.named-file-resolver}
+    ), rule_versions_seen (
+        {id javascript.named-file-resolver, version 0}
     )}
     {id wasm.host-facilities, covered_rules (
         javascript.no-host-traps
@@ -962,5 +964,16 @@ impl_evidence (
         {impl_name target-impl, rule xre-finalization.root-optimize}
     ), rule_versions_seen (
         {id xre-finalization.root-optimize, version 0}
+    )}
+    {id wasm.crates, covered_rules (
+        javascript.init
+        javascript.packages
+        javascript.portable-build
+        javascript.typed-surface
+    ), covered_claims (
+        {impl_name js-impl, rule javascript.init}
+        {impl_name js-impl, rule javascript.packages}
+        {impl_name js-impl, rule javascript.typed-surface}
+        {impl_name target-impl, rule javascript.portable-build}
     )}
 )

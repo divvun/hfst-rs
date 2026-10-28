@@ -1,0 +1,24 @@
+[package]
+name = "hfst-wasm-runtime"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "wasm-bindgen glue behind @divvun/hfst-runtime, the Divvun HFST runtime for JavaScript"
+publish = false
+
+# The glue reaches users only through the npm packages under js/, so the
+# crate is never published. The rlib lets crates/hfst-wasm link these
+# bindings into its own module.
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+# Without default features, so the runtime module carries no foma backend.
+hfst = { workspace = true }
+# The wasm-bindgen CLI that writes the JavaScript glue must be this exact
+# version, or it refuses the module.
+wasm-bindgen = "=0.2.118"
+
+[lints]
+workspace = true
