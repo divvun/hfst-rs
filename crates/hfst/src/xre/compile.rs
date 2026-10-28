@@ -27,7 +27,7 @@ impl<B: AlgebraBackend> XreCompiler<B> {
             return None;
         }
         match parse(src) {
-            Ok(expr) => self.eval_finalized(&expr).ok(),
+            Ok(expr) => self.eval_reported(&expr),
             Err(e) => {
                 // Distinguish comments-only (parse_all yields []) from a real
                 // parse error.
@@ -105,7 +105,7 @@ impl<B: AlgebraBackend> XreCompiler<B> {
                     end += 1;
                 }
                 *chars_read = end as u32;
-                self.eval_finalized(first).ok()
+                self.eval_reported(first)
             }
             Ok(_) => {
                 self.contains_only_comments = true;
@@ -115,6 +115,17 @@ impl<B: AlgebraBackend> XreCompiler<B> {
             Err(e) => {
                 self.diag_parse_error(&e);
                 *chars_read = 0;
+                None
+            }
+        }
+    }
+
+    /// Evaluate a parsed root, reporting why it failed when it does.
+    fn eval_reported(&mut self, expression: &SpannedXre) -> Option<HfstTransducer<B>> {
+        match self.eval_finalized(expression) {
+            Ok(t) => Some(t),
+            Err(e) => {
+                self.diag_eval_error(&e);
                 None
             }
         }

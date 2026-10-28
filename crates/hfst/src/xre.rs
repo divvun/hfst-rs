@@ -143,6 +143,9 @@ pub struct XreCompiler<B: AlgebraBackend> {
     /// as `eval` visits each spanned node; the anchor for `diag_error`/
     /// `diag_warning`.
     pub(crate) current_span: std::ops::Range<usize>,
+    /// Span of the innermost node whose evaluation failed, recorded as the
+    /// failure propagates so its report points at the node at fault.
+    pub(crate) failed_span: Option<std::ops::Range<usize>>,
     /// The multichar symbols a lexc source declared, while one is being
     /// compiled; a regex using any other multichar symbol gets a warning.
     pub(crate) defined_multichar_symbols: Option<BTreeSet<Symbol>>,
@@ -154,6 +157,11 @@ pub struct XreCompiler<B: AlgebraBackend> {
     /// Compile each root as one rewrite pass instead of a transducer
     /// ([`Self::set_replace_pass`]).
     pub(crate) replace_pass: bool,
+}
+
+/// What went wrong, without the generic kind prefix when the error says more.
+fn error_text(e: &crate::error::Error) -> String {
+    e.message.clone().unwrap_or_else(|| e.kind.to_string())
 }
 
 // ===========================================================================
@@ -190,6 +198,7 @@ impl<B: AlgebraBackend> XreCompiler<B> {
             source: String::new(),
             source_name: String::from("<regex>"),
             current_span: 0..0,
+            failed_span: None,
             defined_multichar_symbols: None,
             span_base: 0,
             replace_pass: false,
@@ -215,6 +224,7 @@ impl<B: AlgebraBackend> XreCompiler<B> {
             source: String::new(),
             source_name: String::from("<regex>"),
             current_span: 0..0,
+            failed_span: None,
             defined_multichar_symbols: None,
             span_base: 0,
             replace_pass: false,
@@ -286,6 +296,20 @@ impl<B: AlgebraBackend> XreCompiler<B> {
                 &d.message,
             );
         }
+    }
+
+    /// Report an evaluation failure at the node it happened in. A pass
+    /// reports each of its problems where it finds them, so its failure is
+    /// not reported again.
+    fn diag_eval_error(&mut self, e: &crate::error::Error) {
+        if self.replace_pass {
+            return;
+        }
+        let span = self
+            .failed_span
+            .take()
+            .unwrap_or_else(|| self.current_span.clone());
+        self.diag_at(span, crate::diag::Severity::Error, &error_text(e));
     }
 
     // [spec:hfst:def:xre-compiler.hfst.xre.xre-compiler.set-error-stream-fn]

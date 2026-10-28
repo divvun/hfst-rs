@@ -238,6 +238,59 @@ fn read_regex_missing_file() {
 }
 
 // ──────────────────────────────────────────────────────────────────────────
+// An expression that parses but fails to evaluate is reported with its cause,
+// at the piece at fault.
+// ──────────────────────────────────────────────────────────────────────────
+
+/// Assert that `input` is rejected in both modes with `message` reported at
+/// `<stdin>:LINE:COLUMN`.
+fn assert_reported_at(input: &[u8], message: &str, location: &str) {
+    for mode in ["-S", "-l"] {
+        let o = run_regexp2fst(mode, input);
+        assert_eq!(o.code, Some(1), "mode {mode}: stderr: {}", o.stderr);
+        assert!(
+            o.stderr.contains(message),
+            "mode {mode}: expected '{message}' in stderr: {}",
+            o.stderr
+        );
+        assert!(
+            o.stderr.contains(&format!("<stdin>:{location}")),
+            "mode {mode}: expected the report at {location}: {}",
+            o.stderr
+        );
+    }
+}
+
+#[test]
+fn transducer_context_is_reported_at_the_context() {
+    assert_reported_at(b"a -> b || c:d _\n", "Contexts need to be automata", "1:11");
+    assert_reported_at(
+        b"a -> b || _ c:d, e _ f\n",
+        "Contexts need to be automata",
+        "1:13",
+    );
+}
+
+#[test]
+fn transducer_mapping_side_is_reported_at_the_side() {
+    assert_reported_at(
+        b"[a:b c] -> d\n",
+        "Replace mappings need to be automata",
+        "1:1",
+    );
+    assert_reported_at(b"a -> b:c\n", "Replace mappings need to be automata", "1:6");
+}
+
+#[test]
+fn unsupported_arrow_is_named() {
+    assert_reported_at(
+        b"x [a <-> b]\n",
+        "'<->' and '(<->)' are not supported",
+        "1:4",
+    );
+}
+
+// ──────────────────────────────────────────────────────────────────────────
 // Pathologically deep nesting (parser + evaluator recursion). Without a depth
 // guard this overflowed even the worker thread's large stack and aborted the
 // process with SIGABRT.

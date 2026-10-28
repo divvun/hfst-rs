@@ -45,6 +45,19 @@ fn has_non_identity_pairs<B: crate::backend::Backend>(t: &HfstTransducer<B>) -> 
     false
 }
 
+/// Whether `t` relates each string only to itself, which a cross product
+/// demands of its operands. The structural test settles nearly every case
+/// cheaply; the equivalence test is the cross product's own and accepts an
+/// identity relation spelt with non-identity arcs.
+fn denotes_automaton<B: AlgebraBackend>(t: &HfstTransducer<B>) -> crate::error::Result<bool> {
+    if t.is_automaton()? {
+        return Ok(true);
+    }
+    let mut projected = t.clone();
+    projected.input_project()?;
+    projected.compare(t, true)
+}
+
 // Builds the '$3' transducer of the substitute symbol-list grammar
 // (xre_parse.yy SYMBOL_LIST). An empty list yields the empty transducer
 // (the 'SUB3: RIGHT_BRACKET' alternative).
@@ -379,12 +392,12 @@ impl<B: AlgebraBackend> XreCompiler<B> {
             ReplaceArrow::LtrShortest => {
                 crate::hfst_xerox_rules::replace_leftmost_shortest_match_rule_vector(&rule_vector)?
             }
-            // E_REPLACE_RIGHT_MARKUP / no replace left-right arrow in the
-            // xfst grammar: the C++ 'xreerror("Unhandled arrow stuff I
-            // suppose")' aborted the parse; here it is a propagated parse
-            // error so malformed input yields a clean diagnostic, never a panic.
+            // The xfst grammar has no left-right replace.
             ReplaceArrow::LeftRight | ReplaceArrow::OptionalLeftRight => {
-                crate::bail!(Hfst, "Unhandled arrow stuff I suppose")
+                crate::bail!(
+                    Hfst,
+                    "The replace arrows '<->' and '(<->)' are not supported"
+                )
             }
         })
     }
@@ -433,6 +446,14 @@ impl<B: AlgebraBackend> XreCompiler<B> {
         Ok(match &mp.kind {
             MappingKind::Plain { lower } => {
                 let lower_tr = self.eval_mapping_side(lower)?;
+                // Both sides are crossed into the mapping's relation, which
+                // only automata allow.
+                for (side, tr) in [(&mp.upper, &upper), (lower, &lower_tr)] {
+                    if !denotes_automaton(tr)? {
+                        self.failed_span = super::replace_pass::side_span(side);
+                        crate::bail!(Hfst, "Replace mappings need to be automata");
+                    }
+                }
                 // Only the bare 'A -> B' production warns (the dotted forms do
                 // not): warn iff both sides are plain expressions.
                 if matches!(mp.upper, MappingSide::Expr(_)) && matches!(lower, MappingSide::Expr(_))
@@ -486,9 +507,11 @@ impl<B: AlgebraBackend> XreCompiler<B> {
                 let mut t1 = self.eval(l)?;
                 let mut t2 = self.eval(r)?;
                 if has_non_identity_pairs(&t1) {
+                    self.failed_span = Some(l.span.range.clone());
                     crate::bail!(Hfst, "Contexts need to be automata");
                 }
                 if has_non_identity_pairs(&t2) {
+                    self.failed_span = Some(r.span.range.clone());
                     crate::bail!(Hfst, "Contexts need to be automata");
                 }
                 if weighted {
@@ -506,6 +529,7 @@ impl<B: AlgebraBackend> XreCompiler<B> {
             (Some(l), None) => {
                 let mut t1 = self.eval(l)?;
                 if has_non_identity_pairs(&t1) {
+                    self.failed_span = Some(l.span.range.clone());
                     crate::bail!(Hfst, "Contexts need to be automata");
                 }
                 if weighted {
@@ -521,6 +545,7 @@ impl<B: AlgebraBackend> XreCompiler<B> {
             (None, Some(r)) => {
                 let mut t1 = self.eval(r)?;
                 if has_non_identity_pairs(&t1) {
+                    self.failed_span = Some(r.span.range.clone());
                     crate::bail!(Hfst, "Contexts need to be automata");
                 }
                 if weighted {

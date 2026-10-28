@@ -54,6 +54,16 @@ impl<B: AlgebraBackend> XreCompiler<B> {
     pub(crate) fn eval(&mut self, e: &SpannedXre) -> crate::error::Result<HfstTransducer<B>> {
         // Anchor any diagnostic emitted while evaluating this node at its span.
         self.current_span = e.span.range.clone();
+        let result = self.eval_node(e);
+        // A failing child records its span first, so the innermost node whose
+        // own evaluation failed is the one an error report points at.
+        if result.is_err() && self.failed_span.is_none() {
+            self.failed_span = Some(e.span.range.clone());
+        }
+        result
+    }
+
+    fn eval_node(&mut self, e: &SpannedXre) -> crate::error::Result<HfstTransducer<B>> {
         Ok(match &e.value {
             // ---- atoms (LABEL: HALFARC) ----
             // [spec:hfst:sem:xfst-cmd.string-escapes]
@@ -519,6 +529,7 @@ impl<B: AlgebraBackend> XreCompiler<B> {
             source: self.source.clone(),
             source_name: self.source_name.clone(),
             current_span: self.current_span.clone(),
+            failed_span: None,
             defined_multichar_symbols: self.defined_multichar_symbols.clone(),
             span_base: self.span_base,
             replace_pass: false,
