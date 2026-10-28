@@ -7952,4 +7952,188 @@ children (
             }
         )
     }
+
+    {
+        id wasm
+        title "Divvun HFST for JavaScript: wasm builds of the hfst library with TypeScript APIs, published to npm as @divvun/hfst-runtime (lookup, tokenise) and @divvun/hfst (full: compilers, xfst, algebra, every format) [docs/spec/javascript.md]"
+        kind @feat
+        children (
+            {
+                id wasm.rustfst-entropy
+                title "rustfst fork: put randgen's OS-entropy constructor (UniformTrSelector::new, ChaCha8Rng::from_os_rng) behind a default feature and depend on rand without os_rng otherwise, so hfst-openfst builds for wasm32 with no getrandom backend; land via commit, push, cargo update rustfst"
+                kind @build
+            }
+
+            {
+                id wasm.host-facilities
+                title "No host traps on wasm32: lookup_state and pmatch_state time limits and the random-path and pmatch clock seeds use a wasm-capable clock (Instant/SystemTime::now panic there); the DHFST writers run inline when available_parallelism fails instead of spawning threads"
+                kind @fix
+                implements {
+                    target-impl ([spec:hfst:req:javascript.no-host-traps])
+                }
+            }
+
+            {
+                id wasm.diagnostics
+                title "Diagnostics as data: diag::Diagnostic stops eprint!-ing its ariadne render (an idiom7 leak); every compile entry point (xre, lexc, twolc, pmatch, xfst) hands its diagnostics to the caller with spans, labels, notes, help and rendered text; the CLI prints the rendered text so its stderr is unchanged"
+                kind @feat
+                implements {
+                    target-impl ([spec:hfst:req:javascript.diagnostics-as-data])
+                }
+            }
+
+            {
+                id wasm.file-resolver
+                title "Named files through a caller-supplied resolver: xfst file_io/dispatch (source, load, read, save), pmatch includes and binary references, xre file references; std::fs is the default resolver, a missing name fails naming the file"
+                kind @feat
+                implements {
+                    target-impl ([spec:hfst:req:javascript.named-file-resolver])
+                }
+            }
+
+            {
+                id wasm.xfst-output
+                title "xfst output to a caller-supplied writer: replace the stub set_output_stream/output and the print!/println! sites in session, inspect, print_words and the other xfst_compiler modules; the CLI passes stdout"
+                kind @feat
+                implements {
+                    target-impl ([spec:hfst:req:javascript.xfst-output-sink])
+                }
+            }
+
+            {
+                id wasm.crates
+                title "Scaffold crates/hfst-wasm-runtime and crates/hfst-wasm (wasm-bindgen cdylibs; the full crate re-exports the runtime's bindings) and the TypeScript packages under js/ (shared wrapper source bound to each package's own glue); explicit async init; deno check on the TS; an nplan typescript platform"
+                kind @feat
+                implements {
+                    js-impl ([spec:hfst:def:javascript.packages] [spec:hfst:req:javascript.init] [spec:hfst:req:javascript.typed-surface])
+                    target-impl ([spec:hfst:req:javascript.portable-build])
+                }
+                deps (wasm.rustfst-entropy)
+            }
+
+            {
+                id wasm.errors-and-handles
+                title "JS runtime contract: HfstError/HfstCompileError with stable codes, trap-poisoned module instances, free()/Symbol.dispose/FinalizationRegistry handle lifetime with freed-handle errors, and a replaceable logger fed by the library's tracing events"
+                kind @feat
+                implements {
+                    js-impl ([spec:hfst:req:javascript.errors] [spec:hfst:req:javascript.handle-lifetime] [spec:hfst:req:javascript.logging])
+                }
+                deps (wasm.crates)
+            }
+
+            {
+                id wasm.transducer-io
+                title "Load transducers from bytes: runtime reads weighted/unweighted optimized-lookup and pmatch containers (with or without HFST header) and throws unsupported-format naming @divvun/hfst for the rest; full reads, writes and converts every library format; multi-transducer streams load as arrays"
+                kind @feat
+                implements {
+                    target-impl ([spec:hfst:req:javascript.load-bytes])
+                }
+                deps (wasm.errors-and-handles wasm.host-facilities)
+            }
+
+            {
+                id wasm.lookup
+                title "lookup(input, { limit, timeLimitMs }) on transducers: flag-aware library lookup returned as { output, symbols, weight } ordered by weight then output; an expired time limit returns the results found so far"
+                kind @feat
+                implements {
+                    target-impl ([spec:hfst:req:javascript.lookup])
+                }
+                deps (wasm.transducer-io)
+            }
+
+            {
+                id wasm.tokenise
+                title "Tokeniser from pmatch container bytes: tokenise(text, options) returns structured tokens (surface, UTF-16 offsets, analysed flag, weighted readings) and the CG / Giella CG / Xerox / plain output strings byte-identical to hfst tokenise"
+                kind @feat
+                implements {
+                    target-impl ([spec:hfst:req:javascript.tokenise])
+                }
+                deps (wasm.transducer-io)
+            }
+
+            {
+                id wasm.runtime-package
+                title "Runtime package boundary: a build check fails if the compilers, foma or the transducer algebra are reachable from @divvun/hfst-runtime's exports; the runtime test suite runs unchanged against @divvun/hfst; record both module sizes on this node"
+                kind @feat
+                implements {
+                    js-impl ([spec:hfst:req:javascript.shared-surface])
+                    target-impl ([spec:hfst:req:javascript.runtime-excludes-compilers])
+                }
+                deps (wasm.lookup wasm.tokenise)
+            }
+
+            {
+                id wasm.compile
+                title "Compilers in @divvun/hfst: compileRegex, compileLexc, compileTwolc, compilePmatch over source strings plus a caller-supplied file map; success returns transducers with warning diagnostics, failure throws HfstCompileError with every diagnostic and never an empty transducer"
+                kind @feat
+                implements {
+                    target-impl ([spec:hfst:req:javascript.compile])
+                }
+                deps (
+                    wasm.transducer-io
+                    wasm.diagnostics
+                    wasm.file-resolver
+                    pmatch2fst-syntax-error-exit-zero
+                    xre-eval-error-message
+                )
+            }
+
+            {
+                id wasm.algebra
+                title "Transducer algebra in @divvun/hfst: the HfstTransducer operations as methods that return new transducers and never change receiver or arguments; mixed implementation types convert as the library does or throw type-mismatch, never an empty result"
+                kind @feat
+                implements {
+                    target-impl ([spec:hfst:req:javascript.algebra])
+                }
+                deps (wasm.transducer-io)
+            }
+
+            {
+                id wasm.xfst
+                title "xfst session in @divvun/hfst: run commands and scripts returning printed text and diagnostics per run; stack and defined networks readable/writable as transducers; reads and writes go through the session's file map; quit-on-fail stops a script and names the failing command"
+                kind @feat
+                implements {
+                    target-impl ([spec:hfst:req:javascript.xfst-session])
+                }
+                deps (wasm.compile wasm.xfst-output)
+            }
+
+            {
+                id wasm.parity
+                title "Native parity suite: shared fixtures run under Deno, Node, Bun and headless Chromium (Playwright's cached build) against the native hfst library: same lookup results, same tokenise output, byte-identical compiled transducers"
+                kind @test
+                implements {
+                    js-impl ([spec:hfst:req:javascript.native-parity])
+                }
+                deps (
+                    wasm.runtime-package
+                    wasm.compile
+                    wasm.xfst
+                    wasm.algebra
+                )
+            }
+
+            {
+                id wasm.publish
+                title "Publish @divvun/hfst-runtime and @divvun/hfst 0.1.0 to npm: package.json (LGPL-3.0-or-later, Divvun HFST, copyright UiT, github.com/divvun/hfst-rs), README with the 4 GiB compile limit and worker advice, a release build script; the operator confirms before the actual npm publish"
+                kind @build
+                deps (wasm.parity)
+            }
+        )
+        log (
+            {
+                at 2026-10-28T21:07:19.994863Z
+                author "brendan@necessary.nu"
+                kind @decision
+                text "Operator choices 2026-10-28: plan every layer (runtime, compilers, xfst session, algebra); publish to npm only, no JSR; two packages from the start, @divvun/hfst-runtime (load optimized-lookup and pmatch containers, lookup, tokenise) and @divvun/hfst (everything). The runtime package must stay free of compiler and algebra code, which is why wasm.runtime-package carries a build check rather than a size study."
+            }
+
+            {
+                at 2026-10-28T21:07:22.871409Z
+                author "brendan@necessary.nu"
+                kind @note
+                text "Probe 2026-10-28 (scratch crate depending on hfst by path, cargo check --target wasm32-unknown-unknown): hfst with and without foma compiles for wasm32 once getrandom 0.3 gets its wasm_js backend. getrandom comes only from rustfst's rand/rand_chacha, used only by algorithms/randgen (UniformTrSelector::new calls ChaCha8Rng::from_os_rng); hfst does not use randgen, hence wasm.rustfst-entropy. Runtime hazards found: Instant::now in lookup_state.rs and pmatch_state/matching.rs, SystemTime::now in pmatch_compiler.rs clock() and tropical path_extraction.rs random seeds, std::thread::scope in dhfst_writer.rs, std::fs in xfst_compiler file_io/dispatch and pmatch_compiler and xre/eval, diag.rs eprint! of the ariadne render, and xfst_compiler print!/println! with set_output_stream left as a stub. Compiler entry points already take &str and HfstInputStream::read_from takes any BufRead. HfstTransducer is generic over its backend, so bindings wrap AnyTransducer. Toolchain present: wasm-pack, wasm-bindgen, deno, node, bun, Playwright Chromium 1243."
+            }
+        )
+    }
 )
