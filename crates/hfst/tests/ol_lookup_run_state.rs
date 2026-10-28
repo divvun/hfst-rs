@@ -261,3 +261,27 @@ fn four_byte_symbols_admit_like_two_byte() {
         "a lookup taught the machine's encoder a four-byte symbol"
     );
 }
+
+/// A time limit that has already passed stops the walk: a word with 4096
+/// analyses comes back with fewer of them, and without the limit with all.
+// [spec:hfst:req:javascript.no-host-traps/test]
+#[test]
+fn an_expired_time_limit_stops_the_lookup() {
+    let _g = serialized();
+    let mut net = HfstBasicTransducer::new();
+    net.add_state(0);
+    arc(&mut net, 0, 0, "a", "x", 0.0);
+    arc(&mut net, 0, 0, "a", "y", 0.0);
+    net.set_final_weight(0, &0.0);
+    let machine = to_ol(&net);
+    let word = "a".repeat(12);
+
+    let all = LookupState::new(&machine).lookup_fd(&word, -1, 0.0);
+    assert_eq!(all.len(), 4096);
+    let cut = LookupState::new(&machine).lookup_fd(&word, -1, 1e-9);
+    assert!(
+        cut.len() < all.len(),
+        "a 1 ns limit still found all {} analyses",
+        all.len()
+    );
+}

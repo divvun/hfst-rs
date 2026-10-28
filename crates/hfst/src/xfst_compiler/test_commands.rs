@@ -4,15 +4,16 @@
 use super::*;
 
 impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
-    fn print_bool(&self, value: bool) {
-        println!("{}, (1 = TRUE, 0 = FALSE)", u8::from(value));
+    fn print_bool(&mut self, value: bool) -> CmdResult {
+        writeln!(self.output, "{}, (1 = TRUE, 0 = FALSE)", u8::from(value))?;
         self.flush();
+        Ok(())
     }
 
     /// Print a test's verdict, and fail when it is false under an
     /// assertion (the 'assert' prefix or the 'assert' variable).
     pub(super) fn report_test(&mut self, value: bool, assertion: bool) -> CmdResult {
-        self.print_bool(value);
+        self.print_bool(value)?;
         if !value && (assertion || self.variables["assert"] == "ON") {
             return Err(CommandError::new("assertion failed: the test is false"));
         }

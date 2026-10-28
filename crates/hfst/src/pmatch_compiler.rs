@@ -20,6 +20,7 @@
 #![allow(clippy::too_many_arguments)]
 
 use crate::backend::AlgebraBackend;
+use crate::file_resolver::FileResolver;
 use crate::hfst_data_types::StringPairSet;
 use crate::hfst_data_types::Symbol;
 use crate::hfst_data_types::{StringPair, StringVector};
@@ -42,8 +43,8 @@ use crate::hfst_xerox_rules::{
 };
 use crate::pmatch::PmatchAlphabet;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
-use std::fs;
 use std::rc::Rc;
+use std::sync::Arc;
 use tracing::{debug, error, warn};
 
 /// Shared-ownership handle to a node in the PMATCH lazy-evaluation AST.
@@ -82,8 +83,9 @@ pub type MappingPairVector<B> = Vec<PairRef<B>>;
 /// Mirror of C 'clock()' — processor time in ['CLOCKS_PER_SEC'] ticks. The
 /// skeleton uses wall-clock microseconds, which is only consulted in verbose
 /// timing output.
+// [spec:hfst:req:javascript.no-host-traps]
 pub fn clock() -> clock_t {
-    use std::time::{SystemTime, UNIX_EPOCH};
+    use web_time::{SystemTime, UNIX_EPOCH};
     match SystemTime::now().duration_since(UNIX_EPOCH) {
         Ok(d) => d.as_micros() as clock_t,
         Err(_) => 0,
@@ -803,6 +805,9 @@ pub struct PmatchEvalContext<B: AlgebraBackend + 'static> {
     // keyed by node identity (see `PmatchObject::cache_key`). Replaces the C++
     // `PmatchObject::cache` field.
     node_caches: HashMap<usize, HfstTransducer<B>>,
+    /// Where includes and file references are read from. A compile does not
+    /// reset it.
+    files: Arc<dyn FileResolver>,
     // What compiling has reported, oldest first, until the caller takes it.
     // Kept across compiles: 'init_globals' leaves it alone.
     diagnostics: Vec<crate::diag::Diagnostic>,

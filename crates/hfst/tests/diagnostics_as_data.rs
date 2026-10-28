@@ -2,8 +2,6 @@
 //! diagnostics come back with the right severity, message and byte span, and
 //! a success keeps its warnings.
 
-use std::collections::HashMap;
-
 use hfst::diag::{Diagnostic, Severity};
 use hfst::lexc::LexcCompiler;
 use hfst::pmatch_compiler::PmatchCompiler;
@@ -146,19 +144,6 @@ fn pmatch_failure_is_returned_with_its_span() {
         d.message()
     );
     assert_eq!(d.primary_span().map(|s| s.start), Some(start));
-
-    let mut diagnostics = Vec::new();
-    let compiled = hfst::pmatch_compiler::compile::<StdVectorFst>(
-        src,
-        &HashMap::new(),
-        false,
-        false,
-        false,
-        String::new(),
-        &mut diagnostics,
-    );
-    assert!(compiled.is_err());
-    assert_eq!(only(&diagnostics, Severity::Error).message(), d.message());
 }
 
 // [spec:hfst:req:javascript.diagnostics-as-data/test]

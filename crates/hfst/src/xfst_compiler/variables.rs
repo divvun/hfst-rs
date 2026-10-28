@@ -84,7 +84,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         }
 
         if self.verbose {
-            println!("variable {} = {}", name, text);
+            writeln!(self.output, "variable {} = {}", name, text)?;
         }
 
         self.prompt();
@@ -117,18 +117,19 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         let Some(value) = self.variables.get(name) else {
             return Err(self.unknown_variable(name));
         };
-        println!("variable {} = {}", name, value);
+        writeln!(self.output, "variable {} = {}", name, value)?;
         self.prompt();
         Ok(())
     }
 
     // @brief Show all variables
-    pub fn show_all(&mut self) {
+    pub fn show_all(&mut self) -> CmdResult {
         for (name, value) in &self.variables {
             let explanation = variable_explanations_get(name);
-            println!("{:>20}: {:>6}: {}", name, value, explanation);
+            writeln!(self.output, "{:>20}: {:>6}: {}", name, value, explanation)?;
         }
         self.prompt();
+        Ok(())
     }
 
     // @brief Define whether readline library is used to read input in apply up etc.

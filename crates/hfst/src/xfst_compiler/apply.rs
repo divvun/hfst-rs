@@ -85,18 +85,19 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             self.variables["obey-flags"] == "ON",
         );
 
-        let mut out = std::io::stdout();
-        let printed = if self.variables["print-pairs"] == "OFF" {
-            let paths = extract_output_paths(&results);
-            self.print_paths_one(&paths, &mut out, -1)?
-        } else {
-            self.print_paths_two(&results, &mut out, -1)?
-        };
-
-        if !printed {
-            println!("???");
-        }
-        Ok(())
+        let print_pairs = self.variables["print-pairs"] != "OFF";
+        self.with_session_output(|c, out| {
+            let printed = if print_pairs {
+                c.print_paths_two(&results, out, -1)?
+            } else {
+                let paths = extract_output_paths(&results);
+                c.print_paths_one(&paths, out, -1)?
+            };
+            if !printed {
+                writeln!(out, "???")?;
+            }
+            Ok(())
+        })
     }
 
     // apply_down_line -> apply_up_line

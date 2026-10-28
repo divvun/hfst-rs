@@ -53,6 +53,7 @@ pub mod dhfst_writer;
 pub mod diag;
 pub mod error;
 pub mod expand_equivalences;
+pub mod file_resolver;
 pub mod generate_model_forms;
 pub mod guessify_fst;
 pub mod harmonize_unknown_and_identity_symbols;

@@ -1,7 +1,5 @@
 //! The compile entry points, include expansion, file reading, and archive writing.
 
-use std::sync::Arc;
-
 use super::*;
 use crate::diag::Diagnostic;
 
@@ -19,71 +17,94 @@ use crate::diag::Diagnostic;
 pub fn pmatchwarning(msg: &str) {
     warn!("pmatch: {}", msg);
 }
+/// The deepest '@include' nesting allowed. Without a limit a file that
+/// includes itself would overflow the stack.
+const MAX_INCLUDE_DEPTH: u32 = 64;
+
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.expand-includes-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.expand-includes-fn]
+// [spec:hfst:req:javascript.named-file-resolver]
+/// `script` with each '@include"file"' outside a literal or comment replaced
+/// by the file's contents, read through the context's file resolver. An
+/// included file's own includes are expanded the same way.
 pub fn expand_includes<B: AlgebraBackend + 'static>(
     ctx: &mut PmatchEvalContext<B>,
     script: &str,
-) -> String {
+) -> crate::error::Result<String> {
     if !script.contains("@include\"") {
-        return script.to_string();
+        return Ok(script.to_string());
     }
+    let mut retval: Vec<u8> = Vec::new();
+    expand_includes_into(ctx, script.as_bytes(), 0, &mut retval)?;
+    Ok(String::from_utf8_lossy(&retval).into_owned())
+}
+
+// The scan works on bytes so that text outside the directives is copied
+// unchanged, whatever its encoding.
+fn expand_includes_into<B: AlgebraBackend + 'static>(
+    ctx: &mut PmatchEvalContext<B>,
+    bytes: &[u8],
+    depth: u32,
+    retval: &mut Vec<u8>,
+) -> crate::error::Result<()> {
     let mut in_quoted_literal = false;
     let mut in_curly_literal = false;
     let mut in_comment = false;
-    let bytes = script.as_bytes();
     let mut idx: usize = 0;
-    let mut retval = String::new();
     while idx < bytes.len() {
-        let c = bytes[idx] as char;
-        if in_quoted_literal && c == '"' && (idx == 0 || bytes[idx - 1] != b'\\') {
+        let c = bytes[idx];
+        if in_quoted_literal && c == b'"' && (idx == 0 || bytes[idx - 1] != b'\\') {
             in_quoted_literal = false;
-        } else if in_curly_literal && c == '}' && (idx == 0 || bytes[idx - 1] != b'\\') {
+        } else if in_curly_literal && c == b'}' && (idx == 0 || bytes[idx - 1] != b'\\') {
             in_curly_literal = false;
-        } else if in_comment && c == '\n' {
+        } else if in_comment && c == b'\n' {
             in_comment = false;
-        } else if c == '"' {
+        } else if c == b'"' {
             in_quoted_literal = true;
-        } else if c == '{' {
+        } else if c == b'{' {
             in_curly_literal = true;
-        } else if c == '!' {
+        } else if c == b'!' {
             in_comment = true;
-        } else if c == '%' {
-            retval.push(bytes[idx] as char);
+        } else if c == b'%' {
+            retval.push(c);
             idx += 1;
             if idx < bytes.len() {
-                retval.push(bytes[idx] as char);
+                retval.push(bytes[idx]);
                 idx += 1;
             }
             continue;
         } else if bytes[idx..].starts_with(b"@include\"") {
-            let terminating_quote_pos = script[idx + 9..].find('"').map(|p| p + idx + 9);
-            if let Some(terminating_quote_pos) = terminating_quote_pos {
-                let filename_start_pos = idx + 9;
-                let filename_len = terminating_quote_pos - filename_start_pos;
-                let filepath = path_from_filename(
-                    ctx,
-                    &script[filename_start_pos..filename_start_pos + filename_len],
+            let filename_start_pos = idx + 9;
+            if let Some(filename_len) = bytes[filename_start_pos..].iter().position(|&b| b == b'"')
+            {
+                let filename = String::from_utf8_lossy(
+                    &bytes[filename_start_pos..filename_start_pos + filename_len],
                 );
-                match fs::read(&filepath) {
-                    Ok(contents) => {
-                        for b in contents {
-                            retval.push(b as char);
-                        }
-                    }
-                    Err(_) => {
-                        let errstring = format!("could not open file {} for @include\n", filepath);
-                        ctx.pmatcherror(&errstring);
-                    }
+                let filepath = path_from_filename(ctx, &filename);
+                if depth >= MAX_INCLUDE_DEPTH {
+                    crate::bail!(
+                        Hfst,
+                        format!(
+                            "'@include' of {} is nested more than {} deep; does a file include itself?",
+                            filepath, MAX_INCLUDE_DEPTH
+                        )
+                    );
                 }
+                let contents = ctx.files.read(&filepath).map_err(|_| {
+                    crate::err!(
+                        Hfst,
+                        format!("could not open file {} for @include", filepath)
+                    )
+                })?;
+                expand_includes_into(ctx, &contents, depth + 1, retval)?;
                 idx += 10 + filename_len;
                 continue;
             }
         }
-        retval.push(bytes[idx] as char);
+        retval.push(c);
         idx += 1;
     }
-    retval
+    Ok(())
 }
 // Record a parser failure as source-anchored diagnostics, so the real cause
 // reaches the caller, e.g. a reserved predefined acceptor name (`Alpha`,
@@ -137,346 +158,6 @@ fn check_insertions_defined<B: AlgebraBackend + 'static>(
     Ok(())
 }
 
-// [spec:hfst:def:pmatch-utils.hfst.pmatch.compile-fn]
-// [spec:hfst:sem:pmatch-utils.hfst.pmatch.compile-fn]
-// [spec:hfst:req:javascript.diagnostics-as-data]
-/// Compile `pmatch` into its named transducers. Everything the compile
-/// reports is appended to `diagnostics`, whether it succeeds or fails.
-pub fn compile<B: AlgebraBackend + FromAnyTransducer + 'static>(
-    pmatch: &str,
-    defs: &HashMap<String, HfstTransducer<B>>,
-    be_verbose: bool,
-    do_flatten: bool,
-    do_include_cosine_distances: bool,
-    includedir: String,
-    diagnostics: &mut Vec<Diagnostic>,
-) -> crate::error::Result<HashMap<String, HfstTransducer<B>>> {
-    let mut ctx = PmatchEvalContext::new();
-    let result = compile_in_context(
-        &mut ctx,
-        pmatch,
-        defs,
-        be_verbose,
-        do_flatten,
-        do_include_cosine_distances,
-        includedir,
-    );
-    diagnostics.append(&mut ctx.diagnostics);
-    result
-}
-
-fn compile_in_context<B: AlgebraBackend + FromAnyTransducer + 'static>(
-    ctx: &mut PmatchEvalContext<B>,
-    pmatch: &str,
-    defs: &HashMap<String, HfstTransducer<B>>,
-    be_verbose: bool,
-    do_flatten: bool,
-    do_include_cosine_distances: bool,
-    includedir: String,
-) -> crate::error::Result<HashMap<String, HfstTransducer<B>>> {
-    ctx.init_globals();
-    let expanded_script = expand_includes(ctx, pmatch);
-    ctx.data = expanded_script.clone();
-    ctx.len = ctx.data.clone().len();
-    ctx.verbose = be_verbose;
-    ctx.flatten = do_flatten;
-    ctx.include_cosine_distances = do_include_cosine_distances;
-    ctx.includedir = includedir;
-    ctx.vector_similarity_projection_factor = 1.0;
-    for (key, value) in defs.iter() {
-        ctx.definitions_insert(
-            key.clone(),
-            as_obj(PmatchTransducerContainer::new(HfstTransducer::new_copy(
-                value,
-            )?)),
-        );
-    }
-    if ctx.verbose {
-        ctx.timer = clock();
-        debug!("");
-    }
-
-    // === SEAM: replaces the bison 'pmatchparse()' call ====================
-    // The build-driver group walks the nfst-pmatch parse tree, populating the
-    // 'hfst::pmatch' globals exactly as the bison actions would have.
-    match nfst_pmatch::parse(&expanded_script) {
-        Ok(parsed) => {
-            for statement in &parsed.value.statements {
-                if let Err(e) = build_statement(ctx, statement) {
-                    error!("{}", e);
-                    ctx.pmatchnerrs += 1;
-                }
-            }
-        }
-        Err(e) => {
-            report_pmatch_parse_error(ctx, &e, &expanded_script);
-            ctx.data = String::new();
-            ctx.len = 0;
-            return Err(syntax_error(&e));
-        }
-    }
-    // === END SEAM =========================================================
-
-    if ctx.pmatchnerrs != 0 {
-        ctx.data = String::new();
-        ctx.len = 0;
-        crate::bail!(
-            Hfst,
-            format!("pmatch: {} statement(s) failed to compile", ctx.pmatchnerrs)
-        );
-    }
-    check_insertions_defined(ctx)?;
-    let mut retval: HashMap<String, HfstTransducer<B>> = HashMap::new();
-    if ctx.verbose {
-        let defs_keys: Vec<String> = ctx.definitions_keys();
-        for first in defs_keys.iter() {
-            if !ctx.used_definitions_contains(first) && first != "TOP" {
-                debug!("Warning: {} defined but never used", first);
-            }
-        }
-    }
-    // Our helper for harmonizing all the networks' alphabets with
-    // each other
-    if ctx.verbose {
-        debug!("Compiling and harmonizing...");
-        ctx.timer = clock();
-    }
-
-    let mut uncount: u32 = 0;
-    if ctx.inserted_names_len() > 0
-        || ctx.def_insed_expressions_len() > 0
-        || ctx.uncomposed_len() > 0
-    {
-        let mut dummy = HfstTransducer::new();
-        // We keep TOP and any inserted transducers
-        let defs_keys: Vec<String> = ctx.definitions_keys();
-        for first in defs_keys.iter() {
-            if first == "TOP"
-                || ctx.inserted_names_contains(first)
-                || ctx.def_insed_expressions_contains(first)
-                || ctx.uncomposed_contains(first)
-            {
-                if ctx.verbose {
-                    let second = ctx
-                        .definitions_get(first)
-                        .expect("first is a definitions key");
-                    debug!("definition...{}={}", first, second.get_name().to_string());
-                }
-                let mut tmp: HfstTransducer<B> = if ctx.def_insed_expressions_contains(first) {
-                    ctx.def_insed_expressions_get(first)
-                        .expect("checked with contains just above")
-                        .evaluate(ctx)?
-                } else {
-                    ctx.definitions_get(first)
-                        .expect("first is a definitions key")
-                        .evaluate(ctx)?
-                };
-                tmp.minimize()?;
-                dummy.harmonize(&mut tmp, true)?;
-                // This is what it will be called in the archive
-                // XXX: seems to use the index not the name...)
-                if ctx.uncomposed_contains(first) {
-                    if ctx.verbose {
-                        debug!("Uncompose");
-                    }
-                    if uncount == 0 {
-                        tmp.set_name(&("UNCOMPOSE LEFT ".to_string() + first));
-                        retval.insert("UNCOMPOSE LEFT ".to_string() + first, tmp);
-                        uncount += 1;
-                    } else if uncount == 1 {
-                        tmp.set_name(&("UNCOMPOSE RIGHT ".to_string() + first));
-                        retval.insert("UNCOMPOSE RIGHT ".to_string() + first, tmp);
-                        uncount += 1;
-                    } else {
-                        warn!("Uncompose only works once so far...");
-                        uncount += 1;
-                    }
-                } else {
-                    tmp.set_name(first);
-                    retval.insert(first.clone(), tmp);
-                }
-            }
-        }
-
-        // Now that dummy is harmonized with everything, we harmonize
-        // everything with dummy and minimize the results
-        for second in retval.values_mut() {
-            second.harmonize(&mut dummy, true)?;
-            second.minimize()?;
-        }
-    } else {
-        if ctx.definitions_len() == 0 {
-            warn!("pmatch compilation had an empty result");
-            retval.insert("TOP".to_string(), HfstTransducer::new());
-        } else if !ctx.definitions_contains("TOP") {
-            let first_key = ctx
-                .definitions_keys()
-                .into_iter()
-                .next()
-                .expect("definitions non-empty in this branch");
-            warn!(
-                "Pmatch compilation: regex or TOP was undefined, using {} as root",
-                first_key
-            );
-            let mut tmp = ctx
-                .definitions_get(&first_key)
-                .expect("first_key is a definitions key")
-                .evaluate(ctx)?;
-            tmp.minimize()?;
-            tmp.set_name("TOP");
-            retval.insert("TOP".to_string(), tmp);
-        } else {
-            let mut tmp = ctx
-                .definitions_get("TOP")
-                .expect("TOP present in this branch")
-                .evaluate(ctx)?;
-            tmp.minimize()?;
-            tmp.set_name("TOP");
-            retval.insert("TOP".to_string(), tmp);
-        }
-    }
-
-    if ctx.verbose {
-        let duration = (clock() - ctx.timer) as f64 / CLOCKS_PER_SEC as f64;
-        ctx.timer = clock();
-        debug!("Everything compiled and harmonized in {} seconds", duration);
-    }
-
-    set_initial_symbol_variables(ctx)?;
-    if ctx.variables_get("need-separators").as_deref() == Some("on") {
-        let whitespace_acc =
-            ctx.with_utils(|u| HfstTransducer::new_copy(&u.latin1_whitespace_acceptor))?;
-        let punct_acc = ctx.with_utils(|u| HfstTransducer::new_copy(&u.latin1_punct_acceptor))?;
-        let mut not_whitespace = HfstTransducer::new_symbol(internal_identity)?;
-        not_whitespace.subtract(&whitespace_acc, true)?;
-        let mut anything = HfstTransducer::new_symbol(internal_identity)?;
-        anything.repeat_star()?;
-        let mut begins_and_ends_with_non_whitespace = HfstTransducer::new_copy(&not_whitespace)?;
-        begins_and_ends_with_non_whitespace.concatenate(&anything, true)?;
-        begins_and_ends_with_non_whitespace.concatenate(&not_whitespace, true)?;
-        begins_and_ends_with_non_whitespace
-            .compose(retval.get("TOP").expect("TOP defined above"), true)?;
-        let mut is_single_non_whitespace = HfstTransducer::new_copy(&not_whitespace)?;
-        is_single_non_whitespace.compose(retval.get("TOP").expect("TOP defined above"), true)?;
-        let empty = HfstTransducer::new();
-        if !begins_and_ends_with_non_whitespace.compare(&empty, true)?
-            || !is_single_non_whitespace.compare(&empty, true)?
-        {
-            let mut whitespace_punct_context = HfstTransducer::new_copy(&whitespace_acc)?;
-            whitespace_punct_context.disjunct(&punct_acc, true)?;
-            whitespace_punct_context.disjunct(&HfstTransducer::new_symbol("@BOUNDARY@")?, true)?;
-            let mut top_with_boundaries: HfstTransducer<B> =
-                HfstTransducer::new_symbol_pair(internal_epsilon, LC_ENTRY_SYMBOL)?;
-            top_with_boundaries.concatenate(&whitespace_punct_context, true)?;
-            top_with_boundaries.concatenate(
-                &HfstTransducer::new_symbol_pair(internal_epsilon, LC_EXIT_SYMBOL)?,
-                true,
-            )?;
-            let mut rc = HfstTransducer::new_symbol_pair(internal_epsilon, RC_ENTRY_SYMBOL)?;
-            rc.concatenate(&whitespace_punct_context, true)?;
-            rc.concatenate(
-                &HfstTransducer::new_symbol_pair(internal_epsilon, RC_EXIT_SYMBOL)?,
-                true,
-            )?;
-            top_with_boundaries.concatenate(retval.get("TOP").expect("TOP defined above"), true)?;
-            top_with_boundaries.concatenate(&rc, true)?;
-            retval.insert(
-                "TOP".to_string(),
-                add_pmatch_delimiters(&top_with_boundaries)?,
-            );
-            retval
-                .get_mut("TOP")
-                .expect("TOP defined above")
-                .minimize()?;
-            if ctx.verbose {
-                let duration = (clock() - ctx.timer) as f64 / CLOCKS_PER_SEC as f64;
-                ctx.timer = clock();
-                debug!("Added automatic context separators in {} seconds", duration);
-            }
-        }
-    }
-    let vars: Vec<(String, String)> = ctx.variables_snapshot();
-    let top = retval
-        .get_mut("TOP")
-        .expect("TOP present in result by this point");
-    for (key, value) in vars.iter() {
-        top.set_property(key, value);
-    }
-    ctx.data = String::new();
-    ctx.len = 0;
-    Ok(retval)
-}
-// Collect TOP's allowed and disallowed initial symbols and store them as the
-// 'initial-symbols' and 'disallowed-initial-symbols' variables, unless
-// something in the lists looks suspicious.
-fn set_initial_symbol_variables<B: AlgebraBackend + 'static>(
-    ctx: &mut PmatchEvalContext<B>,
-) -> crate::error::Result<()> {
-    let mut allowed_initial_symbols: StringSet = StringSet::new();
-    let mut disallowed_initial_symbols: StringSet = StringSet::new();
-    ctx.definitions_get("TOP")
-        .expect("TOP defined by this point")
-        .collect_initial_symbols_into(
-            &mut allowed_initial_symbols,
-            &mut disallowed_initial_symbols,
-        )?;
-    let mut initial_symbols_list = String::new();
-    let mut disallowed_initial_symbols_list = String::new();
-    // Use this to bail out if there's something suspicious in the final lists
-    let mut initial_symbols_ok = true;
-    for it in allowed_initial_symbols.iter() {
-        if is_special(it) {
-            if ctx.verbose {
-                debug!(
-                    "Not setting initial symbol list due to special symbol {}",
-                    it
-                );
-            }
-            initial_symbols_ok = false;
-        }
-        initial_symbols_list.push_str(it);
-    }
-    for it in disallowed_initial_symbols.iter() {
-        if is_special(it) {
-            if ctx.verbose {
-                debug!(
-                    "Not setting initial symbol list due to special symbol {}",
-                    it
-                );
-            }
-            initial_symbols_ok = false;
-        }
-        disallowed_initial_symbols_list.push_str(it);
-    }
-    if allowed_initial_symbols.len() > 200 {
-        if ctx.verbose {
-            debug!(
-                "Not setting initial symbol list due to excess length: {}",
-                allowed_initial_symbols.len()
-            );
-        }
-        initial_symbols_ok = false;
-    }
-    if disallowed_initial_symbols.len() > 200 {
-        if ctx.verbose {
-            debug!(
-                "Not setting initial symbol list due to excess length: {}",
-                disallowed_initial_symbols.len()
-            );
-        }
-        initial_symbols_ok = false;
-    }
-    if initial_symbols_ok && !initial_symbols_list.is_empty() {
-        ctx.variables_insert("initial-symbols".to_string(), initial_symbols_list);
-    }
-    if initial_symbols_ok && !disallowed_initial_symbols_list.is_empty() {
-        ctx.variables_insert(
-            "disallowed-initial-symbols".to_string(),
-            disallowed_initial_symbols_list,
-        );
-    }
-    Ok(())
-}
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.write-compilation-stack-indentation-to-err-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.write-compilation-stack-indentation-to-err-fn]
 pub fn write_compilation_stack_indentation_to_err<B: AlgebraBackend + 'static>(
@@ -498,27 +179,28 @@ pub fn write_compilation_stack_indentation_to_err<B: AlgebraBackend + 'static>(
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.read-text-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.read-text-fn]
+// [spec:hfst:req:javascript.named-file-resolver]
 pub fn read_text<B: AlgebraBackend>(
+    files: &dyn FileResolver,
     filename: String,
     spaced_text: bool,
 ) -> crate::error::Result<HfstTransducer<B>> {
     let tok = HfstTokenizer::new();
     let mut retval: HfstTransducer<B> = HfstTransducer::new();
-    match fs::read_to_string(&filename) {
-        Err(_) => {
-            error!("Pmatch: could not open text file {} for reading", filename);
-        }
-        Ok(contents) => {
-            for line in contents.lines() {
-                let line = line.to_string();
-                if !line.is_empty() {
-                    if spaced_text {
-                        let _spv = HfstTokenizer::tokenize_space_separated(&line);
-                    } else {
-                        let spv = tok.tokenize(&line, false); // XXX
-                        retval.disjunct_spv(&spv)?;
-                    }
-                }
+    let contents = files.read_to_string(&filename).map_err(|_| {
+        crate::err!(
+            Hfst,
+            format!("Pmatch: could not open text file {} for reading", filename)
+        )
+    })?;
+    for line in contents.lines() {
+        let line = line.to_string();
+        if !line.is_empty() {
+            if spaced_text {
+                let _spv = HfstTokenizer::tokenize_space_separated(&line);
+            } else {
+                let spv = tok.tokenize(&line, false);
+                retval.disjunct_spv(&spv)?;
             }
         }
     }
@@ -527,9 +209,10 @@ pub fn read_text<B: AlgebraBackend>(
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.read-spaced-text-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.read-spaced-text-fn]
 pub fn read_spaced_text<B: AlgebraBackend>(
+    files: &dyn FileResolver,
     filename: String,
 ) -> crate::error::Result<HfstTransducer<B>> {
-    read_text(filename, true)
+    read_text(files, filename, true)
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.path-from-filename-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.path-from-filename-fn]
@@ -609,6 +292,8 @@ impl<B: AlgebraBackend + FromAnyTransducer + 'static> PmatchCompiler<B> {
 
     // [spec:hfst:def:pmatch-compiler.hfst.pmatch.pmatch-compiler.compile-fn]
     // [spec:hfst:sem:pmatch-compiler.hfst.pmatch.pmatch-compiler.compile-fn]
+    // [spec:hfst:def:pmatch-utils.hfst.pmatch.compile-fn]
+    // [spec:hfst:sem:pmatch-utils.hfst.pmatch.compile-fn]
     // Mirrors 'hfst::pmatch::compile', with the bison 'pmatchparse()' step
     // replaced by a walk over the 'nfst-pmatch' AST (the sanctioned deviation).
     pub fn compile(
@@ -618,7 +303,7 @@ impl<B: AlgebraBackend + FromAnyTransducer + 'static> PmatchCompiler<B> {
         {
             let ctx = &mut self.eval_ctx;
             ctx.init_globals();
-            let expanded_script = expand_includes(ctx, src);
+            let expanded_script = expand_includes(ctx, src)?;
             ctx.verbose = self.verbose;
             ctx.flatten = self.flatten;
             ctx.include_cosine_distances = self.include_cosine_distances;
@@ -892,6 +577,14 @@ impl<B: AlgebraBackend + FromAnyTransducer + 'static> PmatchCompiler<B> {
     // [spec:hfst:sem:pmatch-compiler.hfst.pmatch.pmatch-compiler.set-include-path-fn]
     pub fn set_include_path(&mut self, path: String) {
         self.includedir = path;
+    }
+
+    // [spec:hfst:req:javascript.named-file-resolver]
+    /// The resolver that supplies the files named by includes and file
+    /// references, with the include path prefixed to a relative name. The
+    /// default reads the filesystem.
+    pub fn set_file_resolver(&mut self, files: Arc<dyn FileResolver>) {
+        self.eval_ctx.files = files;
     }
 
     /// Everything compiling has reported since the diagnostics were last

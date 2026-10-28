@@ -460,8 +460,11 @@ pub fn compile_like_arc_word<B: AlgebraBackend + 'static>(
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.read-vec-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.read-vec-fn]
-pub fn read_vec<B: AlgebraBackend + 'static>(ctx: &mut PmatchEvalContext<B>, filename: String) {
-    use std::io::Read;
+// [spec:hfst:req:javascript.named-file-resolver]
+pub fn read_vec<B: AlgebraBackend + 'static>(
+    ctx: &mut PmatchEvalContext<B>,
+    filename: String,
+) -> crate::error::Result<()> {
     let mut binary_format = false;
     if filename.len() >= 4 && filename.rfind(".bin") == Some(filename.len() - 4) {
         binary_format = true;
@@ -474,25 +477,15 @@ pub fn read_vec<B: AlgebraBackend + 'static>(ctx: &mut PmatchEvalContext<B>, fil
         );
     }
     let mut separator: u8 = b' ';
-    let infile = match std::fs::File::open(&filename) {
-        Ok(f) => f,
-        Err(_) => {
-            error!(
+    let all_bytes: Vec<u8> = ctx.files.read(&filename).map_err(|_| {
+        crate::err!(
+            Hfst,
+            format!(
                 "pmatch: could not open vector file {} for reading",
                 filename
-            );
-            return;
-        }
-    };
-    let mut infile = std::io::BufReader::new(infile);
-    let mut all_bytes: Vec<u8> = Vec::new();
-    if infile.read_to_end(&mut all_bytes).is_err() {
-        error!(
-            "pmatch: could not open vector file {} for reading",
-            filename
-        );
-        return;
-    }
+            )
+        )
+    })?;
     // Cursor over the raw file bytes, mirroring std::ifstream semantics.
     // Read the header line (up to '\n').
     let header_end = all_bytes
@@ -662,4 +655,5 @@ space-separated\n  (reading line {})",
             ctx.word_vectors_first_vector_len()
         );
     }
+    Ok(())
 }

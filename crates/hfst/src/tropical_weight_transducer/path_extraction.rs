@@ -579,12 +579,13 @@ impl TropicalWeightTransducer {
 
     // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.extract-random-paths-fn]
     // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.extract-random-paths-fn]
+    // [spec:hfst:req:javascript.no-host-traps]
     pub fn extract_random_paths(t: &StdVectorFst, results: &mut HfstTwoLevelPaths, max_num: i32) {
         // Nanosecond granularity: the C++ seeded rand() from time(NULL)
         // (whole seconds), so every -r invocation within the same second
         // produced the identical "random" set. Seed from the finer clock.
-        let seed = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
+        let seed = web_time::SystemTime::now()
+            .duration_since(web_time::UNIX_EPOCH)
             .map(|d| d.as_nanos() as u64)
             .unwrap_or(0);
         let mut rng = Rng::seeded(seed);

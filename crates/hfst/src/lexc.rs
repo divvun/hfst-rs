@@ -273,6 +273,17 @@ impl<B: AlgebraBackend> LexcCompiler<B> {
         self
     }
 
+    // [spec:hfst:req:javascript.named-file-resolver]
+    /// The resolver that supplies the files the regexes in a lexc source
+    /// name. The default reads the filesystem.
+    pub fn set_file_resolver(
+        &mut self,
+        files: std::sync::Arc<dyn crate::file_resolver::FileResolver>,
+    ) -> &mut Self {
+        self.xre.set_file_resolver(files);
+        self
+    }
+
     /// The [`EngineConfig`](crate::hfst_transducer::EngineConfig) the composes in
     /// 'compile_lexical' run with: C++ defaults except 'flag_is_epsilon_in_composition'
     /// and 'xerox_composition'.

@@ -343,7 +343,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         }
         let tmp = self.top()?;
         let basic = ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(self.net(tmp))?;
-        basic.write_in_xfst_format(oss, self.variables["print-weight"] == "ON");
+        basic.write_in_xfst_format_file(oss, self.variables["print-weight"] == "ON")?;
         self.flush();
         self.prompt();
         Ok(())
@@ -361,7 +361,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
                 }
                 let basic =
                     ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(self.net(it))?;
-                basic.write_in_xfst_format(oss, self.variables["print-weight"] == "ON");
+                basic.write_in_xfst_format_file(oss, self.variables["print-weight"] == "ON")?;
                 self.flush();
                 self.prompt();
                 Ok(())

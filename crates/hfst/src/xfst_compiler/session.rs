@@ -1,46 +1,56 @@
-//! Session plumbing: prompts, output streams, fail flags, line input, and
-//! the shell and help commands.
+//! Session plumbing: prompts, the output and input streams, line input,
+//! and the shell and help commands.
 
 use super::*;
 
-// Output convention: the C++ output() returns *output_ (std::cout by
-// default) and error() returns *error_ (std::cerr by default); get_stream()
-// is the identity on non-Windows and flush() is a no-op there. We mirror that
-// Unix behaviour directly: output() writes to stdout via print!, diagnostics
-// go through the tracing macros, and the print* methods write their 'stream'
-// content to the oss writer passed in (the C++ '*oss' target).
-impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
-    // [spec:hfst:def:xfst-compiler.hfst.xfst.xfst-compiler.set-error-stream-fn]
-    // [spec:hfst:sem:xfst-compiler.hfst.xfst.xfst-compiler.set-error-stream-fn]
-    /* Set the stream where error messages and warnings are printed. */
-    /* Get the stream where error messages and warnings are printed. */
-    // [spec:hfst:def:xfst-compiler.hfst.xfst.xfst-compiler.set-output-stream-fn]
-    // [spec:hfst:sem:xfst-compiler.hfst.xfst.xfst-compiler.set-output-stream-fn]
-    /* Set the stream where output is printed. */
-    /* Get the stream where output is printed. */
-    /* Get the output stream. */
-    /* Get the error stream. */
-    // [spec:hfst:def:xfst-compiler.hfst.xfst.xfst-compiler.flush-fn]
-    // [spec:hfst:sem:xfst-compiler.hfst.xfst.xfst-compiler.flush-fn]
-    /* Flush the stream. */
+// [spec:hfst:req:javascript.xfst-output-sink]
+/// Where a session's command output goes: the caller's writer once one is
+/// set, and until then a buffer the caller takes.
+#[derive(Default)]
+pub(super) struct Output {
+    writer: Option<Box<dyn Write>>,
+    buffer: Vec<u8>,
+}
 
+impl Output {
+    fn take_buffered(&mut self) -> Vec<u8> {
+        std::mem::take(&mut self.buffer)
+    }
+}
+
+impl Write for Output {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        match &mut self.writer {
+            Some(writer) => writer.write(buf),
+            None => self.buffer.write(buf),
+        }
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        match &mut self.writer {
+            Some(writer) => writer.flush(),
+            None => Ok(()),
+        }
+    }
+}
+
+impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     // [spec:hfst:def:xfst-compiler.hfst.xfst.xfst-compiler.xfst-getline-fn]
     // [spec:hfst:sem:xfst-compiler.hfst.xfst.xfst-compiler.xfst-getline-fn]
     // @brief Get next line from \a file. Return NULL if end of file is reached.
     // Use \a promptstr as prompt for readline, or print it to stderr if readline is not in use.
-    pub(super) fn read_prompted_line(&mut self, promptstr: &str) -> Option<String> {
+    pub(super) fn read_prompted_line(&mut self, promptstr: &str) -> CmdResult<Option<String>> {
         // The HAVE_READLINE and WINDOWS branches are not ported; mirror the
-        // generic getline path: print the prompt, then read a line from stdin.
-        print!("{}", promptstr);
-        self.flush();
+        // generic getline path: print the prompt, then read a line of input.
+        write!(self.output, "{}", promptstr)?;
+        self.output.flush()?;
 
         let mut line = String::new();
-        // getline keeps the trailing newline; read == -1 (EOF) returns NULL.
-        match std::io::stdin().lock().read_line(&mut line) {
-            Ok(0) => None,
-            Ok(_) => Some(line),
-            Err(_) => None,
+        // getline keeps the trailing newline.
+        if self.input.read_line(&mut line)? == 0 {
+            return Ok(None);
         }
+        Ok(Some(line))
     }
 
     // [spec:hfst:def:xfst-compiler.hfst.xfst.xfst-compiler.remove-newline-fn]
@@ -81,19 +91,21 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         // is not ported.
     }
 
-    // @brief Print @a text to stdout
-    pub fn echo(&mut self, text: &str) {
-        println!("{}", text);
+    // @brief Print @a text
+    pub fn echo(&mut self, text: &str) -> CmdResult {
+        writeln!(self.output, "{}", text)?;
         self.prompt();
+        Ok(())
     }
 
     // @brief Print the quit message; the driver ends the run.
-    pub fn quit(&mut self, message: &str) {
+    pub fn quit(&mut self, message: &str) -> CmdResult {
         if self.verbose && (message == "dodongo") {
-            println!("dislikes smoke.");
+            writeln!(self.output, "dislikes smoke.")?;
         } else if self.verbose {
-            println!("{}.", message);
+            writeln!(self.output, "{}.", message)?;
         }
+        Ok(())
     }
 
     // @brief Run @a command through the shell
@@ -115,18 +127,19 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     }
 
     // @brief Search help directory
-    pub fn apropos(&mut self, text: &str) {
+    pub fn apropos(&mut self, text: &str) -> CmdResult {
         let mut message = String::new();
         if !get_help_message(text, &mut message, HELP_MODE_APROPOS) {
-            println!("nothing found for '{}'", text);
+            writeln!(self.output, "nothing found for '{}'", text)?;
         } else {
-            print!("{}", message);
+            write!(self.output, "{}", message)?;
         }
         self.prompt();
+        Ok(())
     }
 
     // @brief Print help topics
-    pub fn describe(&mut self, text: &str) {
+    pub fn describe(&mut self, text: &str) -> CmdResult {
         let help_mode = if text.is_empty() {
             HELP_MODE_ALL_COMMANDS
         } else {
@@ -134,11 +147,12 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         };
         let mut message = String::new();
         if !get_help_message(text, &mut message, help_mode) {
-            println!("no help found for '{}'", text);
+            writeln!(self.output, "no help found for '{}'", text)?;
         } else {
-            print!("{}", message);
+            write!(self.output, "{}", message)?;
         }
         self.prompt();
+        Ok(())
     }
 
     // @brief Sekrit HFST raw command mode!
@@ -147,10 +161,13 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         self.prompt();
     }
 
-    // @brief Explicitly print the prompt to stdout.
-    pub fn prompt(&self) {
+    /// Print the prompt when prompts are on. A failed write fails the
+    /// command running, as `keep_output_failure` describes.
+    pub fn prompt(&mut self) {
         if self.verbose_prompt && self.verbose {
-            print!("hfst[{}]: ", self.stack.len());
+            let prompt = self.get_prompt();
+            let written = self.output.write_all(prompt.as_bytes());
+            self.keep_output_failure(written.map_err(CommandError::from));
         }
     }
 
@@ -161,50 +178,74 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         format!("hfst[{}]: ", self.stack.len())
     }
 
-    // [spec:hfst:def:xfst-compiler.hfst.xfst.xfst-compiler.set-error-stream-fn]
-    // [spec:hfst:sem:xfst-compiler.hfst.xfst.xfst-compiler.set-error-stream-fn]
-    /* Set the stream where error messages and warnings are printed. */
-    pub fn set_error_stream(&mut self) {
-        // error_ = &os;
-        // this->xre.set_error_stream(this->error_);
-        // this->lexc.set_error_stream(this->error_);
-    }
-
-    /* Get the stream where error messages and warnings are printed. */
-    pub fn get_error_stream(&mut self) {
-        // return *error_;
-    }
-
     // [spec:hfst:def:xfst-compiler.hfst.xfst.xfst-compiler.set-output-stream-fn]
     // [spec:hfst:sem:xfst-compiler.hfst.xfst.xfst-compiler.set-output-stream-fn]
-    /* Set the stream where output is printed. */
-    pub fn set_output_stream(&mut self) {
-        // output_ = &os;
+    // [spec:hfst:req:javascript.xfst-output-sink]
+    /// Write command output (printed networks, words, apply results, help
+    /// text and prompts) to `writer` from here on. Until a writer is set the
+    /// output is buffered for `take_output`; what is already buffered stays
+    /// there. Diagnostics do not go to this writer.
+    pub fn set_output_stream(&mut self, writer: impl Write + 'static) -> &mut Self {
+        self.output.writer = Some(Box::new(writer));
+        self
     }
 
-    /* Get the stream where output is printed. */
-    pub fn get_output_stream(&mut self) {
-        // return *output_;
+    /// The command output buffered while no writer was set, leaving the
+    /// buffer empty.
+    pub fn take_output(&mut self) -> Vec<u8> {
+        self.output.take_buffered()
     }
 
-    /* Get the output stream. */
-    pub fn output(&mut self) {
-        // return *output_;
+    /// Read interactive input, the moves 'inspect net' reads and the words
+    /// 'apply' reads when given none, from `reader` from here on. Until a
+    /// reader is set the input is empty.
+    pub fn set_input_stream(&mut self, reader: impl BufRead + 'static) -> &mut Self {
+        self.input = Box::new(reader);
+        self
     }
 
-    /* Get the error stream. */
-    pub fn error(&mut self) {
-        // return *error_;
+    /// The session's input, for a driver that reads its own commands from
+    /// the stream the interactive commands read.
+    pub fn input(&mut self) -> &mut dyn BufRead {
+        &mut *self.input
     }
 
     // [spec:hfst:def:xfst-compiler.hfst.xfst.xfst-compiler.flush-fn]
     // [spec:hfst:sem:xfst-compiler.hfst.xfst.xfst-compiler.flush-fn]
-    /* Flush the stream. */
-    pub fn flush(&self) {
-        // On Unix and Mac this is a no-op; the WINDOWS console-buffering branch
-        // is not ported.
-        use std::io::Write as _;
-        let _ = std::io::stdout().flush();
+    /// Flush the output writer. A failure fails the command running, as
+    /// `keep_output_failure` describes.
+    pub fn flush(&mut self) {
+        let flushed = self.output.flush();
+        self.keep_output_failure(flushed.map_err(CommandError::from));
+    }
+
+    /// Keep the first failure of an output write made where no result can be
+    /// returned (a prompt, a flush, the verbose report on a new network).
+    /// The driver takes it after the command and fails the command with it.
+    pub(super) fn keep_output_failure(&mut self, outcome: CmdResult) {
+        if let Err(e) = outcome
+            && self.output_failure.is_none()
+        {
+            self.output_failure = Some(e);
+        }
+    }
+
+    /// Run `command` with the session output as its writer. What the session
+    /// writes itself meanwhile, such as the closing prompt, is held and
+    /// written after the command's own output. The order then matches one
+    /// stream only while no session write comes before the command's own
+    /// output, which holds for the print, save and apply commands run here.
+    pub(super) fn with_session_output<T>(
+        &mut self,
+        command: impl FnOnce(&mut Self, &mut dyn Write) -> CmdResult<T>,
+    ) -> CmdResult<T> {
+        let mut out = std::mem::take(&mut self.output);
+        let result = command(self, &mut out);
+        let held = std::mem::replace(&mut self.output, out).take_buffered();
+        let written = self.output.write_all(&held);
+        let value = result?;
+        written?;
+        Ok(value)
     }
 }
 

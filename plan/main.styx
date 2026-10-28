@@ -2752,24 +2752,16 @@ children (
                 kind @feat
                 implements {
                     target-impl (
-                        [spec:hfst:def:dhfst.header]
                         [spec:hfst:sem:dhfst.header]
-                        [spec:hfst:def:dhfst.layout]
                         [spec:hfst:sem:dhfst.layout]
                         [spec:hfst:def:dhfst.regular-symbol]
-                        [spec:hfst:def:dhfst.reader]
                         [spec:hfst:sem:dhfst.reader]
-                        [spec:hfst:def:dhfst.source-model]
                         [spec:hfst:sem:dhfst.source-model]
-                        [spec:hfst:def:dhfst.write]
                         [spec:hfst:sem:dhfst.write]
                         [spec:hfst:sem:dhfst.encoding]
                         [spec:hfst:sem:dhfst.self-check]
-                        [spec:hfst:def:dhfst.meta]
                         [spec:hfst:sem:dhfst.meta]
-                        [spec:hfst:def:dhfst.fst2fst]
                         [spec:hfst:sem:dhfst.fst2fst]
-                        [spec:hfst:def:dhfst.bhfst-member]
                         [spec:hfst:sem:dhfst.bhfst-member]
                     )
                 }
@@ -2834,19 +2826,13 @@ children (
                 kind @feat
                 implements {
                     target-impl (
-                        [spec:hfst:def:dhfst.acceptor-layout]
                         [spec:hfst:sem:dhfst.acceptor-layout]
                         [spec:hfst:sem:dhfst.acceptor-placement]
-                        [spec:hfst:def:dhfst.acceptor-reader]
                         [spec:hfst:sem:dhfst.acceptor-reader]
-                        [spec:hfst:def:dhfst.acceptor-source]
                         [spec:hfst:sem:dhfst.acceptor-source]
-                        [spec:hfst:def:dhfst.acceptor-distance]
                         [spec:hfst:sem:dhfst.acceptor-distance]
-                        [spec:hfst:def:dhfst.acceptor-write]
                         [spec:hfst:sem:dhfst.acceptor-write]
                         [spec:hfst:sem:dhfst.acceptor-self-check]
-                        [spec:hfst:def:dhfst.acceptor-meta]
                         [spec:hfst:sem:dhfst.acceptor-meta]
                     )
                 }
@@ -7993,6 +7979,30 @@ children (
                 id wasm.rustfst-entropy
                 title "rustfst fork: put randgen's OS-entropy constructor (UniformTrSelector::new, ChaCha8Rng::from_os_rng) behind a default feature and depend on rand without os_rng otherwise, so hfst-openfst builds for wasm32 with no getrandom backend; land via commit, push, cargo update rustfst"
                 kind @build
+                sealed true
+                log (
+                    {
+                        at 2026-10-28T23:07:08.833499Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
+
+                    {
+                        at 2026-10-28T23:08:51.232443Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan complete)"
+                    }
+
+                    {
+                        at 2026-10-28T23:08:53.718761Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "rustfst fork 897e85b0 (randgen: make OS entropy an optional feature) is on necessary-nu/rustfst main; all 1612 rustfst tests pass with default features. hfst pins it with default-features = false plus state-label-u32, so getrandom leaves the tree and cargo check -p hfst --target wasm32-unknown-unknown passes with and without foma and with no RUSTFLAGS or cargo config. Workspace nextest 732/732."
+                        after_done true
+                    }
+                )
             }
 
             {
