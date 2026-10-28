@@ -14,7 +14,7 @@
 
 use std::collections::BTreeSet;
 use std::ops::ControlFlow;
-use std::time::Instant;
+use web_time::Instant;
 
 use crate::hfst_data_types::{
     HfstOneLevelPath, HfstOneLevelPaths, HfstTwoLevelPath, HfstTwoLevelPaths, StringVector, Symbol,
@@ -221,6 +221,7 @@ impl<'a, T: TransducerTablesInterface> LookupState<'a, T> {
     // [spec:hfst:def:transducer.hfst-ol.transducer.lookup-fd-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transducer.lookup-fd-fn]
     // [spec:hfst:req:lookup-run-state.caller-owned-scratch]
+    // [spec:hfst:req:javascript.no-host-traps]
     pub fn lookup_fd(&mut self, s: &str, limit: isize, time_cutoff: f64) -> HfstOneLevelPaths {
         self.max_lookups = limit;
         self.max_time = 0.0;
@@ -252,6 +253,7 @@ impl<'a, T: TransducerTablesInterface> LookupState<'a, T> {
     // [spec:hfst:def:transducer.hfst-ol.transducer.lookup-fd-pairs-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transducer.lookup-fd-pairs-fn]
     // [spec:hfst:req:lookup-run-state.caller-owned-scratch]
+    // [spec:hfst:req:javascript.no-host-traps]
     pub fn lookup_fd_pairs(
         &mut self,
         s: &str,

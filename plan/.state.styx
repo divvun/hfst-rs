@@ -1,6 +1,6 @@
 schema_version 7
 
-last_sync_at 2026-10-06T21:03:19.004443Z
+last_sync_at 2026-10-28T22:13:06.586036Z
 
 rule_versions (
     {id determinize-envelope.bounded-strategies, version 0}
@@ -34,6 +34,26 @@ rule_versions (
     {id general-lookup-termination.no-cycle-count-termination, version 0}
     {id general-lookup-termination.non-progressing-cycle, version 0}
     {id general-lookup-termination.progress-resets-the-trap, version 0}
+    {id javascript.algebra, version 0}
+    {id javascript.compile, version 0}
+    {id javascript.diagnostics-as-data, version 0}
+    {id javascript.errors, version 0}
+    {id javascript.handle-lifetime, version 0}
+    {id javascript.init, version 0}
+    {id javascript.load-bytes, version 0}
+    {id javascript.logging, version 0}
+    {id javascript.lookup, version 0}
+    {id javascript.named-file-resolver, version 0}
+    {id javascript.native-parity, version 0}
+    {id javascript.no-host-traps, version 0}
+    {id javascript.packages, version 0}
+    {id javascript.portable-build, version 0}
+    {id javascript.runtime-excludes-compilers, version 0}
+    {id javascript.shared-surface, version 0}
+    {id javascript.tokenise, version 0}
+    {id javascript.typed-surface, version 0}
+    {id javascript.xfst-output-sink, version 0}
+    {id javascript.xfst-session, version 0}
     {id lookup-run-state.caller-owned-scratch, version 0}
     {id lookup-run-state.immutable-core, version 0}
     {id lookup-run-state.out-of-alphabet-overlay, version 0}
@@ -46,6 +66,7 @@ rule_versions (
     {id table-residency.single-copy-load, version 0}
     {id table-residency.untrusted-size-fields, version 0}
     {id table-residency.views-not-copies, version 0}
+    {id twolc-compiler.hfst.twolcpre2.complete-alphabet-fn, version 1}
     {id virtual-flag-algebra.backend-core, version 0}
     {id virtual-flag-algebra.frontend-compose, version 0}
     {id virtual-flag-algebra.intersection, version 0}
@@ -104,6 +125,7 @@ derived_priorities (
     {id divvun-hfst-branding, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
     {id drop-dead-commandline-def, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
     {id eliminate-flags-acyclic-hang, priority 0, derived_at 2026-10-06T21:03:19.004443Z}
+    {id eliminate-flags-unconstrained-flags, priority 0, derived_at 2026-10-28T22:13:06.586036Z}
     {id esu-lexc-divergence, priority 0, derived_at 2026-10-06T21:03:19.004443Z}
     {id esu-twolc-divergence, priority 0, derived_at 2026-10-06T21:03:19.004443Z}
     {id family-files, priority 1, derived_at 2026-08-21T21:18:14.374864Z}
@@ -239,6 +261,22 @@ derived_priorities (
     {id upstream-bugs.t3.slh-set-centre, priority 0, derived_at 2026-10-06T21:03:19.004443Z}
     {id version-banner-one-identity, priority 0, derived_at 2026-10-06T21:03:19.004443Z}
     {id version-line-provenance, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
+    {id wasm.algebra, priority 3, derived_at 2026-10-28T22:13:06.586036Z}
+    {id wasm.compile, priority 3, derived_at 2026-10-28T22:13:06.586036Z}
+    {id wasm.crates, priority 1, derived_at 2026-10-28T22:13:06.586036Z}
+    {id wasm.diagnostics, priority 0, derived_at 2026-10-28T22:13:06.586036Z}
+    {id wasm.errors-and-handles, priority 2, derived_at 2026-10-28T22:13:06.586036Z}
+    {id wasm.file-resolver, priority 0, derived_at 2026-10-28T22:13:06.586036Z}
+    {id wasm.host-facilities, priority 0, derived_at 2026-10-28T22:13:06.586036Z}
+    {id wasm.lookup, priority 3, derived_at 2026-10-28T22:13:06.586036Z}
+    {id wasm.parity, priority 3, derived_at 2026-10-28T22:13:06.586036Z}
+    {id wasm.publish, priority 3, derived_at 2026-10-28T22:13:06.586036Z}
+    {id wasm.runtime-package, priority 3, derived_at 2026-10-28T22:13:06.586036Z}
+    {id wasm.rustfst-entropy, priority 0, derived_at 2026-10-28T22:13:06.586036Z}
+    {id wasm.tokenise, priority 3, derived_at 2026-10-28T22:13:06.586036Z}
+    {id wasm.transducer-io, priority 3, derived_at 2026-10-28T22:13:06.586036Z}
+    {id wasm.xfst, priority 3, derived_at 2026-10-28T22:13:06.586036Z}
+    {id wasm.xfst-output, priority 0, derived_at 2026-10-28T22:13:06.586036Z}
     {id weighted-determinize-fallback, priority 1, derived_at 2026-08-21T21:18:14.374864Z}
     {id xfst-ambiguity-substring-med, priority 1, derived_at 2026-10-06T21:03:19.004443Z}
     {id xfst-copyright-owner-plain, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
@@ -663,6 +701,9 @@ impl_evidence (
     ), covered_claims (
         {impl_name target-impl, rule flag-elimination.reachable-product}
         {impl_name target-impl, rule flag-elimination.relation}
+    ), rule_versions_seen (
+        {id flag-elimination.reachable-product, version 0}
+        {id flag-elimination.relation, version 0}
     )}
     {id flag-encode-table-parity, covered_rules (
         flag-encode-symbol-tables.table-parity
@@ -905,5 +946,10 @@ impl_evidence (
         {impl_name target-impl, rule xre-finalization.root-optimize}
     ), rule_versions_seen (
         {id xre-finalization.root-optimize, version 0}
+    )}
+    {id wasm.host-facilities, covered_rules (
+        javascript.no-host-traps
+    ), covered_claims (
+        {impl_name target-impl, rule javascript.no-host-traps}
     )}
 )
