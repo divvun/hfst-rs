@@ -7,10 +7,12 @@
 #![allow(clippy::too_many_arguments)]
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::sync::Arc;
 
 use nfst_xre::{BinaryOp, ParseError, SpannedXre, XreExpr};
 
 use crate::backend::AlgebraBackend;
+use crate::file_resolver::FileResolver;
 use crate::hfst_data_types::Symbol;
 use crate::hfst_transducer::HfstTransducer;
 
@@ -154,6 +156,9 @@ pub struct XreCompiler<B: AlgebraBackend> {
     /// Compile each root as one rewrite pass instead of a transducer
     /// ([`Self::set_replace_pass`]).
     pub(crate) replace_pass: bool,
+    /// Where the '@bin', '@txt', '@stxt', '@pl' and '@re' file references
+    /// are read from ([`Self::set_file_resolver`]).
+    pub(crate) files: Arc<dyn FileResolver>,
 }
 
 // ===========================================================================
@@ -193,6 +198,7 @@ impl<B: AlgebraBackend> XreCompiler<B> {
             defined_multichar_symbols: None,
             span_base: 0,
             replace_pass: false,
+            files: crate::file_resolver::default_resolver(),
         }
     }
 
@@ -218,6 +224,7 @@ impl<B: AlgebraBackend> XreCompiler<B> {
             defined_multichar_symbols: None,
             span_base: 0,
             replace_pass: false,
+            files: crate::file_resolver::default_resolver(),
         }
     }
 }
@@ -364,6 +371,13 @@ impl<B: AlgebraBackend> XreCompiler<B> {
     /// rule is refused with a diagnostic at the offending rule.
     pub fn set_replace_pass(&mut self, replace_pass: bool) {
         self.replace_pass = replace_pass;
+    }
+
+    // [spec:hfst:req:javascript.named-file-resolver]
+    /// The resolver that supplies the files a regex names. The default reads
+    /// the filesystem.
+    pub fn set_file_resolver(&mut self, files: Arc<dyn FileResolver>) {
+        self.files = files;
     }
 
     /// Set whether minimization encodes weights into labels first (was the

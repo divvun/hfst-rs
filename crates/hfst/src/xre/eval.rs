@@ -522,6 +522,7 @@ impl<B: AlgebraBackend> XreCompiler<B> {
             defined_multichar_symbols: self.defined_multichar_symbols.clone(),
             span_base: self.span_base,
             replace_pass: false,
+            files: std::sync::Arc::clone(&self.files),
         };
 
         // get_function_xre + recursive compile.
@@ -573,7 +574,11 @@ impl<B: AlgebraBackend> XreCompiler<B> {
             // 'into_typed's general (convert) arm — keeping the facade
             // metadata like the C++ convert did.
             ReadKind::Binary => {
-                let mut instream = crate::hfst_input_stream::HfstInputStream::new_filename(path)?;
+                let mut file = crate::file_resolver::open_transducer_file(&*self.files, path)
+                    .map_err(|e| {
+                        crate::err!(Hfst, format!("File cannot be opened: '{}': {}", path, e))
+                    })?;
+                let mut instream = file.stream()?;
                 let any = instream.read()?;
                 instream.close();
                 let src_type = any.get_type();
@@ -607,9 +612,7 @@ impl<B: AlgebraBackend> XreCompiler<B> {
             // optimize. READ_TEXT uses the multichar tokenizer; READ_SPACED splits
             // on spaces.
             ReadKind::Text | ReadKind::Spaced => {
-                let Ok(contents) = std::fs::read_to_string(path) else {
-                    crate::bail!(Hfst, format!("File cannot be opened: '{}'", path));
-                };
+                let contents = self.read_named_text(path)?;
                 let mut tmp = HfstBasicTransducer::new();
                 let tok = crate::hfst_tokenizer::HfstTokenizer::new();
                 for raw in contents.lines() {
@@ -627,11 +630,7 @@ impl<B: AlgebraBackend> XreCompiler<B> {
             }
             // READ_PROLOG: read_in_prolog_format then build of the compiler format.
             ReadKind::Prolog => {
-                let f = match std::fs::File::open(path) {
-                    Ok(f) => f,
-                    Err(_) => crate::bail!(Hfst, format!("File cannot be opened: '{}'", path)),
-                };
-                let mut reader = std::io::BufReader::new(f);
+                let mut reader = std::io::Cursor::new(self.read_named_file(path)?);
                 let mut linecount: u32 = 0;
                 let tmp = HfstBasicTransducer::read_in_prolog_format(&mut reader, &mut linecount)?;
                 let mut retval = HfstTransducer::new_from_basic(&tmp)?;
@@ -641,12 +640,26 @@ impl<B: AlgebraBackend> XreCompiler<B> {
             // READ_RE: read the file content and re-compile it as a regex (the C++
             // spins up a fresh scanner; the ported compiler re-parses the string).
             ReadKind::Regex => {
-                let Ok(contents) = std::fs::read_to_string(path) else {
-                    crate::bail!(Hfst, format!("File cannot be opened: '{}'", path));
-                };
+                let contents = self.read_named_text(path)?;
                 self.compile(&contents)
                     .ok_or_else(|| crate::err!(Hfst, "read-regex: regex did not compile"))
             }
         }
+    }
+
+    // [spec:hfst:req:javascript.named-file-resolver]
+    /// The bytes of the file a regex names, from this compiler's resolver.
+    fn read_named_file(&self, path: &str) -> crate::error::Result<Vec<u8>> {
+        self.files
+            .read(path)
+            .map_err(|_| crate::err!(Hfst, format!("File cannot be opened: '{}'", path)))
+    }
+
+    // [spec:hfst:req:javascript.named-file-resolver]
+    /// The text of the file a regex names, from this compiler's resolver.
+    fn read_named_text(&self, path: &str) -> crate::error::Result<String> {
+        self.files
+            .read_to_string(path)
+            .map_err(|_| crate::err!(Hfst, format!("File cannot be opened: '{}'", path)))
     }
 }

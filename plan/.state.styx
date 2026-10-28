@@ -1,6 +1,6 @@
 schema_version 7
 
-last_sync_at 2026-10-28T22:30:13.179398Z
+last_sync_at 2026-10-28T22:53:57.333859Z
 
 rule_versions (
     {id determinize-envelope.bounded-strategies, version 0}
@@ -125,7 +125,7 @@ derived_priorities (
     {id divvun-hfst-branding, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
     {id drop-dead-commandline-def, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
     {id eliminate-flags-acyclic-hang, priority 0, derived_at 2026-10-06T21:03:19.004443Z}
-    {id eliminate-flags-unconstrained-flags, priority 0, derived_at 2026-10-28T22:30:13.179398Z}
+    {id eliminate-flags-unconstrained-flags, priority 0, derived_at 2026-10-28T22:53:57.333859Z}
     {id esu-lexc-divergence, priority 0, derived_at 2026-10-06T21:03:19.004443Z}
     {id esu-twolc-divergence, priority 0, derived_at 2026-10-06T21:03:19.004443Z}
     {id family-files, priority 1, derived_at 2026-08-21T21:18:14.374864Z}
@@ -261,22 +261,22 @@ derived_priorities (
     {id upstream-bugs.t3.slh-set-centre, priority 0, derived_at 2026-10-06T21:03:19.004443Z}
     {id version-banner-one-identity, priority 0, derived_at 2026-10-06T21:03:19.004443Z}
     {id version-line-provenance, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
-    {id wasm.algebra, priority 3, derived_at 2026-10-28T22:30:13.179398Z}
-    {id wasm.compile, priority 3, derived_at 2026-10-28T22:30:13.179398Z}
-    {id wasm.crates, priority 1, derived_at 2026-10-28T22:30:13.179398Z}
-    {id wasm.diagnostics, priority 0, derived_at 2026-10-28T22:30:13.179398Z}
-    {id wasm.errors-and-handles, priority 2, derived_at 2026-10-28T22:30:13.179398Z}
-    {id wasm.file-resolver, priority 0, derived_at 2026-10-28T22:30:13.179398Z}
-    {id wasm.host-facilities, priority 0, derived_at 2026-10-28T22:30:13.179398Z}
-    {id wasm.lookup, priority 3, derived_at 2026-10-28T22:30:13.179398Z}
-    {id wasm.parity, priority 3, derived_at 2026-10-28T22:30:13.179398Z}
-    {id wasm.publish, priority 3, derived_at 2026-10-28T22:30:13.179398Z}
-    {id wasm.runtime-package, priority 3, derived_at 2026-10-28T22:30:13.179398Z}
-    {id wasm.rustfst-entropy, priority 0, derived_at 2026-10-28T22:30:13.179398Z}
-    {id wasm.tokenise, priority 3, derived_at 2026-10-28T22:30:13.179398Z}
-    {id wasm.transducer-io, priority 3, derived_at 2026-10-28T22:30:13.179398Z}
-    {id wasm.xfst, priority 3, derived_at 2026-10-28T22:30:13.179398Z}
-    {id wasm.xfst-output, priority 0, derived_at 2026-10-28T22:30:13.179398Z}
+    {id wasm.algebra, priority 3, derived_at 2026-10-28T22:53:57.333859Z}
+    {id wasm.compile, priority 3, derived_at 2026-10-28T22:53:57.333859Z}
+    {id wasm.crates, priority 1, derived_at 2026-10-28T22:53:57.333859Z}
+    {id wasm.diagnostics, priority 0, derived_at 2026-10-28T22:53:57.333859Z}
+    {id wasm.errors-and-handles, priority 2, derived_at 2026-10-28T22:53:57.333859Z}
+    {id wasm.file-resolver, priority 0, derived_at 2026-10-28T22:53:57.333859Z}
+    {id wasm.host-facilities, priority 0, derived_at 2026-10-28T22:53:57.333859Z}
+    {id wasm.lookup, priority 3, derived_at 2026-10-28T22:53:57.333859Z}
+    {id wasm.parity, priority 3, derived_at 2026-10-28T22:53:57.333859Z}
+    {id wasm.publish, priority 3, derived_at 2026-10-28T22:53:57.333859Z}
+    {id wasm.runtime-package, priority 3, derived_at 2026-10-28T22:53:57.333859Z}
+    {id wasm.rustfst-entropy, priority 0, derived_at 2026-10-28T22:53:57.333859Z}
+    {id wasm.tokenise, priority 3, derived_at 2026-10-28T22:53:57.333859Z}
+    {id wasm.transducer-io, priority 3, derived_at 2026-10-28T22:53:57.333859Z}
+    {id wasm.xfst, priority 3, derived_at 2026-10-28T22:53:57.333859Z}
+    {id wasm.xfst-output, priority 0, derived_at 2026-10-28T22:53:57.333859Z}
     {id weighted-determinize-fallback, priority 1, derived_at 2026-08-21T21:18:14.374864Z}
     {id xfst-ambiguity-substring-med, priority 1, derived_at 2026-10-06T21:03:19.004443Z}
     {id xfst-copyright-owner-plain, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
@@ -843,6 +843,11 @@ impl_evidence (
         {impl_name target-impl, rule virtual-flag-algebra.subtraction}
     ), rule_versions_seen (
         {id virtual-flag-algebra.subtraction, version 0}
+    )}
+    {id wasm.file-resolver, covered_rules (
+        javascript.named-file-resolver
+    ), covered_claims (
+        {impl_name target-impl, rule javascript.named-file-resolver}
     )}
     {id wasm.host-facilities, covered_rules (
         javascript.no-host-traps

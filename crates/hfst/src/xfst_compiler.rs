@@ -23,8 +23,10 @@
 #![allow(non_snake_case)]
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::sync::Arc;
 
 use crate::backend::{AlgebraBackend, Backend};
+use crate::file_resolver::FileResolver;
 use crate::hfst_basic_transducer::{HfstBasicTransducer, HfstBasicTransitions};
 use crate::hfst_data_types::{HfstOneLevelPaths, HfstTwoLevelPaths, ImplementationType};
 use crate::hfst_data_types::{StringPair, StringPairSet, StringVector, Symbol};
@@ -284,6 +286,9 @@ pub struct XfstCompiler<B: AlgebraBackend> {
     current_span: std::ops::Range<usize>,
     /// How many 'source' commands deep the running script is.
     source_depth: u32,
+    /// Where commands read and write the files they name, shared with the
+    /// regex and lexc compilers ([`Self::set_file_resolver`]).
+    files: Arc<dyn FileResolver>,
     output: session::Output,
     /// The first failed output write of the running command made where no
     /// result could be returned; see 'keep_output_failure'.
@@ -372,6 +377,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             output: session::Output::default(),
             output_failure: None,
             input: Box::new(std::io::empty()),
+            files: crate::file_resolver::default_resolver(),
         };
         c.xre.set_expand_definitions(true);
         c.xre.set_verbosity(c.verbose);
@@ -516,8 +522,8 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     }
 
     // [spec:hfst:req:xfst-cmd.source]
-    /// Run the script in `path`, resolved against the working directory, as
-    /// part of this session. Its diagnostics name `path` and point into it.
+    /// Run the script the file resolver supplies for `path` as part of this
+    /// session. Its diagnostics name `path` and point into it.
     pub fn source_file(&mut self, path: &str) -> CmdResult<Flow> {
         if self.source_depth >= MAX_SOURCE_DEPTH {
             return Err(CommandError::new(format!(
@@ -525,9 +531,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
                 MAX_SOURCE_DEPTH
             )));
         }
-        self.check_filename(path)?;
-        let text = std::fs::read_to_string(path)
-            .map_err(|e| CommandError::new(format!("could not read '{}': {}", path, e)))?;
+        let text = self.read_input_file(path)?;
 
         let saved_source = std::mem::take(&mut self.source);
         let saved_name = std::mem::replace(&mut self.source_name, path.to_string());
@@ -544,6 +548,17 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             notes: Vec::new(),
             reported: true,
         })
+    }
+
+    // [spec:hfst:req:javascript.named-file-resolver]
+    /// The resolver that supplies the files commands read, and takes the
+    /// files they write. Regexes and lexc sources the session compiles read
+    /// through it too. The default uses the filesystem.
+    pub fn set_file_resolver(&mut self, files: Arc<dyn FileResolver>) -> &mut Self {
+        self.xre.set_file_resolver(Arc::clone(&files));
+        self.lexc.set_file_resolver(Arc::clone(&files));
+        self.files = files;
+        self
     }
 
     /// Whether a failed command ends the run: `quit-on-fail` is `ON` and the

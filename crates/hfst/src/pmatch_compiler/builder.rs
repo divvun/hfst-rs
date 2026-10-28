@@ -186,6 +186,7 @@ fn side_to_obj<B: AlgebraBackend + FromAnyTransducer + 'static>(
     })
 }
 // READ_FROM productions: eagerly load the named file into a container.
+// [spec:hfst:req:javascript.named-file-resolver]
 fn build_read_file<B: AlgebraBackend + FromAnyTransducer + 'static>(
     ctx: &mut PmatchEvalContext<B>,
     kind: nfst_pmatch::ReadKind,
@@ -195,51 +196,88 @@ fn build_read_file<B: AlgebraBackend + FromAnyTransducer + 'static>(
     let filepath = path_from_filename(ctx, path);
     match kind {
         RK::Binary => {
-            let mut instream = crate::hfst_input_stream::HfstInputStream::new_filename(&filepath)?;
+            let mut file = crate::file_resolver::open_transducer_file(&*ctx.files, &filepath)
+                .map_err(|e| {
+                    crate::err!(
+                        Hfst,
+                        format!(
+                            "could not open transducer file {} for reading: {}",
+                            filepath, e
+                        )
+                    )
+                })?;
+            let mut instream = file.stream()?;
             let read = instream.read()?.into_typed::<B>()?;
             instream.close();
             Ok(as_obj(PmatchTransducerContainer::new(read)))
         }
         RK::Text => Ok(as_obj(PmatchTransducerContainer::new(read_text(
-            filepath, false,
+            &*ctx.files,
+            filepath,
+            false,
         )?))),
         RK::Spaced => Ok(as_obj(PmatchTransducerContainer::new(read_spaced_text(
+            &*ctx.files,
             filepath,
         )?))),
-        RK::Prolog => match std::fs::File::open(&filepath) {
-            Err(_) => {
-                error!("File cannot be opened.");
-                Ok(as_obj(
-                    PmatchTransducerContainer::new(HfstTransducer::new()),
-                ))
-            }
-            Ok(f) => {
-                let mut reader = std::io::BufReader::new(f);
-                let mut linecount: u32 = 0;
-                let tmp = crate::hfst_basic_transducer::HfstBasicTransducer::read_in_prolog_format(
-                    &mut reader,
-                    &mut linecount,
-                )?;
-                let mut t = Box::new(HfstTransducer::new_from_basic(&tmp)?);
-                t.minimize()?;
-                Ok(as_obj(PmatchTransducerContainer::new(*t)))
-            }
-        },
+        RK::Prolog => {
+            let bytes = ctx.files.read(&filepath).map_err(|_| {
+                crate::err!(
+                    Hfst,
+                    format!("could not open prolog file {} for reading", filepath)
+                )
+            })?;
+            let mut reader = std::io::Cursor::new(bytes);
+            let mut linecount: u32 = 0;
+            let tmp = crate::hfst_basic_transducer::HfstBasicTransducer::read_in_prolog_format(
+                &mut reader,
+                &mut linecount,
+            )?;
+            let mut t = Box::new(HfstTransducer::new_from_basic(&tmp)?);
+            t.minimize()?;
+            Ok(as_obj(PmatchTransducerContainer::new(*t)))
+        }
         RK::Regex => {
+            let contents = ctx.files.read_to_string(&filepath).map_err(|_| {
+                crate::err!(Hfst, format!("Failed to read regex from {}.", filepath))
+            })?;
             let mut regex = String::new();
-            if let Ok(contents) = std::fs::read_to_string(&filepath) {
-                for line in contents.lines() {
-                    regex.push_str(line);
-                }
+            for line in contents.lines() {
+                regex.push_str(line);
             }
             if regex.is_empty() {
                 error!("Failed to read regex from {}.", filepath);
             }
             let mut xre_compiler = crate::xre::XreCompiler::new();
+            xre_compiler.set_file_resolver(Arc::clone(&ctx.files));
             let compiled = xre_compiler.compile(&regex).unwrap_or_default();
             Ok(as_obj(PmatchTransducerContainer::new(compiled)))
         }
     }
+}
+
+// [spec:hfst:req:javascript.named-file-resolver]
+/// The lexc file `filepath` compiled, its own regex file references read
+/// through the same resolver.
+fn read_lexc_file<B: AlgebraBackend + 'static>(
+    ctx: &PmatchEvalContext<B>,
+    filepath: &str,
+) -> crate::error::Result<HfstTransducer<B>> {
+    let source = ctx.files.read_to_string(filepath).map_err(|_| {
+        crate::err!(
+            Hfst,
+            format!("could not open lexc file {} for reading", filepath)
+        )
+    })?;
+    let mut compiler = crate::lexc::LexcCompiler::<B>::new();
+    compiler.set_verbosity(ctx.verbose as u32);
+    compiler.set_file_resolver(Arc::clone(&ctx.files));
+    compiler.compile(&source).ok_or_else(|| {
+        crate::err!(
+            NotValidLexcFormat,
+            format!("could not compile {} as lexc", filepath)
+        )
+    })
 }
 /// Build a 'PmatchObject*' AST node from an 'nfst-pmatch' expression node.
 pub fn build_object<B: AlgebraBackend + FromAnyTransducer + 'static>(
@@ -797,14 +835,13 @@ fn build_pmatch_construct<B: AlgebraBackend + FromAnyTransducer + 'static>(
         PE::ReadFile { kind, path } => build_read_file(ctx, *kind, path)?,
         PE::ReadLexc(path) => {
             let filepath = path_from_filename(ctx, path);
-            as_obj(PmatchTransducerContainer::new(HfstTransducer::read_lexc(
-                &filepath,
-                ctx.verbose,
+            as_obj(PmatchTransducerContainer::new(read_lexc_file(
+                ctx, &filepath,
             )?))
         }
         PE::ReadVec(path) => {
             let filepath = path_from_filename(ctx, path);
-            read_vec(ctx, filepath);
+            read_vec(ctx, filepath)?;
             as_obj(PmatchEmpty::new())
         }
         PE::Symbol(_)
@@ -1004,7 +1041,7 @@ pub fn build_statement<B: AlgebraBackend + FromAnyTransducer + 'static>(
         }
         PS::ReadVec { path } => {
             let filepath = path_from_filename(ctx, path);
-            read_vec(ctx, filepath);
+            read_vec(ctx, filepath)?;
         }
     }
     Ok(())

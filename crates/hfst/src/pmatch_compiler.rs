@@ -20,6 +20,7 @@
 #![allow(clippy::too_many_arguments)]
 
 use crate::backend::AlgebraBackend;
+use crate::file_resolver::FileResolver;
 use crate::hfst_data_types::StringPairSet;
 use crate::hfst_data_types::Symbol;
 use crate::hfst_data_types::{StringPair, StringVector};
@@ -42,8 +43,8 @@ use crate::hfst_xerox_rules::{
 };
 use crate::pmatch::PmatchAlphabet;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
-use std::fs;
 use std::rc::Rc;
+use std::sync::Arc;
 use tracing::{debug, error, warn};
 
 /// Shared-ownership handle to a node in the PMATCH lazy-evaluation AST.
@@ -804,6 +805,9 @@ pub struct PmatchEvalContext<B: AlgebraBackend + 'static> {
     // keyed by node identity (see `PmatchObject::cache_key`). Replaces the C++
     // `PmatchObject::cache` field.
     node_caches: HashMap<usize, HfstTransducer<B>>,
+    /// Where includes and file references are read from. A compile does not
+    /// reset it.
+    files: Arc<dyn FileResolver>,
 }
 
 macro_rules! pmatch_ctx_string_set {

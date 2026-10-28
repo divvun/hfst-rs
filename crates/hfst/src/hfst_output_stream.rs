@@ -58,6 +58,25 @@ impl HfstOutputStream {
     /// 'HfstOutputStream(ImplementationType type, bool hfst_format=true)' — a
     /// stream to standard output. (No '[spec:]' id in the C++ for this ctor.)
     pub fn new(ty: ImplementationType, hfst_format: bool) -> crate::error::Result<Self> {
+        // Raw Stdout is line-buffered: each write takes the lock and scans
+        // for newlines, which dominates when streaming big binaries. The
+        // C++ FILE* was fully buffered; BufWriter restores that.
+        Self::from_writer(
+            Box::new(std::io::BufWriter::new(std::io::stdout())),
+            ty,
+            hfst_format,
+        )
+    }
+
+    // [spec:hfst:req:javascript.named-file-resolver]
+    /// A stream that writes to `out`, the counterpart of
+    /// [`HfstInputStream::read_from`](crate::hfst_input_stream::HfstInputStream::read_from)
+    /// for a caller whose destination is not a file name.
+    pub fn from_writer(
+        out: Box<dyn std::io::Write>,
+        ty: ImplementationType,
+        hfst_format: bool,
+    ) -> crate::error::Result<Self> {
         if !crate::hfst_transducer::is_lean_implementation_type_available(ty) {
             crate::bail!(ImplementationTypeNotAvailable(ty));
         }
@@ -81,11 +100,11 @@ impl HfstOutputStream {
             | ImplementationType::HFST_OLW_TYPE => {}
             ImplementationType::THFST_TYPE => {
                 // THFST is a directory format with no byte-stream encoding, so it
-                // can never appear on standard output
+                // can never appear on standard output or any other byte sink
                 // [spec:hfst:sem:thfst-backend.directory-format].
                 crate::bail!(
                     StreamCannotBeWritten,
-                    "thfst is a directory format; cannot write to standard output"
+                    "thfst is a directory format; it cannot be written to a byte stream such as standard output"
                 );
             }
             ImplementationType::HFST2_TYPE
@@ -96,10 +115,7 @@ impl HfstOutputStream {
         Ok(HfstOutputStream {
             ty,
             hfst_format,
-            // Raw Stdout is line-buffered: each write takes the lock and scans
-            // for newlines, which dominates when streaming big binaries. The
-            // C++ FILE* was fully buffered; BufWriter restores that.
-            out: OutSink::Bytes(Box::new(std::io::BufWriter::new(std::io::stdout()))),
+            out: OutSink::Bytes(out),
             is_open: true,
         })
     }
