@@ -228,24 +228,27 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     }
 
     // [spec:hfst:req:xfst-cmd.io-errors]
+    // [spec:hfst:req:javascript.named-file-resolver]
     /// The whole of a file a command reads, or an error naming it.
-    fn read_input_file(&self, path: &str) -> CmdResult<String> {
+    pub(super) fn read_input_file(&self, path: &str) -> CmdResult<String> {
         self.check_filename(path)?;
-        std::fs::read_to_string(path)
+        self.files
+            .read_to_string(path)
             .map_err(|e| CommandError::new(format!("could not read '{}': {}", path, e)))
     }
 
     // [spec:hfst:req:xfst-cmd.io-errors]
     /// A file a command writes to, created fresh or opened for appending.
-    fn open_output_file(&self, path: &str, append: bool) -> CmdResult<std::fs::File> {
+    pub(super) fn open_output_file(
+        &self,
+        path: &str,
+        append: bool,
+    ) -> CmdResult<Box<dyn std::io::Write>> {
         self.check_filename(path)?;
         let opened = if append {
-            std::fs::OpenOptions::new()
-                .append(true)
-                .create(true)
-                .open(path)
+            self.files.append(path)
         } else {
-            std::fs::File::create(path)
+            self.files.create(path)
         };
         opened.map_err(|e| CommandError::new(format!("could not write '{}': {}", path, e)))
     }

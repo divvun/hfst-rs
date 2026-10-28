@@ -2,6 +2,7 @@
 
 use super::*;
 use crate::convert_transducer_format::ConversionFunctions;
+use crate::file_resolver::{TransducerFile, open_transducer_file};
 
 impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     // [spec:hfst:def:xfst-compiler.hfst.xfst.xfst-compiler.convert-to-common-format-fn]
@@ -60,18 +61,14 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
 
     // [spec:hfst:def:xfst-compiler.hfst.xfst.xfst-compiler.open-hfst-input-stream-fn]
     // [spec:hfst:sem:xfst-compiler.hfst.xfst.xfst-compiler.open-hfst-input-stream-fn]
-    // @brief Open HfstInputStream to file \a filename.
-    // Print an error message and return NULL, if not succesful.
-    fn open_hfst_input_stream(&mut self, filename: &str) -> CmdResult<HfstInputStream<'static>> {
-        self.check_filename(filename)?;
-
-        // Probe with a plain open first: the io error names the actual cause
-        // (missing, unreadable, a directory), which 'could not open' alone
-        // would leave the user guessing at.
-        crate::hfst_data_types::open_file(filename, "r")
-            .map_err(|e| CommandError::new(format!("could not open file '{}': {}", filename, e)))?;
-
-        HfstInputStream::new_filename(filename).map_err(|_| {
+    // [spec:hfst:req:javascript.named-file-resolver]
+    /// A transducer stream over `file`, what the file resolver gave for
+    /// `filename`.
+    fn open_hfst_input_stream<'r>(
+        filename: &str,
+        file: &'r mut TransducerFile,
+    ) -> CmdResult<HfstInputStream<'r>> {
+        file.stream().map_err(|_| {
             CommandError::new(format!(
                 "unable to read transducers from {}",
                 to_filename(Some(filename))
@@ -80,11 +77,44 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         })
     }
 
+    // [spec:hfst:req:javascript.named-file-resolver]
+    /// A transducer file a command reads, from the file resolver. The
+    /// resolver's error names the cause (missing, unreadable, a directory it
+    /// cannot load), which 'could not open' alone would leave the user
+    /// guessing at.
+    fn open_input_transducer_file(&self, filename: &str) -> CmdResult<TransducerFile> {
+        self.check_filename(filename)?;
+        open_transducer_file(&*self.files, filename)
+            .map_err(|e| CommandError::new(format!("could not open file '{}': {}", filename, e)))
+    }
+
+    // [spec:hfst:req:javascript.named-file-resolver]
+    /// A binary transducer stream into the file `outfilename`, created
+    /// through the file resolver, or to standard output when no name is given.
+    fn open_output_stream(
+        &self,
+        outfilename: &str,
+        ty: ImplementationType,
+    ) -> CmdResult<HfstOutputStream> {
+        if outfilename.is_empty() {
+            return Ok(HfstOutputStream::new(ty, true)?);
+        }
+        let out = self.open_output_file(outfilename, false)?;
+        // The stream writes a byte at a time, so it needs a buffer in front
+        // of a file.
+        Ok(HfstOutputStream::from_writer(
+            Box::new(std::io::BufWriter::new(out)),
+            ty,
+            true,
+        )?)
+    }
+
     // @brief Read transducers from file \a infilename and either push
     // them to the stack (if \a definitions is false) or add them as definitions
     // (if \a definitions is true).
     fn load_stack_or_definitions(&mut self, infilename: &str, definitions: bool) -> CmdResult {
-        let mut instream = self.open_hfst_input_stream(infilename)?;
+        let mut file = self.open_input_transducer_file(infilename)?;
+        let mut instream = Self::open_hfst_input_stream(infilename, &mut file)?;
 
         while instream.is_good() {
             let t = instream
@@ -269,11 +299,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             return Err(self.unknown_definition(name));
         };
 
-        let mut outstream = if !outfilename.is_empty() {
-            HfstOutputStream::new_filename(outfilename, B::TYPE, true)?
-        } else {
-            HfstOutputStream::new(B::TYPE, true)?
-        };
+        let mut outstream = self.open_output_stream(outfilename, B::TYPE)?;
         let mut tmp = HfstTransducer::new_copy(self.net(def_ptr))?;
         if self.variables["name-nets"] == "ON" {
             tmp.set_name(name);
@@ -292,11 +318,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             ));
         }
 
-        let mut outstream = if !outfilename.is_empty() {
-            HfstOutputStream::new_filename(outfilename, B::TYPE, true)?
-        } else {
-            HfstOutputStream::new(B::TYPE, true)?
-        };
+        let mut outstream = self.open_output_stream(outfilename, B::TYPE)?;
         let defs: Vec<(String, NetId)> = self
             .definitions
             .iter()
@@ -315,14 +337,9 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     // @brief Save all transducers in stack to @a outfile
     pub fn write_stack(&mut self, outfilename: &str) -> CmdResult {
         let top = self.top()?;
-        self.check_filename(outfilename)?;
 
         let top_type = self.net(top).get_type();
-        let mut outstream = if !outfilename.is_empty() {
-            HfstOutputStream::new_filename(outfilename, top_type, true)?
-        } else {
-            HfstOutputStream::new(top_type, true)?
-        };
+        let mut outstream = self.open_output_stream(outfilename, top_type)?;
         let ids: Vec<NetId> = self.stack.clone();
         for t in ids.iter() {
             outstream.write(self.net_mut(*t))?;
@@ -420,7 +437,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         }
 
         // [spec:hfst:req:xfst-cmd.io-errors]
-        let indata = std::fs::read_to_string(filename).map_err(|e| {
+        let indata = self.files.read_to_string(filename).map_err(|e| {
             CommandError::new(format!("could not read lexc file '{}': {}", filename, e))
         })?;
 
@@ -448,10 +465,10 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     // @brief Read a transducer in att format from file @a filename
     pub fn read_att_from_file(&mut self, filename: &str) -> CmdResult {
         self.check_filename(filename)?;
-        let infile = std::fs::File::open(filename).map_err(|e| {
+        let infile = self.files.read(filename).map_err(|e| {
             CommandError::new(format!("could not read att file '{}': {}", filename, e))
         })?;
-        let mut reader = std::io::BufReader::new(infile);
+        let mut reader = std::io::Cursor::new(infile);
 
         let att_eps = self.variables["att-epsilon"].clone();
         let epsilon = if att_eps == "@0@ | @_EPSILON_SYMBOL_@" {
@@ -487,10 +504,8 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     // a single transducer and push it to the stack.
     /// Read the word list in file `filename`; see `read_word_list`.
     fn read_text_or_spaced(&mut self, filename: &str, spaces: bool) -> CmdResult {
-        self.check_filename(filename)?;
         // [spec:hfst:req:xfst-cmd.io-errors]
-        let text = std::fs::read_to_string(filename)
-            .map_err(|e| CommandError::new(format!("could not read '{}': {}", filename, e)))?;
+        let text = self.read_input_file(filename)?;
         self.read_word_list(&text, spaces)
     }
 

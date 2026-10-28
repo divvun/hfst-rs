@@ -79,6 +79,13 @@ const SANCTIONED: &[(&str, &str, &str, &str)] = &[
         "Unweighted: the transform has no weights to apply itself to.",
     ),
     (
+        "crates/hfst/src/file_resolver.rs",
+        "flush",
+        "Ok(())",
+        "An in-memory writer adds each write to the file as it happens, so \
+         nothing is ever held back to flush.",
+    ),
+    (
         "crates/hfst-cli/src/tools/bhfst.rs",
         "applies_check_common_params",
         "false",
