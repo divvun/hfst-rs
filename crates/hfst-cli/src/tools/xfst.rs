@@ -491,6 +491,7 @@ fn run_compiler<B: hfst::backend::AlgebraBackend + hfst::hfst_transducer::FromAn
     options: &Options,
 ) -> i32 {
     let mut comp = XfstCompiler::<B>::new();
+    comp.set_diagnostic_sink(crate::hfst_commandline::stderr_sink());
     // The session holds the stdin lock, and this driver reads its own input
     // through the session, so the commands that read input share the stream.
     comp.set_output_stream(std::io::stdout());

@@ -1,65 +1,61 @@
-//! Rich source-anchored compiler diagnostics via `ariadne`.
+//! Source-anchored compiler diagnostics, handed to the caller as values.
 //!
-//! The lexc/xre compilers historically emitted a bare one-line message
-//! (`error!`/`warn!`) for problems like `-Wmissing-alphabets`, with no hint as
-//! to *where* in the source the problem was. Since the front-end parsers
-//! (`nfst_lexc`/`nfst_xre`) already carry byte spans on every AST node, we can
-//! render the offending region with a caret-underlined snippet instead.
+//! The front-end parsers (`nfst_lexc`, `nfst_xre`, `nfst_twolc`, ...) carry
+//! byte spans on every AST node, so a problem can point at the region of the
+//! source it concerns. A [`Diagnostic`] keeps that span with the source text
+//! it indexes; [`Diagnostic::render`] turns it into an `ariadne` report with a
+//! caret-underlined snippet. The library never prints one: each compiler
+//! collects its diagnostics for the caller to take, or hands each to a
+//! [`DiagnosticSink`] the caller installs, the moment it is produced.
 
-use std::io::IsTerminal;
 use std::ops::Range;
+use std::sync::{Arc, Mutex};
 
-use ariadne::{Color, Config, Label, Report, ReportKind, Source};
+use ariadne::{Color, Config, Report, ReportKind, Source};
 
-/// Severity of a rendered diagnostic.
-#[derive(Clone, Copy)]
+/// Severity of a diagnostic.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Severity {
     Error,
     Warning,
     Info,
 }
 
-/// Render one diagnostic to stderr: a header line, the relevant slice of
-/// `source` with `span` underlined, and `message` as the label.
-///
-/// `name` is the source label shown in the report (a file name, or a sentinel
-/// like `"<lexc>"`). When `source` is empty or the span is unusable, this falls
-/// back to a plain one-line message so no diagnostic is ever lost.
-pub fn emit(name: &str, source: &str, span: Range<usize>, severity: Severity, message: &str) {
-    emit_with_notes(name, source, span, severity, message, &[]);
-}
-
-/// As [`emit`], with follow-up advice rendered under the snippet.
-///
-/// A diagnostic that only states what went wrong leaves the reader to work out
-/// what to type instead; `notes` carries that second half (the escape to use,
-/// the command that was probably meant). Notes survive the plain-message
-/// fallback, where they are printed as further lines.
-pub fn emit_with_notes(
-    name: &str,
-    source: &str,
-    span: Range<usize>,
-    severity: Severity,
-    message: &str,
-    notes: &[String],
-) {
-    let mut d = Diagnostic::new(severity, message).label(span, message);
-    for n in notes {
-        d = d.note(n.clone());
+impl Severity {
+    /// The word a report opens with.
+    fn title(self) -> &'static str {
+        match self {
+            Severity::Error => "Error",
+            Severity::Warning => "Warning",
+            Severity::Info => "Info",
+        }
     }
-    d.emit(name, source);
 }
 
-/// A diagnostic that points at several pieces of the source at once.
+/// A piece of the source a diagnostic points at, and what it says there.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Label {
+    /// Byte range in the diagnostic's source.
+    pub span: Range<usize>,
+    pub message: String,
+}
+
+// [spec:hfst:req:javascript.diagnostics-as-data]
+/// A diagnostic that points at one or more pieces of the source.
 ///
 /// The first label is the primary one: it gives the report its location and
 /// takes the severity's colour. Later labels mark the other pieces involved,
 /// such as the definition a bad use refers to. Notes say why; the help line
 /// says what to write instead.
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Diagnostic {
     severity: Severity,
     message: String,
-    labels: Vec<(Range<usize>, String)>,
+    source_name: String,
+    /// The text the label spans index. Shared, because one source can carry
+    /// many diagnostics and a lexc source can run to megabytes.
+    source: Arc<str>,
+    labels: Vec<Label>,
     notes: Vec<String>,
     help: Option<String>,
 }
@@ -69,6 +65,8 @@ impl Diagnostic {
         Self {
             severity,
             message: message.into(),
+            source_name: String::new(),
+            source: Arc::from(""),
             labels: Vec::new(),
             notes: Vec::new(),
             help: None,
@@ -83,12 +81,16 @@ impl Diagnostic {
         Self::new(Severity::Warning, message)
     }
 
-    pub fn is_error(&self) -> bool {
-        matches!(self.severity, Severity::Error)
+    pub fn info(message: impl Into<String>) -> Self {
+        Self::new(Severity::Info, message)
     }
 
+    /// Mark `span` (a byte range in the source) with `text`.
     pub fn label(mut self, span: Range<usize>, text: impl Into<String>) -> Self {
-        self.labels.push((span, text.into()));
+        self.labels.push(Label {
+            span,
+            message: text.into(),
+        });
         self
     }
 
@@ -102,39 +104,97 @@ impl Diagnostic {
         self
     }
 
-    /// Render to stderr against `source`, labelled `name`. Falls back to
-    /// plain lines when there is no source text or no label to anchor to.
-    pub fn emit(&self, name: &str, source: &str) {
-        let Some((primary, _)) = self.labels.first() else {
-            self.emit_plain();
-            return;
-        };
-        if source.is_empty() {
-            self.emit_plain();
-            return;
+    /// Attach the source the labels index, and the name a report shows for
+    /// it (a file name, or a sentinel like `"<lexc>"`).
+    pub fn in_source(mut self, name: impl Into<String>, source: Arc<str>) -> Self {
+        self.source_name = name.into();
+        self.source = source;
+        self
+    }
+
+    pub fn severity(&self) -> Severity {
+        self.severity
+    }
+
+    pub fn is_error(&self) -> bool {
+        matches!(self.severity, Severity::Error)
+    }
+
+    pub fn message(&self) -> &str {
+        &self.message
+    }
+
+    pub fn source_name(&self) -> &str {
+        &self.source_name
+    }
+
+    pub fn source(&self) -> &str {
+        &self.source
+    }
+
+    /// The byte span of the primary label, if there is one.
+    pub fn primary_span(&self) -> Option<Range<usize>> {
+        self.labels.first().map(|l| l.span.clone())
+    }
+
+    /// Every label, the primary one first.
+    pub fn labels(&self) -> &[Label] {
+        &self.labels
+    }
+
+    pub fn notes(&self) -> &[String] {
+        &self.notes
+    }
+
+    pub fn help_text(&self) -> Option<&str> {
+        self.help.as_deref()
+    }
+
+    /// Whether [`render`](Self::render) draws a source snippet: there is
+    /// source text and a label to anchor it to. Otherwise the report is the
+    /// message, notes and help as plain lines.
+    pub fn has_snippet(&self) -> bool {
+        !self.labels.is_empty() && !self.source.is_empty()
+    }
+
+    /// The message, each note, then the help, one line each: the report when
+    /// there is no snippet to draw.
+    pub fn plain_lines(&self) -> Vec<&str> {
+        std::iter::once(self.message.as_str())
+            .chain(self.notes.iter().map(String::as_str))
+            .chain(self.help.as_deref())
+            .collect()
+    }
+
+    /// The report as text: a header line, the relevant slice of the source
+    /// with each label underlined, then the notes and help. `colour` adds
+    /// terminal colour codes. Without a snippet to draw it is the plain lines
+    /// under the severity's title.
+    pub fn render(&self, colour: bool) -> String {
+        if !self.has_snippet() {
+            return self.render_plain();
         }
-        // The parsers report UTF-8 byte offsets, while ariadne's `Range<usize>`
-        // spans are character offsets. Convert at this shared boundary so a
-        // diagnostic after non-ASCII text still points at the right line and
-        // column. The conversion also clamps stale or mid-code-point offsets.
         let (kind, color) = match self.severity {
             Severity::Error => (ReportKind::Error, Color::Red),
             Severity::Warning => (ReportKind::Warning, Color::Yellow),
             Severity::Info => (ReportKind::Custom("Info", Color::Blue), Color::Blue),
         };
-        let primary = byte_span_to_char_span(source, primary.clone());
-        // Colour only a terminal: a build log redirected to a file should not
-        // fill with escape codes. NO_COLOR opts out everywhere.
-        let colour = std::io::stderr().is_terminal() && std::env::var_os("NO_COLOR").is_none();
+        let name = self.source_name.as_str();
+        let source: &str = &self.source;
+        // The parsers report UTF-8 byte offsets, while ariadne's `Range<usize>`
+        // spans are character offsets. Convert at this shared boundary so a
+        // diagnostic after non-ASCII text still points at the right line and
+        // column. The conversion also clamps stale or mid-code-point offsets.
+        let primary = byte_span_to_char_span(source, self.labels[0].span.clone());
         let mut builder = Report::build(kind, (name, primary))
             .with_config(Config::default().with_color(colour))
             .with_message(&self.message);
-        for (i, (span, text)) in self.labels.iter().enumerate() {
-            let span = byte_span_to_char_span(source, span.clone());
+        for (i, label) in self.labels.iter().enumerate() {
+            let span = byte_span_to_char_span(source, label.span.clone());
             let label_color = if i == 0 { color } else { Color::Cyan };
             builder = builder.with_label(
-                Label::new((name, span))
-                    .with_message(text)
+                ariadne::Label::new((name, span))
+                    .with_message(&label.message)
                     .with_color(label_color)
                     .with_order(i as i32),
             );
@@ -151,27 +211,103 @@ impl Diagnostic {
             .finish()
             .write((name, Source::from(source)), &mut out)
         {
-            Ok(()) => eprint!("{}", String::from_utf8_lossy(&out)),
-            Err(_) => self.emit_plain(),
+            Ok(()) => String::from_utf8_lossy(&out).into_owned(),
+            Err(_) => self.render_plain(),
         }
     }
 
-    fn emit_plain(&self) {
-        emit_plain(self.severity, &self.message);
+    fn render_plain(&self) -> String {
+        let mut out = format!("{}: {}\n", self.severity.title(), self.message);
         for n in &self.notes {
-            emit_plain(self.severity, n);
+            out.push_str(&format!("Note: {n}\n"));
         }
         if let Some(h) = &self.help {
-            emit_plain(self.severity, h);
+            out.push_str(&format!("Help: {h}\n"));
         }
+        out
     }
 }
 
-fn emit_plain(severity: Severity, message: &str) {
-    match severity {
-        Severity::Error => tracing::error!("{}", message),
-        Severity::Warning => tracing::warn!("{}", message),
-        Severity::Info => tracing::info!("{}", message),
+// [spec:hfst:req:javascript.diagnostics-as-data]
+/// A caller's handler for diagnostics, called with each one as a compiler
+/// produces it. Clones share the handler, so a compiler can pass it to the
+/// compilers it embeds and their diagnostics arrive in the order they were
+/// produced.
+#[derive(Clone)]
+pub struct DiagnosticSink {
+    handler: Arc<Mutex<dyn FnMut(Diagnostic) + Send>>,
+}
+
+impl DiagnosticSink {
+    pub fn new(handler: impl FnMut(Diagnostic) + Send + 'static) -> Self {
+        Self {
+            handler: Arc::new(Mutex::new(handler)),
+        }
+    }
+
+    fn deliver(&self, d: Diagnostic) {
+        // A handler that panicked leaves nothing half-updated here, so a
+        // poisoned lock is still safe to call through.
+        let mut handler = self.handler.lock().unwrap_or_else(|e| e.into_inner());
+        handler(d);
+    }
+}
+
+impl std::fmt::Debug for DiagnosticSink {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("DiagnosticSink")
+    }
+}
+
+/// The diagnostics one compiler has produced. Until a sink is installed
+/// they are kept, oldest first, for the caller to read or take; once one is,
+/// each goes to it as it is produced and nothing more is kept.
+#[derive(Debug, Default)]
+pub struct Diagnostics {
+    kept: Vec<Diagnostic>,
+    sink: Option<DiagnosticSink>,
+}
+
+impl Diagnostics {
+    /// An empty collection that hands its diagnostics to the same sink as
+    /// `self`, for a compiler `self`'s owner embeds.
+    pub(crate) fn forwarding(&self) -> Self {
+        Self {
+            kept: Vec::new(),
+            sink: self.sink.clone(),
+        }
+    }
+
+    pub(crate) fn push(&mut self, d: Diagnostic) {
+        match &self.sink {
+            Some(sink) => sink.deliver(d),
+            None => self.kept.push(d),
+        }
+    }
+
+    pub(crate) fn extend(&mut self, ds: impl IntoIterator<Item = Diagnostic>) {
+        for d in ds {
+            self.push(d);
+        }
+    }
+
+    pub(crate) fn kept(&self) -> &[Diagnostic] {
+        &self.kept
+    }
+
+    pub(crate) fn take(&mut self) -> Vec<Diagnostic> {
+        std::mem::take(&mut self.kept)
+    }
+
+    /// The sink diagnostics go to, for a compiler the owner embeds.
+    pub(crate) fn sink(&self) -> Option<DiagnosticSink> {
+        self.sink.clone()
+    }
+
+    /// Send every later diagnostic to `sink`. What was kept before stays
+    /// kept.
+    pub(crate) fn set_sink(&mut self, sink: DiagnosticSink) {
+        self.sink = Some(sink);
     }
 }
 
@@ -194,7 +330,28 @@ fn byte_span_to_char_span(source: &str, span: Range<usize>) -> Range<usize> {
 
 #[cfg(test)]
 mod tests {
-    use super::byte_span_to_char_span;
+    use super::{Diagnostic, DiagnosticSink, Diagnostics, Severity, byte_span_to_char_span};
+    use std::sync::{Arc, Mutex};
+
+    // [spec:hfst:req:javascript.diagnostics-as-data/test]
+    #[test]
+    fn a_sink_receives_what_follows_it_in_order() {
+        let mut ds = Diagnostics::default();
+        ds.push(Diagnostic::error("before"));
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let into = Arc::clone(&seen);
+        ds.set_sink(DiagnosticSink::new(move |d| {
+            into.lock()
+                .expect("unpoisoned")
+                .push(d.message().to_string())
+        }));
+        let mut nested = ds.forwarding();
+        ds.push(Diagnostic::warning("outer"));
+        nested.push(Diagnostic::warning("nested"));
+        assert_eq!(*seen.lock().expect("unpoisoned"), ["outer", "nested"]);
+        assert_eq!(ds.take().len(), 1, "what came before the sink stays kept");
+        assert!(nested.kept().is_empty());
+    }
 
     #[test]
     fn byte_span_after_unicode_becomes_character_span() {
@@ -214,5 +371,50 @@ mod tests {
         let source = "aभाb";
 
         assert_eq!(byte_span_to_char_span(source, 2..6), 1..3);
+    }
+
+    // [spec:hfst:req:javascript.diagnostics-as-data/test]
+    #[test]
+    fn a_diagnostic_carries_its_pieces_and_renders_them() {
+        let source: Arc<str> = Arc::from("a b c\n");
+        let d = Diagnostic::warning("odd b")
+            .label(2..3, "this b")
+            .label(4..5, "and this c")
+            .note("why")
+            .help("what instead")
+            .in_source("x.txt", source);
+        assert_eq!(d.severity(), Severity::Warning);
+        assert_eq!(d.message(), "odd b");
+        assert_eq!(d.source_name(), "x.txt");
+        assert_eq!(d.primary_span(), Some(2..3));
+        assert_eq!(d.labels()[1].span, 4..5);
+        assert_eq!(d.notes(), ["why"]);
+        assert_eq!(d.help_text(), Some("what instead"));
+        let text = d.render(false);
+        assert!(text.starts_with("Warning: odd b"), "{text}");
+        assert!(text.contains("x.txt:1:3"), "{text}");
+        assert!(
+            text.contains("this b") && text.contains("and this c"),
+            "{text}"
+        );
+        assert!(
+            !text.contains('\u{1b}'),
+            "colour codes without colour: {text}"
+        );
+        assert!(d.render(true).contains('\u{1b}'));
+    }
+
+    // [spec:hfst:req:javascript.diagnostics-as-data/test]
+    #[test]
+    fn without_source_or_label_the_report_is_plain() {
+        let d = Diagnostic::error("broken").note("because").help("fix it");
+        assert!(!d.has_snippet());
+        assert_eq!(d.plain_lines(), ["broken", "because", "fix it"]);
+        assert_eq!(
+            d.render(false),
+            "Error: broken\nNote: because\nHelp: fix it\n"
+        );
+        let unanchored = Diagnostic::error("broken").in_source("x", Arc::from("text"));
+        assert!(!unanchored.has_snippet());
     }
 }

@@ -396,6 +396,34 @@ fn pmatch2fst_reserved_name_redefinition_reports_parse_error() {
     );
 }
 
+/// A pmatch script that does not compile fails the tool and writes nothing,
+/// so a build cannot ship an empty tokeniser in its place.
+#[test]
+fn pmatch2fst_uncompilable_script_fails_without_output() {
+    let dir = scratch("pmatch_uncompilable");
+    for (name, script) in [
+        ("syntax", "Define Word L( ;\n"),
+        ("insertion", "Define TOP Ins(Foo) ;\n"),
+    ] {
+        let src = dir.join(format!("{name}.pmatch"));
+        let out = dir.join(format!("{name}.pmhfst"));
+        std::fs::write(&src, script).expect("write grammar");
+        let _ = std::fs::remove_file(&out);
+        let (code, err) = run_status(
+            &[
+                "pmatch2fst",
+                "-i",
+                src.to_str().expect("utf8 path"),
+                "-o",
+                out.to_str().expect("utf8 path"),
+            ],
+            b"",
+        );
+        assert_eq!(code, Some(1), "{name}: stderr:\n{err}");
+        assert!(!out.exists(), "{name}: an output file was written");
+    }
+}
+
 /// Run `hfst <args>` with `stdin`, returning (exit code, stderr).
 fn run_status(args: &[&str], stdin: &[u8]) -> (Option<i32>, String) {
     let mut child = Command::new(env!("CARGO_BIN_EXE_hfst"))

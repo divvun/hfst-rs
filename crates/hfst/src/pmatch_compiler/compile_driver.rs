@@ -1,6 +1,7 @@
 //! The compile entry points, include expansion, file reading, and archive writing.
 
 use super::*;
+use crate::diag::{Diagnostic, DiagnosticSink};
 
 // ---------------------------------------------------------------------------
 // Bison-bridge globals/functions consumed by this group (the bison parser is
@@ -105,26 +106,56 @@ fn expand_includes_into<B: AlgebraBackend + 'static>(
     }
     Ok(())
 }
-// Render a parser failure as source-anchored diagnostics. The bison port used
-// to swallow 'nfst_pmatch::parse' errors and let compilation fall through to
-// the downstream "Empty ruleset, nothing to write" message, which hides the
-// real cause — e.g. a reserved predefined acceptor name (`Alpha`,
+// Record a parser failure as source-anchored diagnostics, so the real cause
+// reaches the caller, e.g. a reserved predefined acceptor name (`Alpha`,
 // `Whitespace`, ...) used as a `Define` target. Each diagnostic carries a byte
-// span into the include-expanded script, so the rendered snippet is anchored
-// there.
-fn emit_pmatch_parse_error(e: &nfst_pmatch::ParseError, expanded_script: &str) {
+// span into the include-expanded script, which is the source it points into.
+fn report_pmatch_parse_error<B: AlgebraBackend + 'static>(
+    ctx: &mut PmatchEvalContext<B>,
+    e: &nfst_pmatch::ParseError,
+    expanded_script: &str,
+) {
+    let source: Arc<str> = Arc::from(expanded_script);
     if e.diagnostics.is_empty() {
-        error!("pmatch: syntax error");
+        ctx.diagnostics
+            .push(Diagnostic::error("pmatch: syntax error").in_source("<pmatch>", source.clone()));
     }
     for d in &e.diagnostics {
-        crate::diag::emit(
-            "<pmatch>",
-            expanded_script,
-            d.span.range.clone(),
-            crate::diag::Severity::Error,
-            &format!("pmatch: syntax error: {}", d.message),
+        let message = format!("pmatch: syntax error: {}", d.message);
+        ctx.diagnostics.push(
+            Diagnostic::error(&message)
+                .label(d.span.range.clone(), message)
+                .in_source("<pmatch>", source.clone()),
         );
     }
+}
+
+/// The error a script that does not parse fails with. Its diagnostics carry
+/// the detail; this names how many there were.
+fn syntax_error(e: &nfst_pmatch::ParseError) -> crate::error::Error {
+    crate::err!(
+        Hfst,
+        format!(
+            "pmatch: the script has {} syntax error(s)",
+            e.diagnostics.len().max(1)
+        )
+    )
+}
+
+/// Fail when an `Ins()` names a definition the script never makes: the
+/// runtime would have nothing to insert there.
+fn check_insertions_defined<B: AlgebraBackend + 'static>(
+    ctx: &PmatchEvalContext<B>,
+) -> crate::error::Result<()> {
+    for it in ctx.unsatisfied_insertions_snapshot() {
+        if !ctx.definitions_contains(it.as_str()) {
+            crate::bail!(
+                Hfst,
+                format!("pmatch: inserted transducer {} was never defined", it)
+            );
+        }
+    }
+    Ok(())
 }
 
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.write-compilation-stack-indentation-to-err-fn]
@@ -295,23 +326,19 @@ impl<B: AlgebraBackend + FromAnyTransducer + 'static> PmatchCompiler<B> {
                     }
                 }
                 Err(e) => {
-                    emit_pmatch_parse_error(&e, &expanded_script);
+                    report_pmatch_parse_error(ctx, &e, &expanded_script);
                     ctx.data = String::new();
                     ctx.len = 0;
-                    return Ok(HashMap::new());
+                    return Err(syntax_error(&e));
                 }
             }
 
+            if let Err(e) = check_insertions_defined(ctx) {
+                ctx.data = String::new();
+                ctx.len = 0;
+                return Err(e);
+            }
             let mut retval: HashMap<String, HfstTransducer<B>> = HashMap::new();
-
-            for it in ctx.unsatisfied_insertions_snapshot().into_iter() {
-                if !ctx.definitions_contains(it.as_str()) {
-                    error!("Inserted transducer {} was never defined!", it);
-                    ctx.data = String::new();
-                    ctx.len = 0;
-                    return Ok(retval);
-                }
-            }
             if ctx.verbose {
                 for (k, _v) in ctx.definitions_snapshot() {
                     if !ctx.used_definitions_contains(&k) && k != "TOP" {
@@ -558,6 +585,26 @@ impl<B: AlgebraBackend + FromAnyTransducer + 'static> PmatchCompiler<B> {
     /// default reads the filesystem.
     pub fn set_file_resolver(&mut self, files: Arc<dyn FileResolver>) {
         self.eval_ctx.files = files;
+    }
+
+    /// Everything compiling has reported since the diagnostics were last
+    /// taken, oldest first, failures and warnings alike.
+    // [spec:hfst:req:javascript.diagnostics-as-data]
+    pub fn diagnostics(&self) -> &[Diagnostic] {
+        self.eval_ctx.diagnostics.kept()
+    }
+
+    /// Hand over the diagnostics reported so far, leaving none behind.
+    // [spec:hfst:req:javascript.diagnostics-as-data]
+    pub fn take_diagnostics(&mut self) -> Vec<Diagnostic> {
+        self.eval_ctx.diagnostics.take()
+    }
+
+    /// Hand each later diagnostic to `sink` the moment it is produced. They
+    /// are not kept, so [`Self::take_diagnostics`] returns none of them.
+    // [spec:hfst:req:javascript.diagnostics-as-data]
+    pub fn set_diagnostic_sink(&mut self, sink: DiagnosticSink) {
+        self.eval_ctx.diagnostics.set_sink(sink);
     }
 }
 

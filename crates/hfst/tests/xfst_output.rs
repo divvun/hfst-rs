@@ -136,8 +136,8 @@ fn a_failed_write_fails_the_command() {
         .parse(src)
         .expect_err("printing into a closed writer fails");
     let d = err.diagnostics.first().expect("the failure is described");
-    assert_eq!(&src[d.span.clone()], "print words");
-    assert!(d.message.contains("output closed"), "{}", d.message);
+    assert_eq!(&src[d.primary_span().expect("a span")], "print words");
+    assert!(d.message().contains("output closed"), "{}", d.message());
     assert_eq!(c.get_stack().len(), 1, "'regex b' ran after the failure");
 }
 
@@ -153,9 +153,9 @@ fn a_failed_prompt_fails_the_command() {
         .parse("clear stack\n")
         .expect_err("prompting into a closed writer fails");
     assert!(
-        err.diagnostics[0].message.contains("output closed"),
+        err.diagnostics[0].message().contains("output closed"),
         "{}",
-        err.diagnostics[0].message
+        err.diagnostics[0].message()
     );
 }
 

@@ -339,15 +339,19 @@ pub mod pmatch2fst {
 
     // [spec:hfst:def:hfst-pmatch2fst.process-stream-fn]
     // [spec:hfst:sem:hfst-pmatch2fst.process-stream-fn]
+    //
+    // The output is opened only once the script has compiled to something
+    // writable, so a failed compile leaves no empty archive behind for a
+    // build to pick up.
     fn process_stream(
         common: &CommonOptions,
         options: &Options,
-        outstream: &mut HfstOutputStream,
         input: &mut dyn Read,
-    ) -> i32 {
+    ) -> ToolResult {
         // pmatch is pinned to the tropical backend (the C++ compilation_format);
         // the former format argument is the type parameter now.
         let mut comp = PmatchCompiler::<hfst_openfst::StdVectorFst>::new();
+        comp.set_diagnostic_sink(crate::hfst_commandline::stderr_sink());
         comp.set_verbose(common.verbose);
         comp.set_flatten(options.flatten);
         comp.set_include_cosine_distances(options.include_cosine_distances);
@@ -386,40 +390,63 @@ pub mod pmatch2fst {
         // C: std::string holds bytes; reinterpret the collected bytes as UTF-8.
         let file_contents = String::from_utf8_lossy(&file_bytes).into_owned();
         if file_contents.len() > 1 {
-            // C wraps comp.compile in try/catch on HfstException; on a thrown
-            // exception it prints e.name and returns EXIT_FAILURE. The Rust
-            // compiler panics rather than throwing, so the catch arm is not
-            // reproduced (any panic propagates).
             definitions = match comp.compile(&file_contents) {
                 Ok(d) => d,
                 Err(e) => {
-                    eprintln!("{e}");
-                    return 1;
+                    eprintln!("{}: {e}", common.program_name);
+                    return Err(1);
                 }
             };
         }
+        if !has_archive(&definitions) {
+            eprintln!("{}: Empty ruleset, nothing to write", common.program_name);
+            return Err(1);
+        }
 
+        let mut outstream = match HfstOutputStream::new_filename(
+            &common.output_filename,
+            ImplementationType::HFST_OLW_TYPE,
+            true,
+        ) {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("hfst-pmatch2fst: cannot open output: {e}");
+                return Err(1);
+            }
+        };
         // Harmonization + archive writing live in the library
         // ('hfst::pmatch_compiler::write_archive'); verbose progress goes to
         // stderr as before.
         match hfst::pmatch_compiler::write_archive(
             &mut definitions,
-            outstream,
+            &mut outstream,
             common.verbose,
             &mut std::io::stderr(),
         ) {
             Ok(true) => {}
             Ok(false) => {
                 eprintln!("{}: Empty ruleset, nothing to write", common.program_name);
-                return 1;
+                return Err(1);
             }
             Err(e) => {
                 eprintln!("{e}");
-                return 1;
+                return Err(1);
             }
         }
         outstream.close();
-        0
+        Ok(())
+    }
+
+    /// Whether a compiled ruleset makes an archive: it has a TOP, and its
+    /// definitions carry at least one symbol.
+    fn has_archive(
+        definitions: &std::collections::HashMap<String, HfstTransducer<hfst_openfst::StdVectorFst>>,
+    ) -> bool {
+        definitions.contains_key("TOP")
+            && matches!(
+                hfst::pmatch_compiler::build_archive_harmonizer(definitions),
+                Ok(Some(_))
+            )
     }
 
     // [spec:hfst:def:hfst-pmatch2fst.main-fn]
@@ -434,8 +461,6 @@ pub mod pmatch2fst {
             flatten: args.flatten,
             include_cosine_distances: args.cosine_distances,
         };
-        // close buffers, we use streams
-        let output_opened = common.output_filename != "<stdout>";
         verbose_print(
             &common,
             &format!(
@@ -443,22 +468,6 @@ pub mod pmatch2fst {
                 common.input_filename, common.output_filename
             ),
         );
-        // here starts the buffer handling part
-        let mut outstream = match if output_opened {
-            HfstOutputStream::new_filename(
-                &common.output_filename,
-                ImplementationType::HFST_OLW_TYPE,
-                true,
-            )
-        } else {
-            HfstOutputStream::new(ImplementationType::HFST_OLW_TYPE, true)
-        } {
-            Ok(s) => s,
-            Err(e) => {
-                eprintln!("hfst-pmatch2fst: cannot open output: {e}");
-                return Err(1);
-            }
-        };
         let mut input = match common.input_reader() {
             Ok(r) => r,
             Err(e) => {
@@ -466,8 +475,26 @@ pub mod pmatch2fst {
                 return Err(1);
             }
         };
-        process_stream(&common, &options, &mut outstream, &mut *input);
-        Ok(())
+        process_stream(&common, &options, &mut *input)
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::has_archive;
+        use hfst::hfst_transducer::HfstTransducer;
+        use hfst_openfst::StdVectorFst;
+        use std::collections::HashMap;
+
+        #[test]
+        fn only_a_ruleset_with_top_makes_archive() -> Result<(), hfst::error::Error> {
+            let mut definitions: HashMap<String, HfstTransducer<StdVectorFst>> = HashMap::new();
+            assert!(!has_archive(&definitions));
+            definitions.insert("Word".to_string(), HfstTransducer::new_symbol("a")?);
+            assert!(!has_archive(&definitions), "a ruleset with no TOP");
+            definitions.insert("TOP".to_string(), HfstTransducer::new_symbol("b")?);
+            assert!(has_archive(&definitions));
+            Ok(())
+        }
     }
 }
 
@@ -889,23 +916,28 @@ pub mod twolc {
         let compiled = match command_line.format {
             #[cfg(feature = "foma")]
             ImplementationType::FOMA_TYPE => {
-                TwolcCompiler::<hfst::backend_foma::FomaTransducer>::new_with_options(
+                let mut comp =
+                    TwolcCompiler::<hfst::backend_foma::FomaTransducer>::new_with_options(
+                        command_line.be_quiet,
+                        command_line.be_verbose,
+                        command_line.resolve_left_conflicts,
+                        command_line.resolve_right_conflicts,
+                    );
+                comp.set_diagnostic_sink(crate::hfst_commandline::stderr_sink());
+                comp.set_source_name(&source_name);
+                comp.compile_and_store(&input, &mut out)
+            }
+            _ => {
+                let mut comp = TwolcCompiler::<hfst_openfst::StdVectorFst>::new_with_options(
                     command_line.be_quiet,
                     command_line.be_verbose,
                     command_line.resolve_left_conflicts,
                     command_line.resolve_right_conflicts,
-                )
-                .set_source_name(&source_name)
-                .compile_and_store(&input, &mut out)
+                );
+                comp.set_diagnostic_sink(crate::hfst_commandline::stderr_sink());
+                comp.set_source_name(&source_name);
+                comp.compile_and_store(&input, &mut out)
             }
-            _ => TwolcCompiler::<hfst_openfst::StdVectorFst>::new_with_options(
-                command_line.be_quiet,
-                command_line.be_verbose,
-                command_line.resolve_left_conflicts,
-                command_line.resolve_right_conflicts,
-            )
-            .set_source_name(&source_name)
-            .compile_and_store(&input, &mut out),
         };
         match compiled {
             Some(()) => {}

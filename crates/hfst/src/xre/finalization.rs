@@ -26,6 +26,7 @@ impl<B: AlgebraBackend> XreCompiler<B> {
         &mut self,
         expression: &SpannedXre,
     ) -> crate::error::Result<HfstTransducer<B>> {
+        self.failed_span = None;
         // A pass is deliberately left undeterminised; optimizing it would
         // rebuild the expanded machine it exists to avoid.
         if self.replace_pass {

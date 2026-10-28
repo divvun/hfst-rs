@@ -41,6 +41,7 @@ impl<B: AlgebraBackend + 'static> PmatchEvalContext<B> {
             lst_overlap_warned: BTreeSet::new(),
             node_caches: HashMap::new(),
             files: crate::file_resolver::default_resolver(),
+            diagnostics: crate::diag::Diagnostics::default(),
         }
     }
 

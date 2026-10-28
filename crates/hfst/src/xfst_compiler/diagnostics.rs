@@ -4,26 +4,70 @@
 use super::*;
 
 impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
-    /// Render an error about the command currently being evaluated, anchored at
+    /// Everything running commands has reported since the diagnostics were
+    /// last taken, oldest first, failures and warnings alike. What the
+    /// embedded regex and lexc compilers report joins it after each command
+    /// `parse` runs.
+    // [spec:hfst:req:javascript.diagnostics-as-data]
+    pub fn diagnostics(&self) -> &[Diagnostic] {
+        self.diagnostics.kept()
+    }
+
+    /// Hand over the diagnostics reported so far, the embedded compilers'
+    /// included, leaving none behind.
+    // [spec:hfst:req:javascript.diagnostics-as-data]
+    pub fn take_diagnostics(&mut self) -> Vec<Diagnostic> {
+        self.absorb_nested_diagnostics();
+        self.diagnostics.take()
+    }
+
+    /// Hand each later diagnostic to `sink` the moment it is produced. They
+    /// are not kept, so [`Self::take_diagnostics`] returns none of them. The
+    /// embedded regex and lexc compilers report to it too, as they produce
+    /// their diagnostics.
+    // [spec:hfst:req:javascript.diagnostics-as-data]
+    pub fn set_diagnostic_sink(&mut self, sink: DiagnosticSink) {
+        self.xre.set_diagnostic_sink(sink.clone());
+        self.lexc.set_diagnostic_sink(sink.clone());
+        self.diagnostics.set_sink(sink);
+    }
+
+    /// Move what the embedded regex and lexc compilers reported into this
+    /// compiler's diagnostics.
+    pub(super) fn absorb_nested_diagnostics(&mut self) {
+        let from_xre = self.xre.take_diagnostics();
+        self.diagnostics.extend(from_xre);
+        let from_lexc = self.lexc.take_diagnostics();
+        self.diagnostics.extend(from_lexc);
+    }
+
+    /// A diagnostic about the command currently being evaluated, anchored at
     /// its span in the script source.
     ///
-    /// With no retained source — a caller driving the command methods directly
-    /// rather than through `parse` — this degrades to the plain one-line
-    /// message it replaced, never to a caret pointing at the wrong place.
-    pub(super) fn diag_error(&self, msg: &str) {
+    /// With no retained source (a caller driving the command methods directly
+    /// rather than through `parse`) it renders as the plain message, never as
+    /// a caret pointing at the wrong place.
+    pub(super) fn command_diagnostic(
+        &self,
+        severity: Severity,
+        msg: &str,
+        notes: &[String],
+    ) -> Diagnostic {
+        let d = Diagnostic::new(severity, msg)
+            .label(self.current_span.clone(), msg)
+            .in_source(&self.source_name, self.source.clone());
+        notes.iter().fold(d, |d, n| d.note(n))
+    }
+
+    /// Record an error about the command currently being evaluated.
+    pub(super) fn diag_error(&mut self, msg: &str) {
         self.diag_error_with_notes(msg, &[]);
     }
 
     /// As `diag_error`, with follow-up advice under the snippet.
-    pub(super) fn diag_error_with_notes(&self, msg: &str, notes: &[String]) {
-        crate::diag::emit_with_notes(
-            &self.source_name,
-            &self.source,
-            self.current_span.clone(),
-            crate::diag::Severity::Error,
-            msg,
-            notes,
-        );
+    pub(super) fn diag_error_with_notes(&mut self, msg: &str, notes: &[String]) {
+        let d = self.command_diagnostic(Severity::Error, msg, notes);
+        self.diagnostics.push(d);
     }
 
     /// A `set`/`show` against a variable this compiler does not have,
@@ -51,28 +95,15 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         CommandError::new(format!("no such defined network: '{}'", name)).with_notes(notes)
     }
 
-    /// Render a warning about the command currently being evaluated, anchored
-    /// at its span in the script source.
-    pub(super) fn diag_warning(&self, msg: &str) {
-        crate::diag::emit(
-            &self.source_name,
-            &self.source,
-            self.current_span.clone(),
-            crate::diag::Severity::Warning,
-            msg,
-        );
+    /// Record a warning about the command currently being evaluated.
+    pub(super) fn diag_warning(&mut self, msg: &str) {
+        self.diag_warning_with_notes(msg, &[]);
     }
 
     /// As `diag_warning`, with follow-up advice under the snippet.
-    pub(super) fn diag_warning_with_notes(&self, msg: &str, notes: &[String]) {
-        crate::diag::emit_with_notes(
-            &self.source_name,
-            &self.source,
-            self.current_span.clone(),
-            crate::diag::Severity::Warning,
-            msg,
-            notes,
-        );
+    pub(super) fn diag_warning_with_notes(&mut self, msg: &str, notes: &[String]) {
+        let d = self.command_diagnostic(Severity::Warning, msg, notes);
+        self.diagnostics.push(d);
     }
 }
 
@@ -82,26 +113,17 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
 // known xfst trap, what to type instead. The front-end parser reports byte
 // spans; these helpers turn them into something worth reading.
 
-/// A failure to report against xfst source: where it points, what it says, and
-/// any follow-up advice.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct XfstDiagnostic {
-    /// Byte range in the script the caret goes under.
-    pub span: std::ops::Range<usize>,
-    pub message: String,
-    /// Advice rendered beneath the snippet; empty when there is nothing
-    /// specific to suggest.
-    pub notes: Vec<String>,
+fn script_error(span: std::ops::Range<usize>, message: String, notes: Vec<String>) -> Diagnostic {
+    let d = Diagnostic::error(&message).label(span, message);
+    notes.into_iter().fold(d, Diagnostic::note)
 }
 
 /// Turn an nfst-xfst parse failure into diagnostics worth showing: front-end
 /// messages rephrased in the user's vocabulary, regex-body failures re-anchored
 /// from body-relative to script-absolute spans, and advice attached where the
-/// cause is a known xfst trap.
-///
-/// Public so the shaping can be asserted directly — the rendering itself goes
-/// to stderr, which a test cannot read.
-pub fn parse_diagnostics(src: &str, e: &nfst_xfst::ParseError) -> Vec<XfstDiagnostic> {
+/// cause is a known xfst trap. The spans index `src`; the caller attaches it
+/// as their source with a name.
+pub fn parse_diagnostics(src: &str, e: &nfst_xfst::ParseError) -> Vec<Diagnostic> {
     let mut out = Vec::new();
     for d in &e.diagnostics {
         let span = clamp_span(d.span.range.clone(), src.len());
@@ -119,7 +141,7 @@ pub fn parse_diagnostics(src: &str, e: &nfst_xfst::ParseError) -> Vec<XfstDiagno
                 // Every quote on the line trips the lexer; one report is enough.
                 if !out
                     .iter()
-                    .any(|o: &XfstDiagnostic| o.span.start >= line.start)
+                    .any(|o: &Diagnostic| o.primary_span().is_some_and(|s| s.start >= line.start))
                 {
                     out.push(bare_regex_diagnostic(line));
                 }
@@ -134,11 +156,7 @@ pub fn parse_diagnostics(src: &str, e: &nfst_xfst::ParseError) -> Vec<XfstDiagno
             Some((expected, _)) => expected.to_string(),
             None => d.message.clone(),
         };
-        out.push(XfstDiagnostic {
-            span,
-            message,
-            notes: d.notes.clone(),
-        });
+        out.push(script_error(span, message, d.notes.clone()));
     }
     out
 }
@@ -156,12 +174,12 @@ fn clamp_span(span: std::ops::Range<usize>, len: usize) -> std::ops::Range<usize
 /// byte. Re-parsing the body padded to its real offset — the prefix blanked to
 /// whitespace, which the regex lexer skips — puts every inner span back in
 /// script coordinates, and byte-for-byte blanking keeps line and column exact.
-fn regex_body_diagnostics(src: &str, span: std::ops::Range<usize>) -> Vec<XfstDiagnostic> {
-    let body_only = XfstDiagnostic {
-        span: span.clone(),
-        message: String::from("could not parse this regular expression"),
-        notes: Vec::new(),
-    };
+fn regex_body_diagnostics(src: &str, span: std::ops::Range<usize>) -> Vec<Diagnostic> {
+    let body_only = script_error(
+        span.clone(),
+        String::from("could not parse this regular expression"),
+        Vec::new(),
+    );
     let Some(padded) = pad_to_offset(src, span.clone()) else {
         return vec![body_only];
     };
@@ -170,16 +188,18 @@ fn regex_body_diagnostics(src: &str, span: std::ops::Range<usize>) -> Vec<XfstDi
         // more specific to say than where it is.
         Ok(_) => vec![body_only],
         Err(inner) => {
-            let mut out: Vec<XfstDiagnostic> = inner
+            let mut out: Vec<Diagnostic> = inner
                 .diagnostics
                 .iter()
-                .map(|d| XfstDiagnostic {
-                    span: clamp_span(d.span.range.clone(), src.len()),
-                    message: format!(
-                        "in this regular expression: {}",
-                        spell_token_names(&d.message)
-                    ),
-                    notes: d.notes.clone(),
+                .map(|d| {
+                    script_error(
+                        clamp_span(d.span.range.clone(), src.len()),
+                        format!(
+                            "in this regular expression: {}",
+                            spell_token_names(&d.message)
+                        ),
+                        d.notes.clone(),
+                    )
                 })
                 .collect();
             if out.is_empty() {
@@ -228,14 +248,10 @@ fn spell_token_names(message: &str) -> String {
     out
 }
 
-fn unknown_command_diagnostic(text: &str, span: std::ops::Range<usize>) -> XfstDiagnostic {
+fn unknown_command_diagnostic(text: &str, span: std::ops::Range<usize>) -> Diagnostic {
     let word = text.trim();
     if word.is_empty() {
-        return XfstDiagnostic {
-            span,
-            message: String::from("expected a command here"),
-            notes: Vec::new(),
-        };
+        return script_error(span, String::from("expected a command here"), Vec::new());
     }
     let mut notes = Vec::new();
     if let Some(near) = nearest_command(word) {
@@ -244,11 +260,7 @@ fn unknown_command_diagnostic(text: &str, span: std::ops::Range<usize>) -> XfstD
     notes.push(String::from(
         "'help' lists the commands this compiler accepts",
     ));
-    XfstDiagnostic {
-        span,
-        message: format!("unknown command '{}'", word),
-        notes,
-    }
+    script_error(span, format!("unknown command '{}'", word), notes)
 }
 
 /// The trimmed span of the line holding `pos`, when that line opens with a
@@ -265,20 +277,20 @@ fn bare_regex_line(src: &str, pos: usize) -> Option<std::ops::Range<usize>> {
     Some(line_start + indent..line_start + line.trim_end().len())
 }
 
-fn bare_regex_diagnostic(span: std::ops::Range<usize>) -> XfstDiagnostic {
-    XfstDiagnostic {
+fn bare_regex_diagnostic(span: std::ops::Range<usize>) -> Diagnostic {
+    script_error(
         span,
-        message: String::from("expected a command, found a regular expression"),
-        notes: vec![
+        String::from("expected a command, found a regular expression"),
+        vec![
             String::from(
                 "quoted strings are fine inside a regex, but the line must start with a command",
             ),
             String::from("write 'regex' before it to compile it, or 'define NAME' to name it"),
         ],
-    }
+    )
 }
 
-fn unexpected_character_diagnostic(quoted: &str, span: std::ops::Range<usize>) -> XfstDiagnostic {
+fn unexpected_character_diagnostic(quoted: &str, span: std::ops::Range<usize>) -> Diagnostic {
     // The front-end quotes the byte it stopped on; recover it to decide whether
     // this is the quoting trap or an ordinary stray character.
     let ch = quoted.trim().trim_matches('\'').chars().next();
@@ -291,14 +303,11 @@ fn unexpected_character_diagnostic(quoted: &str, span: std::ops::Range<usize>) -
             "escape each special character with '%', e.g. 'Acme% Corp' for the value 'Acme Corp'",
         ));
     }
-    XfstDiagnostic {
-        span,
-        message: match ch {
-            Some(c) => format!("unexpected character '{}' in a word", c),
-            None => String::from("unexpected character"),
-        },
-        notes,
-    }
+    let message = match ch {
+        Some(c) => format!("unexpected character '{}' in a word", c),
+        None => String::from("unexpected character"),
+    };
+    script_error(span, message, notes)
 }
 
 /// The xfst command keyword within one edit of `word`, if there is one.

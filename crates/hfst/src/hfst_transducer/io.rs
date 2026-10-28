@@ -132,19 +132,29 @@ impl<B: Backend> HfstTransducer<B> {
     // The C++ 'type' parameter is the backend type parameter 'B' now
     // ([dec:hfst:monomorphic-backends]); its availability check was pure
     // capability gating and is a static fact of the instantiation.
-    pub fn read_lexc(filename: &str, verbose: bool) -> crate::error::Result<HfstTransducer<B>>
+    // [spec:hfst:req:javascript.diagnostics-as-data]
+    /// Compile the lexc file `filename`. What the compile reports is appended
+    /// to `diagnostics`; a file that does not compile is an error.
+    pub fn read_lexc(
+        filename: &str,
+        verbose: bool,
+        diagnostics: &mut Vec<crate::diag::Diagnostic>,
+    ) -> crate::error::Result<HfstTransducer<B>>
     where
         B: AlgebraBackend,
     {
-        Ok(HfstTransducer::read_lexc_ptr(filename, verbose)?
-            .expect("read_lexc: lexc compilation produced no transducer"))
+        HfstTransducer::read_lexc_ptr(filename, verbose, diagnostics)?
+            .ok_or_else(|| crate::err!(NotValidLexcFormat, filename))
     }
 
     // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.read-lexc-ptr-fn]
     // [spec:hfst:sem:hfst-transducer.hfst.hfst-transducer.read-lexc-ptr-fn]
+    // [spec:hfst:req:javascript.diagnostics-as-data]
+    /// As [`Self::read_lexc`], with `None` for a file that does not compile.
     pub fn read_lexc_ptr(
         filename: &str,
         verbose: bool,
+        diagnostics: &mut Vec<crate::diag::Diagnostic>,
     ) -> crate::error::Result<Option<HfstTransducer<B>>>
     where
         B: AlgebraBackend,
@@ -158,7 +168,10 @@ impl<B: Backend> HfstTransducer<B> {
         compiler.set_verbosity(verbose as u32);
         let source = std::fs::read_to_string(filename)
             .map_err(|_| crate::err!(StreamNotReadable, filename))?;
-        Ok(compiler.compile(&source))
+        compiler.set_source_name(filename);
+        let compiled = compiler.compile(&source);
+        diagnostics.extend(compiler.take_diagnostics());
+        Ok(compiled)
     }
 }
 

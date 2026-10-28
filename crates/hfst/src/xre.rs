@@ -12,6 +12,7 @@ use std::sync::Arc;
 use nfst_xre::{BinaryOp, ParseError, SpannedXre, XreExpr};
 
 use crate::backend::AlgebraBackend;
+use crate::diag::{Diagnostic, DiagnosticSink, Diagnostics, Severity};
 use crate::file_resolver::FileResolver;
 use crate::hfst_data_types::Symbol;
 use crate::hfst_transducer::HfstTransducer;
@@ -136,15 +137,18 @@ pub struct XreCompiler<B: AlgebraBackend> {
     /// 'contained_only_comments'. Moved onto the instance to remove the
     /// thread-global mutable state.
     pub(crate) contains_only_comments: bool,
-    /// The regex source currently being compiled, retained so diagnostics can
-    /// render the offending snippet (ariadne). Empty until `compile` runs.
-    pub(crate) source: String,
+    /// The regex source currently being compiled, which diagnostics point
+    /// into. Empty until `compile` runs.
+    pub(crate) source: Arc<str>,
     /// Label shown in diagnostics for `source` (a file name, or `"<regex>"`).
     pub(crate) source_name: String,
     /// Byte span in `source` of the AST node currently being evaluated, updated
     /// as `eval` visits each spanned node; the anchor for `diag_error`/
     /// `diag_warning`.
     pub(crate) current_span: std::ops::Range<usize>,
+    /// Span of the innermost node whose evaluation failed, recorded as the
+    /// failure propagates so its report points at the node at fault.
+    pub(crate) failed_span: Option<std::ops::Range<usize>>,
     /// The multichar symbols a lexc source declared, while one is being
     /// compiled; a regex using any other multichar symbol gets a warning.
     pub(crate) defined_multichar_symbols: Option<BTreeSet<Symbol>>,
@@ -159,6 +163,14 @@ pub struct XreCompiler<B: AlgebraBackend> {
     /// Where the '@bin', '@txt', '@stxt', '@pl' and '@re' file references
     /// are read from ([`Self::set_file_resolver`]).
     pub(crate) files: Arc<dyn FileResolver>,
+    /// What compiling has reported, oldest first, until the caller takes it
+    /// or a sink receives it.
+    pub(crate) diagnostics: Diagnostics,
+}
+
+/// What went wrong, without the generic kind prefix when the error says more.
+fn error_text(e: &crate::error::Error) -> String {
+    e.message.clone().unwrap_or_else(|| e.kind.to_string())
 }
 
 // ===========================================================================
@@ -192,13 +204,15 @@ impl<B: AlgebraBackend> XreCompiler<B> {
             xerox_composition: false,
             encode_weights: false,
             contains_only_comments: false,
-            source: String::new(),
+            source: Arc::from(""),
             source_name: String::from("<regex>"),
             current_span: 0..0,
+            failed_span: None,
             defined_multichar_symbols: None,
             span_base: 0,
             replace_pass: false,
             files: crate::file_resolver::default_resolver(),
+            diagnostics: Diagnostics::default(),
         }
     }
 
@@ -218,13 +232,15 @@ impl<B: AlgebraBackend> XreCompiler<B> {
             xerox_composition: false,
             encode_weights: false,
             contains_only_comments: false,
-            source: String::new(),
+            source: Arc::from(""),
             source_name: String::from("<regex>"),
             current_span: 0..0,
+            failed_span: None,
             defined_multichar_symbols: None,
             span_base: 0,
             replace_pass: false,
             files: crate::file_resolver::default_resolver(),
+            diagnostics: Diagnostics::default(),
         }
     }
 }
@@ -257,42 +273,71 @@ impl<B: AlgebraBackend> XreCompiler<B> {
         self
     }
 
-    /// Render a diagnostic about the user's regex source, anchored at `span`
-    /// of the text the parser was handed (ariadne).
-    fn diag_at(&self, span: std::ops::Range<usize>, severity: crate::diag::Severity, msg: &str) {
-        let span = span.start + self.span_base..span.end + self.span_base;
-        crate::diag::emit(&self.source_name, &self.source, span, severity, msg);
+    /// Everything compiling has reported since the diagnostics were last
+    /// taken, oldest first, failures and warnings alike.
+    // [spec:hfst:req:javascript.diagnostics-as-data]
+    pub fn diagnostics(&self) -> &[Diagnostic] {
+        self.diagnostics.kept()
     }
 
-    /// Render an error about a problem in the user's regex source, anchored at
-    /// the span of the node currently being evaluated (ariadne).
-    fn diag_error(&self, msg: &str) {
-        self.diag_at(self.current_span.clone(), crate::diag::Severity::Error, msg);
+    /// Hand over the diagnostics reported so far, leaving none behind.
+    // [spec:hfst:req:javascript.diagnostics-as-data]
+    pub fn take_diagnostics(&mut self) -> Vec<Diagnostic> {
+        self.diagnostics.take()
+    }
+
+    /// Hand each later diagnostic to `sink` the moment it is produced. They
+    /// are not kept, so [`Self::take_diagnostics`] returns none of them.
+    // [spec:hfst:req:javascript.diagnostics-as-data]
+    pub fn set_diagnostic_sink(&mut self, sink: DiagnosticSink) {
+        self.diagnostics.set_sink(sink);
+    }
+
+    /// Record a diagnostic about the user's regex source, anchored at `span`
+    /// of the text the parser was handed.
+    fn diag_at(&mut self, span: std::ops::Range<usize>, severity: Severity, msg: &str) {
+        let span = span.start + self.span_base..span.end + self.span_base;
+        let d = Diagnostic::new(severity, msg)
+            .label(span, msg)
+            .in_source(&self.source_name, self.source.clone());
+        self.diagnostics.push(d);
+    }
+
+    /// Record an error about a problem in the user's regex source, anchored at
+    /// the span of the node currently being evaluated.
+    fn diag_error(&mut self, msg: &str) {
+        self.diag_at(self.current_span.clone(), Severity::Error, msg);
     }
 
     // [spec:hfst:def:xre-utils.hfst.xre.warn-fn]
-    /// Render a warning about the user's regex source, anchored at the span of
-    /// the node currently being evaluated (ariadne).
-    fn diag_warning(&self, msg: &str) {
-        self.diag_at(
-            self.current_span.clone(),
-            crate::diag::Severity::Warning,
-            msg,
-        );
+    /// Record a warning about the user's regex source, anchored at the span of
+    /// the node currently being evaluated.
+    fn diag_warning(&mut self, msg: &str) {
+        self.diag_at(self.current_span.clone(), Severity::Warning, msg);
     }
 
-    /// Render every diagnostic carried by an nfst-xre parse failure, each
+    /// Record every diagnostic carried by an nfst-xre parse failure, each
     /// anchored at its own span. The front-end parser reports syntax errors
     /// with byte spans into `self.source`; without this the caller's terse
     /// one-liner is all the user sees of a syntax error.
-    fn diag_parse_error(&self, e: &ParseError) {
+    fn diag_parse_error(&mut self, e: &ParseError) {
         for d in &e.diagnostics {
-            self.diag_at(
-                d.span.range.clone(),
-                crate::diag::Severity::Error,
-                &d.message,
-            );
+            self.diag_at(d.span.range.clone(), Severity::Error, &d.message);
         }
+    }
+
+    /// Report an evaluation failure at the node it happened in. A pass
+    /// reports each of its problems where it finds them, so its failure is
+    /// not reported again.
+    fn diag_eval_error(&mut self, e: &crate::error::Error) {
+        if self.replace_pass {
+            return;
+        }
+        let span = self
+            .failed_span
+            .take()
+            .unwrap_or_else(|| self.current_span.clone());
+        self.diag_at(span, Severity::Error, &error_text(e));
     }
 
     // [spec:hfst:def:xre-compiler.hfst.xre.xre-compiler.set-error-stream-fn]

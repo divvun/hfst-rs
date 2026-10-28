@@ -1,0 +1,10 @@
+Error: unexpected token None inside lexicon entry
+   ╭─[ <stdin>:2:6 ]
+   │
+ 2 │ abc #
+   │      │ 
+   │      ╰─ unexpected token None inside lexicon entry
+───╯
+ERROR compilation aborted due to previous errors
+hfst lexc: The file <stdin> did not compile cleanly.
+(if there are no error messages above, try -v or -d to get more info)

@@ -8,6 +8,7 @@
 #![allow(clippy::too_many_arguments)]
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::sync::Arc;
 
 use nfst_lexc::{
     Definition, EntrySpec, LexcFile, Lexicon, LexiconEntry, LexiconName, MulticharSymbol, Spanned,
@@ -16,6 +17,7 @@ use nfst_lexc::{
 use nfst_xre::{SpannedXre, pretty_print};
 
 use crate::backend::AlgebraBackend;
+use crate::diag::{Diagnostic, DiagnosticSink, Diagnostics, Severity};
 use crate::hfst_basic_transducer::HfstBasicTransducer;
 use crate::hfst_basic_transition::HfstBasicTransition;
 use crate::hfst_data_types::{
@@ -32,18 +34,6 @@ mod entries;
 mod graphemes;
 mod recode;
 use recode::joiner_encode;
-
-/// A grapheme spelled with several code points that the source never declared:
-/// where it sits, what to say about it, and what to type instead.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct GraphemeDiagnostic {
-    /// Byte range in the lexc source the caret goes under — the grapheme
-    /// itself where it can be located, else the whole entry.
-    pub span: std::ops::Range<usize>,
-    pub message: String,
-    /// Advice rendered beneath the snippet.
-    pub notes: Vec<String>,
-}
 
 // [spec:hfst:def:lexc-compiler.hfst.lexc.lexc-compiler]
 pub struct LexcCompiler<B: AlgebraBackend> {
@@ -86,19 +76,19 @@ pub struct LexcCompiler<B: AlgebraBackend> {
     /// threaded into 'compile_lexical's composes. hfst-lexc-compiler defaults this
     /// ON, toggled by its '--xerox-composition' option.
     pub(crate) xerox_composition: bool,
-    /// The lexc source currently being compiled, retained so token-level
-    /// diagnostics can render the offending snippet (ariadne). Empty until
-    /// `parse` runs.
-    pub(crate) source: String,
+    /// The lexc source currently being compiled, which token-level
+    /// diagnostics point into. Empty until `parse` runs.
+    pub(crate) source: Arc<str>,
     /// Label shown in diagnostics for `source` (a file name, or `"<lexc>"`).
     pub(crate) source_name: String,
     /// Byte span in `source` of the entry currently being walked, updated as
     /// `compile_file` visits each spanned AST node; the anchor for
     /// `error_at_current_token`/`warning_at_current_token`.
     pub(crate) current_span: std::ops::Range<usize>,
-    /// Undeclared multi-code-point graphemes reported so far, in source order.
-    /// Rendering goes to stderr; this keeps the same data addressable.
-    pub(crate) grapheme_diags: Vec<GraphemeDiagnostic>,
+    /// What compiling has reported, oldest first, until the caller takes it
+    /// or a sink receives it. Includes what the embedded regex compiler
+    /// reported.
+    pub(crate) diagnostics: Diagnostics,
 }
 
 // ==========================================================================
@@ -144,10 +134,10 @@ impl<B: AlgebraBackend> LexcCompiler<B> {
             parseErrors_: false,
             flag_is_epsilon: false,
             xerox_composition: false,
-            source: String::new(),
+            source: Arc::from(""),
             source_name: String::from("<lexc>"),
             current_span: 0..0,
-            grapheme_diags: Vec::new(),
+            diagnostics: Diagnostics::default(),
         };
         compiler
             .tokenizer
@@ -192,7 +182,6 @@ impl<B: AlgebraBackend> LexcCompiler<B> {
         self.noFlags_.clear();
         self.continuations.clear();
         self.alphabets.clear();
-        self.grapheme_diags.clear();
         self.currentLexiconName_ = String::new(); // ?
         self.lexiconNames_.insert(Symbol::new("#"));
         self.stringsTrie_ = HfstBasicTransducer::new(); // ?
@@ -324,13 +313,14 @@ impl<B: AlgebraBackend> LexcCompiler<B> {
     // [spec:hfst:def:lexc-compiler.hfst.lexc.lexc-compiler.set-error-stream-fn]
     // [spec:hfst:sem:lexc-compiler.hfst.lexc.lexc-compiler.set-error-stream-fn]
     /// The C++ stored an 'std::ostream*' and forwarded it to 'xre'; the port
-    /// drops the stream plumbing (errors go to stderr), so this is a no-op.
+    /// drops the stream plumbing (errors become diagnostics), so this is a
+    /// no-op.
     pub fn set_error_stream<T>(&mut self, _os: T) {}
 
     // [spec:hfst:def:lexc-compiler.hfst.lexc.lexc-compiler.get-error-stream-fn]
     // [spec:hfst:sem:lexc-compiler.hfst.lexc.lexc-compiler.get-error-stream-fn]
     /// The C++ returned the stored 'error_' ostream pointer; the port drops the
-    /// stream plumbing (errors go to stderr), so there is no stored stream to
+    /// stream plumbing (errors become diagnostics), so there is no stored stream to
     /// return.
     pub fn get_error_stream(&self) {}
 
@@ -422,30 +412,63 @@ impl<B: AlgebraBackend> LexcCompiler<B> {
 
     // ----- error / warning helpers (lexc-utils.cc, re-entrant) -----
 
+    /// Everything compiling has reported since the diagnostics were last
+    /// taken, oldest first, failures and warnings alike.
+    // [spec:hfst:req:javascript.diagnostics-as-data]
+    pub fn diagnostics(&self) -> &[Diagnostic] {
+        self.diagnostics.kept()
+    }
+
+    /// Hand over the diagnostics reported so far, leaving none behind.
+    // [spec:hfst:req:javascript.diagnostics-as-data]
+    pub fn take_diagnostics(&mut self) -> Vec<Diagnostic> {
+        self.diagnostics.take()
+    }
+
+    /// Hand each later diagnostic to `sink` the moment it is produced. They
+    /// are not kept, so [`Self::take_diagnostics`] returns none of them. The
+    /// embedded regex compiler reports to it too.
+    // [spec:hfst:req:javascript.diagnostics-as-data]
+    pub fn set_diagnostic_sink(&mut self, sink: DiagnosticSink) {
+        self.xre.set_diagnostic_sink(sink.clone());
+        self.diagnostics.set_sink(sink);
+    }
+
+    /// Record `d` against the lexc source being compiled.
+    pub(crate) fn report(&mut self, d: Diagnostic) {
+        let d = d.in_source(&self.source_name, self.source.clone());
+        self.diagnostics.push(d);
+    }
+
+    /// Move what the embedded regex compiler reported into this compiler's
+    /// diagnostics, keeping the order things were reported in.
+    pub(crate) fn absorb_xre_diagnostics(&mut self) {
+        let nested = self.xre.take_diagnostics();
+        self.diagnostics.extend(nested);
+    }
+
+    /// Record `message` at the entry currently being walked.
+    fn report_at_current_token(&mut self, severity: Severity, message: &str) {
+        let d = Diagnostic::new(severity, message).label(self.current_span.clone(), message);
+        self.report(d);
+    }
+
     // [spec:hfst:def:lexc-utils.hfst.lexc.error-at-current-token-fn]
     // [spec:hfst:sem:lexc-utils.hfst.lexc.error-at-current-token-fn]
-    /// The C++ free function printed Flex token positions; the AST-walk port has
-    /// no hand-lexer position state, so it just writes the message to stderr.
-    fn error_at_current_token(&self, format: &str) {
-        crate::diag::emit(
-            &self.source_name,
-            &self.source,
-            self.current_span.clone(),
-            crate::diag::Severity::Error,
-            format,
-        );
+    /// The C++ free function printed Flex token positions; the AST-walk port
+    /// anchors the error at the span of the entry being walked.
+    fn error_at_current_token(&mut self, format: &str) {
+        self.report_at_current_token(Severity::Error, format);
     }
 
     // [spec:hfst:def:lexc-utils.hfst.lexc.warning-at-current-token-fn]
     // [spec:hfst:sem:lexc-utils.hfst.lexc.warning-at-current-token-fn]
-    fn warning_at_current_token(&self, format: &str) {
-        crate::diag::emit(
-            &self.source_name,
-            &self.source,
-            self.current_span.clone(),
-            crate::diag::Severity::Warning,
-            format,
-        );
+    fn warning_at_current_token(&mut self, format: &str) {
+        self.report_at_current_token(Severity::Warning, format);
+    }
+
+    fn info_at_current_token(&mut self, format: &str) {
+        self.report_at_current_token(Severity::Info, format);
     }
 
     // [spec:hfst:def:lexc-utils.hfst.lexc.strip-percents-fn]
@@ -457,7 +480,7 @@ impl<B: AlgebraBackend> LexcCompiler<B> {
     // The C++ reached the 'lexc' singleton for warnings; the re-entrant port
     // takes '&mut self'. NULL becomes 'None'. The computed-but-unused 'err'
     // ostream at the top of the C++ body is dropped with the rest of the stream
-    // plumbing (errors go to stderr).
+    // plumbing (errors become diagnostics).
     fn strip_percents(&mut self, s: &str, do_zeros: bool) -> Option<String> {
         let bytes = s.as_bytes();
         let mut rv: Vec<u8> = Vec::new();

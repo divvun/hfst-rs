@@ -221,7 +221,7 @@ impl<B: AlgebraBackend> XreCompiler<B> {
 
     // [spec:hfst:def:xre-utils.hfst.xre.is-valid-function-call-fn]
     // [spec:hfst:sem:xre-utils.hfst.xre.is-valid-function-call-fn]
-    fn is_valid_function_call(&self, name: &str, args: &[HfstTransducer<B>]) -> bool {
+    fn is_valid_function_call(&mut self, name: &str, args: &[HfstTransducer<B>]) -> bool {
         let name2xre = self.function_definitions.get(name);
         let name2args = self.function_arguments.get(name);
 

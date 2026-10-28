@@ -221,6 +221,7 @@ fn process_stream_typed<B: hfst::backend::AlgebraBackend>(
     let mut line_count: u32 = 0;
     let mut comp = XreCompiler::<B>::new();
     comp.set_source_name(&common.input_filename);
+    comp.set_diagnostic_sink(crate::hfst_commandline::stderr_sink());
     comp.set_verbosity(common.verbose);
     comp.set_error_stream(());
     comp.set_harmonization(options.harmonize);

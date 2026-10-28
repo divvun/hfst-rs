@@ -169,8 +169,8 @@ fn function_argument_substitution_respects_token_boundaries() {
 // ---------------------------------------------------------------------------
 // Diagnostics. xfst is where a user meets this compiler, so a failure has to
 // name a position in their script and, where the cause is a known xfst trap,
-// what to type instead. The rendering goes to stderr; what is asserted here is
-// the shaping that feeds it — the span, the wording, and the advice.
+// what to type instead. What is asserted here is the span, the wording, and the
+// advice.
 // ---------------------------------------------------------------------------
 
 // 1-based line number a byte offset falls on.
@@ -179,7 +179,7 @@ fn line_of(src: &str, offset: usize) -> usize {
 }
 
 // Every diagnostic a failing script produces, in source order.
-fn diagnose(src: &str) -> Vec<hfst::xfst_compiler::XfstDiagnostic> {
+fn diagnose(src: &str) -> Vec<hfst::diag::Diagnostic> {
     match nfst_xfst::parse(src) {
         Ok(_) => Vec::new(),
         Err(e) => hfst::xfst_compiler::parse_diagnostics(src, &e),
@@ -194,11 +194,11 @@ fn quoted_value_points_at_the_quote() {
     let src = "set copyright-owner \"Acme Corp\"\n";
     let ds = diagnose(src);
     let first = ds.first().expect("the quote is rejected");
-    assert_eq!(&src[first.span.clone()], "\"");
+    assert_eq!(&src[first.primary_span().expect("a span")], "\"");
     assert!(
-        first.notes.iter().any(|n| n.contains('%')),
+        first.notes().iter().any(|n| n.contains('%')),
         "no escaping advice in {:?}",
-        first.notes
+        first.notes()
     );
 }
 
@@ -210,11 +210,11 @@ fn bare_quoted_regex_asks_for_the_regex_command() {
     let src = "\"+Err/Orth\":0 || _ .#. ;\n";
     let ds = diagnose(src);
     assert_eq!(ds.len(), 1, "one report per line, got {:?}", ds);
-    assert_eq!(&src[ds[0].span.clone()], src.trim_end());
+    assert_eq!(&src[ds[0].primary_span().expect("a span")], src.trim_end());
     assert!(
-        ds[0].notes.iter().any(|n| n.contains("'regex'")),
+        ds[0].notes().iter().any(|n| n.contains("'regex'")),
         "no advice to add 'regex' in {:?}",
-        ds[0].notes
+        ds[0].notes()
     );
     assert!(diagnose("regex \"+Err/Orth\":0 ;\n").is_empty());
 }
@@ -232,12 +232,12 @@ fn mistyped_command_suggests_the_real_one() {
     let src = "regex a ;\ndetrminize net ;\n";
     let ds = diagnose(src);
     let first = ds.first().expect("the typo is rejected");
-    assert_eq!(&src[first.span.clone()], "detrminize");
-    assert_eq!(first.message, "unknown command 'detrminize'");
+    assert_eq!(&src[first.primary_span().expect("a span")], "detrminize");
+    assert_eq!(first.message(), "unknown command 'detrminize'");
     assert!(
-        first.notes.iter().any(|n| n.contains("determinize")),
+        first.notes().iter().any(|n| n.contains("determinize")),
         "no suggestion in {:?}",
-        first.notes
+        first.notes()
     );
 }
 
@@ -250,17 +250,18 @@ fn regex_body_error_is_anchored_in_the_script() {
     let ds = diagnose(src);
     let first = ds.first().expect("the unclosed bracket is rejected");
     assert!(
-        first.span.start >= src.find("Broken").expect("body is on line 4"),
+        first.primary_span().expect("a span").start
+            >= src.find("Broken").expect("body is on line 4"),
         "span {:?} points before the offending line",
-        first.span
+        first.primary_span()
     );
-    assert_eq!(line_of(src, first.span.start), 4);
+    assert_eq!(line_of(src, first.primary_span().expect("a span").start), 4);
     // The Rust token name the regex parser reports is spelled as the character
     // the user did not type.
     assert!(
-        first.message.contains("']'"),
+        first.message().contains("']'"),
         "token name left unspelled in {:?}",
-        first.message
+        first.message()
     );
 }
 
@@ -275,7 +276,10 @@ fn late_failure_reports_its_own_line() {
     src.push_str("bogus command\n");
     let ds = diagnose(&src);
     let first = ds.first().expect("the unknown command is rejected");
-    assert_eq!(line_of(&src, first.span.start), 240);
+    assert_eq!(
+        line_of(&src, first.primary_span().expect("a span").start),
+        240
+    );
 }
 
 // Notes are advice, not noise: a stray character that is not a quoting mistake
@@ -284,7 +288,11 @@ fn late_failure_reports_its_own_line() {
 fn ordinary_stray_character_gets_no_advice() {
     let ds = diagnose("regex a ;\n\u{7}\n");
     let first = ds.first().expect("the stray byte is rejected");
-    assert!(first.notes.is_empty(), "unwanted advice {:?}", first.notes);
+    assert!(
+        first.notes().is_empty(),
+        "unwanted advice {:?}",
+        first.notes()
+    );
 }
 
 // A script that parses produces no diagnostics at all.

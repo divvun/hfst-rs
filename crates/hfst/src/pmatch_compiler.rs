@@ -808,6 +808,10 @@ pub struct PmatchEvalContext<B: AlgebraBackend + 'static> {
     /// Where includes and file references are read from. A compile does not
     /// reset it.
     files: Arc<dyn FileResolver>,
+    // What compiling has reported, oldest first, until the caller takes it
+    // or a sink receives it. Kept across compiles: 'init_globals' leaves it
+    // alone.
+    diagnostics: crate::diag::Diagnostics,
 }
 
 macro_rules! pmatch_ctx_string_set {

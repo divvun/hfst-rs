@@ -142,7 +142,7 @@ fn mark_text(mark: ContextMark) -> &'static str {
     }
 }
 
-fn side_span(side: &MappingSide) -> Option<Range<usize>> {
+pub(super) fn side_span(side: &MappingSide) -> Option<Range<usize>> {
     match side {
         MappingSide::Expr(e) | MappingSide::Dotted(Some(e)) => Some(e.span.range.clone()),
         MappingSide::Dotted(None) => None,
@@ -213,7 +213,7 @@ fn reaches_final(
 
 impl<B: AlgebraBackend> XreCompiler<B> {
     /// Report a refusal at `span` and count it.
-    fn refuse(&self, refusals: &mut usize, span: Range<usize>, msg: &str) {
+    fn refuse(&mut self, refusals: &mut usize, span: Range<usize>, msg: &str) {
         self.diag_at(
             span,
             crate::diag::Severity::Error,
@@ -253,7 +253,15 @@ impl<B: AlgebraBackend> XreCompiler<B> {
                 format!("--replace-pass: {refusals} problem(s) in the replace rule")
             );
         }
-        self.assemble_pass(&pass_rules)
+        let pass = self.assemble_pass(&pass_rules);
+        if let Err(e) = &pass {
+            self.refuse(
+                &mut refusals,
+                root.span.range.clone(),
+                &format!("the pass could not be built: {}", error_text(e)),
+            );
+        }
+        pass
     }
 
     /// Check and build rule number `index` (1-based, counting `,,`-separated
@@ -283,7 +291,7 @@ impl<B: AlgebraBackend> XreCompiler<B> {
     /// The placement a rule's contexts give it. Only the pass boundary may
     /// appear in a context, on the upper side (`||`).
     fn placement(
-        &self,
+        &mut self,
         index: usize,
         rule: &ReplaceRule,
         refusals: &mut usize,
@@ -378,7 +386,8 @@ impl<B: AlgebraBackend> XreCompiler<B> {
     /// pass. A flag diacritic is refused: the classic compile copies one only
     /// inside the rule's own domain, a distinction a pass does not draw.
     fn mapping_relation(&mut self, mp: &MappingPair) -> Result<HfstTransducer<B>, String> {
-        let compile_error = |e: crate::error::Error| format!("does not compile: {e}");
+        let compile_error =
+            |e: crate::error::Error| format!("does not compile: {}", error_text(&e));
         let (mut upper, lower) = self.build_mapping_pair(mp).map_err(compile_error)?;
         for side in [&upper, &lower] {
             let alphabet = side.get_alphabet().map_err(compile_error)?;

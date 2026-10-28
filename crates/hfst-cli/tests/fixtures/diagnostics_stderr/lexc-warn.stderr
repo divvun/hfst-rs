@@ -1,0 +1,12 @@
+ INFO Defined 'V': ? Kb., ? states, ? arcs, ? paths.
+ INFO Root...
+Warning: Titlecase Lexicon parsed as LEXICON
+   ╭─[ <stdin>:4:1 ]
+   │
+ 4 │ ╭─▶ Lexicon Foo
+ 5 │ ├─▶ ab Foo ;
+   │ │              
+   │ ╰────────────── Titlecase Lexicon parsed as LEXICON
+───╯
+ INFO 0 Foo...
+ INFO 1 Foo...

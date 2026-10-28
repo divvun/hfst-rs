@@ -58,9 +58,10 @@ impl<B: AlgebraBackend> TwolcCompiler<B> {
             resolve_right_conflicts: resolve_right,
             sets: BTreeMap::new(),
             definitions: BTreeMap::new(),
-            source: String::new(),
+            source: Arc::from(""),
             source_name: String::from("<twolc>"),
             set_spans: BTreeMap::new(),
+            diagnostics: crate::diag::Diagnostics::default(),
         }
     }
 
@@ -110,8 +111,8 @@ impl<B: AlgebraBackend> TwolcCompiler<B> {
     // (unless silent) and yields None, like the C++ preprocessor passes that
     // printed to their error stream and made the driver exit.
     fn build_grammar(&mut self, input: &str) -> Option<(OstConfig, TwolCGrammar<B>)> {
-        // Retain the source so diagnostics can render the offending snippet.
-        self.source = input.to_string();
+        // Retain the source so diagnostics can point into it.
+        self.source = Arc::from(input);
         let file = match nfst_twolc::parse(input) {
             Ok(f) => f,
             Err(e) => {

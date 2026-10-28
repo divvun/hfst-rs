@@ -434,6 +434,15 @@ children (
                 id xre-eval-error-message
                 title "regexp2fst reports evaluation errors as \"XRE parsing failed\": XreCompiler::compile discards the reason when the syntax parses but evaluation fails (e.g. `a -> b || c:d _` → \"Contexts need to be automata\"; `[a:b c] -> d`), so the user gets no cause and no position. The --replace-pass path already surfaces them; do the same for the normal compile"
                 kind @fix
+                sealed true
+                log (
+                    {
+                        at 2026-10-28T22:12:14.269416Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan complete)"
+                    }
+                )
             }
         )
     }
@@ -2743,24 +2752,16 @@ children (
                 kind @feat
                 implements {
                     target-impl (
-                        [spec:hfst:def:dhfst.header]
                         [spec:hfst:sem:dhfst.header]
-                        [spec:hfst:def:dhfst.layout]
                         [spec:hfst:sem:dhfst.layout]
                         [spec:hfst:def:dhfst.regular-symbol]
-                        [spec:hfst:def:dhfst.reader]
                         [spec:hfst:sem:dhfst.reader]
-                        [spec:hfst:def:dhfst.source-model]
                         [spec:hfst:sem:dhfst.source-model]
-                        [spec:hfst:def:dhfst.write]
                         [spec:hfst:sem:dhfst.write]
                         [spec:hfst:sem:dhfst.encoding]
                         [spec:hfst:sem:dhfst.self-check]
-                        [spec:hfst:def:dhfst.meta]
                         [spec:hfst:sem:dhfst.meta]
-                        [spec:hfst:def:dhfst.fst2fst]
                         [spec:hfst:sem:dhfst.fst2fst]
-                        [spec:hfst:def:dhfst.bhfst-member]
                         [spec:hfst:sem:dhfst.bhfst-member]
                     )
                 }
@@ -2825,19 +2826,13 @@ children (
                 kind @feat
                 implements {
                     target-impl (
-                        [spec:hfst:def:dhfst.acceptor-layout]
                         [spec:hfst:sem:dhfst.acceptor-layout]
                         [spec:hfst:sem:dhfst.acceptor-placement]
-                        [spec:hfst:def:dhfst.acceptor-reader]
                         [spec:hfst:sem:dhfst.acceptor-reader]
-                        [spec:hfst:def:dhfst.acceptor-source]
                         [spec:hfst:sem:dhfst.acceptor-source]
-                        [spec:hfst:def:dhfst.acceptor-distance]
                         [spec:hfst:sem:dhfst.acceptor-distance]
-                        [spec:hfst:def:dhfst.acceptor-write]
                         [spec:hfst:sem:dhfst.acceptor-write]
                         [spec:hfst:sem:dhfst.acceptor-self-check]
-                        [spec:hfst:def:dhfst.acceptor-meta]
                         [spec:hfst:sem:dhfst.acceptor-meta]
                     )
                 }
@@ -7617,12 +7612,34 @@ children (
         id pmatch2fst-syntax-error-exit-zero
         title "hfst pmatch2fst exits 0 on a syntax error, writing a zero-byte file (\"Empty ruleset, nothing to write\"); a pmscript typo silently yields an empty tokeniser in a lang build. C++ does the same. Must exit non-zero"
         kind @fix
+        sealed true
         log (
             {
                 at 2026-09-24T16:33:49.966348Z
                 author "brendan@necessary.nu"
                 kind @note
                 text "Found 2026-09-24 during the quality burn-down. Repro: printf 'Define Word L( ;\\n' > bad.pmatch; hfst pmatch2fst bad.pmatch -o bad.pmhfst prints \"Error: pmatch: syntax error: unexpected token in expression\" then \"hfst pmatch2fst: Empty ruleset, nothing to write\", exit 0, 0-byte output. Upstream C++ hfst-pmatch2fst also exits 0 (prints HfstException ... parsing failed). Same for lang-sme tools/tokenisers/regexp.pmatch (syntax error at 7:29; it is an include fragment). Per the operator ruling on uncompilable input (lang-slh, upstream-bugs.t3.slh-set-centre): a parse failure must fail the tool. Check before fixing whether any lang-* pmscript currently compiles only because its errors are swallowed."
+            }
+
+            {
+                at 2026-10-28T22:12:38.957582Z
+                author "brendan@necessary.nu"
+                kind @status
+                text "Todo → Doing (nplan start)"
+            }
+
+            {
+                at 2026-10-28T22:35:07.393683Z
+                author "brendan@necessary.nu"
+                kind @note
+                text "Swallow check before the fix: every top-level tokeniser pmscript in lang-sme, lang-sma and lang-smj (disamb, gramcheck, tts; plus sme experimental RC-with-flags and spacetag) compiled with no error on stderr, using stand-in @bin inputs (the relabelled analysers are not built in those checkouts; analyser-url-gt-desc.hfst was the real one). After the fix all eleven still exit 0 and their archives are byte-identical to the pre-fix ones. Only the sme include fragment regexp.pmatch changes (exit 0 with an empty file before, exit 1 after); no Makefile or script references it. lang-smn is not checked out. The tool also ignored process_stream's return code, which is why the Empty ruleset path exited 0."
+            }
+
+            {
+                at 2026-10-28T22:35:08.097638Z
+                author "brendan@necessary.nu"
+                kind @status
+                text "Doing → Done (nplan complete)"
             }
         )
     }
@@ -8004,6 +8021,21 @@ children (
                 implements {
                     target-impl ([spec:hfst:req:javascript.diagnostics-as-data])
                 }
+                log (
+                    {
+                        at 2026-10-28T22:35:49.216193Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
+
+                    {
+                        at 2026-10-28T23:00:49.605967Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "Open points for the lead. (1) The CLI prints a compiler's diagnostics after each compile call, so a known error's stderr is byte-identical (pinned by hfst-cli tests/diagnostics_stderr.rs against fixtures recorded before the change), but warnings now print after the tracing progress lines emitted during the same call: hfst twolc warnings follow 'INFO Compiling rules.'/'INFO Storing rules.', default-verbosity hfst lexc warnings follow the 'INFO Defined'/'INFO Root...' lines, and an hfst xfst script's diagnostics print when the script (or REPL line) finishes. Restoring exact interleaving needs a per-compiler observer the CLI installs, or splitting twolc's prepare and store steps. (2) HfstTransducer::read_lexc / read_lexc_ptr (hfst_transducer/io.rs, outside this node's files) builds a LexcCompiler and drops it, so its diagnostics are now lost; it needs a diagnostics parameter or deletion. (3) pmatch @re file regexes compile with unwrap_or_default, so a failing regex there still yields an empty transducer; its diagnostics now reach the pmatch compiler's list. That site is in the file-resolver's area."
+                    }
+                )
             }
 
             {

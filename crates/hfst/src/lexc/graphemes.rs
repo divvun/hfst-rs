@@ -20,34 +20,17 @@ impl<B: AlgebraBackend> LexcCompiler<B> {
             return self;
         }
         for grapheme in self.undeclared_graphemes(data) {
-            let d = self.grapheme_diagnostic(&grapheme);
             let severity = if self.treat_warnings_as_errors {
                 self.parseErrors_ = true;
-                crate::diag::Severity::Error
+                Severity::Error
             } else {
-                crate::diag::Severity::Warning
+                Severity::Warning
             };
-            crate::diag::emit_with_notes(
-                &self.source_name,
-                &self.source,
-                d.span.clone(),
-                severity,
-                &d.message,
-                &d.notes,
-            );
-            self.grapheme_diags.push(d);
+            let d = self.grapheme_diagnostic(severity, &grapheme);
+            self.report(d);
             self.add_alphabet(&grapheme);
         }
         self
-    }
-
-    /// Every grapheme reported by [`unicode_check`](Self::unicode_check) since
-    /// the last `reset`, in source order.
-    ///
-    /// The rendering itself goes to stderr, which a caller cannot read back;
-    /// this is the same data, kept so the shaping can be inspected.
-    pub fn grapheme_diagnostics(&self) -> &[GraphemeDiagnostic] {
-        &self.grapheme_diags
     }
 
     /// The distinct multi-code-point graphemes in `data` that `alphabets` does
@@ -78,7 +61,7 @@ impl<B: AlgebraBackend> LexcCompiler<B> {
     /// Shape the report for `grapheme`: a caret under its first occurrence in
     /// the entry being walked, its code points spelled out in full, and the
     /// declaration that settles how it is read.
-    fn grapheme_diagnostic(&self, grapheme: &str) -> GraphemeDiagnostic {
+    fn grapheme_diagnostic(&self, severity: Severity, grapheme: &str) -> Diagnostic {
         // The entry text is the source the user wrote, so it may carry escapes
         // the AST already stripped; searching it for the grapheme's own bytes
         // survives that, and falls back to the whole entry when it cannot.
@@ -115,13 +98,11 @@ impl<B: AlgebraBackend> LexcCompiler<B> {
             ));
         }
 
-        GraphemeDiagnostic {
-            span,
-            message: format!(
-                "undeclared multi-code-point grapheme '{grapheme}' ({} code points)",
-                points.len()
-            ),
-            notes,
-        }
+        let message = format!(
+            "undeclared multi-code-point grapheme '{grapheme}' ({} code points)",
+            points.len()
+        );
+        let d = Diagnostic::new(severity, &message).label(span, message);
+        notes.into_iter().fold(d, Diagnostic::note)
     }
 }

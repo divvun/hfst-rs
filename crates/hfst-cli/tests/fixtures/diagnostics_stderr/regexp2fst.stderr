@@ -1,0 +1,8 @@
+Error: expected RightBracket
+   ╭─[ <stdin>:1:5 ]
+   │
+ 1 │ [a b
+   │     │ 
+   │     ╰─ expected RightBracket
+───╯
+hfst regexp2fst: <stdin>: XRE parsing failed in expression #1 separated by semicolons

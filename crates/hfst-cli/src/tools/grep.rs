@@ -608,6 +608,7 @@ fn read_matcher(
     state.matcher = HfstTransducer::new();
     if options.dialect_xerox {
         let mut comp = XreCompiler::<hfst_openfst::StdVectorFst>::new();
+        comp.set_diagnostic_sink(crate::hfst_commandline::stderr_sink());
         verbose_print(
             common,
             &format!(

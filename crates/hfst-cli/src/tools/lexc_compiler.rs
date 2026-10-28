@@ -528,6 +528,7 @@ fn run_typed<B: hfst::backend::AlgebraBackend>(
     outstream: &mut HfstOutputStream,
 ) -> i32 {
     let mut lexc = LexcCompiler::<B>::new_with_flags(options.with_flags, options.align_strings);
+    lexc.set_diagnostic_sink(crate::hfst_commandline::stderr_sink());
     lexc.set_minimize_flags(options.minimize_flags);
     lexc.set_rename_flags(options.rename_flags);
     lexc.set_flag_is_epsilon(options.flag_is_epsilon);
