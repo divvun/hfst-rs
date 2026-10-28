@@ -66,7 +66,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     pub fn define(&mut self, name: &str) -> CmdResult {
         let top = self.top()?;
         self.stack.pop();
-        self.define_transducer(name, top);
+        self.define_transducer(name, top)?;
 
         self.original_definitions
             .insert(Symbol::new(name), "<net taken from stack>".to_string());
@@ -77,7 +77,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     // [spec:hfst:def:xfst-compiler.hfst.xfst.xfst-compiler.define-fn]
     // [spec:hfst:sem:xfst-compiler.hfst.xfst.xfst-compiler.define-fn]
     // @brief Define transducer
-    pub fn define_transducer(&mut self, name: &str, transducer: NetId) {
+    pub fn define_transducer(&mut self, name: &str, transducer: NetId) -> CmdResult {
         let was_defined = self.xre.is_definition(name);
         // 'self.xre' (mut) and the arena entry (shared) are borrowed at once:
         // destructure 'self' into disjoint field borrows.
@@ -92,12 +92,13 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
 
         if self.verbose {
             if was_defined {
-                print!("Redefined");
+                write!(self.output, "Redefined")?;
             } else {
-                print!("Defined");
+                write!(self.output, "Defined")?;
             }
-            println!(" '{}'", name);
+            writeln!(self.output, " '{}'", name)?;
         }
+        Ok(())
     }
 
     // @brief Define regex macro function
@@ -140,11 +141,16 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
 
         if self.verbose {
             if was_defined {
-                print!("Redefined");
+                write!(self.output, "Redefined")?;
             } else {
-                print!("Defined");
+                write!(self.output, "Defined")?;
             }
-            println!(" function '{}@{})", name, arguments.len() as i32);
+            writeln!(
+                self.output,
+                " function '{}@{})",
+                name,
+                arguments.len() as i32
+            )?;
         }
 
         self.function_arguments.insert(

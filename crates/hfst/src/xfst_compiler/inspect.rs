@@ -6,51 +6,64 @@ use crate::convert_transducer_format::ConversionFunctions;
 impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     // [spec:hfst:def:xfst-compiler.hfst.xfst.xfst-compiler.print-level-fn]
     // [spec:hfst:sem:xfst-compiler.hfst.xfst.xfst-compiler.print-level-fn]
-    fn print_level(&mut self, whole_path: &[u32], shortest_path: &[u32]) {
-        print!("Level {}", whole_path.len() as i32);
+    fn print_level(&mut self, whole_path: &[u32], shortest_path: &[u32]) -> CmdResult {
+        write!(self.output, "Level {}", whole_path.len() as i32)?;
         if shortest_path.len() < whole_path.len() {
-            print!(" (= {})", shortest_path.len() as i32);
+            write!(self.output, " (= {})", shortest_path.len() as i32)?;
         }
         self.flush();
+        Ok(())
     }
 
     // [spec:hfst:def:xfst-compiler.hfst.xfst.xfst-compiler.can-level-be-reached-fn]
     // [spec:hfst:sem:xfst-compiler.hfst.xfst.xfst-compiler.can-level-be-reached-fn]
-    fn can_level_be_reached(&mut self, level: i32, whole_path_length: usize) -> bool {
+    fn can_level_be_reached(&mut self, level: i32, whole_path_length: usize) -> CmdResult<bool> {
         // EOF is -1
         if level == -1 || level == 0 {
-            println!("could not read level number (type '0' if you wish to exit program)");
+            writeln!(
+                self.output,
+                "could not read level number (type '0' if you wish to exit program)"
+            )?;
             self.flush();
-            return false;
+            return Ok(false);
         } else if level < 0 || level > whole_path_length as i32 {
-            println!(
+            writeln!(
+                self.output,
                 "no such level: '{}' (current level is {})",
                 level, whole_path_length as i32
-            );
+            )?;
             self.flush();
-            return false;
+            return Ok(false);
         }
-        true
+        Ok(true)
     }
 
     // [spec:hfst:def:xfst-compiler.hfst.xfst.xfst-compiler.can-arc-be-followed-fn]
     // [spec:hfst:sem:xfst-compiler.hfst.xfst.xfst-compiler.can-arc-be-followed-fn]
-    fn can_transition_be_followed(&mut self, number: i32, number_of_transitions: u32) -> bool {
+    fn can_transition_be_followed(
+        &mut self,
+        number: i32,
+        number_of_transitions: u32,
+    ) -> CmdResult<bool> {
         // EOF is -1
         if number == -1 || number == 0 {
-            println!("could not read arc number");
+            writeln!(self.output, "could not read arc number")?;
             self.flush();
-            return false;
+            return Ok(false);
         } else if number < 1 || number > number_of_transitions as i32 {
             if number_of_transitions < 1 {
-                println!("state has no arcs");
+                writeln!(self.output, "state has no arcs")?;
             } else {
-                println!("arc number must be between 1 and {}", number_of_transitions);
+                writeln!(
+                    self.output,
+                    "arc number must be between 1 and {}",
+                    number_of_transitions
+                )?;
             }
             self.flush();
-            return false;
+            return Ok(false);
         }
-        true
+        Ok(true)
     }
 
     // [spec:hfst:def:xfst-compiler.hfst.xfst.xfst-compiler.print-arcs-fn]
@@ -59,31 +72,31 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         &mut self,
         transitions: &HfstBasicTransitions,
         coder: &SymbolCoder,
-    ) -> u32 {
+    ) -> CmdResult<u32> {
         let mut first_loop = true;
         let mut arc_number: u32 = 1;
         for transition in transitions.iter() {
             if first_loop {
-                print!("Arcs:");
+                write!(self.output, "Arcs:")?;
                 first_loop = false;
             } else {
-                print!(", ");
+                write!(self.output, ", ")?;
             }
             self.flush();
             let isymbol = transition.get_input_symbol(coder);
             let osymbol = transition.get_output_symbol(coder);
 
             if isymbol == osymbol {
-                print!(" {}. {}", arc_number, isymbol);
+                write!(self.output, " {}. {}", arc_number, isymbol)?;
             } else {
-                print!(" {}. {}:{}", arc_number, isymbol, osymbol);
+                write!(self.output, " {}. {}:{}", arc_number, isymbol, osymbol)?;
             }
             self.flush();
             arc_number += 1;
         }
-        println!();
+        writeln!(self.output)?;
         self.flush();
-        arc_number - 1
+        Ok(arc_number - 1)
     }
 
     // @brief View top network
@@ -128,7 +141,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
 
         const INSPECT_NET_HELP_MSG: &str =
             "'N' transits arc N, '-N' returns to level N, '<' to previous level, '0' quits.\n";
-        print!("{}", INSPECT_NET_HELP_MSG);
+        write!(self.output, "{}", INSPECT_NET_HELP_MSG)?;
 
         // path of states visited, can contain loops
         let mut whole_path: Vec<u32> = Vec::new();
@@ -136,24 +149,24 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         let mut shortest_path: Vec<u32> = Vec::new();
 
         Self::append_state_to_paths(&mut whole_path, &mut shortest_path, 0);
-        self.print_level(&whole_path, &shortest_path);
+        self.print_level(&whole_path, &shortest_path)?;
 
         if net.is_final_state(0) {
-            print!(" (final)");
+            write!(self.output, " (final)")?;
         }
 
-        println!();
+        writeln!(self.output)?;
 
         // transitions of current state
         let mut transitions: HfstBasicTransitions = net.index(0)?.clone();
         // number of arcs in current state
-        let mut number_of_arcs = self.print_transitions(&transitions, net.coder());
+        let mut number_of_arcs = self.print_transitions(&transitions, net.coder())?;
 
         // index after which the history added during inspect_net is ignored
         let ind = self.current_history_index();
 
         // the while loop begins, keep on reading from user
-        while let Some(line) = self.read_prompted_line("") {
+        while let Some(line) = self.read_prompted_line("")? {
             // case (1): back to previous state
             if line == "<\n" || line == "<" {
                 if whole_path.len() < 2 {
@@ -173,7 +186,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             // case (2): back to state number N
             else if line.as_bytes().first() == Some(&b'-') {
                 let level = Self::parse_int(&line[1..]); // skip '-'
-                if !self.can_level_be_reached(level, whole_path.len()) {
+                if !self.can_level_be_reached(level, whole_path.len())? {
                     continue;
                 } else if !Self::return_to_level(&mut whole_path, &mut shortest_path, level as u32)
                 {
@@ -192,15 +205,16 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             // case (4): follow arc
             else {
                 let number = Self::parse_int(&line); // FIX: atoi is not portable
-                if !self.can_transition_be_followed(number, number_of_arcs) {
+                if !self.can_transition_be_followed(number, number_of_arcs)? {
                     continue;
                 } else {
                     let tr = transitions[(number - 1) as usize].clone();
-                    print!(
+                    write!(
+                        self.output,
                         "  {}:{} --> ",
                         tr.get_input_symbol(net.coder()),
                         tr.get_output_symbol(net.coder())
-                    );
+                    )?;
                     Self::append_state_to_paths(
                         &mut whole_path,
                         &mut shortest_path,
@@ -214,12 +228,12 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             transitions = net
                 .index(*whole_path.last().expect("path is non-empty"))?
                 .clone();
-            self.print_level(&whole_path, &shortest_path);
+            self.print_level(&whole_path, &shortest_path)?;
             if net.is_final_state(*whole_path.last().expect("path is non-empty")) {
-                print!(" (final)");
+                write!(self.output, " (final)")?;
             }
-            println!();
-            number_of_arcs = self.print_transitions(&transitions, net.coder());
+            writeln!(self.output)?;
+            number_of_arcs = self.print_transitions(&transitions, net.coder())?;
         } // end of while loop
 
         self.ignore_history_after_index(ind);

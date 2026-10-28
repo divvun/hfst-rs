@@ -53,10 +53,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             XfstCommand::Save(sc) => self.eval_save(sc)?,
 
             // ── print ───────────────────────────────────────
-            XfstCommand::Print(p) => {
-                let mut out = std::io::stdout();
-                self.eval_print(p, &mut out)?;
-            }
+            XfstCommand::Print(p) => self.with_session_output(|c, out| c.eval_print(p, out))?,
 
             // ── test ────────────────────────────────────────
             XfstCommand::Test(kind) => self.eval_test(*kind, false)?,
@@ -64,12 +61,12 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             // ── variables / show ────────────────────────────
             XfstCommand::Set { var, value } => self.eval_set(var, value)?,
             XfstCommand::Show(Some(name)) => self.show(name)?,
-            XfstCommand::Show(None) => self.show_all(),
-            XfstCommand::Echo(text) => self.echo(text),
+            XfstCommand::Show(None) => self.show_all()?,
+            XfstCommand::Echo(text) => self.echo(text)?,
             XfstCommand::System(command) => self.system(command)?,
             XfstCommand::Source(path) => return self.source_file(path),
             XfstCommand::Quit => {
-                self.quit("bye");
+                self.quit("bye")?;
                 return Ok(Flow::Quit);
             }
 
@@ -77,8 +74,8 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             XfstCommand::Substitute(sub) => self.eval_substitute(sub)?,
 
             // ── help / misc ─────────────────────────────────
-            XfstCommand::Apropos(opt) => self.apropos(opt.as_deref().unwrap_or("")),
-            XfstCommand::Describe(text) => self.describe(text),
+            XfstCommand::Apropos(opt) => self.apropos(opt.as_deref().unwrap_or(""))?,
+            XfstCommand::Describe(text) => self.describe(text)?,
             XfstCommand::Assert(inner) => return self.eval_assert(&inner.value),
             XfstCommand::AddProps(content) => self.add_props(content)?,
             XfstCommand::EditProps => {
@@ -119,7 +116,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             return self.define(name);
         }
         let tr = self.compile_spanned_xre(body)?;
-        self.define_transducer(name, tr);
+        self.define_transducer(name, tr)?;
         // 'print defined' reports from original_definitions.
         self.original_definitions
             .insert(Symbol::new(name), nfst_xre::pretty_print(body).to_string());
@@ -184,15 +181,15 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         }
     }
 
-    /// The 'apply up/down/med' commands, reading stdin when no input string
-    /// was given.
+    /// The 'apply up/down/med' commands, reading the session input when no
+    /// input string was given.
     fn eval_apply(&mut self, kind: &ApplyKind, input: &Option<String>) -> CmdResult {
         let s: String = match input {
             Some(s) => s.clone(),
             None => {
                 use std::io::Read;
                 let mut buf = String::new();
-                std::io::stdin().read_to_string(&mut buf)?;
+                self.input.read_to_string(&mut buf)?;
                 buf
             }
         };
@@ -362,7 +359,8 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     }
 
     /// Dispatch a parsed PrintCmd to the corresponding print* method, writing
-    /// to `oss` (stdout for plain commands, a file for redirected ones).
+    /// to `oss` (the session output for plain commands, a file for
+    /// redirected ones).
     fn eval_print(&mut self, p: &nfst_xfst::PrintCmd, oss: &mut dyn std::io::Write) -> CmdResult {
         use nfst_xfst::PrintCmd as P;
         match p {
@@ -424,7 +422,8 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     }
 
     /// Dispatch a parsed SaveCmd. The binary saves take their file name; the
-    /// text saves write to the named file, or to stdout when none is given.
+    /// text saves write to the named file, or to the session output when none
+    /// is given.
     fn eval_save(&mut self, s: &nfst_xfst::SaveCmd) -> CmdResult {
         use nfst_xfst::SaveCmd as S;
         match s {
@@ -433,8 +432,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             S::Definition(p) => self.write_definition(p, ""),
             S::Prolog(p) | S::Spaced(p) | S::Text(p) | S::Dot(p) | S::Att(p) => {
                 if p.is_empty() {
-                    let mut out = std::io::stdout();
-                    self.eval_save_to(s, &mut out)
+                    self.with_session_output(|c, out| c.eval_save_to(s, out))
                 } else {
                     let mut f = self.open_output_file(p, false)?;
                     self.eval_save_to(s, &mut f)

@@ -18,7 +18,6 @@ use crate::hfst_commandline::{
 };
 use hfst::hfst_data_types::ImplementationType;
 use hfst::xfst_compiler::{Flow, XfstCompiler};
-use std::io::{BufRead, Read, Write};
 
 const EXIT_SUCCESS: i32 = 0;
 const EXIT_FAILURE: i32 = 1;
@@ -279,7 +278,7 @@ impl ToolArgs for Args {
 
 //
 // Parse file 'filename' using compiler 'comp'.
-// Filename "<stdin>" uses stdin for reading.
+// Filename "<stdin>" reads the compiler's input, which is stdin.
 fn parse_file<B: hfst::backend::AlgebraBackend + hfst::hfst_transducer::FromAnyTransducer>(
     common: &CommonOptions,
     filename: &str,
@@ -288,7 +287,7 @@ fn parse_file<B: hfst::backend::AlgebraBackend + hfst::hfst_transducer::FromAnyT
     // hfst_file_to_mem(filename): the whole file (or stdin) as one string.
     let line = if filename == "<stdin>" {
         let mut s = String::new();
-        match std::io::stdin().read_to_string(&mut s) {
+        match comp.input().read_to_string(&mut s) {
             Ok(_) => Some(s),
             Err(_) => None,
         }
@@ -492,6 +491,10 @@ fn run_compiler<B: hfst::backend::AlgebraBackend + hfst::hfst_transducer::FromAn
     options: &Options,
 ) -> i32 {
     let mut comp = XfstCompiler::<B>::new();
+    // The session holds the stdin lock, and this driver reads its own input
+    // through the session, so the commands that read input share the stream.
+    comp.set_output_stream(std::io::stdout());
+    comp.set_input_stream(std::io::stdin().lock());
     // HAVE_READLINE is not defined in this port.
     comp.set_readline(false);
     comp.set_verbosity(!common.silent);
@@ -576,17 +579,15 @@ fn run_compiler<B: hfst::backend::AlgebraBackend + hfst::hfst_transducer::FromAn
         comp.set_read_interactive_text_from_stdin(true);
         if !common.silent {
             comp.prompt();
-            let _ = std::io::stdout().flush();
+            comp.flush();
         }
         // support for backspace
 
         let mut expression = String::new();
-        let stdin = std::io::stdin();
-        let mut input = stdin.lock();
         let mut line = String::new();
         loop {
             line.clear();
-            if input.read_line(&mut line).unwrap_or(0) == 0 {
+            if comp.input().read_line(&mut line).unwrap_or(0) == 0 {
                 break;
             }
             expression.push_str(line.trim_end_matches('\n'));
@@ -595,7 +596,7 @@ fn run_compiler<B: hfst::backend::AlgebraBackend + hfst::hfst_transducer::FromAn
             if expression_continues(&mut expression) {
                 if !common.silent {
                     comp.prompt();
-                    let _ = std::io::stdout().flush();
+                    comp.flush();
                 }
                 continue;
             }
@@ -607,7 +608,7 @@ fn run_compiler<B: hfst::backend::AlgebraBackend + hfst::hfst_transducer::FromAn
                 Err(_) => {
                     if !common.silent {
                         comp.prompt();
-                        let _ = std::io::stdout().flush();
+                        comp.flush();
                     }
                 }
             }

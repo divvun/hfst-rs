@@ -22,15 +22,20 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         Ok(())
     }
 
+    /// In verbose mode, report the size of the network a command left on
+    /// top, and its sigma when 'print-sigma' is on. A failure fails the
+    /// command running, as 'keep_output_failure' describes.
     pub(super) fn print_transducer_info(&mut self) {
         if self.verbose && !self.stack.is_empty() {
             let top = *self.stack.last().expect("stack non-empty, checked above");
-            println!("{}", self.size_line(top));
+            let size = self.size_line(top);
+            let written = writeln!(self.output, "{}", size).map_err(CommandError::from);
+            self.keep_output_failure(written);
             let print_sigma_on =
                 self.variables.get("print-sigma").map(|s| s.as_str()) == Some("ON");
             if print_sigma_on {
-                let mut out = std::io::stdout();
-                let _ = self.print_sigma(&mut out, false);
+                let printed = self.with_session_output(|c, out| c.print_sigma(out, false));
+                self.keep_output_failure(printed);
             }
         }
     }

@@ -37,7 +37,7 @@ use crate::hfst_tropical_transducer_transition_data::SymbolCoder;
 use crate::lexc::LexcCompiler;
 use crate::virtual_flag_frontends::prepare_compose_flag_overlay;
 use crate::xre::XreCompiler;
-use std::io::BufRead;
+use std::io::{BufRead, Write};
 use tracing::{error, info};
 
 mod ambiguity;
@@ -284,6 +284,12 @@ pub struct XfstCompiler<B: AlgebraBackend> {
     current_span: std::ops::Range<usize>,
     /// How many 'source' commands deep the running script is.
     source_depth: u32,
+    output: session::Output,
+    /// The first failed output write of the running command made where no
+    /// result could be returned; see 'keep_output_failure'.
+    output_failure: Option<CommandError>,
+    /// The input interactive commands read, apart from the script being run.
+    input: Box<dyn BufRead>,
 }
 
 /// The deepest 'source' nesting allowed, so a script that sources itself
@@ -363,6 +369,9 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             source_name: String::from(REPL_SOURCE_NAME),
             current_span: 0..0,
             source_depth: 0,
+            output: session::Output::default(),
+            output_failure: None,
+            input: Box::new(std::io::empty()),
         };
         c.xre.set_expand_definitions(true);
         c.xre.set_verbosity(c.verbose);
@@ -476,7 +485,12 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         };
         for c in &script.value.commands {
             self.current_span = c.span.range.clone();
-            match self.eval_command(&c.value) {
+            let outcome = self.eval_command(&c.value);
+            let outcome = match self.output_failure.take() {
+                Some(failure) => outcome.and(Err(failure)),
+                None => outcome,
+            };
+            match outcome {
                 Ok(Flow::Continue) => {}
                 Ok(Flow::Quit) => return Ok(Flow::Quit),
                 Err(e) => {

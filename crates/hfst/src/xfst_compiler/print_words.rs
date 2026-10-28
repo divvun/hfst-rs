@@ -44,7 +44,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         self.shortest_string(&net, &mut paths)?;
 
         if paths.is_empty() {
-            println!("transducer is empty");
+            writeln!(self.output, "transducer is empty")?;
         } else {
             self.print_paths_two(&paths, oss, -1)?;
         }
@@ -62,7 +62,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         self.shortest_string(&net, &mut paths)?;
 
         if paths.is_empty() {
-            println!("transducer is empty");
+            writeln!(self.output, "transducer is empty")?;
         } else {
             writeln!(
                 oss,
@@ -431,9 +431,9 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         // Print the results:
         // first, the special cases,
         if upper_is_cyclic && lower_is_cyclic {
-            println!("transducer is cyclic");
+            writeln!(self.output, "transducer is cyclic")?;
         } else if transducer_is_empty {
-            println!("transducer is empty");
+            writeln!(self.output, "transducer is empty")?;
         }
         // then the usual:
         else {
