@@ -7962,6 +7962,30 @@ children (
                 id wasm.rustfst-entropy
                 title "rustfst fork: put randgen's OS-entropy constructor (UniformTrSelector::new, ChaCha8Rng::from_os_rng) behind a default feature and depend on rand without os_rng otherwise, so hfst-openfst builds for wasm32 with no getrandom backend; land via commit, push, cargo update rustfst"
                 kind @build
+                sealed true
+                log (
+                    {
+                        at 2026-10-28T23:07:08.833499Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
+
+                    {
+                        at 2026-10-28T23:08:51.232443Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan complete)"
+                    }
+
+                    {
+                        at 2026-10-28T23:08:53.718761Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "rustfst fork 897e85b0 (randgen: make OS entropy an optional feature) is on necessary-nu/rustfst main; all 1612 rustfst tests pass with default features. hfst pins it with default-features = false plus state-label-u32, so getrandom leaves the tree and cargo check -p hfst --target wasm32-unknown-unknown passes with and without foma and with no RUSTFLAGS or cargo config. Workspace nextest 732/732."
+                        after_done true
+                    }
+                )
             }
 
             {
