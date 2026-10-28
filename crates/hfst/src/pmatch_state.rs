@@ -17,7 +17,7 @@
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
-use std::time::Instant;
+use web_time::Instant;
 
 use tracing::{debug, warn};
 

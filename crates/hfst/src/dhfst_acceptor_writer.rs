@@ -24,7 +24,7 @@ use crate::dhfst_acceptor::{
 };
 pub use crate::dhfst_acceptor_source::{AcceptorSource, Transition};
 use crate::dhfst_header::DhfstType;
-use crate::dhfst_writer::{WRITER, in_chunks, symbols_section, verification};
+use crate::dhfst_writer::{WRITER, in_chunks, symbols_section, verification, worker_threads};
 
 fn unsupported(detail: impl std::fmt::Display) -> crate::error::Error {
     crate::err!(
@@ -775,6 +775,7 @@ pub fn write(
 /// source's regular lookup answered yes, which the search never asks and the
 /// reader answers no.
 // [spec:hfst:sem:dhfst.acceptor-self-check]
+// [spec:hfst:req:javascript.no-host-traps]
 pub fn verify(
     source: &AcceptorSource<'_>,
     reader: &AcceptorReader<'_>,
@@ -808,12 +809,7 @@ pub fn verify(
         number: &number,
         n_symbols: n_symbols as u32,
     };
-    let threads = match threads {
-        0 => std::thread::available_parallelism()
-            .map(|n| n.get())
-            .unwrap_or(4),
-        n => n,
-    };
+    let threads = worker_threads(threads);
     let results = in_chunks(written.order.len(), threads, |range| {
         let mut total = (0u64, 0u64);
         for q in range {
@@ -978,11 +974,12 @@ pub(crate) mod tests {
     // [spec:hfst:sem:dhfst.acceptor-self-check/test]
     // [spec:hfst:def:dhfst.acceptor-layout/test]
     // [spec:hfst:sem:dhfst.acceptor-layout/test]
+    // [spec:hfst:req:javascript.no-host-traps/test]
     #[test]
     fn writes_reads_back_and_checks_a_lexicon() {
         let t = lexicon(LEXICON);
         let w = written(&t, 1);
-        for threads in [2, 3, 8] {
+        for threads in [0, 2, 3, 4, 8] {
             assert_eq!(w.bytes, written(&t, threads).bytes, "{threads} threads");
         }
         assert_eq!(&w.bytes[..8], b"DHFST\x02\x01\0");

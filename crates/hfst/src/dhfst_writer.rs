@@ -111,13 +111,9 @@ pub struct Written {
 /// back and check them against it again.
 // [spec:hfst:def:dhfst.write+1]
 // [spec:hfst:sem:dhfst.write+1]
+// [spec:hfst:req:javascript.no-host-traps]
 pub fn write(model: &SourceModel, options: &WriteOptions) -> crate::error::Result<Written> {
-    let threads = match options.threads {
-        0 => std::thread::available_parallelism()
-            .map(|n| n.get())
-            .unwrap_or(4),
-        n => n,
-    };
+    let threads = worker_threads(options.threads);
     let max_depth = options
         .max_fallback_depth
         .map(|d| d as usize)
@@ -221,14 +217,38 @@ fn verify_reader_state(
     Ok((queries, arcs))
 }
 
+/// Whether std can start a thread here. It cannot on wasm32-unknown-unknown,
+/// even with atomics, nor on any wasm target without atomics.
+const HAS_THREADS: bool = !cfg!(all(
+    target_family = "wasm",
+    any(target_os = "unknown", not(target_feature = "atomics"))
+));
+
+/// The worker threads a request comes to: `0` asks for every core the host
+/// reports, or 1 when it reports none. A target without threads gets 1
+/// whatever was asked.
+// [spec:hfst:req:javascript.no-host-traps]
+pub(crate) fn worker_threads(requested: usize) -> usize {
+    match requested {
+        _ if !HAS_THREADS => 1,
+        0 => std::thread::available_parallelism().map_or(1, |n| n.get()),
+        n => n,
+    }
+}
+
 /// Run `work` over `0..n` split into one contiguous range per thread, and
-/// answer the results in range order.
+/// answer the results in range order. With one thread it runs on the
+/// calling thread.
+// [spec:hfst:req:javascript.no-host-traps]
 pub(crate) fn in_chunks<T, F>(n: usize, threads: usize, work: F) -> Vec<Result<T, String>>
 where
     T: Send,
     F: Fn(std::ops::Range<usize>) -> Result<T, String> + Sync,
 {
-    let threads = threads.max(1);
+    let threads = if HAS_THREADS { threads.max(1) } else { 1 };
+    if threads == 1 {
+        return vec![work(0..n)];
+    }
     let chunk = n.div_ceil(threads).max(1);
     std::thread::scope(|scope| {
         let work = &work;
@@ -243,6 +263,29 @@ where
             })
             .collect()
     })
+}
+
+/// Run `work` on each `chunk`-long piece of `items`, with the piece's index,
+/// one thread per piece. With one thread every piece runs on the calling
+/// thread.
+// [spec:hfst:req:javascript.no-host-traps]
+fn each_chunk_mut<T, F>(items: &mut [T], chunk: usize, threads: usize, work: F)
+where
+    T: Send,
+    F: Fn(usize, &mut [T]) + Sync,
+{
+    if !HAS_THREADS || threads <= 1 {
+        for (ci, part) in items.chunks_mut(chunk).enumerate() {
+            work(ci, part);
+        }
+        return;
+    }
+    std::thread::scope(|scope| {
+        let work = &work;
+        for (ci, part) in items.chunks_mut(chunk).enumerate() {
+            scope.spawn(move || work(ci, part));
+        }
+    });
 }
 
 /// Pair kinds, with "special" for pairs only explicit entries may answer.
@@ -546,15 +589,10 @@ fn candidates(
         .map(|i| 0x9E37_79B9_7F4A_7C15u64.wrapping_mul(i + 1) ^ 0xD1B5_4A32_D192_ED03)
         .collect();
     let mut sig = vec![u64::MAX; ns * k];
-    std::thread::scope(|scope| {
-        let chunk = ns.div_ceil(threads).max(1);
-        for (ci, part) in sig.chunks_mut(chunk * k).enumerate() {
-            let seeds = &seeds;
-            scope.spawn(move || {
-                for (local, s) in part.chunks_mut(k).enumerate() {
-                    minhash(m, ci * chunk + local, seeds, s);
-                }
-            });
+    let chunk = ns.div_ceil(threads).max(1);
+    each_chunk_mut(&mut sig, chunk * k, threads, |ci, part| {
+        for (local, s) in part.chunks_mut(k).enumerate() {
+            minhash(m, ci * chunk + local, &seeds, s);
         }
     });
     let mut cands: Vec<Vec<usize>> = vec![Vec::new(); ns];
@@ -601,23 +639,19 @@ fn score_candidates(
     threads: usize,
 ) -> Vec<Vec<(u64, usize)>> {
     let mut out: Vec<Vec<(u64, usize)>> = vec![Vec::new(); m.n_states];
-    std::thread::scope(|scope| {
-        let chunk = m.n_states.div_ceil(threads).max(1);
-        for (ci, part) in out.chunks_mut(chunk).enumerate() {
-            scope.spawn(move || {
-                for (local, slot) in part.iter_mut().enumerate() {
-                    let q = ci * chunk + local;
-                    let score = |f: Option<usize>| -> u64 {
-                        let (without, with, special) = kind_costs(m, q, f, &groups[q]);
-                        special + (0..4).map(|ki| without[ki].min(with[ki])).sum::<u64>()
-                    };
-                    let mut scored: Vec<(u64, usize)> =
-                        cands[q].iter().map(|f| (score(Some(*f)), *f)).collect();
-                    scored.push((score(None), usize::MAX));
-                    scored.sort_unstable();
-                    *slot = scored;
-                }
-            });
+    let chunk = m.n_states.div_ceil(threads).max(1);
+    each_chunk_mut(&mut out, chunk, threads, |ci, part| {
+        for (local, slot) in part.iter_mut().enumerate() {
+            let q = ci * chunk + local;
+            let score = |f: Option<usize>| -> u64 {
+                let (without, with, special) = kind_costs(m, q, f, &groups[q]);
+                special + (0..4).map(|ki| without[ki].min(with[ki])).sum::<u64>()
+            };
+            let mut scored: Vec<(u64, usize)> =
+                cands[q].iter().map(|f| (score(Some(*f)), *f)).collect();
+            scored.push((score(None), usize::MAX));
+            scored.sort_unstable();
+            *slot = scored;
         }
     });
     out
@@ -1195,6 +1229,7 @@ pub(crate) mod tests {
     }
 
     // [spec:hfst:sem:dhfst.write+1/test]
+    // [spec:hfst:req:javascript.no-host-traps/test]
     #[test]
     fn bytes_do_not_depend_on_thread_count() {
         let model = edit_model();
@@ -1205,7 +1240,7 @@ pub(crate) mod tests {
                 ..WriteOptions::default()
             },
         );
-        for threads in [2, 3, 8] {
+        for threads in [0, 2, 3, 4, 8] {
             let many = written(
                 &model,
                 &WriteOptions {
@@ -1216,6 +1251,22 @@ pub(crate) mod tests {
             assert_eq!(one.bytes, many.bytes, "{threads} threads");
         }
         assert_eq!(&one.bytes[..6], b"DHFST\x01");
+    }
+
+    // [spec:hfst:req:javascript.no-host-traps/test]
+    #[test]
+    fn a_thread_request_resolves_to_at_least_one() {
+        assert!(worker_threads(0) >= 1);
+        assert_eq!(worker_threads(1), 1);
+        assert_eq!(worker_threads(4), 4);
+        let sums = |threads| -> Vec<usize> {
+            in_chunks(10, threads, |range| Ok(range.sum::<usize>()))
+                .into_iter()
+                .map(|r| r.expect("a sum cannot fail"))
+                .collect()
+        };
+        assert_eq!(sums(1), vec![45]);
+        assert_eq!(sums(4).iter().sum::<usize>(), 45);
     }
 
     // [spec:hfst:sem:dhfst.encoding/test]

@@ -82,8 +82,9 @@ pub type MappingPairVector<B> = Vec<PairRef<B>>;
 /// Mirror of C 'clock()' — processor time in ['CLOCKS_PER_SEC'] ticks. The
 /// skeleton uses wall-clock microseconds, which is only consulted in verbose
 /// timing output.
+// [spec:hfst:req:javascript.no-host-traps]
 pub fn clock() -> clock_t {
-    use std::time::{SystemTime, UNIX_EPOCH};
+    use web_time::{SystemTime, UNIX_EPOCH};
     match SystemTime::now().duration_since(UNIX_EPOCH) {
         Ok(d) => d.as_micros() as clock_t,
         Err(_) => 0,

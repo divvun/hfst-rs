@@ -168,6 +168,7 @@ impl PmatchContainer {
 
     // [spec:hfst:def:pmatch.hfst-ol.pmatch-container.match-fn]
     // [spec:hfst:sem:pmatch.hfst-ol.pmatch-container.match-fn]
+    // [spec:hfst:req:javascript.no-host-traps]
     pub fn do_match(&mut self, input: &str, time_cutoff: f64, weight_cutoff: Weight) -> String {
         self.max_time = time_cutoff;
         self.max_weight = weight_cutoff;
@@ -184,6 +185,7 @@ impl PmatchContainer {
 
     // [spec:hfst:def:pmatch.hfst-ol.pmatch-container.locate-fn]
     // [spec:hfst:sem:pmatch.hfst-ol.pmatch-container.locate-fn]
+    // [spec:hfst:req:javascript.no-host-traps]
     pub fn locate(
         &mut self,
         input: &str,

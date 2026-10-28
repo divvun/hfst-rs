@@ -87,8 +87,16 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     }
 
     // @brief View top network
+    // [spec:hfst:req:javascript.no-host-traps]
     pub fn view_net(&mut self) -> CmdResult {
         let tmp = self.top()?;
+        // std::env::temp_dir and std::process::id panic on wasm32-unknown-unknown,
+        // which has no filesystem or shell to render a network with.
+        if cfg!(all(target_family = "wasm", target_os = "unknown")) {
+            return Err(CommandError::new(
+                "'view' needs a filesystem and a shell, which this platform lacks",
+            ));
+        }
         let dir = std::env::temp_dir();
         let dotfilename = dir.join(format!("hfst_view_dot_{}", std::process::id()));
         let pngfilename = dir.join(format!("hfst_view_png_{}", std::process::id()));
