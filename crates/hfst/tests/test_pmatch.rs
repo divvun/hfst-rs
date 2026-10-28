@@ -401,3 +401,13 @@ fn quotient_and_side_subtractions() -> Result<(), hfst::error::Error> {
     }
     Ok(())
 }
+
+// A script that does not parse, or that inserts a definition it never makes,
+// is an error, never an empty ruleset.
+#[test]
+fn uncompilable_scripts_are_errors() {
+    for src in ["Define Word L( ;\n", "Define TOP Ins(Foo) ;\n"] {
+        let mut c = PmatchCompiler::<StdVectorFst>::new();
+        assert!(c.compile(src).is_err(), "{src:?} compiled");
+    }
+}

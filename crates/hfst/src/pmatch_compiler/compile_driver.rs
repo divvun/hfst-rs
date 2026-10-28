@@ -104,6 +104,34 @@ fn emit_pmatch_parse_error(e: &nfst_pmatch::ParseError, expanded_script: &str) {
     }
 }
 
+/// The error a script that does not parse fails with. Its diagnostics carry
+/// the detail; this names how many there were.
+fn syntax_error(e: &nfst_pmatch::ParseError) -> crate::error::Error {
+    crate::err!(
+        Hfst,
+        format!(
+            "pmatch: the script has {} syntax error(s)",
+            e.diagnostics.len().max(1)
+        )
+    )
+}
+
+/// Fail when an `Ins()` names a definition the script never makes: the
+/// runtime would have nothing to insert there.
+fn check_insertions_defined<B: AlgebraBackend + 'static>(
+    ctx: &PmatchEvalContext<B>,
+) -> crate::error::Result<()> {
+    for it in ctx.unsatisfied_insertions_snapshot() {
+        if !ctx.definitions_contains(it.as_str()) {
+            crate::bail!(
+                Hfst,
+                format!("pmatch: inserted transducer {} was never defined", it)
+            );
+        }
+    }
+    Ok(())
+}
+
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.compile-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.compile-fn]
 pub fn compile<B: AlgebraBackend + FromAnyTransducer + 'static>(
@@ -153,18 +181,23 @@ pub fn compile<B: AlgebraBackend + FromAnyTransducer + 'static>(
         }
         Err(e) => {
             emit_pmatch_parse_error(&e, &expanded_script);
-            ctx.pmatchnerrs += 1;
+            ctx.data = String::new();
+            ctx.len = 0;
+            return Err(syntax_error(&e));
         }
     }
     // === END SEAM =========================================================
 
-    let mut retval: HashMap<String, HfstTransducer<B>> = HashMap::new();
-    for it in ctx.unsatisfied_insertions_snapshot().into_iter() {
-        if !ctx.definitions_contains(it.as_str()) {
-            error!("Inserted transducer {} was never defined!", it);
-            return Ok(retval);
-        }
+    if ctx.pmatchnerrs != 0 {
+        ctx.data = String::new();
+        ctx.len = 0;
+        crate::bail!(
+            Hfst,
+            format!("pmatch: {} statement(s) failed to compile", ctx.pmatchnerrs)
+        );
     }
+    check_insertions_defined(ctx)?;
+    let mut retval: HashMap<String, HfstTransducer<B>> = HashMap::new();
     if ctx.verbose {
         let defs_keys: Vec<String> = ctx.definitions_keys();
         for first in defs_keys.iter() {
@@ -172,12 +205,6 @@ pub fn compile<B: AlgebraBackend + FromAnyTransducer + 'static>(
                 debug!("Warning: {} defined but never used", first);
             }
         }
-    }
-
-    if ctx.pmatchnerrs != 0 {
-        ctx.data = String::new();
-        ctx.len = 0;
-        return Ok(retval);
     }
     // Our helper for harmonizing all the networks' alphabets with
     // each other
@@ -578,10 +605,9 @@ impl<B: AlgebraBackend + FromAnyTransducer + 'static> PmatchCompiler<B> {
                 Ok(file) => {
                     for stmt in &file.value.statements {
                         if let Err(e) = build_statement(ctx, stmt) {
-                            error!("{}", e);
                             ctx.data = String::new();
                             ctx.len = 0;
-                            return Ok(HashMap::new());
+                            return Err(e);
                         }
                     }
                 }
@@ -589,20 +615,16 @@ impl<B: AlgebraBackend + FromAnyTransducer + 'static> PmatchCompiler<B> {
                     emit_pmatch_parse_error(&e, &expanded_script);
                     ctx.data = String::new();
                     ctx.len = 0;
-                    return Ok(HashMap::new());
+                    return Err(syntax_error(&e));
                 }
             }
 
+            if let Err(e) = check_insertions_defined(ctx) {
+                ctx.data = String::new();
+                ctx.len = 0;
+                return Err(e);
+            }
             let mut retval: HashMap<String, HfstTransducer<B>> = HashMap::new();
-
-            for it in ctx.unsatisfied_insertions_snapshot().into_iter() {
-                if !ctx.definitions_contains(it.as_str()) {
-                    error!("Inserted transducer {} was never defined!", it);
-                    ctx.data = String::new();
-                    ctx.len = 0;
-                    return Ok(retval);
-                }
-            }
             if ctx.verbose {
                 for (k, _v) in ctx.definitions_snapshot() {
                     if !ctx.used_definitions_contains(&k) && k != "TOP" {
