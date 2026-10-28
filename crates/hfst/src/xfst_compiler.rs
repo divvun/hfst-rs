@@ -26,7 +26,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 use crate::backend::{AlgebraBackend, Backend};
-use crate::diag::{Diagnostic, Severity};
+use crate::diag::{Diagnostic, DiagnosticSink, Diagnostics, Severity};
 use crate::file_resolver::FileResolver;
 use crate::hfst_basic_transducer::{HfstBasicTransducer, HfstBasicTransitions};
 use crate::hfst_data_types::{HfstOneLevelPaths, HfstTwoLevelPaths, ImplementationType};
@@ -293,9 +293,9 @@ pub struct XfstCompiler<B: AlgebraBackend> {
     /// The input interactive commands read, apart from the script being run.
     input: Box<dyn BufRead>,
     /// What running commands has reported, oldest first, until the caller
-    /// takes it. Includes what the embedded regex and lexc compilers
-    /// reported, gathered after each command.
-    diagnostics: Vec<Diagnostic>,
+    /// takes it or a sink receives it. Includes what the embedded regex and
+    /// lexc compilers reported.
+    diagnostics: Diagnostics,
 }
 
 /// The deepest 'source' nesting allowed, so a script that sources itself
@@ -379,7 +379,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             output_failure: None,
             input: Box::new(std::io::empty()),
             files: crate::file_resolver::default_resolver(),
-            diagnostics: Vec::new(),
+            diagnostics: Diagnostics::default(),
         };
         c.xre.set_expand_definitions(true);
         c.xre.set_verbosity(c.verbose);

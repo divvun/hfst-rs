@@ -70,3 +70,32 @@ fn known_errors_read_as_before() {
         assert_eq!(stderr, fixture(name), "{name}");
     }
 }
+
+// A warning lands among the progress lines the compile logs, where it was
+// produced, not after them.
+// [spec:hfst:req:javascript.diagnostics-as-data/test]
+#[test]
+fn warnings_keep_their_place_among_log_lines() {
+    let cases: [(&str, &[&str], &str); 3] = [
+        (
+            "twolc-warn",
+            &["twolc", "-o", "/dev/null"],
+            "Alphabet a b ;\nRules\n\"r\" a:b => _ c ;\n",
+        ),
+        (
+            "lexc-warn",
+            &["lexc", "-f", "openfst-tropical", "-o", "/dev/null"],
+            "Definitions\nV = [a|e] ;\nLEXICON Root\nLexicon Foo\nab Foo ;\nLEXICON Foo\nc # ;\n",
+        ),
+        (
+            "xfst-warn",
+            &["xfst", "-p"],
+            "set compose-flag-as-special ON\nhfst raw\nregex a ;\n",
+        ),
+    ];
+    for (name, args, input) in cases {
+        let (code, stderr) = stderr_of(args, input);
+        assert_eq!(code, Some(0), "{name}: stderr:\n{stderr}");
+        assert_eq!(stderr, fixture(name), "{name}");
+    }
+}

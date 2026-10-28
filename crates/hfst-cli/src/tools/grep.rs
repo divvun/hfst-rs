@@ -608,6 +608,7 @@ fn read_matcher(
     state.matcher = HfstTransducer::new();
     if options.dialect_xerox {
         let mut comp = XreCompiler::<hfst_openfst::StdVectorFst>::new();
+        comp.set_diagnostic_sink(crate::hfst_commandline::stderr_sink());
         verbose_print(
             common,
             &format!(
@@ -619,9 +620,7 @@ fn read_matcher(
         // included) and the next line dereferenced it — a crash upstream. Fail
         // cleanly instead: XRE has no empty expression, so nothing sound can
         // be built from one.
-        let compiled = comp.compile(expression);
-        crate::hfst_commandline::print_diagnostics(comp.take_diagnostics());
-        let Some(mut trans) = compiled else {
+        let Some(mut trans) = comp.compile(expression) else {
             if expression.is_empty() {
                 error(
                     common,

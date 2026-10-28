@@ -5,10 +5,11 @@
 //! source it concerns. A [`Diagnostic`] keeps that span with the source text
 //! it indexes; [`Diagnostic::render`] turns it into an `ariadne` report with a
 //! caret-underlined snippet. The library never prints one: each compiler
-//! collects its diagnostics and the caller decides where they go.
+//! collects its diagnostics for the caller to take, or hands each to a
+//! [`DiagnosticSink`] the caller installs, the moment it is produced.
 
 use std::ops::Range;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use ariadne::{Color, Config, Report, ReportKind, Source};
 
@@ -227,6 +228,89 @@ impl Diagnostic {
     }
 }
 
+// [spec:hfst:req:javascript.diagnostics-as-data]
+/// A caller's handler for diagnostics, called with each one as a compiler
+/// produces it. Clones share the handler, so a compiler can pass it to the
+/// compilers it embeds and their diagnostics arrive in the order they were
+/// produced.
+#[derive(Clone)]
+pub struct DiagnosticSink {
+    handler: Arc<Mutex<dyn FnMut(Diagnostic) + Send>>,
+}
+
+impl DiagnosticSink {
+    pub fn new(handler: impl FnMut(Diagnostic) + Send + 'static) -> Self {
+        Self {
+            handler: Arc::new(Mutex::new(handler)),
+        }
+    }
+
+    fn deliver(&self, d: Diagnostic) {
+        // A handler that panicked leaves nothing half-updated here, so a
+        // poisoned lock is still safe to call through.
+        let mut handler = self.handler.lock().unwrap_or_else(|e| e.into_inner());
+        handler(d);
+    }
+}
+
+impl std::fmt::Debug for DiagnosticSink {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("DiagnosticSink")
+    }
+}
+
+/// The diagnostics one compiler has produced. Until a sink is installed
+/// they are kept, oldest first, for the caller to read or take; once one is,
+/// each goes to it as it is produced and nothing more is kept.
+#[derive(Debug, Default)]
+pub struct Diagnostics {
+    kept: Vec<Diagnostic>,
+    sink: Option<DiagnosticSink>,
+}
+
+impl Diagnostics {
+    /// An empty collection that hands its diagnostics to the same sink as
+    /// `self`, for a compiler `self`'s owner embeds.
+    pub(crate) fn forwarding(&self) -> Self {
+        Self {
+            kept: Vec::new(),
+            sink: self.sink.clone(),
+        }
+    }
+
+    pub(crate) fn push(&mut self, d: Diagnostic) {
+        match &self.sink {
+            Some(sink) => sink.deliver(d),
+            None => self.kept.push(d),
+        }
+    }
+
+    pub(crate) fn extend(&mut self, ds: impl IntoIterator<Item = Diagnostic>) {
+        for d in ds {
+            self.push(d);
+        }
+    }
+
+    pub(crate) fn kept(&self) -> &[Diagnostic] {
+        &self.kept
+    }
+
+    pub(crate) fn take(&mut self) -> Vec<Diagnostic> {
+        std::mem::take(&mut self.kept)
+    }
+
+    /// The sink diagnostics go to, for a compiler the owner embeds.
+    pub(crate) fn sink(&self) -> Option<DiagnosticSink> {
+        self.sink.clone()
+    }
+
+    /// Send every later diagnostic to `sink`. What was kept before stays
+    /// kept.
+    pub(crate) fn set_sink(&mut self, sink: DiagnosticSink) {
+        self.sink = Some(sink);
+    }
+}
+
 fn byte_span_to_char_span(source: &str, span: Range<usize>) -> Range<usize> {
     let end = span.end.min(source.len());
     let start = span.start.min(end);
@@ -246,8 +330,28 @@ fn byte_span_to_char_span(source: &str, span: Range<usize>) -> Range<usize> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Diagnostic, Severity, byte_span_to_char_span};
-    use std::sync::Arc;
+    use super::{Diagnostic, DiagnosticSink, Diagnostics, Severity, byte_span_to_char_span};
+    use std::sync::{Arc, Mutex};
+
+    // [spec:hfst:req:javascript.diagnostics-as-data/test]
+    #[test]
+    fn a_sink_receives_what_follows_it_in_order() {
+        let mut ds = Diagnostics::default();
+        ds.push(Diagnostic::error("before"));
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let into = Arc::clone(&seen);
+        ds.set_sink(DiagnosticSink::new(move |d| {
+            into.lock()
+                .expect("unpoisoned")
+                .push(d.message().to_string())
+        }));
+        let mut nested = ds.forwarding();
+        ds.push(Diagnostic::warning("outer"));
+        nested.push(Diagnostic::warning("nested"));
+        assert_eq!(*seen.lock().expect("unpoisoned"), ["outer", "nested"]);
+        assert_eq!(ds.take().len(), 1, "what came before the sink stays kept");
+        assert!(nested.kept().is_empty());
+    }
 
     #[test]
     fn byte_span_after_unicode_becomes_character_span() {

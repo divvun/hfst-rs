@@ -12,7 +12,7 @@ use std::sync::Arc;
 use nfst_xre::{BinaryOp, ParseError, SpannedXre, XreExpr};
 
 use crate::backend::AlgebraBackend;
-use crate::diag::{Diagnostic, Severity};
+use crate::diag::{Diagnostic, DiagnosticSink, Diagnostics, Severity};
 use crate::file_resolver::FileResolver;
 use crate::hfst_data_types::Symbol;
 use crate::hfst_transducer::HfstTransducer;
@@ -163,8 +163,9 @@ pub struct XreCompiler<B: AlgebraBackend> {
     /// Where the '@bin', '@txt', '@stxt', '@pl' and '@re' file references
     /// are read from ([`Self::set_file_resolver`]).
     pub(crate) files: Arc<dyn FileResolver>,
-    /// What compiling has reported, oldest first, until the caller takes it.
-    pub(crate) diagnostics: Vec<Diagnostic>,
+    /// What compiling has reported, oldest first, until the caller takes it
+    /// or a sink receives it.
+    pub(crate) diagnostics: Diagnostics,
 }
 
 /// What went wrong, without the generic kind prefix when the error says more.
@@ -211,7 +212,7 @@ impl<B: AlgebraBackend> XreCompiler<B> {
             span_base: 0,
             replace_pass: false,
             files: crate::file_resolver::default_resolver(),
-            diagnostics: Vec::new(),
+            diagnostics: Diagnostics::default(),
         }
     }
 
@@ -239,7 +240,7 @@ impl<B: AlgebraBackend> XreCompiler<B> {
             span_base: 0,
             replace_pass: false,
             files: crate::file_resolver::default_resolver(),
-            diagnostics: Vec::new(),
+            diagnostics: Diagnostics::default(),
         }
     }
 }
@@ -276,13 +277,20 @@ impl<B: AlgebraBackend> XreCompiler<B> {
     /// taken, oldest first, failures and warnings alike.
     // [spec:hfst:req:javascript.diagnostics-as-data]
     pub fn diagnostics(&self) -> &[Diagnostic] {
-        &self.diagnostics
+        self.diagnostics.kept()
     }
 
     /// Hand over the diagnostics reported so far, leaving none behind.
     // [spec:hfst:req:javascript.diagnostics-as-data]
     pub fn take_diagnostics(&mut self) -> Vec<Diagnostic> {
-        std::mem::take(&mut self.diagnostics)
+        self.diagnostics.take()
+    }
+
+    /// Hand each later diagnostic to `sink` the moment it is produced. They
+    /// are not kept, so [`Self::take_diagnostics`] returns none of them.
+    // [spec:hfst:req:javascript.diagnostics-as-data]
+    pub fn set_diagnostic_sink(&mut self, sink: DiagnosticSink) {
+        self.diagnostics.set_sink(sink);
     }
 
     /// Record a diagnostic about the user's regex source, anchored at `span`

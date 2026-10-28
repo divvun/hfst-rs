@@ -246,12 +246,24 @@ fn build_read_file<B: AlgebraBackend + FromAnyTransducer + 'static>(
                 regex.push_str(line);
             }
             if regex.is_empty() {
-                error!("Failed to read regex from {}.", filepath);
+                crate::bail!(
+                    Hfst,
+                    format!("Failed to read regex from {}: the file is empty.", filepath)
+                );
             }
             let mut xre_compiler = crate::xre::XreCompiler::new();
             xre_compiler.set_file_resolver(Arc::clone(&ctx.files));
-            let compiled = xre_compiler.compile(&regex).unwrap_or_default();
+            if let Some(sink) = ctx.diagnostics.sink() {
+                xre_compiler.set_diagnostic_sink(sink);
+            }
+            let compiled = xre_compiler.compile(&regex);
             ctx.diagnostics.extend(xre_compiler.take_diagnostics());
+            let Some(compiled) = compiled else {
+                crate::bail!(
+                    Hfst,
+                    format!("the regular expression in {} does not compile", filepath)
+                );
+            };
             Ok(as_obj(PmatchTransducerContainer::new(compiled)))
         }
     }
@@ -259,9 +271,10 @@ fn build_read_file<B: AlgebraBackend + FromAnyTransducer + 'static>(
 
 // [spec:hfst:req:javascript.named-file-resolver]
 /// The lexc file `filepath` compiled, its own regex file references read
-/// through the same resolver.
+/// through the same resolver, and what its compile reported joining the
+/// pmatch compile's diagnostics.
 fn read_lexc_file<B: AlgebraBackend + 'static>(
-    ctx: &PmatchEvalContext<B>,
+    ctx: &mut PmatchEvalContext<B>,
     filepath: &str,
 ) -> crate::error::Result<HfstTransducer<B>> {
     let source = ctx.files.read_to_string(filepath).map_err(|_| {
@@ -273,7 +286,12 @@ fn read_lexc_file<B: AlgebraBackend + 'static>(
     let mut compiler = crate::lexc::LexcCompiler::<B>::new();
     compiler.set_verbosity(ctx.verbose as u32);
     compiler.set_file_resolver(Arc::clone(&ctx.files));
-    compiler.compile(&source).ok_or_else(|| {
+    if let Some(sink) = ctx.diagnostics.sink() {
+        compiler.set_diagnostic_sink(sink);
+    }
+    let compiled = compiler.compile(&source);
+    ctx.diagnostics.extend(compiler.take_diagnostics());
+    compiled.ok_or_else(|| {
         crate::err!(
             NotValidLexcFormat,
             format!("could not compile {} as lexc", filepath)

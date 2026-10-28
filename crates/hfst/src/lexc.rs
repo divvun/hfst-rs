@@ -17,7 +17,7 @@ use nfst_lexc::{
 use nfst_xre::{SpannedXre, pretty_print};
 
 use crate::backend::AlgebraBackend;
-use crate::diag::{Diagnostic, Severity};
+use crate::diag::{Diagnostic, DiagnosticSink, Diagnostics, Severity};
 use crate::hfst_basic_transducer::HfstBasicTransducer;
 use crate::hfst_basic_transition::HfstBasicTransition;
 use crate::hfst_data_types::{
@@ -85,9 +85,10 @@ pub struct LexcCompiler<B: AlgebraBackend> {
     /// `compile_file` visits each spanned AST node; the anchor for
     /// `error_at_current_token`/`warning_at_current_token`.
     pub(crate) current_span: std::ops::Range<usize>,
-    /// What compiling has reported, oldest first, until the caller takes it.
-    /// Includes what the embedded regex compiler reported.
-    pub(crate) diagnostics: Vec<Diagnostic>,
+    /// What compiling has reported, oldest first, until the caller takes it
+    /// or a sink receives it. Includes what the embedded regex compiler
+    /// reported.
+    pub(crate) diagnostics: Diagnostics,
 }
 
 // ==========================================================================
@@ -136,7 +137,7 @@ impl<B: AlgebraBackend> LexcCompiler<B> {
             source: Arc::from(""),
             source_name: String::from("<lexc>"),
             current_span: 0..0,
-            diagnostics: Vec::new(),
+            diagnostics: Diagnostics::default(),
         };
         compiler
             .tokenizer
@@ -415,13 +416,22 @@ impl<B: AlgebraBackend> LexcCompiler<B> {
     /// taken, oldest first, failures and warnings alike.
     // [spec:hfst:req:javascript.diagnostics-as-data]
     pub fn diagnostics(&self) -> &[Diagnostic] {
-        &self.diagnostics
+        self.diagnostics.kept()
     }
 
     /// Hand over the diagnostics reported so far, leaving none behind.
     // [spec:hfst:req:javascript.diagnostics-as-data]
     pub fn take_diagnostics(&mut self) -> Vec<Diagnostic> {
-        std::mem::take(&mut self.diagnostics)
+        self.diagnostics.take()
+    }
+
+    /// Hand each later diagnostic to `sink` the moment it is produced. They
+    /// are not kept, so [`Self::take_diagnostics`] returns none of them. The
+    /// embedded regex compiler reports to it too.
+    // [spec:hfst:req:javascript.diagnostics-as-data]
+    pub fn set_diagnostic_sink(&mut self, sink: DiagnosticSink) {
+        self.xre.set_diagnostic_sink(sink.clone());
+        self.diagnostics.set_sink(sink);
     }
 
     /// Record `d` against the lexc source being compiled.

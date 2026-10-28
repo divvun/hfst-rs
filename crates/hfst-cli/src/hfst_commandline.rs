@@ -129,25 +129,24 @@ fn stderr_form(d: &hfst::diag::Diagnostic, colour: bool) -> StderrForm<'_> {
 }
 
 // [spec:hfst:req:javascript.diagnostics-as-data]
-/// Print what a compiler reported to stderr, in the order it was reported,
-/// in colour only for a terminal and never under NO_COLOR.
-pub fn print_diagnostics(diagnostics: Vec<hfst::diag::Diagnostic>) {
+/// A sink that prints each diagnostic to stderr as the compiler produces it,
+/// so it lands among the tool's other stderr lines where it happened. Colour
+/// only for a terminal, and never under NO_COLOR.
+pub fn stderr_sink() -> hfst::diag::DiagnosticSink {
     use hfst::diag::Severity;
     let colour = std::io::stderr().is_terminal() && std::env::var_os("NO_COLOR").is_none();
-    for d in &diagnostics {
-        match stderr_form(d, colour) {
-            StderrForm::Report(text) => eprint!("{text}"),
-            StderrForm::Logged(severity, lines) => {
-                for line in lines {
-                    match severity {
-                        Severity::Error => tracing::error!("{}", line),
-                        Severity::Warning => tracing::warn!("{}", line),
-                        Severity::Info => tracing::info!("{}", line),
-                    }
+    hfst::diag::DiagnosticSink::new(move |d| match stderr_form(&d, colour) {
+        StderrForm::Report(text) => eprint!("{text}"),
+        StderrForm::Logged(severity, lines) => {
+            for line in lines {
+                match severity {
+                    Severity::Error => tracing::error!("{}", line),
+                    Severity::Warning => tracing::warn!("{}", line),
+                    Severity::Info => tracing::info!("{}", line),
                 }
             }
         }
-    }
+    })
 }
 
 // ---------------------------------------------------------------------------

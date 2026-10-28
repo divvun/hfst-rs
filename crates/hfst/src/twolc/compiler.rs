@@ -61,7 +61,7 @@ impl<B: AlgebraBackend> TwolcCompiler<B> {
             source: Arc::from(""),
             source_name: String::from("<twolc>"),
             set_spans: BTreeMap::new(),
-            diagnostics: Vec::new(),
+            diagnostics: crate::diag::Diagnostics::default(),
         }
     }
 

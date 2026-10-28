@@ -305,21 +305,11 @@ fn parse_file<B: hfst::backend::AlgebraBackend + hfst::hfst_transducer::FromAnyT
     };
 
     comp.set_source_name(filename);
-    match parse_and_report(comp, &line) {
+    match comp.parse(&line) {
         Ok(_) => EXIT_SUCCESS,
         // Already reported against the script.
         Err(_) => EXIT_FAILURE,
     }
-}
-
-/// Run `text` as xfst input, then print what the run reported.
-fn parse_and_report<B: hfst::backend::AlgebraBackend + hfst::hfst_transducer::FromAnyTransducer>(
-    comp: &mut XfstCompiler<B>,
-    text: &str,
-) -> Result<Flow, hfst::xfst_compiler::ScriptError> {
-    let outcome = comp.parse(text);
-    crate::hfst_commandline::print_diagnostics(comp.take_diagnostics());
-    outcome
 }
 
 fn expression_continues(expr: &mut String) -> bool {
@@ -501,6 +491,7 @@ fn run_compiler<B: hfst::backend::AlgebraBackend + hfst::hfst_transducer::FromAn
     options: &Options,
 ) -> i32 {
     let mut comp = XfstCompiler::<B>::new();
+    comp.set_diagnostic_sink(crate::hfst_commandline::stderr_sink());
     // The session holds the stdin lock, and this driver reads its own input
     // through the session, so the commands that read input share the stream.
     comp.set_output_stream(std::io::stdout());
@@ -535,7 +526,7 @@ fn run_compiler<B: hfst::backend::AlgebraBackend + hfst::hfst_transducer::FromAn
             common,
             &format!("Executing xfst command '{}' given on command line\n", cmd),
         );
-        match parse_and_report(&mut comp, &cmd) {
+        match comp.parse(&cmd) {
             Ok(Flow::Continue) => {}
             Ok(Flow::Quit) => return EXIT_SUCCESS,
             Err(_) => return EXIT_FAILURE,
@@ -547,7 +538,7 @@ fn run_compiler<B: hfst::backend::AlgebraBackend + hfst::hfst_transducer::FromAn
             common,
             &format!("Executing xfst command '{}' given on command line\n", cmd),
         );
-        return match parse_and_report(&mut comp, &cmd) {
+        return match comp.parse(&cmd) {
             Ok(_) => EXIT_SUCCESS,
             Err(_) => EXIT_FAILURE,
         };
@@ -612,7 +603,7 @@ fn run_compiler<B: hfst::backend::AlgebraBackend + hfst::hfst_transducer::FromAn
             }
 
             // The prompt reports a failure and carries on.
-            match parse_and_report(&mut comp, &format!("{}\n", expression)) {
+            match comp.parse(&format!("{}\n", expression)) {
                 Ok(Flow::Quit) => break,
                 Ok(Flow::Continue) => {}
                 Err(_) => {

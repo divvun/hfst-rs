@@ -221,6 +221,7 @@ fn process_stream_typed<B: hfst::backend::AlgebraBackend>(
     let mut line_count: u32 = 0;
     let mut comp = XreCompiler::<B>::new();
     comp.set_source_name(&common.input_filename);
+    comp.set_diagnostic_sink(crate::hfst_commandline::stderr_sink());
     comp.set_verbosity(common.verbose);
     comp.set_error_stream(());
     comp.set_harmonization(options.harmonize);
@@ -251,7 +252,6 @@ fn process_stream_typed<B: hfst::backend::AlgebraBackend>(
                 &format!("Compiling expression #{}\n", transducer_n as i32),
             );
             let compiled = comp.compile_first_at(&content, offset, &mut chars_read);
-            crate::hfst_commandline::print_diagnostics(comp.take_diagnostics());
             // (the C wraps compile_first in try/catch on HfstException; the
             // Rust path currently panics rather than throwing, so the catch
             // arm that calls hfst_error is not reproduced here.)
@@ -340,7 +340,6 @@ fn process_stream_typed<B: hfst::backend::AlgebraBackend>(
             let _ = transducer_n; // C++ counts but never reads it
             verbose_print(common, &format!("Compiling expression {}\n", line_count));
             let compiled = comp.compile(&exp);
-            crate::hfst_commandline::print_diagnostics(comp.take_diagnostics());
             // (the C wraps compile in try/catch on HfstException calling
             // hfst_error_at_line; the Rust path panics rather than throwing,
             // so the catch arm is not reproduced here.)

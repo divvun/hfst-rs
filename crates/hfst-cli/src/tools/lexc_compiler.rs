@@ -381,9 +381,7 @@ fn lexc_streams<B: hfst::backend::AlgebraBackend>(
             use std::io::Read;
             let _ = std::io::stdin().read_to_string(&mut source);
             lexc.set_source_name(name);
-            let parsed = lexc.parse(&source).map(|_| ());
-            crate::hfst_commandline::print_diagnostics(lexc.take_diagnostics());
-            if let Err(e) = parsed {
+            if let Err(e) = lexc.parse(&source) {
                 error(common, 1, 0, &format!("{e}"));
                 return 1;
             }
@@ -392,18 +390,14 @@ fn lexc_streams<B: hfst::backend::AlgebraBackend>(
             // C++ 'lexc.parse(filename)').
             let source = std::fs::read_to_string(name).unwrap_or_default();
             lexc.set_source_name(name);
-            let parsed = lexc.parse(&source).map(|_| ());
-            crate::hfst_commandline::print_diagnostics(lexc.take_diagnostics());
-            if let Err(e) = parsed {
+            if let Err(e) = lexc.parse(&source) {
                 error(common, 1, 0, &format!("{e}"));
                 return 1;
             }
         }
     }
     verbose_print(common, "Compiling... ");
-    let compiled = lexc.compile_lexical();
-    crate::hfst_commandline::print_diagnostics(lexc.take_diagnostics());
-    let compiled = match compiled {
+    let compiled = match lexc.compile_lexical() {
         Ok(c) => c,
         Err(e) => {
             error(common, 1, 0, &format!("{e}"));
@@ -534,6 +528,7 @@ fn run_typed<B: hfst::backend::AlgebraBackend>(
     outstream: &mut HfstOutputStream,
 ) -> i32 {
     let mut lexc = LexcCompiler::<B>::new_with_flags(options.with_flags, options.align_strings);
+    lexc.set_diagnostic_sink(crate::hfst_commandline::stderr_sink());
     lexc.set_minimize_flags(options.minimize_flags);
     lexc.set_rename_flags(options.rename_flags);
     lexc.set_flag_is_epsilon(options.flag_is_epsilon);

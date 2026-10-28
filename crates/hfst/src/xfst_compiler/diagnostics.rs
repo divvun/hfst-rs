@@ -10,7 +10,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     /// `parse` runs.
     // [spec:hfst:req:javascript.diagnostics-as-data]
     pub fn diagnostics(&self) -> &[Diagnostic] {
-        &self.diagnostics
+        self.diagnostics.kept()
     }
 
     /// Hand over the diagnostics reported so far, the embedded compilers'
@@ -18,7 +18,18 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     // [spec:hfst:req:javascript.diagnostics-as-data]
     pub fn take_diagnostics(&mut self) -> Vec<Diagnostic> {
         self.absorb_nested_diagnostics();
-        std::mem::take(&mut self.diagnostics)
+        self.diagnostics.take()
+    }
+
+    /// Hand each later diagnostic to `sink` the moment it is produced. They
+    /// are not kept, so [`Self::take_diagnostics`] returns none of them. The
+    /// embedded regex and lexc compilers report to it too, as they produce
+    /// their diagnostics.
+    // [spec:hfst:req:javascript.diagnostics-as-data]
+    pub fn set_diagnostic_sink(&mut self, sink: DiagnosticSink) {
+        self.xre.set_diagnostic_sink(sink.clone());
+        self.lexc.set_diagnostic_sink(sink.clone());
+        self.diagnostics.set_sink(sink);
     }
 
     /// Move what the embedded regex and lexc compilers reported into this

@@ -329,7 +329,7 @@ pub struct TwolcCompiler<B: AlgebraBackend> {
     /// about a set can point at its definition.
     pub(crate) set_spans: BTreeMap<Symbol, std::ops::Range<usize>>,
     /// What compiling has reported, oldest first, until the caller takes it.
-    pub(crate) diagnostics: Vec<crate::diag::Diagnostic>,
+    pub(crate) diagnostics: crate::diag::Diagnostics,
 }
 
 // (followed by the full ~190-line doc roster of method/helper signatures with

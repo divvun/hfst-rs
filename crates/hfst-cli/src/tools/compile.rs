@@ -351,6 +351,7 @@ pub mod pmatch2fst {
         // pmatch is pinned to the tropical backend (the C++ compilation_format);
         // the former format argument is the type parameter now.
         let mut comp = PmatchCompiler::<hfst_openfst::StdVectorFst>::new();
+        comp.set_diagnostic_sink(crate::hfst_commandline::stderr_sink());
         comp.set_verbose(common.verbose);
         comp.set_flatten(options.flatten);
         comp.set_include_cosine_distances(options.include_cosine_distances);
@@ -389,9 +390,7 @@ pub mod pmatch2fst {
         // C: std::string holds bytes; reinterpret the collected bytes as UTF-8.
         let file_contents = String::from_utf8_lossy(&file_bytes).into_owned();
         if file_contents.len() > 1 {
-            let compiled = comp.compile(&file_contents);
-            crate::hfst_commandline::print_diagnostics(comp.take_diagnostics());
-            definitions = match compiled {
+            definitions = match comp.compile(&file_contents) {
                 Ok(d) => d,
                 Err(e) => {
                     eprintln!("{}: {e}", common.program_name);
@@ -914,7 +913,7 @@ pub mod twolc {
         } else {
             String::from("<twolc>")
         };
-        let (compiled, diagnostics) = match command_line.format {
+        let compiled = match command_line.format {
             #[cfg(feature = "foma")]
             ImplementationType::FOMA_TYPE => {
                 let mut comp =
@@ -924,9 +923,9 @@ pub mod twolc {
                         command_line.resolve_left_conflicts,
                         command_line.resolve_right_conflicts,
                     );
+                comp.set_diagnostic_sink(crate::hfst_commandline::stderr_sink());
                 comp.set_source_name(&source_name);
-                let compiled = comp.compile_and_store(&input, &mut out);
-                (compiled, comp.take_diagnostics())
+                comp.compile_and_store(&input, &mut out)
             }
             _ => {
                 let mut comp = TwolcCompiler::<hfst_openfst::StdVectorFst>::new_with_options(
@@ -935,12 +934,11 @@ pub mod twolc {
                     command_line.resolve_left_conflicts,
                     command_line.resolve_right_conflicts,
                 );
+                comp.set_diagnostic_sink(crate::hfst_commandline::stderr_sink());
                 comp.set_source_name(&source_name);
-                let compiled = comp.compile_and_store(&input, &mut out);
-                (compiled, comp.take_diagnostics())
+                comp.compile_and_store(&input, &mut out)
             }
         };
-        crate::hfst_commandline::print_diagnostics(diagnostics);
         match compiled {
             Some(()) => {}
             None => {

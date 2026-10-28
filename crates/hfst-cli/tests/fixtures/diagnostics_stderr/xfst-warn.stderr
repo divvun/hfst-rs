@@ -1,0 +1,8 @@
+Warning: there is no compose-flag-as-special variable; setting flag-is-epsilon instead
+   ╭─[ <stdin>:1:1 ]
+   │
+ 1 │ set compose-flag-as-special ON
+   │ ───────────────┬──────────────  
+   │                ╰──────────────── there is no compose-flag-as-special variable; setting flag-is-epsilon instead
+───╯
+ INFO HFST: raw

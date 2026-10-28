@@ -2,7 +2,7 @@
 //! why, and suggest what to write instead.
 
 use super::*;
-use crate::diag::Diagnostic;
+use crate::diag::{Diagnostic, DiagnosticSink};
 
 /// How many example pairs a help line lists before summarising the rest.
 const EXAMPLE_PAIRS: usize = 8;
@@ -48,13 +48,20 @@ impl<B: AlgebraBackend> TwolcCompiler<B> {
     /// taken, oldest first, failures and warnings alike.
     // [spec:hfst:req:javascript.diagnostics-as-data]
     pub fn diagnostics(&self) -> &[Diagnostic] {
-        &self.diagnostics
+        self.diagnostics.kept()
     }
 
     /// Hand over the diagnostics reported so far, leaving none behind.
     // [spec:hfst:req:javascript.diagnostics-as-data]
     pub fn take_diagnostics(&mut self) -> Vec<Diagnostic> {
-        std::mem::take(&mut self.diagnostics)
+        self.diagnostics.take()
+    }
+
+    /// Hand each later diagnostic to `sink` the moment it is produced. They
+    /// are not kept, so [`Self::take_diagnostics`] returns none of them.
+    // [spec:hfst:req:javascript.diagnostics-as-data]
+    pub fn set_diagnostic_sink(&mut self, sink: DiagnosticSink) {
+        self.diagnostics.set_sink(sink);
     }
 
     /// Record `d` against the grammar source. Silent mode drops warnings,
@@ -378,7 +385,7 @@ fn within_one_edit(a: &str, b: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{example_list, nearest_declared, within_one_edit};
+    use super::{example_list, nearest_declared, symbols, within_one_edit};
     use crate::hfst_data_types::Symbol;
     use std::collections::BTreeSet;
 
@@ -397,6 +404,12 @@ mod tests {
             None,
             "internal markers never count"
         );
+    }
+
+    #[test]
+    fn symbol_counts_read_naturally() {
+        assert_eq!(symbols(1), "1 symbol");
+        assert_eq!(symbols(3), "3 symbols");
     }
 
     #[test]

@@ -534,7 +534,7 @@ impl<B: AlgebraBackend> XreCompiler<B> {
             span_base: self.span_base,
             replace_pass: false,
             files: std::sync::Arc::clone(&self.files),
-            diagnostics: Vec::new(),
+            diagnostics: self.diagnostics.forwarding(),
         };
 
         // get_function_xre + recursive compile.
@@ -546,7 +546,7 @@ impl<B: AlgebraBackend> XreCompiler<B> {
         Ok(match parse(&body) {
             Ok(expr) => {
                 let evaluated = sub.eval(&expr);
-                self.diagnostics.append(&mut sub.diagnostics);
+                self.diagnostics.extend(sub.diagnostics.take());
                 let mut t = evaluated?;
                 t.optimize_with_config(&self.opt_cfg())?;
                 t

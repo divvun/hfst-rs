@@ -100,8 +100,14 @@ fn valid_file_parse<B: AlgebraBackend>() -> Result<(), hfst::error::Error> {
 // does not throw it.
 fn valid_file_read_lexc<B: AlgebraBackend>() -> Result<(), hfst::error::Error> {
     let animals = build_animals::<B>()?;
-    let rlexc = HfstTransducer::<B>::read_lexc(&fixture_path("test_lexc.lexc"), false)?;
+    let mut diagnostics = Vec::new();
+    let rlexc =
+        HfstTransducer::<B>::read_lexc(&fixture_path("test_lexc.lexc"), false, &mut diagnostics)?;
     assert!(animals.compare_default(&rlexc)?);
+    assert!(
+        !diagnostics.iter().any(|d| d.is_error()),
+        "{diagnostics:#?}"
+    );
     Ok(())
 }
 

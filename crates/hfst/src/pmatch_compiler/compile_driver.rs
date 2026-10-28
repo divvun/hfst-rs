@@ -1,7 +1,7 @@
 //! The compile entry points, include expansion, file reading, and archive writing.
 
 use super::*;
-use crate::diag::Diagnostic;
+use crate::diag::{Diagnostic, DiagnosticSink};
 
 // ---------------------------------------------------------------------------
 // Bison-bridge globals/functions consumed by this group (the bison parser is
@@ -591,13 +591,20 @@ impl<B: AlgebraBackend + FromAnyTransducer + 'static> PmatchCompiler<B> {
     /// taken, oldest first, failures and warnings alike.
     // [spec:hfst:req:javascript.diagnostics-as-data]
     pub fn diagnostics(&self) -> &[Diagnostic] {
-        &self.eval_ctx.diagnostics
+        self.eval_ctx.diagnostics.kept()
     }
 
     /// Hand over the diagnostics reported so far, leaving none behind.
     // [spec:hfst:req:javascript.diagnostics-as-data]
     pub fn take_diagnostics(&mut self) -> Vec<Diagnostic> {
-        std::mem::take(&mut self.eval_ctx.diagnostics)
+        self.eval_ctx.diagnostics.take()
+    }
+
+    /// Hand each later diagnostic to `sink` the moment it is produced. They
+    /// are not kept, so [`Self::take_diagnostics`] returns none of them.
+    // [spec:hfst:req:javascript.diagnostics-as-data]
+    pub fn set_diagnostic_sink(&mut self, sink: DiagnosticSink) {
+        self.eval_ctx.diagnostics.set_sink(sink);
     }
 }
 
