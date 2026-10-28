@@ -183,10 +183,10 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         for word in indata.split('\n').filter(|w| !w.is_empty()) {
             let matches = self.med_matches(word)?;
             if matches.is_empty() {
-                println!("???");
+                writeln!(self.output, "???")?;
             }
             for (m, cost) in matches {
-                println!("{}\t{}", m, cost);
+                writeln!(self.output, "{}\t{}", m, cost)?;
             }
         }
         self.prompt();

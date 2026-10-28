@@ -1,6 +1,6 @@
 schema_version 7
 
-last_sync_at 2026-10-28T22:13:06.586036Z
+last_sync_at 2026-10-28T22:30:13.179398Z
 
 rule_versions (
     {id determinize-envelope.bounded-strategies, version 0}
@@ -125,7 +125,7 @@ derived_priorities (
     {id divvun-hfst-branding, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
     {id drop-dead-commandline-def, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
     {id eliminate-flags-acyclic-hang, priority 0, derived_at 2026-10-06T21:03:19.004443Z}
-    {id eliminate-flags-unconstrained-flags, priority 0, derived_at 2026-10-28T22:13:06.586036Z}
+    {id eliminate-flags-unconstrained-flags, priority 0, derived_at 2026-10-28T22:30:13.179398Z}
     {id esu-lexc-divergence, priority 0, derived_at 2026-10-06T21:03:19.004443Z}
     {id esu-twolc-divergence, priority 0, derived_at 2026-10-06T21:03:19.004443Z}
     {id family-files, priority 1, derived_at 2026-08-21T21:18:14.374864Z}
@@ -261,22 +261,22 @@ derived_priorities (
     {id upstream-bugs.t3.slh-set-centre, priority 0, derived_at 2026-10-06T21:03:19.004443Z}
     {id version-banner-one-identity, priority 0, derived_at 2026-10-06T21:03:19.004443Z}
     {id version-line-provenance, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
-    {id wasm.algebra, priority 3, derived_at 2026-10-28T22:13:06.586036Z}
-    {id wasm.compile, priority 3, derived_at 2026-10-28T22:13:06.586036Z}
-    {id wasm.crates, priority 1, derived_at 2026-10-28T22:13:06.586036Z}
-    {id wasm.diagnostics, priority 0, derived_at 2026-10-28T22:13:06.586036Z}
-    {id wasm.errors-and-handles, priority 2, derived_at 2026-10-28T22:13:06.586036Z}
-    {id wasm.file-resolver, priority 0, derived_at 2026-10-28T22:13:06.586036Z}
-    {id wasm.host-facilities, priority 0, derived_at 2026-10-28T22:13:06.586036Z}
-    {id wasm.lookup, priority 3, derived_at 2026-10-28T22:13:06.586036Z}
-    {id wasm.parity, priority 3, derived_at 2026-10-28T22:13:06.586036Z}
-    {id wasm.publish, priority 3, derived_at 2026-10-28T22:13:06.586036Z}
-    {id wasm.runtime-package, priority 3, derived_at 2026-10-28T22:13:06.586036Z}
-    {id wasm.rustfst-entropy, priority 0, derived_at 2026-10-28T22:13:06.586036Z}
-    {id wasm.tokenise, priority 3, derived_at 2026-10-28T22:13:06.586036Z}
-    {id wasm.transducer-io, priority 3, derived_at 2026-10-28T22:13:06.586036Z}
-    {id wasm.xfst, priority 3, derived_at 2026-10-28T22:13:06.586036Z}
-    {id wasm.xfst-output, priority 0, derived_at 2026-10-28T22:13:06.586036Z}
+    {id wasm.algebra, priority 3, derived_at 2026-10-28T22:30:13.179398Z}
+    {id wasm.compile, priority 3, derived_at 2026-10-28T22:30:13.179398Z}
+    {id wasm.crates, priority 1, derived_at 2026-10-28T22:30:13.179398Z}
+    {id wasm.diagnostics, priority 0, derived_at 2026-10-28T22:30:13.179398Z}
+    {id wasm.errors-and-handles, priority 2, derived_at 2026-10-28T22:30:13.179398Z}
+    {id wasm.file-resolver, priority 0, derived_at 2026-10-28T22:30:13.179398Z}
+    {id wasm.host-facilities, priority 0, derived_at 2026-10-28T22:30:13.179398Z}
+    {id wasm.lookup, priority 3, derived_at 2026-10-28T22:30:13.179398Z}
+    {id wasm.parity, priority 3, derived_at 2026-10-28T22:30:13.179398Z}
+    {id wasm.publish, priority 3, derived_at 2026-10-28T22:30:13.179398Z}
+    {id wasm.runtime-package, priority 3, derived_at 2026-10-28T22:30:13.179398Z}
+    {id wasm.rustfst-entropy, priority 0, derived_at 2026-10-28T22:30:13.179398Z}
+    {id wasm.tokenise, priority 3, derived_at 2026-10-28T22:30:13.179398Z}
+    {id wasm.transducer-io, priority 3, derived_at 2026-10-28T22:30:13.179398Z}
+    {id wasm.xfst, priority 3, derived_at 2026-10-28T22:30:13.179398Z}
+    {id wasm.xfst-output, priority 0, derived_at 2026-10-28T22:30:13.179398Z}
     {id weighted-determinize-fallback, priority 1, derived_at 2026-08-21T21:18:14.374864Z}
     {id xfst-ambiguity-substring-med, priority 1, derived_at 2026-10-06T21:03:19.004443Z}
     {id xfst-copyright-owner-plain, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
@@ -322,6 +322,7 @@ assertions (
     {id core.util, kind @complete, author "brendan@necessary.nu", at 2026-07-17T15:39:56.891521Z}
     {id dead-code-allow-census, kind @complete, author "brendan@necessary.nu", at 2026-08-12T11:04:45.730918Z}
     {id determinize-intermediate, kind @complete, author "brendan@necessary.nu", at 2026-07-17T21:52:45.388723Z}
+    {id dhfst-type-header, kind @complete, author "brendan@necessary.nu", at 2026-10-05T12:05:20.55688Z}
     {id dhfst-writer-name, kind @complete, author "brendan@necessary.nu", at 2026-10-04T22:32:59.72173Z}
     {id diag-parse-error-spans, kind @complete, author "brendan@necessary.nu", at 2026-07-19T19:26:30.125695Z}
     {id divvun-hfst-branding, kind @complete, author "brendan@necessary.nu", at 2026-08-11T10:39:34.984866Z}
@@ -599,7 +600,6 @@ assertions (
     {id xfst-set-minimal-unwired, kind @complete, author "brendan@necessary.nu", at 2026-08-12T11:15:03.860264Z}
     {id xre-function-as-network-error, kind @complete, author "brendan@necessary.nu", at 2026-08-12T00:04:55.496721Z}
     {id xre-intermediate-optimization, kind @complete, author "brendan@necessary.nu", at 2026-08-19T23:55:03.286981Z}
-    {id dhfst-type-header, kind @complete, author "brendan@necessary.nu", at 2026-10-05T12:05:20.55688Z}
 )
 
 impl_evidence (
@@ -844,6 +844,16 @@ impl_evidence (
     ), rule_versions_seen (
         {id virtual-flag-algebra.subtraction, version 0}
     )}
+    {id wasm.host-facilities, covered_rules (
+        javascript.no-host-traps
+    ), covered_claims (
+        {impl_name target-impl, rule javascript.no-host-traps}
+    )}
+    {id wasm.xfst-output, covered_rules (
+        javascript.xfst-output-sink
+    ), covered_claims (
+        {impl_name target-impl, rule javascript.xfst-output-sink}
+    )}
     {id xfst-ambiguity-substring-med, covered_rules (
         xfst-cmd.ambiguity
         xfst-cmd.apply-med
@@ -946,10 +956,5 @@ impl_evidence (
         {impl_name target-impl, rule xre-finalization.root-optimize}
     ), rule_versions_seen (
         {id xre-finalization.root-optimize, version 0}
-    )}
-    {id wasm.host-facilities, covered_rules (
-        javascript.no-host-traps
-    ), covered_claims (
-        {impl_name target-impl, rule javascript.no-host-traps}
     )}
 )
