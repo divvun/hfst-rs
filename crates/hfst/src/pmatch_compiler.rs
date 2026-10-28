@@ -803,6 +803,9 @@ pub struct PmatchEvalContext<B: AlgebraBackend + 'static> {
     // keyed by node identity (see `PmatchObject::cache_key`). Replaces the C++
     // `PmatchObject::cache` field.
     node_caches: HashMap<usize, HfstTransducer<B>>,
+    // What compiling has reported, oldest first, until the caller takes it.
+    // Kept across compiles: 'init_globals' leaves it alone.
+    diagnostics: Vec<crate::diag::Diagnostic>,
 }
 
 macro_rules! pmatch_ctx_string_set {

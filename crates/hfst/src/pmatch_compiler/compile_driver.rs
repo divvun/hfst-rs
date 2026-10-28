@@ -1,6 +1,9 @@
 //! The compile entry points, include expansion, file reading, and archive writing.
 
+use std::sync::Arc;
+
 use super::*;
+use crate::diag::Diagnostic;
 
 // ---------------------------------------------------------------------------
 // Bison-bridge globals/functions consumed by this group (the bison parser is
@@ -82,24 +85,26 @@ pub fn expand_includes<B: AlgebraBackend + 'static>(
     }
     retval
 }
-// Render a parser failure as source-anchored diagnostics. The bison port used
-// to swallow 'nfst_pmatch::parse' errors and let compilation fall through to
-// the downstream "Empty ruleset, nothing to write" message, which hides the
-// real cause — e.g. a reserved predefined acceptor name (`Alpha`,
+// Record a parser failure as source-anchored diagnostics, so the real cause
+// reaches the caller, e.g. a reserved predefined acceptor name (`Alpha`,
 // `Whitespace`, ...) used as a `Define` target. Each diagnostic carries a byte
-// span into the include-expanded script, so the rendered snippet is anchored
-// there.
-fn emit_pmatch_parse_error(e: &nfst_pmatch::ParseError, expanded_script: &str) {
+// span into the include-expanded script, which is the source it points into.
+fn report_pmatch_parse_error<B: AlgebraBackend + 'static>(
+    ctx: &mut PmatchEvalContext<B>,
+    e: &nfst_pmatch::ParseError,
+    expanded_script: &str,
+) {
+    let source: Arc<str> = Arc::from(expanded_script);
     if e.diagnostics.is_empty() {
-        error!("pmatch: syntax error");
+        ctx.diagnostics
+            .push(Diagnostic::error("pmatch: syntax error").in_source("<pmatch>", source.clone()));
     }
     for d in &e.diagnostics {
-        crate::diag::emit(
-            "<pmatch>",
-            expanded_script,
-            d.span.range.clone(),
-            crate::diag::Severity::Error,
-            &format!("pmatch: syntax error: {}", d.message),
+        let message = format!("pmatch: syntax error: {}", d.message);
+        ctx.diagnostics.push(
+            Diagnostic::error(&message)
+                .label(d.span.range.clone(), message)
+                .in_source("<pmatch>", source.clone()),
         );
     }
 }
@@ -134,6 +139,9 @@ fn check_insertions_defined<B: AlgebraBackend + 'static>(
 
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.compile-fn]
 // [spec:hfst:sem:pmatch-utils.hfst.pmatch.compile-fn]
+// [spec:hfst:req:javascript.diagnostics-as-data]
+/// Compile `pmatch` into its named transducers. Everything the compile
+/// reports is appended to `diagnostics`, whether it succeeds or fails.
 pub fn compile<B: AlgebraBackend + FromAnyTransducer + 'static>(
     pmatch: &str,
     defs: &HashMap<String, HfstTransducer<B>>,
@@ -141,10 +149,31 @@ pub fn compile<B: AlgebraBackend + FromAnyTransducer + 'static>(
     do_flatten: bool,
     do_include_cosine_distances: bool,
     includedir: String,
+    diagnostics: &mut Vec<Diagnostic>,
 ) -> crate::error::Result<HashMap<String, HfstTransducer<B>>> {
-    // lock here?
-    let mut ctx_owned = PmatchEvalContext::new();
-    let ctx = &mut ctx_owned;
+    let mut ctx = PmatchEvalContext::new();
+    let result = compile_in_context(
+        &mut ctx,
+        pmatch,
+        defs,
+        be_verbose,
+        do_flatten,
+        do_include_cosine_distances,
+        includedir,
+    );
+    diagnostics.append(&mut ctx.diagnostics);
+    result
+}
+
+fn compile_in_context<B: AlgebraBackend + FromAnyTransducer + 'static>(
+    ctx: &mut PmatchEvalContext<B>,
+    pmatch: &str,
+    defs: &HashMap<String, HfstTransducer<B>>,
+    be_verbose: bool,
+    do_flatten: bool,
+    do_include_cosine_distances: bool,
+    includedir: String,
+) -> crate::error::Result<HashMap<String, HfstTransducer<B>>> {
     ctx.init_globals();
     let expanded_script = expand_includes(ctx, pmatch);
     ctx.data = expanded_script.clone();
@@ -180,7 +209,7 @@ pub fn compile<B: AlgebraBackend + FromAnyTransducer + 'static>(
             }
         }
         Err(e) => {
-            emit_pmatch_parse_error(&e, &expanded_script);
+            report_pmatch_parse_error(ctx, &e, &expanded_script);
             ctx.data = String::new();
             ctx.len = 0;
             return Err(syntax_error(&e));
@@ -612,7 +641,7 @@ impl<B: AlgebraBackend + FromAnyTransducer + 'static> PmatchCompiler<B> {
                     }
                 }
                 Err(e) => {
-                    emit_pmatch_parse_error(&e, &expanded_script);
+                    report_pmatch_parse_error(ctx, &e, &expanded_script);
                     ctx.data = String::new();
                     ctx.len = 0;
                     return Err(syntax_error(&e));
@@ -863,6 +892,19 @@ impl<B: AlgebraBackend + FromAnyTransducer + 'static> PmatchCompiler<B> {
     // [spec:hfst:sem:pmatch-compiler.hfst.pmatch.pmatch-compiler.set-include-path-fn]
     pub fn set_include_path(&mut self, path: String) {
         self.includedir = path;
+    }
+
+    /// Everything compiling has reported since the diagnostics were last
+    /// taken, oldest first, failures and warnings alike.
+    // [spec:hfst:req:javascript.diagnostics-as-data]
+    pub fn diagnostics(&self) -> &[Diagnostic] {
+        &self.eval_ctx.diagnostics
+    }
+
+    /// Hand over the diagnostics reported so far, leaving none behind.
+    // [spec:hfst:req:javascript.diagnostics-as-data]
+    pub fn take_diagnostics(&mut self) -> Vec<Diagnostic> {
+        std::mem::take(&mut self.eval_ctx.diagnostics)
     }
 }
 

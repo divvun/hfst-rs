@@ -178,13 +178,7 @@ impl<B: AlgebraBackend> LexcCompiler<B> {
                 if self.warn_missing_alphabets {
                     let message = format!("Adding {first} to Alphabets [-Wmissing-alphabets]");
                     if first == "0" {
-                        crate::diag::emit(
-                            &self.source_name,
-                            &self.source,
-                            self.current_span.clone(),
-                            crate::diag::Severity::Info,
-                            &message,
-                        );
+                        self.info_at_current_token(&message);
                     } else if self.treat_warnings_as_errors {
                         self.error_at_current_token(&message);
                         self.parseErrors_ = true;
@@ -374,13 +368,7 @@ impl<B: AlgebraBackend> LexcCompiler<B> {
                 if self.warn_missing_alphabets {
                     let message = format!("Adding {first} to Alphabets [-Wmissing-alphabets]");
                     if first == "0" {
-                        crate::diag::emit(
-                            &self.source_name,
-                            &self.source,
-                            self.current_span.clone(),
-                            crate::diag::Severity::Info,
-                            &message,
-                        );
+                        self.info_at_current_token(&message);
                     } else if self.treat_warnings_as_errors {
                         self.error_at_current_token(&message);
                         self.parseErrors_ = true;
@@ -403,13 +391,7 @@ impl<B: AlgebraBackend> LexcCompiler<B> {
                 if self.warn_missing_alphabets {
                     let message = format!("Adding {second} to Alphabets [-Wmissing-alphabets]");
                     if second == "0" {
-                        crate::diag::emit(
-                            &self.source_name,
-                            &self.source,
-                            self.current_span.clone(),
-                            crate::diag::Severity::Info,
-                            &message,
-                        );
+                        self.info_at_current_token(&message);
                     } else if self.treat_warnings_as_errors {
                         self.error_at_current_token(&message);
                         self.parseErrors_ = true;
@@ -448,7 +430,9 @@ impl<B: AlgebraBackend> LexcCompiler<B> {
         };
         self.tokenizer.add_multichar_symbol(&encoded_cont);
 
-        let Some(mut new_paths) = self.xre.compile(regexp) else {
+        let compiled = self.xre.compile(regexp);
+        self.absorb_xre_diagnostics();
+        let Some(mut new_paths) = compiled else {
             self.error_at_current_token("Unable to parse regular expression");
             self.parseErrors_ = true;
             return Ok(self);
@@ -520,6 +504,7 @@ impl<B: AlgebraBackend> LexcCompiler<B> {
     pub fn add_xre_definition(&mut self, definition_name: &str, xre: &str) -> &mut Self {
         // FIXME: collect implicit characters
         self.xre.define(definition_name, xre);
+        self.absorb_xre_diagnostics();
         if !self.quiet {
             info!(
                 "Defined '{}': ? Kb., ? states, ? arcs, ? paths.",

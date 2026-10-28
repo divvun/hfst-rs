@@ -55,6 +55,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::ops::Range;
+use std::sync::Arc;
 
 // The nfst-twolc AST rule node is renamed to keep the name 'TwolcRule' free
 // for the closed rule sum below (the former 'Box<dyn RuleT>').
@@ -319,15 +320,16 @@ pub struct TwolcCompiler<B: AlgebraBackend> {
     pub(crate) resolve_right_conflicts: bool,
     pub(crate) sets: BTreeMap<Symbol, SymbolRange>,
     pub(crate) definitions: BTreeMap<Symbol, OtherSymbolTransducer<B>>,
-    /// The twolc source currently being compiled, retained so source-level
-    /// diagnostics can render the offending snippet (ariadne). Empty until
-    /// `compile`/`build_grammar` runs.
-    pub(crate) source: String,
+    /// The twolc source currently being compiled, which source-level
+    /// diagnostics point into. Empty until `compile`/`build_grammar` runs.
+    pub(crate) source: Arc<str>,
     /// Label shown in diagnostics for `source` (a file name, or `"<twolc>"`).
     pub(crate) source_name: String,
     /// Where each set's name is written in the `Sets` section, so a diagnostic
     /// about a set can point at its definition.
     pub(crate) set_spans: BTreeMap<Symbol, std::ops::Range<usize>>,
+    /// What compiling has reported, oldest first, until the caller takes it.
+    pub(crate) diagnostics: Vec<crate::diag::Diagnostic>,
 }
 
 // (followed by the full ~190-line doc roster of method/helper signatures with

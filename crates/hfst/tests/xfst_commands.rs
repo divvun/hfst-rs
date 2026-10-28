@@ -13,8 +13,8 @@ fn a_failed_command_stops_the_script() {
     let src = "regex a ;\npop stack\npop stack\nregex b ;\n";
     let err = c.parse(src).expect_err("popping an empty stack fails");
     let d = err.diagnostics.first().expect("the failure is described");
-    assert_eq!(&src[d.span.clone()], "pop stack");
-    assert!(d.message.contains("empty stack"), "{}", d.message);
+    assert_eq!(&src[d.primary_span().expect("a span")], "pop stack");
+    assert!(d.message().contains("empty stack"), "{}", d.message());
     assert!(c.get_stack().is_empty(), "'regex b' ran after the failure");
 }
 
@@ -50,7 +50,7 @@ fn an_unreadable_file_names_the_path() {
     let err = c
         .parse("read lexc /nonexistent/x.lexc\n")
         .expect_err("a missing lexc file fails");
-    let message = &err.diagnostics[0].message;
+    let message = err.diagnostics[0].message();
     assert!(message.contains("/nonexistent/x.lexc"), "{message}");
 }
 
@@ -62,7 +62,7 @@ fn an_unwritable_file_names_the_path() {
     let err = c
         .parse("regex a ;\nprint words > /nonexistent/out.txt\n")
         .expect_err("writing into a missing directory fails");
-    let message = &err.diagnostics[0].message;
+    let message = err.diagnostics[0].message();
     assert!(message.contains("/nonexistent/out.txt"), "{message}");
 }
 
@@ -134,7 +134,7 @@ fn sourced_failure_stops_the_caller() {
     let err = c
         .parse(&format!("source {}\nregex a ;\n", inner.display()))
         .expect_err("the sourced failure propagates");
-    assert!(err.diagnostics[0].message.contains("empty stack"));
+    assert!(err.diagnostics[0].message().contains("empty stack"));
     assert!(c.get_stack().is_empty());
 }
 
@@ -164,7 +164,7 @@ fn a_self_sourcing_script_fails() {
     let err = c
         .parse(&format!("source {}\n", inner.display()))
         .expect_err("the recursion is cut off");
-    assert!(err.diagnostics[0].message.contains("nested"), "{:?}", err);
+    assert!(err.diagnostics[0].message().contains("nested"), "{:?}", err);
 }
 
 // [spec:hfst:req:xfst-cmd.source/test]
@@ -177,7 +177,7 @@ fn sourcing_a_missing_file_names_it() {
         .expect_err("a missing file fails");
     assert!(
         err.diagnostics[0]
-            .message
+            .message()
             .contains("/nonexistent/script.xfst")
     );
 }
@@ -296,7 +296,7 @@ fn text_round_trips_and_refuses_cycles() {
     let err = c
         .parse(&format!("regex a+ ;\nwrite text {}\n", file.display()))
         .expect_err("a cyclic network has no finite word list");
-    assert!(err.diagnostics[0].message.contains("cyclic"));
+    assert!(err.diagnostics[0].message().contains("cyclic"));
 }
 
 // [spec:hfst:req:xfst-cmd.no-placeholders/test]
@@ -309,7 +309,7 @@ fn unsupported_commands_fail_by_name() {
         .expect_err("label-maps is not supported");
     assert!(
         err.diagnostics[0]
-            .message
+            .message()
             .contains("'print label-maps' is not supported")
     );
 }
@@ -368,7 +368,7 @@ fn bad_prolog_names_the_line() {
     let err = c
         .parse(&format!("read prolog {}\n", file.display()))
         .expect_err("not prolog");
-    assert!(err.diagnostics[0].message.contains("line 3"), "{:?}", err);
+    assert!(err.diagnostics[0].message().contains("line 3"), "{:?}", err);
 }
 
 // [spec:hfst:sem:xfst-cmd.sort/test]
@@ -457,7 +457,7 @@ fn inert_variables_cannot_be_set() {
             .parse(&format!("set {name} ON\n"))
             .expect_err("an inert variable is not settable");
         assert!(
-            err.diagnostics[0].message.contains("no such variable"),
+            err.diagnostics[0].message().contains("no such variable"),
             "{name}"
         );
     }

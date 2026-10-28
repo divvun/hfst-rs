@@ -1,0 +1,9 @@
+Reading input from STDIN.
+Writing output to /dev/null.
+Error: expected `]`, got `;`
+   ╭─[ <twolc>:3:16 ]
+   │
+ 3 │ "r" a:b => _ [ ;
+   │                ┬  
+   │                ╰── here
+───╯

@@ -356,7 +356,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         // under unrelated text; clearing it makes the regex compiler fall back
         // to plain messages here. Body syntax errors are anchored properly a
         // layer up, where the body is re-parsed at its script offset.
-        self.xre.source = String::new();
+        self.xre.source = std::sync::Arc::from("");
         let t = self.xre.eval_finalized(xre)?;
         Ok(self.alloc_net(t))
     }

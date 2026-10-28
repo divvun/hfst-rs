@@ -40,6 +40,7 @@ impl<B: AlgebraBackend + 'static> PmatchEvalContext<B> {
             lst_line_map: BTreeMap::new(),
             lst_overlap_warned: BTreeSet::new(),
             node_caches: HashMap::new(),
+            diagnostics: Vec::new(),
         }
     }
 

@@ -389,7 +389,9 @@ pub mod pmatch2fst {
         // C: std::string holds bytes; reinterpret the collected bytes as UTF-8.
         let file_contents = String::from_utf8_lossy(&file_bytes).into_owned();
         if file_contents.len() > 1 {
-            definitions = match comp.compile(&file_contents) {
+            let compiled = comp.compile(&file_contents);
+            crate::hfst_commandline::print_diagnostics(comp.take_diagnostics());
+            definitions = match compiled {
                 Ok(d) => d,
                 Err(e) => {
                     eprintln!("{}: {e}", common.program_name);
@@ -397,12 +399,7 @@ pub mod pmatch2fst {
                 }
             };
         }
-        let writable = definitions.contains_key("TOP")
-            && matches!(
-                hfst::pmatch_compiler::build_archive_harmonizer(&definitions),
-                Ok(Some(_))
-            );
-        if !writable {
+        if !has_archive(&definitions) {
             eprintln!("{}: Empty ruleset, nothing to write", common.program_name);
             return Err(1);
         }
@@ -441,6 +438,18 @@ pub mod pmatch2fst {
         Ok(())
     }
 
+    /// Whether a compiled ruleset makes an archive: it has a TOP, and its
+    /// definitions carry at least one symbol.
+    fn has_archive(
+        definitions: &std::collections::HashMap<String, HfstTransducer<hfst_openfst::StdVectorFst>>,
+    ) -> bool {
+        definitions.contains_key("TOP")
+            && matches!(
+                hfst::pmatch_compiler::build_archive_harmonizer(definitions),
+                Ok(Some(_))
+            )
+    }
+
     // [spec:hfst:def:hfst-pmatch2fst.main-fn]
     // [spec:hfst:sem:hfst-pmatch2fst.main-fn]
     pub(in crate::tools) fn execute(args: Vec<String>) -> ToolResult {
@@ -468,6 +477,25 @@ pub mod pmatch2fst {
             }
         };
         process_stream(&common, &options, &mut *input)
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::has_archive;
+        use hfst::hfst_transducer::HfstTransducer;
+        use hfst_openfst::StdVectorFst;
+        use std::collections::HashMap;
+
+        #[test]
+        fn only_a_ruleset_with_top_makes_archive() -> Result<(), hfst::error::Error> {
+            let mut definitions: HashMap<String, HfstTransducer<StdVectorFst>> = HashMap::new();
+            assert!(!has_archive(&definitions));
+            definitions.insert("Word".to_string(), HfstTransducer::new_symbol("a")?);
+            assert!(!has_archive(&definitions), "a ruleset with no TOP");
+            definitions.insert("TOP".to_string(), HfstTransducer::new_symbol("b")?);
+            assert!(has_archive(&definitions));
+            Ok(())
+        }
     }
 }
 
@@ -886,27 +914,33 @@ pub mod twolc {
         } else {
             String::from("<twolc>")
         };
-        let compiled = match command_line.format {
+        let (compiled, diagnostics) = match command_line.format {
             #[cfg(feature = "foma")]
             ImplementationType::FOMA_TYPE => {
-                TwolcCompiler::<hfst::backend_foma::FomaTransducer>::new_with_options(
+                let mut comp =
+                    TwolcCompiler::<hfst::backend_foma::FomaTransducer>::new_with_options(
+                        command_line.be_quiet,
+                        command_line.be_verbose,
+                        command_line.resolve_left_conflicts,
+                        command_line.resolve_right_conflicts,
+                    );
+                comp.set_source_name(&source_name);
+                let compiled = comp.compile_and_store(&input, &mut out);
+                (compiled, comp.take_diagnostics())
+            }
+            _ => {
+                let mut comp = TwolcCompiler::<hfst_openfst::StdVectorFst>::new_with_options(
                     command_line.be_quiet,
                     command_line.be_verbose,
                     command_line.resolve_left_conflicts,
                     command_line.resolve_right_conflicts,
-                )
-                .set_source_name(&source_name)
-                .compile_and_store(&input, &mut out)
+                );
+                comp.set_source_name(&source_name);
+                let compiled = comp.compile_and_store(&input, &mut out);
+                (compiled, comp.take_diagnostics())
             }
-            _ => TwolcCompiler::<hfst_openfst::StdVectorFst>::new_with_options(
-                command_line.be_quiet,
-                command_line.be_verbose,
-                command_line.resolve_left_conflicts,
-                command_line.resolve_right_conflicts,
-            )
-            .set_source_name(&source_name)
-            .compile_and_store(&input, &mut out),
         };
+        crate::hfst_commandline::print_diagnostics(diagnostics);
         match compiled {
             Some(()) => {}
             None => {

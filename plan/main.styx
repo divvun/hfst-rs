@@ -8011,6 +8011,21 @@ children (
                 implements {
                     target-impl ([spec:hfst:req:javascript.diagnostics-as-data])
                 }
+                log (
+                    {
+                        at 2026-10-28T22:35:49.216193Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
+
+                    {
+                        at 2026-10-28T23:00:49.605967Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "Open points for the lead. (1) The CLI prints a compiler's diagnostics after each compile call, so a known error's stderr is byte-identical (pinned by hfst-cli tests/diagnostics_stderr.rs against fixtures recorded before the change), but warnings now print after the tracing progress lines emitted during the same call: hfst twolc warnings follow 'INFO Compiling rules.'/'INFO Storing rules.', default-verbosity hfst lexc warnings follow the 'INFO Defined'/'INFO Root...' lines, and an hfst xfst script's diagnostics print when the script (or REPL line) finishes. Restoring exact interleaving needs a per-compiler observer the CLI installs, or splitting twolc's prepare and store steps. (2) HfstTransducer::read_lexc / read_lexc_ptr (hfst_transducer/io.rs, outside this node's files) builds a LexcCompiler and drops it, so its diagnostics are now lost; it needs a diagnostics parameter or deletion. (3) pmatch @re file regexes compile with unwrap_or_default, so a failing regex there still yields an empty transducer; its diagnostics now reach the pmatch compiler's list. That site is in the file-resolver's area."
+                    }
+                )
             }
 
             {

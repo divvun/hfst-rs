@@ -7,10 +7,12 @@
 #![allow(clippy::too_many_arguments)]
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::sync::Arc;
 
 use nfst_xre::{BinaryOp, ParseError, SpannedXre, XreExpr};
 
 use crate::backend::AlgebraBackend;
+use crate::diag::{Diagnostic, Severity};
 use crate::hfst_data_types::Symbol;
 use crate::hfst_transducer::HfstTransducer;
 
@@ -134,9 +136,9 @@ pub struct XreCompiler<B: AlgebraBackend> {
     /// 'contained_only_comments'. Moved onto the instance to remove the
     /// thread-global mutable state.
     pub(crate) contains_only_comments: bool,
-    /// The regex source currently being compiled, retained so diagnostics can
-    /// render the offending snippet (ariadne). Empty until `compile` runs.
-    pub(crate) source: String,
+    /// The regex source currently being compiled, which diagnostics point
+    /// into. Empty until `compile` runs.
+    pub(crate) source: Arc<str>,
     /// Label shown in diagnostics for `source` (a file name, or `"<regex>"`).
     pub(crate) source_name: String,
     /// Byte span in `source` of the AST node currently being evaluated, updated
@@ -157,6 +159,8 @@ pub struct XreCompiler<B: AlgebraBackend> {
     /// Compile each root as one rewrite pass instead of a transducer
     /// ([`Self::set_replace_pass`]).
     pub(crate) replace_pass: bool,
+    /// What compiling has reported, oldest first, until the caller takes it.
+    pub(crate) diagnostics: Vec<Diagnostic>,
 }
 
 /// What went wrong, without the generic kind prefix when the error says more.
@@ -195,13 +199,14 @@ impl<B: AlgebraBackend> XreCompiler<B> {
             xerox_composition: false,
             encode_weights: false,
             contains_only_comments: false,
-            source: String::new(),
+            source: Arc::from(""),
             source_name: String::from("<regex>"),
             current_span: 0..0,
             failed_span: None,
             defined_multichar_symbols: None,
             span_base: 0,
             replace_pass: false,
+            diagnostics: Vec::new(),
         }
     }
 
@@ -221,13 +226,14 @@ impl<B: AlgebraBackend> XreCompiler<B> {
             xerox_composition: false,
             encode_weights: false,
             contains_only_comments: false,
-            source: String::new(),
+            source: Arc::from(""),
             source_name: String::from("<regex>"),
             current_span: 0..0,
             failed_span: None,
             defined_multichar_symbols: None,
             span_base: 0,
             replace_pass: false,
+            diagnostics: Vec::new(),
         }
     }
 }
@@ -260,41 +266,49 @@ impl<B: AlgebraBackend> XreCompiler<B> {
         self
     }
 
-    /// Render a diagnostic about the user's regex source, anchored at `span`
-    /// of the text the parser was handed (ariadne).
-    fn diag_at(&self, span: std::ops::Range<usize>, severity: crate::diag::Severity, msg: &str) {
-        let span = span.start + self.span_base..span.end + self.span_base;
-        crate::diag::emit(&self.source_name, &self.source, span, severity, msg);
+    /// Everything compiling has reported since the diagnostics were last
+    /// taken, oldest first, failures and warnings alike.
+    // [spec:hfst:req:javascript.diagnostics-as-data]
+    pub fn diagnostics(&self) -> &[Diagnostic] {
+        &self.diagnostics
     }
 
-    /// Render an error about a problem in the user's regex source, anchored at
-    /// the span of the node currently being evaluated (ariadne).
-    fn diag_error(&self, msg: &str) {
-        self.diag_at(self.current_span.clone(), crate::diag::Severity::Error, msg);
+    /// Hand over the diagnostics reported so far, leaving none behind.
+    // [spec:hfst:req:javascript.diagnostics-as-data]
+    pub fn take_diagnostics(&mut self) -> Vec<Diagnostic> {
+        std::mem::take(&mut self.diagnostics)
+    }
+
+    /// Record a diagnostic about the user's regex source, anchored at `span`
+    /// of the text the parser was handed.
+    fn diag_at(&mut self, span: std::ops::Range<usize>, severity: Severity, msg: &str) {
+        let span = span.start + self.span_base..span.end + self.span_base;
+        let d = Diagnostic::new(severity, msg)
+            .label(span, msg)
+            .in_source(&self.source_name, self.source.clone());
+        self.diagnostics.push(d);
+    }
+
+    /// Record an error about a problem in the user's regex source, anchored at
+    /// the span of the node currently being evaluated.
+    fn diag_error(&mut self, msg: &str) {
+        self.diag_at(self.current_span.clone(), Severity::Error, msg);
     }
 
     // [spec:hfst:def:xre-utils.hfst.xre.warn-fn]
-    /// Render a warning about the user's regex source, anchored at the span of
-    /// the node currently being evaluated (ariadne).
-    fn diag_warning(&self, msg: &str) {
-        self.diag_at(
-            self.current_span.clone(),
-            crate::diag::Severity::Warning,
-            msg,
-        );
+    /// Record a warning about the user's regex source, anchored at the span of
+    /// the node currently being evaluated.
+    fn diag_warning(&mut self, msg: &str) {
+        self.diag_at(self.current_span.clone(), Severity::Warning, msg);
     }
 
-    /// Render every diagnostic carried by an nfst-xre parse failure, each
+    /// Record every diagnostic carried by an nfst-xre parse failure, each
     /// anchored at its own span. The front-end parser reports syntax errors
     /// with byte spans into `self.source`; without this the caller's terse
     /// one-liner is all the user sees of a syntax error.
-    fn diag_parse_error(&self, e: &ParseError) {
+    fn diag_parse_error(&mut self, e: &ParseError) {
         for d in &e.diagnostics {
-            self.diag_at(
-                d.span.range.clone(),
-                crate::diag::Severity::Error,
-                &d.message,
-            );
+            self.diag_at(d.span.range.clone(), Severity::Error, &d.message);
         }
     }
 
@@ -309,7 +323,7 @@ impl<B: AlgebraBackend> XreCompiler<B> {
             .failed_span
             .take()
             .unwrap_or_else(|| self.current_span.clone());
-        self.diag_at(span, crate::diag::Severity::Error, &error_text(e));
+        self.diag_at(span, Severity::Error, &error_text(e));
     }
 
     // [spec:hfst:def:xre-compiler.hfst.xre.xre-compiler.set-error-stream-fn]

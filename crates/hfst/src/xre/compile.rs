@@ -13,8 +13,8 @@ impl<B: AlgebraBackend> XreCompiler<B> {
     // Comments-only also flips the contains_only_comments flag, matching the
     // 'XRE: (empty) { contains_only_comments = true; }' action.
     pub fn compile(&mut self, src: &str) -> Option<HfstTransducer<B>> {
-        // Retain the source so diagnostics can render the offending snippet.
-        self.source = src.to_string();
+        // Retain the source so diagnostics can point into it.
+        self.source = Arc::from(src);
         self.span_base = 0;
         self.contains_only_comments = false;
         if is_only_whitespace_or_comments(src) {
@@ -73,8 +73,8 @@ impl<B: AlgebraBackend> XreCompiler<B> {
         chars_read: &mut u32,
     ) -> Option<HfstTransducer<B>> {
         let expression = &text[offset..];
-        // Retain the source so diagnostics can render the offending snippet.
-        self.source = text.to_string();
+        // Retain the source so diagnostics can point into it.
+        self.source = Arc::from(text);
         self.span_base = offset;
         self.contains_only_comments = false;
         // Whitespace/comment-only input: the C++ lexer consumed it to EOF and

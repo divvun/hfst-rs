@@ -44,17 +44,32 @@ pub(super) enum PairUse {
 }
 
 impl<B: AlgebraBackend> TwolcCompiler<B> {
-    /// Render `d`. Silent mode hides warnings, never errors.
-    pub(super) fn emit(&self, d: Diagnostic) {
+    /// Everything compiling has reported since the diagnostics were last
+    /// taken, oldest first, failures and warnings alike.
+    // [spec:hfst:req:javascript.diagnostics-as-data]
+    pub fn diagnostics(&self) -> &[Diagnostic] {
+        &self.diagnostics
+    }
+
+    /// Hand over the diagnostics reported so far, leaving none behind.
+    // [spec:hfst:req:javascript.diagnostics-as-data]
+    pub fn take_diagnostics(&mut self) -> Vec<Diagnostic> {
+        std::mem::take(&mut self.diagnostics)
+    }
+
+    /// Record `d` against the grammar source. Silent mode drops warnings,
+    /// never errors.
+    pub(super) fn emit(&mut self, d: Diagnostic) {
         if d.is_error() || !self.silent {
-            d.emit(&self.source_name, &self.source);
+            let d = d.in_source(&self.source_name, self.source.clone());
+            self.diagnostics.push(d);
         }
     }
 
     /// Report a pair `input:output` with a set-name side that matches no
     /// declared pair.
     pub(super) fn report_empty_pair_set(
-        &self,
+        &mut self,
         cfg: &OstConfig,
         input: &str,
         output: &str,
@@ -110,7 +125,7 @@ impl<B: AlgebraBackend> TwolcCompiler<B> {
     }
 
     /// Warn that a set-naming rule centre declared pairs the Alphabet lacks.
-    pub(super) fn report_implied_pairs(&self, implied: &ImpliedPairs) {
+    pub(super) fn report_implied_pairs(&mut self, implied: &ImpliedPairs) {
         let shown = format!(
             "{}:{}",
             Rule::<B>::get_print_name(&implied.upper),
@@ -225,7 +240,7 @@ impl<B: AlgebraBackend> TwolcCompiler<B> {
     }
 
     /// Warn that a diacritic's partner in a pair is ignored.
-    pub(super) fn report_diacritic_pair(&self, input: &str, output: &str, site: &PairSite) {
+    pub(super) fn report_diacritic_pair(&mut self, input: &str, output: &str, site: &PairSite) {
         let (d, o) = (
             Rule::<B>::get_print_name(input),
             Rule::<B>::get_print_name(output),
@@ -240,7 +255,7 @@ impl<B: AlgebraBackend> TwolcCompiler<B> {
     /// Warn about a symbol no section declares, and suggest the declared name
     /// it most likely meant.
     pub(super) fn report_undeclared_symbol(
-        &self,
+        &mut self,
         symbol: &str,
         span: Range<usize>,
         declared: &BTreeSet<Symbol>,
@@ -269,7 +284,12 @@ impl<B: AlgebraBackend> TwolcCompiler<B> {
 
     /// Report why a rule or definition failed to compile, unless the failure
     /// was already reported where it happened.
-    pub(super) fn report_failure(&self, e: &crate::error::Error, span: &Range<usize>, what: &str) {
+    pub(super) fn report_failure(
+        &mut self,
+        e: &crate::error::Error,
+        span: &Range<usize>,
+        what: &str,
+    ) {
         if e.kind == crate::error::ErrorKind::EmptySymbolPairSet {
             return;
         }
@@ -279,8 +299,8 @@ impl<B: AlgebraBackend> TwolcCompiler<B> {
         );
     }
 
-    /// Render the parser's diagnostics, notes included.
-    pub(super) fn report_parse_errors(&self, diagnostics: &[nfst_twolc::Diagnostic]) {
+    /// Record the parser's diagnostics, notes included.
+    pub(super) fn report_parse_errors(&mut self, diagnostics: &[nfst_twolc::Diagnostic]) {
         for pd in diagnostics {
             let mut d = Diagnostic::error(pd.message.clone()).label(pd.span.range.clone(), "here");
             for n in &pd.notes {
@@ -358,7 +378,35 @@ fn within_one_edit(a: &str, b: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::within_one_edit;
+    use super::{example_list, nearest_declared, within_one_edit};
+    use crate::hfst_data_types::Symbol;
+    use std::collections::BTreeSet;
+
+    #[test]
+    fn nearest_name_folds_case_then_allows_one_edit() {
+        let declared: BTreeSet<Symbol> = ["Vow", "Cons", "__HFST_TWOLC_.#."]
+            .into_iter()
+            .map(Symbol::new)
+            .collect();
+        let near = |s| nearest_declared(s, &declared).map(Symbol::as_str);
+        assert_eq!(near("vow"), Some("Vow"));
+        assert_eq!(near("Cnos"), None);
+        assert_eq!(near("Conz"), Some("Cons"));
+        assert_eq!(
+            near("__HFST_TWOLC_.#"),
+            None,
+            "internal markers never count"
+        );
+    }
+
+    #[test]
+    fn a_long_pair_list_is_summarised() {
+        let pairs = (0..10).map(|i| format!("a:{i}"));
+        assert_eq!(
+            example_list(pairs),
+            "a:0 a:1 a:2 a:3 a:4 a:5 a:6 a:7 and 2 more"
+        );
+    }
 
     #[test]
     fn one_edit_covers_insert_delete_and_substitute() {

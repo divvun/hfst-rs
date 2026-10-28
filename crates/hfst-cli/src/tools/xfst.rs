@@ -306,11 +306,21 @@ fn parse_file<B: hfst::backend::AlgebraBackend + hfst::hfst_transducer::FromAnyT
     };
 
     comp.set_source_name(filename);
-    match comp.parse(&line) {
+    match parse_and_report(comp, &line) {
         Ok(_) => EXIT_SUCCESS,
         // Already reported against the script.
         Err(_) => EXIT_FAILURE,
     }
+}
+
+/// Run `text` as xfst input, then print what the run reported.
+fn parse_and_report<B: hfst::backend::AlgebraBackend + hfst::hfst_transducer::FromAnyTransducer>(
+    comp: &mut XfstCompiler<B>,
+    text: &str,
+) -> Result<Flow, hfst::xfst_compiler::ScriptError> {
+    let outcome = comp.parse(text);
+    crate::hfst_commandline::print_diagnostics(comp.take_diagnostics());
+    outcome
 }
 
 fn expression_continues(expr: &mut String) -> bool {
@@ -522,7 +532,7 @@ fn run_compiler<B: hfst::backend::AlgebraBackend + hfst::hfst_transducer::FromAn
             common,
             &format!("Executing xfst command '{}' given on command line\n", cmd),
         );
-        match comp.parse(&cmd) {
+        match parse_and_report(&mut comp, &cmd) {
             Ok(Flow::Continue) => {}
             Ok(Flow::Quit) => return EXIT_SUCCESS,
             Err(_) => return EXIT_FAILURE,
@@ -534,7 +544,7 @@ fn run_compiler<B: hfst::backend::AlgebraBackend + hfst::hfst_transducer::FromAn
             common,
             &format!("Executing xfst command '{}' given on command line\n", cmd),
         );
-        return match comp.parse(&cmd) {
+        return match parse_and_report(&mut comp, &cmd) {
             Ok(_) => EXIT_SUCCESS,
             Err(_) => EXIT_FAILURE,
         };
@@ -601,7 +611,7 @@ fn run_compiler<B: hfst::backend::AlgebraBackend + hfst::hfst_transducer::FromAn
             }
 
             // The prompt reports a failure and carries on.
-            match comp.parse(&format!("{}\n", expression)) {
+            match parse_and_report(&mut comp, &format!("{}\n", expression)) {
                 Ok(Flow::Quit) => break,
                 Ok(Flow::Continue) => {}
                 Err(_) => {

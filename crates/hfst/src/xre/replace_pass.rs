@@ -213,7 +213,7 @@ fn reaches_final(
 
 impl<B: AlgebraBackend> XreCompiler<B> {
     /// Report a refusal at `span` and count it.
-    fn refuse(&self, refusals: &mut usize, span: Range<usize>, msg: &str) {
+    fn refuse(&mut self, refusals: &mut usize, span: Range<usize>, msg: &str) {
         self.diag_at(
             span,
             crate::diag::Severity::Error,
@@ -291,7 +291,7 @@ impl<B: AlgebraBackend> XreCompiler<B> {
     /// The placement a rule's contexts give it. Only the pass boundary may
     /// appear in a context, on the upper side (`||`).
     fn placement(
-        &self,
+        &mut self,
         index: usize,
         rule: &ReplaceRule,
         refusals: &mut usize,

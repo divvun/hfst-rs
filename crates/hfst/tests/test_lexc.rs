@@ -184,18 +184,27 @@ fn missing_file_parse_tropical() {
 // lexc reads `a` + U+0301 as one symbol only because the two code points form
 // one grapheme cluster; an author who meant that should say so in
 // Multichar_Symbols, and one who did not meant to type the precomposed letter.
-// The rendering goes to stderr, which a test cannot read; what is asserted here
-// is the shaping that feeds it — where it points, what it says, and its advice.
+// What is asserted here is where the report points, what it says, and its
+// advice.
 // =====================================================================
 
 // An entry using the decomposed form of 'á' without declaring it.
 const DECOMPOSED: &str = "LEXICON Root\na\u{301}bc # ;\n";
 
-fn grapheme_reports(src: &str) -> Vec<hfst::lexc::GraphemeDiagnostic> {
+fn grapheme_reports(src: &str) -> Vec<hfst::diag::Diagnostic> {
     let _g = serialized();
     let mut compiler = LexcCompiler::<StdVectorFst>::new();
     compiler.parse(src).expect("the source parses");
-    compiler.grapheme_diagnostics().to_vec()
+    grapheme_diagnostics(&compiler)
+}
+
+fn grapheme_diagnostics(compiler: &LexcCompiler<StdVectorFst>) -> Vec<hfst::diag::Diagnostic> {
+    compiler
+        .diagnostics()
+        .iter()
+        .filter(|d| d.message().contains("grapheme"))
+        .cloned()
+        .collect()
 }
 
 #[test]
@@ -204,9 +213,9 @@ fn decomposed_grapheme_is_reported() {
     let first = ds.first().expect("the grapheme is reported");
     assert_eq!(ds.len(), 1, "reported more than once: {ds:?}");
     assert!(
-        first.message.contains("a\u{301}"),
+        first.message().contains("a\u{301}"),
         "grapheme left unnamed in {:?}",
-        first.message
+        first.message()
     );
 }
 
@@ -216,7 +225,10 @@ fn decomposed_grapheme_is_reported() {
 fn report_points_at_the_grapheme() {
     let ds = grapheme_reports(DECOMPOSED);
     let first = ds.first().expect("the grapheme is reported");
-    assert_eq!(&DECOMPOSED[first.span.clone()], "a\u{301}");
+    assert_eq!(
+        &DECOMPOSED[first.primary_span().expect("a span")],
+        "a\u{301}"
+    );
 }
 
 #[test]
@@ -224,15 +236,18 @@ fn report_advises_declaring_the_grapheme() {
     let ds = grapheme_reports(DECOMPOSED);
     let first = ds.first().expect("the grapheme is reported");
     assert!(
-        first.notes.iter().any(|n| n.contains("Multichar_Symbols")),
+        first
+            .notes()
+            .iter()
+            .any(|n| n.contains("Multichar_Symbols")),
         "no declaration advice in {:?}",
-        first.notes
+        first.notes()
     );
     // Every code point, not upstream's truncated first two.
     assert!(
-        first.notes.iter().any(|n| n.contains("U+0061 U+0301")),
+        first.notes().iter().any(|n| n.contains("U+0061 U+0301")),
         "code points left unspelled in {:?}",
-        first.notes
+        first.notes()
     );
 }
 
@@ -243,9 +258,9 @@ fn precomposed_spelling_is_offered_when_available() {
     let ds = grapheme_reports(DECOMPOSED);
     let first = ds.first().expect("the grapheme is reported");
     assert!(
-        first.notes.iter().any(|n| n.contains("U+00E1")),
+        first.notes().iter().any(|n| n.contains("U+00E1")),
         "no precomposed spelling in {:?}",
-        first.notes
+        first.notes()
     );
 }
 
@@ -256,9 +271,9 @@ fn no_precomposed_spelling_means_no_such_advice() {
     let ds = grapheme_reports("LEXICON Root\nu\u{307}bc # ;\n");
     let first = ds.first().expect("the grapheme is reported");
     assert!(
-        !first.notes.iter().any(|n| n.contains("NFC")),
+        !first.notes().iter().any(|n| n.contains("NFC")),
         "unreachable advice in {:?}",
-        first.notes
+        first.notes()
     );
 }
 
@@ -296,5 +311,5 @@ fn split_characters_disables_the_check() {
     let mut compiler = LexcCompiler::<StdVectorFst>::new();
     compiler.set_split_characters(true);
     compiler.parse(DECOMPOSED).expect("the source parses");
-    assert!(compiler.grapheme_diagnostics().is_empty());
+    assert!(grapheme_diagnostics(&compiler).is_empty());
 }

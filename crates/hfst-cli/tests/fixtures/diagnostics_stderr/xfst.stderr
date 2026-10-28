@@ -1,0 +1,11 @@
+Error: unknown command 'detrminize'
+   ╭─[ <stdin>:2:1 ]
+   │
+ 2 │ detrminize
+   │ ─────┬────  
+   │      ╰────── unknown command 'detrminize'
+   │ 
+   │ Note 1: did you mean 'determinize'?
+   │ 
+   │ Note 2: 'help' lists the commands this compiler accepts
+───╯

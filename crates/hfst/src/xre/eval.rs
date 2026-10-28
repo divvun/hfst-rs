@@ -533,6 +533,7 @@ impl<B: AlgebraBackend> XreCompiler<B> {
             defined_multichar_symbols: self.defined_multichar_symbols.clone(),
             span_base: self.span_base,
             replace_pass: false,
+            diagnostics: Vec::new(),
         };
 
         // get_function_xre + recursive compile.
@@ -543,20 +544,21 @@ impl<B: AlgebraBackend> XreCompiler<B> {
             .expect("function definition present (checked above)");
         Ok(match parse(&body) {
             Ok(expr) => {
-                let mut t = sub.eval(&expr)?;
+                let evaluated = sub.eval(&expr);
+                self.diagnostics.append(&mut sub.diagnostics);
+                let mut t = evaluated?;
                 t.optimize_with_config(&self.opt_cfg())?;
                 t
             }
             Err(e) => {
                 // The span is relative to the stored function body, not the
                 // caller's source, so anchor the snippet in the body text.
+                let body: Arc<str> = Arc::from(body);
                 for d in &e.diagnostics {
-                    crate::diag::emit(
-                        &format!("<function {}>", name),
-                        &body,
-                        d.span.range.clone(),
-                        crate::diag::Severity::Error,
-                        &d.message,
+                    self.diagnostics.push(
+                        crate::diag::Diagnostic::error(&d.message)
+                            .label(d.span.range.clone(), &d.message)
+                            .in_source(format!("<function {}>", name), body.clone()),
                     );
                 }
                 crate::bail!(Hfst, format!("Could not parse body of function '{}'", name))

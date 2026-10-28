@@ -23,8 +23,10 @@
 #![allow(non_snake_case)]
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::sync::Arc;
 
 use crate::backend::{AlgebraBackend, Backend};
+use crate::diag::{Diagnostic, Severity};
 use crate::hfst_basic_transducer::{HfstBasicTransducer, HfstBasicTransitions};
 use crate::hfst_data_types::{HfstOneLevelPaths, HfstTwoLevelPaths, ImplementationType};
 use crate::hfst_data_types::{StringPair, StringPairSet, StringVector, Symbol};
@@ -56,7 +58,7 @@ mod stack;
 mod substitute;
 mod test_commands;
 mod variables;
-pub use diagnostics::{XfstDiagnostic, parse_diagnostics};
+pub use diagnostics::parse_diagnostics;
 use session::run_shell;
 use variables::{initialize_variable_explanations, parse_size};
 
@@ -209,20 +211,16 @@ impl core::error::Error for CommandError {}
 pub type CmdResult<T = ()> = Result<T, CommandError>;
 
 /// A script that stopped: the file or label it came from and what went wrong
-/// where. Every diagnostic in it has already been printed.
+/// where. Every diagnostic in it is also among the compiler's diagnostics.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ScriptError {
     pub source_name: String,
-    pub diagnostics: Vec<XfstDiagnostic>,
+    pub diagnostics: Vec<Diagnostic>,
 }
 
 impl core::fmt::Display for ScriptError {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        let messages: Vec<&str> = self
-            .diagnostics
-            .iter()
-            .map(|d| d.message.as_str())
-            .collect();
+        let messages: Vec<&str> = self.diagnostics.iter().map(Diagnostic::message).collect();
         write!(f, "{}: {}", self.source_name, messages.join("; "))
     }
 }
@@ -272,9 +270,9 @@ pub struct XfstCompiler<B: AlgebraBackend> {
     // the compiler drops); this preserves the raw-pointer aliasing the C++
     // relied on.
     nets: Vec<HfstTransducer<B>>,
-    /// The script text currently being walked, retained so a failure can be
-    /// rendered with the offending line and a caret under it.
-    source: String,
+    /// The script text currently being walked, which a failure's diagnostic
+    /// points into.
+    source: Arc<str>,
     /// Label shown in diagnostics: a script file name, or the sentinel for a
     /// line typed at the prompt.
     source_name: String,
@@ -284,6 +282,10 @@ pub struct XfstCompiler<B: AlgebraBackend> {
     current_span: std::ops::Range<usize>,
     /// How many 'source' commands deep the running script is.
     source_depth: u32,
+    /// What running commands has reported, oldest first, until the caller
+    /// takes it. Includes what the embedded regex and lexc compilers
+    /// reported, gathered after each command.
+    diagnostics: Vec<Diagnostic>,
 }
 
 /// The deepest 'source' nesting allowed, so a script that sources itself
@@ -359,10 +361,11 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             restricted_mode: false,
             engine_config: crate::hfst_transducer::EngineConfig::default(),
             nets: Vec::new(),
-            source: String::new(),
+            source: Arc::from(""),
             source_name: String::from(REPL_SOURCE_NAME),
             current_span: 0..0,
             source_depth: 0,
+            diagnostics: Vec::new(),
         };
         c.xre.set_expand_definitions(true);
         c.xre.set_verbosity(c.verbose);
@@ -444,30 +447,24 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     // [spec:hfst:req:xfst-cmd.errors-are-values]
     /// Parse `src` as an XFST script and run its commands in order.
     ///
-    /// Every failure is reported to stderr against its span in `src` as it
-    /// happens. A failed command stops the run when `quit-on-fail` is `ON`
-    /// and the input is not the interactive prompt; otherwise the run goes
-    /// on. The returned error has already been reported, so callers use it
-    /// for the outcome, not to print it again.
+    /// Every failure is recorded among the compiler's diagnostics against
+    /// its span in `src` as it happens. A failed command stops the run when
+    /// `quit-on-fail` is `ON` and the input is not the interactive prompt;
+    /// otherwise the run goes on. The returned error repeats what was
+    /// recorded, so callers use it for the outcome, not to report it again.
     pub fn parse(&mut self, src: &str) -> Result<Flow, ScriptError> {
         // Retaining the script text is what turns every downstream failure into
-        // a located one: line and column come from ariadne rendering a span
-        // against this string.
-        self.source = src.to_string();
+        // a located one: line and column come from rendering a span against
+        // this string.
+        self.source = Arc::from(src);
         let script = match nfst_xfst::parse(src) {
             Ok(s) => s,
             Err(e) => {
-                let diagnostics = parse_diagnostics(src, &e);
-                for d in &diagnostics {
-                    crate::diag::emit_with_notes(
-                        &self.source_name,
-                        src,
-                        d.span.clone(),
-                        crate::diag::Severity::Error,
-                        &d.message,
-                        &d.notes,
-                    );
-                }
+                let diagnostics: Vec<Diagnostic> = parse_diagnostics(src, &e)
+                    .into_iter()
+                    .map(|d| d.in_source(&self.source_name, self.source.clone()))
+                    .collect();
+                self.diagnostics.extend(diagnostics.iter().cloned());
                 return Err(ScriptError {
                     source_name: self.source_name.clone(),
                     diagnostics,
@@ -476,21 +473,19 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         };
         for c in &script.value.commands {
             self.current_span = c.span.range.clone();
-            match self.eval_command(&c.value) {
+            let outcome = self.eval_command(&c.value);
+            self.absorb_nested_diagnostics();
+            match outcome {
                 Ok(Flow::Continue) => {}
                 Ok(Flow::Quit) => return Ok(Flow::Quit),
                 Err(e) => {
+                    let failure = self.command_diagnostic(Severity::Error, &e.message, &e.notes);
                     if !e.reported {
-                        self.diag_error_with_notes(&e.message, &e.notes);
+                        self.diagnostics.push(failure.clone());
                     }
                     if !self.stops_on_failure() {
                         continue;
                     }
-                    let failure = XfstDiagnostic {
-                        span: self.current_span.clone(),
-                        message: e.message,
-                        notes: e.notes,
-                    };
                     return Err(ScriptError {
                         source_name: self.source_name.clone(),
                         diagnostics: vec![failure],

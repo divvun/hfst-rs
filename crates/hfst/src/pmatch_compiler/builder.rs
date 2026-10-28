@@ -237,6 +237,7 @@ fn build_read_file<B: AlgebraBackend + FromAnyTransducer + 'static>(
             }
             let mut xre_compiler = crate::xre::XreCompiler::new();
             let compiled = xre_compiler.compile(&regex).unwrap_or_default();
+            ctx.diagnostics.extend(xre_compiler.take_diagnostics());
             Ok(as_obj(PmatchTransducerContainer::new(compiled)))
         }
     }

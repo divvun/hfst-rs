@@ -109,6 +109,47 @@ pub fn init_logging() {
         .try_init();
 }
 
+/// How one diagnostic reaches stderr.
+#[derive(Debug, PartialEq)]
+enum StderrForm<'a> {
+    /// The rendered report, written as it is.
+    Report(String),
+    /// Lines logged at the severity, as every other message the tools log.
+    Logged(hfst::diag::Severity, Vec<&'a str>),
+}
+
+/// A diagnostic with a source snippet goes out as its rendered report; one
+/// without goes out as log lines.
+fn stderr_form(d: &hfst::diag::Diagnostic, colour: bool) -> StderrForm<'_> {
+    if d.has_snippet() {
+        StderrForm::Report(d.render(colour))
+    } else {
+        StderrForm::Logged(d.severity(), d.plain_lines())
+    }
+}
+
+// [spec:hfst:req:javascript.diagnostics-as-data]
+/// Print what a compiler reported to stderr, in the order it was reported,
+/// in colour only for a terminal and never under NO_COLOR.
+pub fn print_diagnostics(diagnostics: Vec<hfst::diag::Diagnostic>) {
+    use hfst::diag::Severity;
+    let colour = std::io::stderr().is_terminal() && std::env::var_os("NO_COLOR").is_none();
+    for d in &diagnostics {
+        match stderr_form(d, colour) {
+            StderrForm::Report(text) => eprint!("{text}"),
+            StderrForm::Logged(severity, lines) => {
+                for line in lines {
+                    match severity {
+                        Severity::Error => tracing::error!("{}", line),
+                        Severity::Warning => tracing::warn!("{}", line),
+                        Severity::Info => tracing::info!("{}", line),
+                    }
+                }
+            }
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // invocation timing
 // ---------------------------------------------------------------------------
@@ -920,5 +961,30 @@ pub fn should_colourise(opts: &CommonOptions) -> bool {
 pub fn maybe_print_colour(opts: &CommonOptions, f: &mut dyn Write, colour: &str) {
     if should_colourise(opts) {
         let _ = write!(f, "{}", colour);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{StderrForm, stderr_form};
+    use hfst::diag::{Diagnostic, Severity};
+
+    // [spec:hfst:req:javascript.diagnostics-as-data/test]
+    #[test]
+    fn snippet_report_is_written_as_rendered() {
+        let d = Diagnostic::error("bad b")
+            .label(2..3, "here")
+            .in_source("x", "a b c".into());
+        assert_eq!(stderr_form(&d, false), StderrForm::Report(d.render(false)));
+    }
+
+    // [spec:hfst:req:javascript.diagnostics-as-data/test]
+    #[test]
+    fn plain_report_is_logged_line_by_line() {
+        let d = Diagnostic::warning("odd").note("because").help("do this");
+        assert_eq!(
+            stderr_form(&d, false),
+            StderrForm::Logged(Severity::Warning, vec!["odd", "because", "do this"])
+        );
     }
 }

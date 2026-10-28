@@ -1,0 +1,8 @@
+Error: pmatch: syntax error: unexpected token in expression: Some(EndOfWeightedExpression(0.0))
+   ╭─[ <pmatch>:1:19 ]
+   │
+ 1 │ Define TOP {a} L( ;
+   │                   ┬  
+   │                   ╰── pmatch: syntax error: unexpected token in expression: Some(EndOfWeightedExpression(0.0))
+───╯
+hfst pmatch2fst: HFST error: pmatch: the script has 1 syntax error(s)

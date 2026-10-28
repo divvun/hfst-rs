@@ -58,8 +58,8 @@ impl<B: AlgebraBackend> LexcCompiler<B> {
     /// source into one compiler, then 'compile_lexical' once. Returns '&mut self'
     /// to mirror the C++ 'LexcCompiler &' chaining return.
     pub fn parse(&mut self, lexc_source: &str) -> crate::error::Result<&mut Self> {
-        // Retain the source so diagnostics can render the offending snippet.
-        self.source = lexc_source.to_string();
+        // Retain the source so diagnostics can point into it.
+        self.source = Arc::from(lexc_source);
         match nfst_lexc::parse(lexc_source) {
             Ok(ast) => {
                 self.compile_file(&ast.value)?;
@@ -71,12 +71,8 @@ impl<B: AlgebraBackend> LexcCompiler<B> {
                 // bison yyerror printed its syntax errors before bumping
                 // hlexcnerrs, so a silent flag-set would lose the message.
                 for d in &e.diagnostics {
-                    crate::diag::emit(
-                        &self.source_name,
-                        &self.source,
-                        d.span.range.clone(),
-                        crate::diag::Severity::Error,
-                        &d.message,
+                    self.report(
+                        Diagnostic::error(&d.message).label(d.span.range.clone(), &d.message),
                     );
                 }
                 self.parseErrors_ = true;
