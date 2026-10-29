@@ -1,0 +1,10 @@
+{
+  "name": "@divvun/hfst-bench",
+  "private": true,
+  "description": "Compares @divvun/hfst with hfst-js: lookup parity and load and lookup speed. Not published.",
+  "license": "LGPL-3.0-or-later",
+  "type": "module",
+  "devDependencies": {
+    "hfst-js": "1.4.0"
+  }
+}

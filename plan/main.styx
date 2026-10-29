@@ -8230,6 +8230,14 @@ children (
                 title "Load and look up at least as fast as hfst-js: profile @divvun/hfst on the hfst-js benchmark files (first measure: load 2-3x slower everywhere, lookup 2x slower on kal and 2.7x on sme) and remove the costs on the load path (copies into wasm memory, table parsing, validation) and the lookup path (run-state and tokeniser setup, result conversion across the JS boundary, sorting), keeping results identical"
                 kind @perf
                 deps (wasm.hfst-js-parity)
+                log (
+                    {
+                        at 2026-10-29T15:55:53.369839Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "Measurements 2026-10-29 (machine load 10-70, so ratios not absolutes; same 3000 kal-analyser-gt-desc words, 13364 analyses from every tool): C++ hfst-lookup (libhfst hfst_ol::Transducer with the infinite-ambiguity pre-check) 3848 us/word; Rust hfst lookup (port of that code, same pre-check) 1214; Rust library LookupState::new + lookup_fd, the binding's call, 504-664; hfst-js 1.4.0 367; C++ standalone hfst-optimized-lookup 180. gle analyser-gt-norm: C++ OL 20, Rust library 21-29, hfst-js 54, wasm ~72. sme generator: C++ OL 71, Rust library 124-158, hfst-js 112, wasm ~300. Conclusion: hfst-js (pyhfst) ports the lean standalone hfst-optimized-lookup walk; we ported libhfst's heavier engine, already ~3x faster than its C++ source. Removing the plain-epsilon guard (hfst#293/#476) gave no gain (kal 664->1063 within noise), so it is not the cost. Native profile hot spots: try_epsilon_transitions, flag-state SmallVec clones, memmove, malloc/free, String clones. wasm + binding add 1.5-2.4x: fresh LookupState per call, results built with one Reflect.set per property, wasm's default allocator. Load: native table parse 12-31 ms vs hfst-js 9-15 ms in-process; wasm 17-56 ms (copy into wasm memory plus slower parse). Proposed plan, awaiting operator go-ahead: a lean OL lookup engine in the library modelled on hfst-optimized-lookup's walk (flag array with undo, symbol-number output stack, no per-step allocation) keeping our identity/unknown, NFC/NFD, flag and epsilon-loop fixes, results identical under the parity suites; binding reuses run state and crosses the boundary once per lookup; then allocator and load."
+                    }
+                )
             }
         )
         log (

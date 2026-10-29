@@ -10,6 +10,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { gunzipSync } from "node:zlib";
 import { buildDhfstFixtures } from "./dhfst-fixtures.mjs";
+import { buildHfstJsFixtures } from "./hfst-js-fixtures.mjs";
 import { buildLookupFixtures } from "./lookup-fixtures.mjs";
 import { buildParityFixtures } from "./parity-fixtures.mjs";
 import { buildTokeniseFixtures } from "./tokenise-fixtures.mjs";
@@ -55,6 +56,7 @@ export function buildFixtures(hfst, out) {
   buildTokeniseFixtures(hfst, sources, out);
   buildDhfstFixtures(tool, out, sources);
   buildParityFixtures(hfst, out);
+  buildHfstJsFixtures(tool, out, sources, READ);
 }
 
 /** Builds the hfst tools with cargo and returns the binary's path. */
