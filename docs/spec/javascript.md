@@ -146,12 +146,11 @@ every other embedder.
 
 ## Parity
 
-> [spec:hfst:req:javascript.native-parity+1]
+> [spec:hfst:req:javascript.native-parity+2]
 > For the same input bytes and options, the package MUST give the same results
 > as the native hfst library: the same lookup results and the same
 > tokenisation output. A test suite MUST check this on shared fixtures under
-> Node and Bun and in at least one browser engine. Under Deno the package is
-> type-checked.
+> Deno, Node and Bun, and in at least one browser engine.
 
 > [spec:hfst:req:javascript.hfst-js-parity]
 > For every optimized-lookup transducer `hfst-js` loads, `lookup` MUST return

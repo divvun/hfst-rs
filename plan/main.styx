@@ -8135,7 +8135,7 @@ children (
 
             {
                 id wasm.parity
-                title "Native parity suite: shared fixtures run under Node, Bun and headless Chromium (Playwright's cached build) against the native hfst library: same lookup results, same tokenise output, same DHFST acceptor answers as the source transducers; Deno type-checked with deno check"
+                title "Native parity suite: shared fixtures run under Deno, Node, Bun and headless Chromium (Playwright's cached build) against the native hfst library: same lookup results, same tokenise output, same DHFST acceptor answers as the source transducers"
                 kind @test
                 implements {
                     js-impl ([spec:hfst:req:javascript.native-parity])
@@ -8147,6 +8147,13 @@ children (
                         author "brendan@necessary.nu"
                         kind @note
                         text "Found in wasm.transducer-io (4f59b42): foma output bytes depend on which flate2 backend the build unifies. hfst-cli pulls flate2's zlib-rs backend through its zip dependency; the hfst library alone and the wasm modules get miniz_oxide. The same foma text compresses to different bytes, so the transducer-io tests compare foma payloads after decompressing. Byte-identical compiled transducers (javascript.native-parity) need one backend everywhere, most likely the hfst library naming flate2 with zlib-rs under its foma feature, after checking zlib-rs builds for wasm32-unknown-unknown and which backend matches C++ foma's zlib output."
+                    }
+
+                    {
+                        at 2026-10-29T13:20:37.473357Z
+                        author "brendan@necessary.nu"
+                        kind @decision
+                        text "Operator 2026-10-29: run the parity suite under Deno for real (deno run / deno test), an explicit exception to the standing \"in Deno run only deno check\" instruction, scoped to this suite. native-parity bumped to +2 to require it."
                     }
                 )
             }
