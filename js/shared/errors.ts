@@ -10,7 +10,8 @@
  *   be trusted after that, so every later call throws this without entering it.
  * - `freed`: a call on an object after its `free()`.
  * - `transducer-count`: a call that takes exactly one transducer, such as
- *   `readTransducer`, got bytes or text holding several.
+ *   `readTransducer`, got bytes or text holding several, or `compileRegex`
+ *   got a source holding several expressions without `disjunct`.
  *
  * From the library, which `crates/hfst-wasm-runtime/src/error.rs` maps here:
  * - `type-mismatch`: transducers of different implementation types, or one of
@@ -62,31 +63,41 @@ export class HfstError extends Error {
   }
 }
 
-/** A range of UTF-8 bytes in a compiler's source text, end exclusive. */
+/**
+ * A range of the text a diagnostic names, end exclusive, in UTF-16 code
+ * units: the indices `slice` takes on that text as a JavaScript string.
+ */
 export interface Span {
   start: number;
   end: number;
 }
 
-/** A further place a diagnostic points at, with what it says there. */
-export interface DiagnosticLabel {
-  span: Span;
+/** A place a diagnostic points at, with what it says there. */
+export interface DiagnosticLabel extends Span {
   message: string;
 }
 
-/** One message from a compiler. */
-export interface Diagnostic {
+/**
+ * One message from a compiler. Its span is its primary label's: the place it
+ * is about, or 0 to 0 when it points at no place.
+ */
+export interface Diagnostic extends Span {
   severity: "error" | "warning" | "info";
   message: string;
-  /** The name of the source the diagnostic points into. */
-  source: string;
-  /** The span of the primary label, or null when it points at nothing. */
-  span: Span | null;
-  /** The labels after the primary one. */
+  /**
+   * The name of the text the offsets index. That is the compile's
+   * `sourceName` for the source string, or a name from the compile's file
+   * map for that file. For text the compiler made itself, it is the name the
+   * compiler gives that text, such as `<regex>` for the regular expression
+   * of a lexc entry, which lexc prints again before compiling it; `rendered`
+   * quotes that text.
+   */
+  sourceName: string;
+  /** Every label, the primary one first. */
   labels: DiagnosticLabel[];
   notes: string[];
   help: string | null;
-  /** The whole report, as the command-line tools print it. */
+  /** The whole report without colour, as the command-line tools print it. */
   rendered: string;
 }
 

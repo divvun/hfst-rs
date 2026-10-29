@@ -4,9 +4,10 @@ import { type Diagnostic, fromGlue, HfstCompileError, HfstError, messageOf } fro
 const diagnostic: Diagnostic = {
   severity: "error",
   message: "unexpected ;",
-  source: "<test>",
-  span: { start: 4, end: 5 },
-  labels: [],
+  sourceName: "<test>",
+  start: 4,
+  end: 5,
+  labels: [{ start: 4, end: 5, message: "here" }],
   notes: [],
   help: null,
   rendered: "error: unexpected ;",

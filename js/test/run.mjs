@@ -37,6 +37,7 @@ const scenarios = [
   { file: "poison.ts", build: "test", variants: ["function", "method"] },
   { file: "transducers.ts", build: "release", variants: ["main"] },
   { file: "transducers-full.ts", build: "release", variants: ["main"], only: "@divvun/hfst" },
+  { file: "compile.ts", build: "release", variants: ["main"], only: "@divvun/hfst" },
 ];
 
 // Node only collects garbage on request with --expose-gc; Bun has Bun.gc.

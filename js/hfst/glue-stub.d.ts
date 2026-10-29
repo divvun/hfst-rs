@@ -11,3 +11,7 @@ export declare const version: RuntimeGlue["version"];
 export declare const readTransducers: RuntimeGlue["readTransducers"];
 export declare const readAnyTransducers: FullGlue["readAnyTransducers"];
 export declare const readAtt: FullGlue["readAtt"];
+export declare const compileRegex: FullGlue["compileRegex"];
+export declare const compileLexc: FullGlue["compileLexc"];
+export declare const compileTwolc: FullGlue["compileTwolc"];
+export declare const compilePmatch: FullGlue["compilePmatch"];

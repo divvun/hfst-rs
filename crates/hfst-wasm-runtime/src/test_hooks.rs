@@ -68,9 +68,9 @@ pub fn test_library_error(message: &str) -> Result<(), GlueError> {
 #[wasm_bindgen(js_name = testCompileError)]
 pub fn test_compile_error(message: &str) -> Result<(), GlueError> {
     let diagnostic = js_sys::JSON::parse(
-        r#"{"severity":"error","message":"unexpected ;","source":"<test>",
-            "span":{"start":4,"end":5},"labels":[],"notes":["a note"],
-            "help":"remove it","rendered":"error: unexpected ;"}"#,
+        r#"{"severity":"error","message":"unexpected ;","sourceName":"<test>",
+            "start":4,"end":5,"labels":[{"start":4,"end":5,"message":"here"}],
+            "notes":["a note"],"help":"remove it","rendered":"error: unexpected ;"}"#,
     )
     .expect("the diagnostic is valid JSON");
     Err(GlueError::compile(message, vec![diagnostic]))

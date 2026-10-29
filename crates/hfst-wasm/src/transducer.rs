@@ -20,7 +20,7 @@ pub struct FullTransducer {
 }
 
 impl FullTransducer {
-    fn new(any: AnyTransducer) -> Result<Self, GlueError> {
+    pub(crate) fn new(any: AnyTransducer) -> Result<Self, GlueError> {
         let ty = any.get_type();
         let format = Format::of(ty).ok_or_else(|| {
             GlueError::new(

@@ -66,7 +66,7 @@ test("a failed compile is thrown as an HfstCompileError with the diagnostics", (
   assertEqual(error.message, "lexc failed", "message");
   const [diagnostic] = error.diagnostics;
   assertEqual(diagnostic?.message, "unexpected ;", "the diagnostic's message");
-  assertEqual(diagnostic?.span?.start, 4, "its span");
+  assertEqual(diagnostic?.start, 4, "its span");
   assertEqual(diagnostic?.help, "remove it", "its help");
   assertEqual(testing.createObject("after").label(), "after", "the module carries on");
 });

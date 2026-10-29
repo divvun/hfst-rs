@@ -28,3 +28,15 @@ export type {
 } from "../shared/errors.ts";
 export type { InitSource } from "../shared/core.ts";
 export type { LogEvent, Logger, LogLevel } from "../shared/logging.ts";
+export { compileLexc, compilePmatch, compileRegex, compileTwolc } from "./compile.ts";
+export type {
+  CompiledPmatch,
+  CompiledTransducer,
+  CompiledTransducers,
+  CompileOptions,
+  LexcOptions,
+  LexcWarningSwitch,
+  PmatchOptions,
+  RegexOptions,
+  TwolcOptions,
+} from "./compile.ts";

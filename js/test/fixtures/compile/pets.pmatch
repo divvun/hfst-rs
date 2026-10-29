@@ -1,0 +1,1 @@
+define Pet [{cat} | {dog}] ;
