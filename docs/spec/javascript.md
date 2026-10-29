@@ -155,13 +155,17 @@ every other embedder.
 > tokenisation output. A test suite MUST check this on shared fixtures under
 > Deno, Node and Bun, and in at least one browser engine.
 
-> [spec:hfst:req:javascript.hfst-js-parity]
+> [spec:hfst:req:javascript.hfst-js-parity+1]
 > For every optimized-lookup transducer `hfst-js` loads, `lookup` MUST return
 > the same analyses with the same weights as `hfst-js` returns for the same
-> input, compared as sets, since `hfst-js` reports analyses in search order and
-> may repeat one. Load time and uncached lookup time MUST be measured against
-> `hfst-js` on the same files and machine, and the figures published with the
-> package.
+> input, except where `hfst-js` disagrees with the reference C++ `hfst-lookup`;
+> there `lookup` MUST equal the reference. Results compare as sets, since
+> `hfst-js` reports analyses in search order and may repeat one, and with
+> `hfst-js`'s weights rounded to 32-bit floats, since it sums them in 64 bits
+> where HFST sums in 32. Every kind of disagreement MUST be listed in the
+> package's notes for users moving from `hfst-js`. Load time and uncached
+> lookup time MUST be measured against `hfst-js` on the same files and
+> machine, and the figures published with the package.
 
 ## Limits
 

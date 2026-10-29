@@ -8162,7 +8162,7 @@ children (
                 id wasm.publish
                 title "Publish @divvun/hfst 0.1.0 to npm: package.json (LGPL-3.0-or-later, Divvun HFST, copyright UiT, github.com/divvun/hfst-rs), README with a migration guide from hfst-js and the hfst-js benchmark figures, a release build script; the operator confirms before the actual npm publish"
                 kind @build
-                deps (wasm.parity wasm.hfst-js-parity)
+                deps (wasm.parity wasm.hfst-js-parity wasm.performance)
             }
 
             {
@@ -8207,6 +8207,21 @@ children (
                     js-impl ([spec:hfst:req:javascript.hfst-js-parity])
                 }
                 deps (wasm.single-package)
+                log (
+                    {
+                        at 2026-10-29T14:09:08.233832Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "First comparison over 12 real analysers and generators (lang-kal, lang-gle, se-zcheck; corpus tokens, analyser paths, yaml forms): every difference checked is an hfst-js defect, with ours equal to C++ hfst-lookup 3.16.2. hfst-js stops at the first unreadable input or out-of-alphabet tag and returns the prefix's analyses (sme generator: 220 of 5022 inputs); mis-tokenises when the longest match is a symbol prefix but not a symbol; ignores identity and unknown symbols (gle analyser-gt-norm: 711 of 2968 differ); accepts @N.F.a@ ... @U.F.a@ and does not treat 5-character flags (@C.X@) as flags; sums weights in 64-bit floats. Rule bumped to +1: three-way check against the C++ reference, weights rounded to f32, disagreements listed for migrating users. Rough first timings, Node 26: ours slower on load everywhere (kal 18 vs 10 ms, gle 17 vs 9, sme 44 vs 15) and on lookup for kal (743 vs 367 us/word) and sme (301 vs 112), equal on gle (51 vs 54)."
+                    }
+                )
+            }
+
+            {
+                id wasm.performance
+                title "Load and look up at least as fast as hfst-js: profile @divvun/hfst on the hfst-js benchmark files (first measure: load 2-3x slower everywhere, lookup 2x slower on kal and 2.7x on sme) and remove the costs on the load path (copies into wasm memory, table parsing, validation) and the lookup path (run-state and tokeniser setup, result conversion across the JS boundary, sorting), keeping results identical"
+                kind @perf
+                deps (wasm.hfst-js-parity)
             }
         )
         log (
