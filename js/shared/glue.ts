@@ -4,6 +4,8 @@
 // Declaring them here lets deno check the wrapper on a checkout that has no
 // build output.
 
+import type { LookupResult } from "./lookup.ts";
+
 /** What the generated init function is given. The wrapper resolves URLs itself. */
 export type GlueInitInput = BufferSource | Response | WebAssembly.Module;
 
@@ -40,6 +42,8 @@ export interface TransducerGlue extends GlueObject {
   name(): string;
   /** Its other properties, flattened to key, value, key, value. */
   propertyPairs(): string[];
+  /** The results for `input` within the limits, in the order `lookup` returns them. */
+  lookup(input: string, limit: number | undefined, timeLimitMs: number | undefined): LookupResult[];
 }
 
 /** The exports of `crates/hfst-wasm-runtime`, which both packages carry. */

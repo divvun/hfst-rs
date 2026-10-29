@@ -17,6 +17,7 @@ use wasm_bindgen::prelude::wasm_bindgen;
 
 mod error;
 pub mod format;
+mod lookup;
 mod sink;
 pub mod stream;
 #[cfg(feature = "test-hooks")]
@@ -25,6 +26,7 @@ mod transducer;
 
 pub use error::{GlueError, code_of};
 pub use format::Format;
+pub use lookup::{LookupLimits, LookupResult, lookup_results, lookup_results_to_js};
 pub use sink::{install, set_log_level};
 #[cfg(feature = "test-hooks")]
 pub use test_hooks::{TestObject, test_compile_error, test_library_error, test_log, test_panic};

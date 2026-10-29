@@ -10,6 +10,7 @@ import type {
   RuntimeGlue,
   TransducerGlue,
 } from "../shared/glue.ts";
+import type { LookupResult } from "../shared/lookup.ts";
 
 export class FakeGlue implements RuntimeGlue {
   readonly inputs: GlueInitInput[] = [];
@@ -119,5 +120,14 @@ export class FakeTransducer extends FakeObject implements TransducerGlue {
 
   propertyPairs(): string[] {
     return this.#pairs;
+  }
+
+  /** The arguments of every lookup, in order. */
+  readonly lookups: [string, number | undefined, number | undefined][] = [];
+
+  /** Answers every input with one result whose output is the input. */
+  lookup(input: string, limit: number | undefined, timeLimitMs: number | undefined): LookupResult[] {
+    this.lookups.push([input, limit, timeLimitMs]);
+    return [{ output: input, symbols: [...input], weight: 0 }];
   }
 }

@@ -1,6 +1,6 @@
 schema_version 7
 
-last_sync_at 2026-10-29T11:32:15.158018Z
+last_sync_at 2026-10-29T12:00:29.809461Z
 
 rule_versions (
     {id determinize-envelope.bounded-strategies, version 0}
@@ -892,6 +892,11 @@ impl_evidence (
         javascript.no-host-traps
     ), covered_claims (
         {impl_name target-impl, rule javascript.no-host-traps}
+    )}
+    {id wasm.lookup, covered_rules (
+        javascript.lookup
+    ), covered_claims (
+        {impl_name target-impl, rule javascript.lookup}
     )}
     {id wasm.parity}
     {id wasm.transducer-io, covered_rules (

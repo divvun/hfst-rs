@@ -1,0 +1,1 @@
+[ "@P.CASE.NOM@" {talo} "@R.CASE.NOM@" 0:%+N 0:%+Nom::0.5 ] | [ "@P.CASE.GEN@" {talo} "@R.CASE.NOM@" 0:%+N 0:%+Gen ] | [ "@P.CASE.GEN@" {talo} "@R.CASE.GEN@" 0:%+N 0:%+Gen::1.5 ]
