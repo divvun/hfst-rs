@@ -29,19 +29,19 @@ test("declarations that mention any only in comments pass", () => {
 });
 
 test("a declaration that uses any fails the build and names the file", () => {
-  withDeclarations({ "shared/api.d.ts": "export declare const f: (x: any) => void;\n" }, (dir) => {
+  withDeclarations({ "nested/api.d.ts": "export declare const f: (x: any) => void;\n" }, (dir) => {
     let message = "";
     try {
       assertNoAny(dir);
     } catch (error) {
       message = error.message;
     }
-    assert(message.includes(join("shared", "api.d.ts")), `the failure names the file: ${message}`);
+    assert(message.includes(join("nested", "api.d.ts")), `the failure names the file: ${message}`);
   });
 });
 
 test("the generated glue under pkg is not checked", () => {
-  withDeclarations({ "hfst/pkg/glue.d.ts": "export function install(sink: any): void;\n" }, (dir) =>
+  withDeclarations({ "pkg/hfst_wasm.d.ts": "export function install(sink: any): void;\n" }, (dir) =>
     assertNoAny(dir),
   );
 });

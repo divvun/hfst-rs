@@ -6,7 +6,6 @@
     "noImplicitOverride": true
   },
   "imports": {
-    "./hfst-runtime/pkg/hfst_wasm_runtime.js": "./hfst-runtime/glue-stub.d.ts",
     "./hfst/pkg/hfst_wasm.js": "./hfst/glue-stub.d.ts"
   },
   "exclude": ["**/dist/", "**/pkg/", "**/node_modules/", "**/*.mjs"],

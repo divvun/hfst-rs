@@ -1,4 +1,4 @@
-// Starting a package: what importing does, the init sources, and calls made
+// Starting the package: what importing does, the init sources, and calls made
 // too early. `variant` names the source this process starts the module from.
 
 import {
@@ -54,19 +54,19 @@ async function source(variant: string): Promise<Parameters<typeof pkg.init>[0]> 
   }
 }
 
-// [spec:hfst:req:javascript.init/test]
+// [spec:hfst:req:javascript.init+1/test]
 test("importing the package fetches and compiles nothing", () => {
   assertEqual(fetches, 0, "fetches during import");
   assertEqual(compiles, 0, "compiles during import");
 });
 
-// [spec:hfst:req:javascript.init/test]
+// [spec:hfst:req:javascript.init+1/test]
 test("a call before init throws not-initialised", () => {
   assertEqual(thrownCode(pkg.HfstError, () => pkg.version()), "not-initialised", "version() before init");
 });
 
 if (args.variant === "retry") {
-  // [spec:hfst:req:javascript.init/test]
+  // [spec:hfst:req:javascript.init+1/test]
   test("a failed init rejects with init-failed, and the next init starts afresh", async () => {
     const failing = pkg.init(new Uint8Array([0, 0x61, 0x73, 0x6d, 9, 9, 9, 9]));
     assertEqual(await rejectedCode(pkg.HfstError, failing), "init-failed", "init with bad bytes");
@@ -74,7 +74,7 @@ if (args.variant === "retry") {
   });
 }
 
-// [spec:hfst:req:javascript.init/test]
+// [spec:hfst:req:javascript.init+1/test]
 test(`init from ${args.variant} starts the package`, async () => {
   started = pkg.init(await source(args.variant));
   assertEqual(thrownCode(pkg.HfstError, () => pkg.version()), "not-initialised", "a call while init runs");
@@ -82,7 +82,7 @@ test(`init from ${args.variant} starts the package`, async () => {
   assertEqual(pkg.version(), args.version, "version()");
 });
 
-// [spec:hfst:req:javascript.init/test]
+// [spec:hfst:req:javascript.init+1/test]
 test("init again returns the first call's promise and instance", async () => {
   const again = pkg.init(new Uint8Array(0));
   assert(again === started, "a second init returns the same promise");

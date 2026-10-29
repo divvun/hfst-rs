@@ -8170,6 +8170,15 @@ children (
                 title "One read-only package: delete crates/hfst-wasm and js/hfst (the full package: compilers, format writing and conversion, their tests and fixtures), rename crates/hfst-wasm-runtime to crates/hfst-wasm and js/hfst-runtime to js/hfst published as @divvun/hfst, fold js/shared into it now that one package binds it, and re-pin the annotations of the rules the scope change bumped"
                 kind @refactor
                 deps (wasm.lookup wasm.tokenise)
+                sealed true
+                log (
+                    {
+                        at 2026-10-29T13:35:02.029483Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan complete)"
+                    }
+                )
             }
 
             {

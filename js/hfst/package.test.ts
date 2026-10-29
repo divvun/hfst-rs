@@ -1,15 +1,16 @@
 import { entryOf, packageTests } from "../test/packages.ts";
-import { assert, runTests, test } from "../test/harness.ts";
+import { assertEqual, runTests, test } from "../test/harness.ts";
 
 const dir = new URL("./", import.meta.url);
 packageTests(dir, "@divvun/hfst");
 
-test("the entry module exports everything the runtime package does", async () => {
-  const full = await entryOf(dir);
-  const runtime = await entryOf(new URL("../hfst-runtime/", import.meta.url));
-  for (const name of Object.keys(runtime)) {
-    assert(typeof full[name] === typeof runtime[name], `@divvun/hfst exports ${name}`);
-  }
+test("the entry module exports the API", async () => {
+  const names = Object.keys(await entryOf(dir)).sort();
+  assertEqual(
+    names.join(" "),
+    "HfstError Tokeniser Transducer init readTokeniser readTransducer readTransducers setLogLevel setLogger version",
+    "exports",
+  );
 });
 
 await runTests("hfst/package");

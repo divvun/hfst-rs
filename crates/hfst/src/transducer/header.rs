@@ -290,7 +290,7 @@ mod tests {
         bytes
     }
 
-    // [spec:hfst:req:javascript.load-bytes+1/test]
+    // [spec:hfst:req:javascript.load-bytes+2/test]
     #[test]
     fn sniff_finds_a_standalone_header() {
         let header = TransducerHeader::new_sizes(2, 3, 4, 5, true);
@@ -301,7 +301,7 @@ mod tests {
         assert!(found.probe_flag(HeaderFlag::Weighted));
     }
 
-    // [spec:hfst:req:javascript.load-bytes+1/test]
+    // [spec:hfst:req:javascript.load-bytes+2/test]
     // A pmatch definition's header declares no symbols, and is never sniffed.
     #[test]
     fn sniff_refuses_what_no_standalone_writer_makes() {

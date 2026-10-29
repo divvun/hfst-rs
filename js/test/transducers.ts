@@ -1,4 +1,4 @@
-// Loading transducers from bytes, against both packages as they ship. The
+// Loading transducers from bytes, against the package as it ships. The
 // fixtures are built by `node js/build.mjs --test` with this checkout's hfst
 // tools; js/test/fixtures.mjs says what each one is.
 
@@ -16,7 +16,6 @@ import {
 const args = scenarioArgs();
 const pkg = await loadPackage(args);
 await pkg.init(await readBytes(args.wasm));
-const runtime = args.package === "@divvun/hfst-runtime";
 
 async function fixture(name: string): Promise<Uint8Array> {
   return await readBytes(new URL(name, args.fixtures).href);
@@ -47,7 +46,7 @@ function withU32(bytes: Uint8Array, offset: number, value: number): Uint8Array {
   return copy;
 }
 
-// [spec:hfst:req:javascript.load-bytes+1/test]
+// [spec:hfst:req:javascript.load-bytes+2/test]
 test("weighted and unweighted optimized lookup load with their header's name and properties", async () => {
   for (const type of ["optimized-lookup-weighted", "optimized-lookup-unweighted"] as const) {
     const all = pkg.readTransducers(await fixture(`words.${type}.hfst`));
@@ -61,7 +60,7 @@ test("weighted and unweighted optimized lookup load with their header's name and
   }
 });
 
-// [spec:hfst:req:javascript.load-bytes+1/test]
+// [spec:hfst:req:javascript.load-bytes+2/test]
 test("optimized lookup with no HFST3 header loads, with no name or properties", async () => {
   for (const type of ["optimized-lookup-weighted", "optimized-lookup-unweighted"] as const) {
     using t = pkg.readTransducer(await fixture(`words.${type}.bare`));
@@ -71,7 +70,7 @@ test("optimized lookup with no HFST3 header loads, with no name or properties", 
   }
 });
 
-// [spec:hfst:req:javascript.load-bytes+1/test]
+// [spec:hfst:req:javascript.load-bytes+2/test]
 test("a stream of several transducers loads as an array in stream order", async () => {
   const ordered = pkg.readTransducers(await fixture("ordered.hfst"));
   assertEqual(ordered.map((t) => t.name).join(" "), "first second", "names");
@@ -80,7 +79,7 @@ test("a stream of several transducers loads as an array in stream order", async 
   for (const t of [...ordered, ...bare]) t.free();
 });
 
-// [spec:hfst:req:javascript.load-bytes+1/test]
+// [spec:hfst:req:javascript.load-bytes+2/test]
 test("a pmatch container loads as TOP and its definitions, each with its own properties", async () => {
   const all = pkg.readTransducers(await fixture("animals.pmhfst"));
   assertEqual(all.map((t) => t.name).join(" "), "TOP Animal", "names");
@@ -91,7 +90,7 @@ test("a pmatch container loads as TOP and its definitions, each with its own pro
   for (const t of all) t.free();
 });
 
-// [spec:hfst:req:javascript.load-bytes+1/test]
+// [spec:hfst:req:javascript.load-bytes+2/test]
 test("readTransducer takes one transducer, and a stream of several throws transducer-count", async () => {
   using one = pkg.readTransducer(await fixture("words.optimized-lookup-weighted.hfst"));
   assertEqual(one.type, "optimized-lookup-weighted", "one transducer");
@@ -101,8 +100,8 @@ test("readTransducer takes one transducer, and a stream of several throws transd
   assert(error.message.includes("2"), `the message gives the count: ${error.message}`);
 });
 
-// [spec:hfst:req:javascript.load-bytes+1/test]
-test("tropical OpenFst and foma bytes are for @divvun/hfst", async () => {
+// [spec:hfst:req:javascript.load-bytes+2/test]
+test("tropical OpenFst and foma transducers throw unsupported-format naming their format", async () => {
   for (const [name, type] of [
     ["words.openfst-tropical.hfst", "openfst-tropical"],
     ["words.openfst-tropical.bare", "openfst-tropical"],
@@ -110,20 +109,14 @@ test("tropical OpenFst and foma bytes are for @divvun/hfst", async () => {
     ["words.foma.plain", "foma"],
   ] as const) {
     const bytes = await fixture(name);
-    if (runtime) {
-      const error = thrown(() => pkg.readTransducers(bytes));
-      assertEqual(error.code, "unsupported-format", `${name}: code`);
-      assert(error.message.includes(type), `${name}: the message names ${type}: ${error.message}`);
-      assert(error.message.includes("@divvun/hfst reads it"), `${name}: the message names @divvun/hfst`);
-    } else {
-      using t = pkg.readTransducer(bytes);
-      assertEqual(String(t.type), type, `${name}: type`);
-    }
+    const error = thrown(() => pkg.readTransducers(bytes));
+    assertEqual(error.code, "unsupported-format", `${name}: code`);
+    assert(error.message.includes(type), `${name}: the message names ${type}: ${error.message}`);
   }
 });
 
-// [spec:hfst:req:javascript.load-bytes+1/test]
-test("formats no package reads throw unsupported-format naming them", async () => {
+// [spec:hfst:req:javascript.load-bytes+2/test]
+test("other formats throw unsupported-format naming them", async () => {
   const gzipped = await fixture("words.foma.bare");
   const gzip = thrown(() => pkg.readTransducers(gzipped));
   assertEqual(gzip.code, "unsupported-format", "gzip: code");
@@ -133,7 +126,7 @@ test("formats no package reads throw unsupported-format naming them", async () =
   assert(dhfst.message.includes("DHFST"), `the message names DHFST: ${dhfst.message}`);
 });
 
-// [spec:hfst:req:javascript.load-bytes+1/test]
+// [spec:hfst:req:javascript.load-bytes+2/test]
 test("empty, foreign, truncated and corrupt bytes throw invalid-format", async () => {
   const olw = await fixture("words.optimized-lookup-weighted.hfst");
   const ol = payloadStart(olw);
@@ -157,13 +150,13 @@ test("empty, foreign, truncated and corrupt bytes throw invalid-format", async (
   assertEqual(after.type, "optimized-lookup-weighted", "the module still loads transducers");
 });
 
-// [spec:hfst:req:javascript.load-bytes+1/test]
+// [spec:hfst:req:javascript.load-bytes+2/test]
 test("a stream whose transducers differ in type throws type-mismatch", async () => {
   const mixed = await fixture("mixed.hfst");
   assertEqual(thrownCode(pkg.HfstError, () => pkg.readTransducers(mixed)), "type-mismatch", "code");
 });
 
-// [spec:hfst:req:javascript.load-bytes+1/test]
+// [spec:hfst:req:javascript.load-bytes+2/test]
 test("bytes that are not a Uint8Array throw invalid-argument", () => {
   for (const notBytes of [null, "HFST", [72, 70, 83, 84], new ArrayBuffer(8)]) {
     const call = () => pkg.readTransducers(notBytes as unknown as Uint8Array);
@@ -171,7 +164,7 @@ test("bytes that are not a Uint8Array throw invalid-argument", () => {
   }
 });
 
-// [spec:hfst:req:javascript.load-bytes+1/test]
+// [spec:hfst:req:javascript.load-bytes+2/test]
 test("a freed transducer throws freed, and freeing twice does nothing", async () => {
   const t = pkg.readTransducer(await fixture("words.optimized-lookup-unweighted.hfst"));
   t.free();

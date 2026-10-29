@@ -38,12 +38,12 @@ platforms (
         }
     }
 
-    // The globs stop short of js/<package>/pkg and js/<package>/dist, which
-    // hold build output. deno check needs no build: js/deno.json stands
-    // hand-declared modules in for the generated glue.
+    // The globs stop short of js/hfst/pkg and js/hfst/dist, which hold build
+    // output. deno check needs no build: js/deno.json stands a hand-declared
+    // module in for the generated glue.
     {
         platform "typescript"
-        files (js/shared/**/*.ts js/hfst-runtime/*.ts js/hfst/*.ts js/test/**/*.ts)
+        files (js/hfst/*.ts js/test/**/*.ts)
         checks {
             typecheck {
                 cmd "cd js && deno check"

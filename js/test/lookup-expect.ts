@@ -1,8 +1,8 @@
 // What `hfst lookup -X print-space` printed for the lookup fixtures
-// (js/test/lookup-fixtures.mjs), read back into the shape a package's lookup
-// returns, so the two can be compared result for result.
+// (js/test/lookup-fixtures.mjs), read back into the shape the package's
+// lookup returns, so the two can be compared result for result.
 
-import type { LookupResult } from "../shared/lookup.ts";
+import type { LookupResult } from "../hfst/lookup.ts";
 import { assert, assertEqual } from "./harness.ts";
 
 /** A result as the comparison sees it: its weight printed as `hfst lookup` prints weights. */

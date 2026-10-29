@@ -416,7 +416,7 @@ impl<T: TransducerTablesInterface> Transducer<T> {
     /// definitions: it was written with an empty alphabet and numbers its
     /// symbols as the first transducer does, so it takes that alphabet and its
     /// symbol counts and becomes a transducer that stands on its own.
-    // [spec:hfst:req:javascript.load-bytes+1]
+    // [spec:hfst:req:javascript.load-bytes+2]
     pub fn read_from_with_header_in(
         header: TransducerHeader,
         is: &mut dyn std::io::BufRead,
@@ -585,7 +585,7 @@ impl OlMember {
     /// stream whose first transducer has the alphabet `container`, a pmatch
     /// definition takes that alphabet; see
     /// [`Transducer::read_from_with_header_in`].
-    // [spec:hfst:req:javascript.load-bytes+1]
+    // [spec:hfst:req:javascript.load-bytes+2]
     pub fn read_from(
         is: &mut dyn std::io::BufRead,
         container: Option<&ContainerAlphabet>,

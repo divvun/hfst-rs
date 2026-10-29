@@ -568,7 +568,7 @@ mod input_impl {
                     let leftover = buffered.buffer().to_vec();
                     self.reader.unget_all(&leftover);
                     let member = loaded?;
-                    // [spec:hfst:req:javascript.load-bytes+1]
+                    // [spec:hfst:req:javascript.load-bytes+2]
                     if self.container.is_none() && !self.is_eof() {
                         self.container = Some(member.container_alphabet());
                     }
@@ -1009,7 +1009,7 @@ mod input_impl {
 
             // An optimized-lookup payload with no HFST3 header in front: what
             // `hfst fst2fst -b -w` writes, and the .hfstol files spellers ship.
-            // [spec:hfst:req:javascript.load-bytes+1]
+            // [spec:hfst:req:javascript.load-bytes+2]
             if let Some(header) = self.peek_ol_header() {
                 self.has_hfst_header = false;
                 self.bytes_to_skip = 0;

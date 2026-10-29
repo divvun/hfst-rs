@@ -1,51 +1,70 @@
-// The full package's checks on what it is handed, against the built package.
-// They need no fixtures: every transducer here is read from AT&T text.
+// The transducer wrapper, against a fake glue.
 
-import { assertEqual, readBytes, runTests, test, thrownCode } from "../test/harness.ts";
-import { entryOf } from "../test/packages.ts";
-import type * as Full from "./index.ts";
+import { FakeGlue } from "../test/fake-glue.ts";
+import { assert, assertEqual, runTests, test, thrownCode } from "../test/harness.ts";
+import { Core } from "./core.ts";
+import { HfstError } from "./errors.ts";
+import { transducerReaders } from "./transducer.ts";
 
-const dir = new URL("./", import.meta.url);
-const pkg = (await entryOf(dir)) as unknown as typeof Full;
-await pkg.init(await readBytes(new URL("dist/hfst/pkg/hfst_wasm_bg.wasm", dir).href));
+async function started(stream: string[][]) {
+  const glue = new FakeGlue();
+  glue.stream = stream;
+  const core = new Core(glue, new URL("http://127.0.0.1:9/never.wasm"));
+  await core.init(new Uint8Array(0));
+  return { glue, ...transducerReaders(core) };
+}
 
-const ATT = "0\t1\ta\tb\t0.5\n1\t0\n";
-
-// [spec:hfst:req:javascript.load-bytes+1/test]
-test("writeTransducers takes Transducers of one type, and at least one", () => {
-  using tropical = pkg.readAtt(ATT);
-  using foma = pkg.readAtt(ATT, "foma");
-  using again = pkg.readAtt(ATT);
-  assertEqual(thrownCode(pkg.HfstError, () => pkg.writeTransducers([])), "invalid-argument", "none");
-  const notTransducers = [{}] as unknown as Full.Transducer[];
-  assertEqual(thrownCode(pkg.HfstError, () => pkg.writeTransducers(notTransducers)), "invalid-argument", "objects");
-  assertEqual(thrownCode(pkg.HfstError, () => pkg.writeTransducers([tropical, foma])), "type-mismatch", "mixed");
-  const both = pkg.readTransducers(pkg.writeTransducers([tropical, again]));
-  assertEqual(both.length, 2, "transducers written");
-  for (const t of both) t.free();
+// [spec:hfst:req:javascript.load-bytes+2/test]
+test("a transducer's type, name and properties are plain values", async () => {
+  const { readTransducer } = await started([
+    ["optimized-lookup-weighted", "TOP", "max-recursion", "5000", "mark-patterns", "on"],
+  ]);
+  const t = readTransducer(new Uint8Array(1));
+  assertEqual(t.type, "optimized-lookup-weighted", "type");
+  assertEqual(t.name, "TOP", "name");
+  assertEqual(JSON.stringify(t.properties), '{"max-recursion":"5000","mark-patterns":"on"}', "properties");
+  assert(Object.isFrozen(t.properties), "the properties cannot be changed");
+  assert(t.properties === t.properties, "the same object each time");
 });
 
-// [spec:hfst:req:javascript.load-bytes+1/test]
-test("readAtt and convert take only the type names", () => {
-  using t = pkg.readAtt(ATT);
-  assertEqual(t.type, "openfst-tropical", "the default type");
-  const badType = "thfst" as Full.TransducerType;
-  assertEqual(thrownCode(pkg.HfstError, () => t.convert(badType)), "invalid-argument", "convert");
-  assertEqual(thrownCode(pkg.HfstError, () => pkg.readAtt(ATT, badType)), "invalid-argument", "readAtt");
-  const notText = 42 as unknown as string;
-  assertEqual(thrownCode(pkg.HfstError, () => pkg.readAtt(notText)), "invalid-argument", "text");
+// [spec:hfst:req:javascript.load-bytes+2/test]
+test("readTransducer on a stream of several throws transducer-count and frees them all", async () => {
+  const { glue, readTransducer, readTransducers } = await started([
+    ["optimized-lookup-weighted", "a"],
+    ["optimized-lookup-weighted", "b"],
+  ]);
+  assertEqual(readTransducers(new Uint8Array(1)).length, 2, "readTransducers reads both");
+  assertEqual(thrownCode(HfstError, () => readTransducer(new Uint8Array(1))), "transducer-count", "code");
+  assertEqual(glue.freed.join(), "a,b", "freed");
 });
 
-// [spec:hfst:req:javascript.load-bytes+1/test]
-test("toAtt prints weights for every type but foma", () => {
-  for (const type of ["openfst-tropical", "optimized-lookup-weighted", "foma"] as const) {
-    using t = pkg.readAtt(ATT, type);
-    const text = t.toAtt();
-    assertEqual(text.includes("0.500000"), type !== "foma", `${type}: ${text}`);
+// [spec:hfst:req:javascript.load-bytes+2/test]
+test("bytes that are not a Uint8Array throw invalid-argument without entering the module", async () => {
+  const { glue, readTransducers } = await started([]);
+  const before = glue.entered;
+  const notBytes = [1, 2, 3] as unknown as Uint8Array;
+  assertEqual(thrownCode(HfstError, () => readTransducers(notBytes)), "invalid-argument", "code");
+  assertEqual(glue.entered, before, "calls into the module");
+});
+
+// [spec:hfst:req:javascript.load-bytes+2/test]
+test("a type the wrapper does not know is an internal error", async () => {
+  const { readTransducers } = await started([["thfst", "x"]]);
+  assertEqual(thrownCode(HfstError, () => readTransducers(new Uint8Array(1))), "internal", "code");
+});
+
+// [spec:hfst:req:javascript.load-bytes+2/test]
+test("the accessors of a freed transducer throw freed", async () => {
+  const { readTransducer } = await started([["optimized-lookup-unweighted", "x"]]);
+  const t = readTransducer(new Uint8Array(1));
+  t.free();
+  for (const [what, read] of [
+    ["type", () => t.type],
+    ["name", () => t.name],
+    ["properties", () => t.properties],
+  ] as const) {
+    assertEqual(thrownCode(HfstError, read), "freed", what);
   }
-  using freed = pkg.readAtt(ATT);
-  freed.free();
-  assertEqual(thrownCode(pkg.HfstError, () => freed.toAtt()), "freed", "toAtt after free");
 });
 
 await runTests("hfst/transducer");

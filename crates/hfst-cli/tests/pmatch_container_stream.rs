@@ -32,7 +32,7 @@ fn container(dir: &Path) -> PathBuf {
     out
 }
 
-// [spec:hfst:req:javascript.load-bytes+1/test]
+// [spec:hfst:req:javascript.load-bytes+2/test]
 #[test]
 fn head_reads_every_transducer_of_a_pmatch_container() {
     let dir = scratch("head");
@@ -52,7 +52,7 @@ fn head_reads_every_transducer_of_a_pmatch_container() {
     assert_eq!(names, ["TOP", "Animal"]);
 }
 
-// [spec:hfst:req:javascript.load-bytes+1/test]
+// [spec:hfst:req:javascript.load-bytes+2/test]
 #[test]
 fn a_container_definition_prints_as_its_own_transducer() {
     let dir = scratch("fst2txt");
@@ -67,7 +67,7 @@ fn a_container_definition_prints_as_its_own_transducer() {
     }
 }
 
-// [spec:hfst:req:javascript.load-bytes+1/test]
+// [spec:hfst:req:javascript.load-bytes+2/test]
 #[test]
 fn headerless_optimized_lookup_reads_like_headered() {
     let dir = scratch("headerless");
