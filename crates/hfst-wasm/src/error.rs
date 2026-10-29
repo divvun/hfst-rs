@@ -22,7 +22,6 @@ impl GlueError {
         }
     }
 
-    #[cfg(test)]
     pub fn code(&self) -> &'static str {
         self.code
     }

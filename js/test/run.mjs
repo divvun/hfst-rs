@@ -34,6 +34,7 @@ const scenarios = [
   { file: "transducers.ts", build: "release", variants: ["main"] },
   { file: "lookup.ts", build: "release", variants: ["main"] },
   { file: "tokenise.ts", build: "release", variants: ["main"] },
+  { file: "dhfst.ts", build: "release", variants: ["main"] },
 ];
 
 // Node only collects garbage on request with --expose-gc; Bun has Bun.gc.

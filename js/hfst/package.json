@@ -1,7 +1,7 @@
 {
   "name": "@divvun/hfst",
   "version": "0.1.0",
-  "description": "Divvun HFST for JavaScript: reads optimized-lookup transducers and pmatch containers and runs lookup and tokenisation, as WebAssembly for browsers, Web Workers, Deno, Node and Bun. It replaces hfst-js for reading and looking up transducers.",
+  "description": "Divvun HFST for JavaScript: reads optimized-lookup transducers, pmatch containers and DHFST spellers and runs lookup, tokenisation and DHFST acceptor lookup, as WebAssembly for browsers, Web Workers, Deno, Node and Bun. It replaces hfst-js for reading and looking up transducers.",
   "keywords": ["hfst", "divvun", "finite-state", "transducer", "morphology", "tokeniser", "webassembly"],
   "license": "LGPL-3.0-or-later",
   "author": "UiT The Arctic University of Norway",

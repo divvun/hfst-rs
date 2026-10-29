@@ -9,3 +9,4 @@ export declare const setLogLevel: Glue["setLogLevel"];
 export declare const version: Glue["version"];
 export declare const readTransducers: Glue["readTransducers"];
 export declare const readTokeniser: Glue["readTokeniser"];
+export declare const readDhfst: Glue["readDhfst"];

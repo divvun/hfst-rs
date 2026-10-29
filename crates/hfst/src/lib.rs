@@ -44,6 +44,7 @@ pub mod convert_transducer_format;
 pub mod convert_tropical_weight_transducer;
 pub mod dhfst;
 pub mod dhfst_acceptor;
+pub mod dhfst_acceptor_lookup;
 pub mod dhfst_acceptor_source;
 pub mod dhfst_acceptor_writer;
 pub mod dhfst_distance;

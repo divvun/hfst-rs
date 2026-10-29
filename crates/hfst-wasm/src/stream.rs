@@ -84,8 +84,9 @@ pub fn member(bytes: &[u8]) -> Result<Member<'_>, GlueError> {
         return pre_release(rest);
     }
     if bytes.starts_with(hfst::dhfst_header::MAGIC) {
-        return Err(unsupported(
-            "DHFST, a speller format that is not a transducer stream",
+        return Err(GlueError::new(
+            UNSUPPORTED,
+            "the bytes hold DHFST, a speller format and not a transducer stream; readDhfst reads it",
         ));
     }
     if bytes.starts_with(&[0x1f, 0x8b, 0x08]) {
