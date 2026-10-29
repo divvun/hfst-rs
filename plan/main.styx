@@ -8058,7 +8058,7 @@ children (
 
             {
                 id wasm.crates
-                title "Scaffold crates/hfst-wasm-runtime and crates/hfst-wasm (wasm-bindgen cdylibs; the full crate re-exports the runtime's bindings) and the TypeScript packages under js/ (shared wrapper source bound to each package's own glue); explicit async init; deno check on the TS; an nplan typescript platform"
+                title "Scaffold the binding: crates/hfst-wasm (wasm-bindgen cdylib) and the TypeScript package js/hfst published as @divvun/hfst; explicit async init; deno check on the TS; an nplan typescript platform"
                 kind @feat
                 implements {
                     js-impl ([spec:hfst:def:javascript.packages] [spec:hfst:req:javascript.init] [spec:hfst:req:javascript.typed-surface])
@@ -8069,7 +8069,7 @@ children (
 
             {
                 id wasm.errors-and-handles
-                title "JS runtime contract: HfstError/HfstCompileError with stable codes, trap-poisoned module instances, free()/Symbol.dispose/FinalizationRegistry handle lifetime with freed-handle errors, and a replaceable logger fed by the library's tracing events"
+                title "JS runtime contract: HfstError with stable codes, trap-poisoned module instances, free()/Symbol.dispose/FinalizationRegistry handle lifetime with freed-handle errors, and a replaceable logger fed by the library's tracing events"
                 kind @feat
                 implements {
                     js-impl ([spec:hfst:req:javascript.errors] [spec:hfst:req:javascript.handle-lifetime] [spec:hfst:req:javascript.logging])
@@ -8087,7 +8087,7 @@ children (
 
             {
                 id wasm.transducer-io
-                title "Load transducers from bytes: runtime reads weighted/unweighted optimized-lookup and pmatch containers (with or without HFST header) and throws unsupported-format naming @divvun/hfst for the rest; full reads, writes and converts every library format; multi-transducer streams load as arrays"
+                title "Load transducers from bytes: weighted and unweighted optimized-lookup transducers and pmatch containers, with or without an HFST header (the library reads pmatch definitions with TOP's alphabet and sniffs headerless OL); multi-transducer streams load as arrays; other formats throw unsupported-format naming the format"
                 kind @feat
                 implements {
                     target-impl ([spec:hfst:req:javascript.load-bytes])

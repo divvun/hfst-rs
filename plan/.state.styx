@@ -856,11 +856,6 @@ impl_evidence (
         {impl_name js-impl, rule javascript.packages}
         {impl_name js-impl, rule javascript.typed-surface}
         {impl_name target-impl, rule javascript.portable-build}
-    ), rule_versions_seen (
-        {id javascript.init, version 0}
-        {id javascript.packages, version 0}
-        {id javascript.portable-build, version 0}
-        {id javascript.typed-surface, version 0}
     )}
     {id wasm.dhfst}
     {id wasm.diagnostics, covered_rules (
@@ -876,10 +871,6 @@ impl_evidence (
         {impl_name js-impl, rule javascript.errors}
         {impl_name js-impl, rule javascript.handle-lifetime}
         {impl_name js-impl, rule javascript.logging}
-    ), rule_versions_seen (
-        {id javascript.errors, version 0}
-        {id javascript.handle-lifetime, version 0}
-        {id javascript.logging, version 0}
     )}
     {id wasm.file-resolver, covered_rules (
         javascript.named-file-resolver
@@ -898,23 +889,17 @@ impl_evidence (
         javascript.lookup
     ), covered_claims (
         {impl_name target-impl, rule javascript.lookup}
-    ), rule_versions_seen (
-        {id javascript.lookup, version 0}
     )}
     {id wasm.parity}
     {id wasm.tokenise, covered_rules (
         javascript.tokenise
     ), covered_claims (
         {impl_name target-impl, rule javascript.tokenise}
-    ), rule_versions_seen (
-        {id javascript.tokenise, version 0}
     )}
     {id wasm.transducer-io, covered_rules (
         javascript.load-bytes
     ), covered_claims (
         {impl_name target-impl, rule javascript.load-bytes}
-    ), rule_versions_seen (
-        {id javascript.load-bytes, version 1}
     )}
     {id wasm.xfst-output, covered_rules (
         javascript.xfst-output-sink
