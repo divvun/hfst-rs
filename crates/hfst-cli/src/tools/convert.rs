@@ -608,8 +608,8 @@ pub mod fst2fst {
     use crate::cli::{self, CommonArgs, ToolArgs, ToolResult, UnaryIo};
     use crate::globals::CommonOptions;
     use crate::hfst_commandline::{
-        convert_any_with_options, error, hfst_parse_format_name, hfst_set_program_name,
-        hfst_strformat, verbose_print, warning,
+        error, hfst_parse_format_name, hfst_set_program_name, hfst_strformat, verbose_print,
+        warning,
     };
     use crate::hfst_tool_metadata::{hfst_get_name, hfst_set_formula_unary, hfst_set_name_unary};
     use clap::ArgAction;
@@ -973,14 +973,13 @@ pub mod fst2fst {
             // C wraps the conversion in try/catch on HfstException; the Rust
             // conversion currently panics rather than throwing, so the catch arm
             // is not reproduced here.
-            let converted =
-                match convert_any_with_options(orig, options.output_type, &options.options) {
-                    Ok(v) => v,
-                    Err(e) => {
-                        error(common, 1, 0, &format!("{e}"));
-                        return 1;
-                    }
-                };
+            let converted = match orig.convert(options.output_type, &options.options) {
+                Ok(v) => v,
+                Err(e) => {
+                    error(common, 1, 0, &format!("{e}"));
+                    return 1;
+                }
+            };
             // C: hfst_set_name(orig, orig, "convert"); the dest and src are the
             // same object, which Rust cannot alias mut+const, so the read side is
             // taken from a copy (name/formula are unchanged by the copy).
@@ -1044,7 +1043,7 @@ pub mod fst2fst {
         );
         // Conversion to HFST_OLW_TYPE always yields the OlW variant; any other
         // would be a bug in the conversion path.
-        let olw = match convert_any_with_options(orig, options.output_type, &options.options) {
+        let olw = match orig.convert(options.output_type, &options.options) {
             Ok(AnyTransducer::OlW(t)) => t,
             Ok(AnyTransducer::Tropical(_) | AnyTransducer::OlU(_) | AnyTransducer::Thfst(_)) => {
                 error(

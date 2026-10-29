@@ -407,11 +407,31 @@ impl<T: TransducerTablesInterface> Transducer<T> {
         header: TransducerHeader,
         is: &mut dyn std::io::BufRead,
     ) -> crate::error::Result<Self> {
-        let header = Box::new(header);
-        // The weightedness is now static; a stream of the other flavour is the
-        // caller dispatching wrongly (C++ discovered this inside load_tables).
+        Self::read_from_with_header_in(header, is, None)
+    }
+
+    /// [`Self::read_from_with_header`] for a payload that may sit in a pmatch
+    /// container, whose first transducer's alphabet is `container`. A payload
+    /// whose header declares no symbols is one of the container's
+    /// definitions: it was written with an empty alphabet and numbers its
+    /// symbols as the first transducer does, so it takes that alphabet and its
+    /// symbol counts and becomes a transducer that stands on its own.
+    // [spec:hfst:req:javascript.load-bytes+1]
+    pub fn read_from_with_header_in(
+        header: TransducerHeader,
+        is: &mut dyn std::io::BufRead,
+        container: Option<&ContainerAlphabet>,
+    ) -> crate::error::Result<Self> {
+        let mut header = Box::new(header);
+        // The weightedness is part of the type, so a payload of the other
+        // flavour means the caller picked the wrong instantiation.
         if header.probe_flag(HeaderFlag::Weighted) != T::WEIGHTED {
             crate::bail!(TransducerHasWrongType);
+        }
+        let borrowed = container.filter(|_| header.symbol_count() == 0);
+        if let Some(container) = borrowed {
+            header.number_of_symbols = container.symbol_count;
+            header.number_of_input_symbols = container.input_symbol_count;
         }
         // Input symbols are the leading run of the alphabet, so a header
         // claiming more of them than there are symbols is corrupt — and the
@@ -426,11 +446,10 @@ impl<T: TransducerTablesInterface> Transducer<T> {
                 )
             );
         }
-        let alphabet = Box::new(TransducerAlphabet::read_from(
-            is,
-            header.symbol_count(),
-            true,
-        )?);
+        let alphabet = Box::new(match borrowed {
+            Some(container) => container.alphabet.clone(),
+            None => TransducerAlphabet::read_from(is, header.symbol_count(), true)?,
+        });
         let encoder = Box::new(Encoder::new(
             alphabet.get_symbol_table(),
             header.input_symbol_count(),
@@ -527,6 +546,64 @@ impl<T: TransducerTablesInterface> Transducer<T> {
 impl<T: TransducerTablesInterface> Default for Transducer<T> {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+/// The alphabet a pmatch container's definitions number their symbols by:
+/// that of the container's first transducer, TOP. The archive writer gives
+/// every definition except the UNCOMPOSE ones an empty alphabet and TOP's
+/// symbol numbering.
+#[derive(Clone)]
+pub struct ContainerAlphabet {
+    alphabet: TransducerAlphabet,
+    symbol_count: SymbolNumber,
+    input_symbol_count: SymbolNumber,
+}
+
+impl ContainerAlphabet {
+    /// The alphabet of `top`, the first transducer of a stream.
+    pub fn of<T: TransducerTablesInterface>(top: &Transducer<T>) -> Self {
+        ContainerAlphabet {
+            alphabet: top.get_alphabet().clone(),
+            symbol_count: top.get_header().symbol_count(),
+            input_symbol_count: top.get_header().input_symbol_count(),
+        }
+    }
+}
+
+/// One optimized-lookup transducer read off a stream, in the table layout its
+/// header's Weighted flag names. The flag in the payload decides, not the
+/// stream's type tag, so a tag that disagrees with its payload loads as the
+/// payload says.
+pub enum OlMember {
+    Weighted(Transducer<WeightedTables>),
+    Unweighted(Transducer<UnweightedTables>),
+}
+
+impl OlMember {
+    /// Reads one optimized-lookup payload: header, alphabet and tables. In a
+    /// stream whose first transducer has the alphabet `container`, a pmatch
+    /// definition takes that alphabet; see
+    /// [`Transducer::read_from_with_header_in`].
+    // [spec:hfst:req:javascript.load-bytes+1]
+    pub fn read_from(
+        is: &mut dyn std::io::BufRead,
+        container: Option<&ContainerAlphabet>,
+    ) -> crate::error::Result<OlMember> {
+        let header = TransducerHeader::read_from(is)?;
+        Ok(if header.probe_flag(HeaderFlag::Weighted) {
+            OlMember::Weighted(Transducer::read_from_with_header_in(header, is, container)?)
+        } else {
+            OlMember::Unweighted(Transducer::read_from_with_header_in(header, is, container)?)
+        })
+    }
+
+    /// This transducer's alphabet, for the members after it to borrow.
+    pub fn container_alphabet(&self) -> ContainerAlphabet {
+        match self {
+            OlMember::Weighted(t) => ContainerAlphabet::of(t),
+            OlMember::Unweighted(t) => ContainerAlphabet::of(t),
+        }
     }
 }
 

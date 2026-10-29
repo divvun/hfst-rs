@@ -50,9 +50,7 @@ use crate::convert_transducer_format::ConversionFunctions;
 use crate::hfst_data_types::{ImplementationType, StringPairVector};
 use crate::hfst_ol_transducer::HfstOlInputStream as HfstOlBackendInputStream;
 use crate::hfst_transducer::{AnyTransducer, HfstTransducer};
-use crate::transducer::{
-    HeaderFlag, Transducer, TransducerHeader, UnweightedTables, WeightedTables,
-};
+use crate::transducer::{ContainerAlphabet, HeaderFlag, OlMember, TransducerHeader};
 use crate::tropical_weight_transducer::TropicalWeightInputStream;
 
 /// Unported backend input-stream collaborators. Each is a placeholder unit type:
@@ -250,6 +248,10 @@ pub struct HfstInputStream<'a> {
     /// is 'Some'. 'None' for every byte-stream source.
     // [spec:hfst:def:thfst-backend.stream-io]
     preloaded: Option<AnyTransducer>,
+    /// The alphabet of the stream's first optimized-lookup transducer, kept
+    /// when more transducers follow it: in a pmatch container they are the
+    /// definitions, which number their symbols by it.
+    container: Option<ContainerAlphabet>,
 }
 
 // ===== input_impl (workflow body) =====
@@ -386,24 +388,22 @@ mod input_impl {
             false
         }
 
-        /// One optimized-lookup payload, positioned just after the HFST header
-        /// that probing consumed. The payload header's Weighted flag picks the
-        /// table instantiation — the ONE place OL weightedness is data rather
-        /// than type. The C++ converted the payload when its weightedness
-        /// disagreed with the stream tag ('t.convert(self.ty)'); typed loads
-        /// trust the payload header instead, so a stream-tag/payload mismatch (a
-        /// malformed file) surfaces as the payload's own type.
-        fn read_ol_payload(is: &mut dyn std::io::BufRead) -> crate::error::Result<AnyTransducer> {
-            let header = TransducerHeader::read_from(is)?;
-            Ok(if header.probe_flag(HeaderFlag::Weighted) {
-                AnyTransducer::OlW(HfstTransducer::wrap(
-                    Transducer::<WeightedTables>::read_from_with_header(header, is)?,
-                ))
-            } else {
-                AnyTransducer::OlU(HfstTransducer::wrap(
-                    Transducer::<UnweightedTables>::read_from_with_header(header, is)?,
-                ))
-            })
+        /// The optimized-lookup header at the head of the stream, if it starts
+        /// with one a writer could have produced; see [`TransducerHeader::sniff`].
+        /// Nothing is consumed.
+        fn peek_ol_header(&mut self) -> Option<TransducerHeader> {
+            let mut head = Vec::with_capacity(TransducerHeader::SIZE);
+            while head.len() < TransducerHeader::SIZE {
+                let b = self.pbr().get();
+                if self.pbr().eof || self.pbr().fail {
+                    break;
+                }
+                head.push(b);
+            }
+            for &b in head.iter().rev() {
+                self.pbr().unget(b);
+            }
+            TransducerHeader::sniff(&head)
         }
 
         /// Slurp every remaining byte from the owned reader (unget stack first,
@@ -457,6 +457,10 @@ mod input_impl {
                     if self.stream_eof() {
                         crate::bail!(EndOfStream);
                     }
+                    // Each transducer carries the properties of its own header
+                    // only, and one without a header has none.
+                    self.name.clear();
+                    self.props.clear();
                     let current_type = self.get_type();
                     let stype = self.stream_fst_type()?;
                     if stype != current_type {
@@ -560,10 +564,18 @@ mod input_impl {
                     // and did not consume goes back on the unget stack before
                     // any error propagates.
                     let mut buffered = std::io::BufReader::new(&mut *self.reader);
-                    let loaded = Self::read_ol_payload(&mut buffered);
+                    let loaded = OlMember::read_from(&mut buffered, self.container.as_ref());
                     let leftover = buffered.buffer().to_vec();
                     self.reader.unget_all(&leftover);
-                    loaded?
+                    let member = loaded?;
+                    // [spec:hfst:req:javascript.load-bytes+1]
+                    if self.container.is_none() && !self.is_eof() {
+                        self.container = Some(member.container_alphabet());
+                    }
+                    match member {
+                        OlMember::Weighted(t) => AnyTransducer::OlW(HfstTransducer::wrap(t)),
+                        OlMember::Unweighted(t) => AnyTransducer::OlU(HfstTransducer::wrap(t)),
+                    }
                 }
                 ImplementationType::THFST_TYPE => {
                     // Unreachable: THFST has no byte-stream encoding and is never
@@ -995,6 +1007,19 @@ mod input_impl {
                 return Ok(self.ty);
             }
 
+            // An optimized-lookup payload with no HFST3 header in front: what
+            // `hfst fst2fst -b -w` writes, and the .hfstol files spellers ship.
+            // [spec:hfst:req:javascript.load-bytes+1]
+            if let Some(header) = self.peek_ol_header() {
+                self.has_hfst_header = false;
+                self.bytes_to_skip = 0;
+                return Ok(if header.probe_flag(HeaderFlag::Weighted) {
+                    ImplementationType::HFST_OLW_TYPE
+                } else {
+                    ImplementationType::HFST_OL_TYPE
+                });
+            }
+
             // whether the stream contains an HFST version <3.0 transducer
             // or a native SFST, OpenFst, foma or xfsm transducer
             let transducer_type = self.guess_fst_type(&mut bytes_read)?;
@@ -1041,6 +1066,7 @@ mod input_impl {
                 reader: Box::new(PushbackReader::new(inner)),
                 input_stream_active: true,
                 preloaded: None,
+                container: None,
             };
 
             // A fresh stream sets its eofbit only once a read runs past the end
@@ -1189,6 +1215,7 @@ mod input_impl {
                 reader: Box::new(PushbackReader::new(Box::new(std::io::empty()))),
                 input_stream_active: false,
                 preloaded: Some(AnyTransducer::Thfst(HfstTransducer::wrap(t))),
+                container: None,
             })
         }
 

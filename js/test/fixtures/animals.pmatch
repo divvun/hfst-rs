@@ -1,0 +1,2 @@
+define Animal {cat} | {dog} ;
+define TOP Ins(Animal) EndTag(Animal) | {mouse} EndTag(Small) ;

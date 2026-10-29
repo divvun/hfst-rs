@@ -7,8 +7,8 @@
 use crate::cli::{self, CommonArgs, ToolArgs, ToolResult, UnaryIo};
 use crate::globals::CommonOptions;
 use crate::hfst_commandline::{
-    conversion_type, convert_any, error, hfst_error, hfst_error_at_line, hfst_set_program_name,
-    hfst_strformat, hfst_warning, is_input_stream_in_ol_format, verbose_print,
+    conversion_type, error, hfst_error, hfst_error_at_line, hfst_set_program_name, hfst_strformat,
+    hfst_warning, is_input_stream_in_ol_format, verbose_print,
 };
 use crate::hfst_tool_metadata::{hfst_set_formula_unary, hfst_set_name_unary};
 use hfst::hfst_data_types::{ImplementationType, StringPair};
@@ -303,7 +303,7 @@ fn process_stream(
                     ));
                 }
                 hfst_warning(common, 0, 0, &warnstr);
-                to_transducer = match convert_any(to_transducer, output_type) {
+                to_transducer = match to_transducer.convert(output_type, "") {
                     Ok(t) => t,
                     Err(e) => {
                         hfst_error(common, 1, 0, &format!("{e}"));

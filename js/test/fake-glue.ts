@@ -3,7 +3,13 @@
 // filters log events by the level set, reports a panic to the sink before it
 // traps, and throws plain error objects.
 
-import type { GlueInitInput, GlueObject, GlueSink, RuntimeGlue } from "../shared/glue.ts";
+import type {
+  GlueInitInput,
+  GlueObject,
+  GlueSink,
+  RuntimeGlue,
+  TransducerGlue,
+} from "../shared/glue.ts";
 
 export class FakeGlue implements RuntimeGlue {
   readonly inputs: GlueInitInput[] = [];
@@ -16,6 +22,8 @@ export class FakeGlue implements RuntimeGlue {
   /** Calls into the module after init: every method below counts. */
   entered = 0;
   freed: string[] = [];
+  /** What readTransducers hands out, as [format, name, ...property pairs]. */
+  stream: string[][] = [];
 
   default(options: { module_or_path: GlueInitInput }): Promise<unknown> {
     this.inputs.push(options.module_or_path);
@@ -41,6 +49,11 @@ export class FakeGlue implements RuntimeGlue {
   version(): string {
     this.entered += 1;
     return "0.0.0-fake";
+  }
+
+  readTransducers(_bytes: Uint8Array): TransducerGlue[] {
+    this.entered += 1;
+    return this.stream.map(([format = "", name = "", ...pairs]) => new FakeTransducer(this, format, name, pairs));
   }
 
   /** Logs as the module does: only at or above the level set. */
@@ -83,5 +96,28 @@ export class FakeObject implements GlueObject {
     if (this.trapOnFree) this.#glue.trap("free failed");
     this.#glue.entered += 1;
     this.#glue.freed.push(this.label);
+  }
+}
+
+export class FakeTransducer extends FakeObject implements TransducerGlue {
+  readonly #format: string;
+  readonly #pairs: string[];
+
+  constructor(glue: FakeGlue, format: string, name: string, pairs: string[]) {
+    super(glue, name);
+    this.#format = format;
+    this.#pairs = pairs;
+  }
+
+  format(): string {
+    return this.#format;
+  }
+
+  name(): string {
+    return this.label;
+  }
+
+  propertyPairs(): string[] {
+    return this.#pairs;
   }
 }

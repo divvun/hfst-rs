@@ -16,8 +16,11 @@ export interface ScenarioArgs {
   wasm: string;
   /** `http:` URL the runner serves the same `.wasm` file at. */
   http: string;
+  package: string;
   /** The version the package declares. */
   version: string;
+  /** `file:` URL of the directory of transducer fixtures, ending in a slash. */
+  fixtures: string;
   /** Which variant of the scenario to run. */
   variant: string;
   /** Names the package, scenario and variant in the test output. */
