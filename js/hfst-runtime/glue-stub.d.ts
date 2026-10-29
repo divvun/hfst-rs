@@ -8,3 +8,4 @@ export declare const install: RuntimeGlue["install"];
 export declare const setLogLevel: RuntimeGlue["setLogLevel"];
 export declare const version: RuntimeGlue["version"];
 export declare const readTransducers: RuntimeGlue["readTransducers"];
+export declare const readTokeniser: import("../shared/glue.ts").TokeniseGlue["readTokeniser"];

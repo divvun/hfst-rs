@@ -29,3 +29,11 @@ export type {
 export type { InitSource } from "../shared/core.ts";
 export type { LogEvent, Logger, LogLevel } from "../shared/logging.ts";
 export type { LookupOptions, LookupResult } from "../shared/lookup.ts";
+export { readTokeniser, Tokeniser } from "./tokenise.ts";
+export type {
+  FormatOptions,
+  Reading,
+  Token,
+  TokeniseFormat,
+  TokeniseOptions,
+} from "../shared/tokenise.ts";

@@ -8,7 +8,7 @@ test("the entry module exports the runtime API", async () => {
   const names = Object.keys(await entryOf(dir)).sort();
   assertEqual(
     names.join(" "),
-    "HfstCompileError HfstError Transducer init readTransducer readTransducers setLogLevel setLogger version",
+    "HfstCompileError HfstError Tokeniser Transducer init readTokeniser readTransducer readTransducers setLogLevel setLogger version",
     "exports",
   );
 });

@@ -32,5 +32,11 @@ tracing-subscriber = { version = "0.3.23", default-features = false, features = 
 # version, or it refuses the module.
 wasm-bindgen = "=0.2.118"
 
+[dev-dependencies]
+# The tokeniser tests compile their pmatch fixture with the library's compiler,
+# which builds on the tropical backend. Tests run natively, so none of it
+# reaches the module.
+hfst-openfst = { workspace = true }
+
 [lints]
 workspace = true
