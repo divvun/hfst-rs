@@ -1,6 +1,6 @@
 schema_version 7
 
-last_sync_at 2026-10-29T13:35:01.664689Z
+last_sync_at 2026-10-29T13:46:42.669553Z
 
 rule_versions (
     {id determinize-envelope.bounded-strategies, version 0}
@@ -44,7 +44,7 @@ rule_versions (
     {id javascript.logging, version 0}
     {id javascript.lookup, version 0}
     {id javascript.named-file-resolver, version 0}
-    {id javascript.native-parity, version 1}
+    {id javascript.native-parity, version 2}
     {id javascript.no-host-traps, version 0}
     {id javascript.packages, version 1}
     {id javascript.portable-build, version 1}
