@@ -8174,6 +8174,8 @@ children (
                     wasm.compile
                     wasm.xfst
                     wasm.algebra
+                    wasm.general-lookup-time-limit
+                    wasm.unweighted-convert-weights
                 )
                 log (
                     {
@@ -8190,6 +8192,36 @@ children (
                 title "Publish @divvun/hfst-runtime and @divvun/hfst 0.1.0 to npm: package.json (LGPL-3.0-or-later, Divvun HFST, copyright UiT, github.com/divvun/hfst-rs), README with the 4 GiB compile limit and worker advice, a release build script; the operator confirms before the actual npm publish"
                 kind @build
                 deps (wasm.parity)
+            }
+
+            {
+                id wasm.general-lookup-time-limit
+                title "General lookup honours a time limit: the library's non-OL lookup (HfstBasicTransducer::lookup, used for tropical and foma) takes a time cutoff on the web-time clock and returns the results found so far when it passes; hfst lookup -t applies it to every transducer type, and the full JS package passes timeLimitMs through instead of ignoring it"
+                kind @fix
+                deps (wasm.lookup)
+                log (
+                    {
+                        at 2026-10-29T12:04:48.212229Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "Found by wasm.lookup (0cc3eb8): the full package's lookup on tropical and foma goes through the same general-lookup path as hfst lookup's slow path (basic transducer, tokeniser, can-match check, infinite-ambiguity check with 5 cycles, flag-obeying lookup), and that path has no clock, so timeLimitMs is ignored there. hfst lookup -t likewise only cuts off optimized-lookup transducers. The TS docs state the gap until this lands."
+                    }
+                )
+            }
+
+            {
+                id wasm.unweighted-convert-weights
+                title "Converting to optimized-lookup-unweighted in memory keeps the source weights until the transducer is written, so lookup on the converted transducer reports weights that the same transducer read back from bytes reports as 0; the in-memory conversion must drop weights exactly as write-then-read does"
+                kind @fix
+                deps (wasm.transducer-io)
+                log (
+                    {
+                        at 2026-10-29T12:04:50.849683Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "Found by wasm.lookup (0cc3eb8): a transducer converted in memory to optimized-lookup-unweighted (AnyTransducer::convert) still reports its source weights from lookup; written and read back, the same transducer reports weight 0. Reproduce with convert('optimized-lookup-unweighted') on a weighted tropical fixture, then compare lookup before and after a toBytes/readTransducer round trip."
+                    }
+                )
             }
         )
         log (
