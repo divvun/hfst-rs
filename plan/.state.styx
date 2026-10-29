@@ -1,6 +1,6 @@
 schema_version 7
 
-last_sync_at 2026-10-29T11:21:23.172364Z
+last_sync_at 2026-10-29T12:09:02.920779Z
 
 rule_versions (
     {id determinize-envelope.bounded-strategies, version 0}
@@ -893,10 +893,13 @@ impl_evidence (
     ), covered_claims (
         {impl_name target-impl, rule javascript.no-host-traps}
     )}
+    {id wasm.parity}
     {id wasm.transducer-io, covered_rules (
         javascript.load-bytes
     ), covered_claims (
         {impl_name target-impl, rule javascript.load-bytes}
+    ), rule_versions_seen (
+        {id javascript.load-bytes, version 1}
     )}
     {id wasm.xfst-output, covered_rules (
         javascript.xfst-output-sink
@@ -1005,5 +1008,10 @@ impl_evidence (
         {impl_name target-impl, rule xre-finalization.root-optimize}
     ), rule_versions_seen (
         {id xre-finalization.root-optimize, version 0}
+    )}
+    {id wasm.tokenise, covered_rules (
+        javascript.tokenise
+    ), covered_claims (
+        {impl_name target-impl, rule javascript.tokenise}
     )}
 )

@@ -1,0 +1,45 @@
+{
+  "texts": {
+    "paragraphs": "The cat saw a dog in New York, blorf! Øl 🐱.\nIce cream? ice cream 🐱🐱 blåbær\n\nNew paragraph [<b>] 🐱!\n",
+    "line": "The cat saw a dog in New York, ice cream? blorf! Øl 🐱 blåbær 🐱🐱."
+  },
+  "formats": [
+    { "name": "segment", "text": "paragraphs", "flags": [], "format": "segment", "options": {} },
+    { "name": "space-separated", "text": "paragraphs", "flags": ["-i"], "format": "space-separated", "options": {} },
+    { "name": "xerox", "text": "paragraphs", "flags": ["-x"], "format": "xerox", "options": {} },
+    { "name": "cg", "text": "paragraphs", "flags": ["-c"], "format": "cg", "options": {} },
+    { "name": "finnpos", "text": "paragraphs", "flags": ["-f"], "format": "finnpos", "options": {} },
+    { "name": "giella-cg", "text": "paragraphs", "flags": ["-g"], "format": "giella-cg", "options": {} },
+    { "name": "conllu", "text": "paragraphs", "flags": ["-C"], "format": "conllu", "options": {} },
+    { "name": "visl", "text": "paragraphs", "flags": ["-L"], "format": "visl", "options": {} },
+    { "name": "segment-weights", "text": "paragraphs", "flags": ["-w"], "format": "segment", "options": { "printWeights": true } },
+    { "name": "segment-print-all", "text": "paragraphs", "flags": ["-a"], "format": "segment", "options": { "printAll": true } },
+    { "name": "segment-newline", "text": "paragraphs", "flags": ["-n"], "format": "segment", "options": { "newline": true } },
+    { "name": "segment-keep-newline", "text": "paragraphs", "flags": ["-k", "-a"], "format": "segment", "options": { "keepNewline": true, "printAll": true } },
+    { "name": "space-separated-print-all", "text": "paragraphs", "flags": ["-i", "-a"], "format": "space-separated", "options": { "printAll": true } },
+    { "name": "xerox-print-all", "text": "paragraphs", "flags": ["-x", "-a"], "format": "xerox", "options": { "printAll": true } },
+    { "name": "xerox-beam", "text": "paragraphs", "flags": ["-x", "-b", "0.05"], "format": "xerox", "options": { "beam": 0.05 } },
+    { "name": "cg-weights", "text": "paragraphs", "flags": ["-c", "-w"], "format": "cg", "options": { "printWeights": true } },
+    { "name": "cg-duplicates", "text": "paragraphs", "flags": ["-c", "-w", "--duplicates"], "format": "cg", "options": { "printWeights": true, "dedupe": false } },
+    { "name": "cg-duplicates-no-weights", "text": "paragraphs", "flags": ["-c", "--duplicates"], "format": "cg", "options": { "dedupe": false } },
+    { "name": "cg-one-class", "text": "paragraphs", "flags": ["-c", "-w", "-l", "1"], "format": "cg", "options": { "printWeights": true, "maxWeightClasses": 1 } },
+    { "name": "cg-print-all", "text": "paragraphs", "flags": ["-c", "-a"], "format": "cg", "options": { "printAll": true } },
+    { "name": "cg-superblanks", "text": "paragraphs", "flags": ["-c", "-S"], "format": "cg", "options": { "superblanks": true } },
+    { "name": "cg-multichar", "text": "paragraphs", "flags": ["-c", "-m"], "format": "cg", "options": { "tokenizeMultichar": true } },
+    { "name": "cg-time-cutoff", "text": "paragraphs", "flags": ["-c", "-t", "60"], "format": "cg", "options": { "timeLimit": 60000 } },
+    { "name": "finnpos-print-all", "text": "paragraphs", "flags": ["-f", "-a"], "format": "finnpos", "options": { "printAll": true } },
+    { "name": "giella-cg-no-weights", "text": "paragraphs", "flags": ["-g", "-W"], "format": "giella-cg", "options": { "printWeights": false } },
+    { "name": "giella-cg-duplicates", "text": "paragraphs", "flags": ["-g", "--duplicates"], "format": "giella-cg", "options": { "dedupe": false } },
+    { "name": "giella-cg-three-classes", "text": "paragraphs", "flags": ["-g", "-l", "3"], "format": "giella-cg", "options": { "maxWeightClasses": 3 } },
+    { "name": "giella-cg-superblanks", "text": "paragraphs", "flags": ["-g", "-S"], "format": "giella-cg", "options": { "superblanks": true } },
+    { "name": "conllu-weights", "text": "paragraphs", "flags": ["-C", "-w"], "format": "conllu", "options": { "printWeights": true } },
+    { "name": "visl-weights", "text": "paragraphs", "flags": ["-L", "-w"], "format": "visl", "options": { "printWeights": true } }
+  ],
+  "tokens": [
+    { "name": "tokens", "text": "line", "flags": ["-c", "-w"], "options": {} },
+    { "name": "tokens-print-all", "text": "line", "flags": ["-c", "-w", "-a"], "options": { "printAll": true } },
+    { "name": "tokens-duplicates", "text": "line", "flags": ["-c", "-w", "--duplicates"], "options": { "dedupe": false } },
+    { "name": "tokens-one-class", "text": "line", "flags": ["-c", "-w", "-l", "1"], "options": { "maxWeightClasses": 1 } },
+    { "name": "tokens-multichar", "text": "line", "flags": ["-c", "-w", "-m"], "options": { "tokenizeMultichar": true } }
+  ]
+}

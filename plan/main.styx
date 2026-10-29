@@ -8113,6 +8113,14 @@ children (
                     target-impl ([spec:hfst:req:javascript.tokenise])
                 }
                 deps (wasm.transducer-io)
+                log (
+                    {
+                        at 2026-10-29T12:09:20.169716Z
+                        author "brendan@necessary.nu"
+                        kind @decision
+                        text "Tokeniser API choices. (1) tokenise() locates the whole text as one input; hfst tokenise splits stdin at blank lines, so tokens equal the `--cg -w` cohorts for text with no blank line. format() drives process_input_stream on the text as stdin, so it reproduces the CLI's chunking, including -n/-k/-S and the 0delim/visl drivers. (2) TokenizeSettings.weight_cutoff is never read, here or upstream (match_and_print passes INFINITE_WEIGHT to locate). weightCutoff is therefore a tokenise()-only option fed to locate's cutoff parameter; FormatOptions omits it because the CLI has no such setting. (3) tokenise() dedupes with print_weights on, since its readings carry weights (= `--cg -w`). (4) readTokeniser accepts only an OLW stream whose first member is named TOP; the CLI's naive-tokeniser path (make_naive_tokenizer) needs the tropical algebra, so both packages throw invalid-format for other transducers instead. The .pmhfst path (PmatchCore::from_stream, locate, process_input_stream) reaches no compiler or algebra code; twiggy on the runtime module shows no pmatch_compiler/HfstTransducer/rustfst algorithm functions. (5) Format names are the hfst tokenise long options: segment, space-separated, xerox, cg, finnpos, giella-cg, conllu, visl."
+                    }
+                )
             }
 
             {

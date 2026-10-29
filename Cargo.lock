@@ -914,6 +914,7 @@ name = "hfst-wasm-runtime"
 version = "0.1.0"
 dependencies = [
  "hfst",
+ "hfst-openfst",
  "js-sys",
  "tracing",
  "tracing-core",

@@ -11,3 +11,4 @@ export declare const version: RuntimeGlue["version"];
 export declare const readTransducers: RuntimeGlue["readTransducers"];
 export declare const readAnyTransducers: FullGlue["readAnyTransducers"];
 export declare const readAtt: FullGlue["readAtt"];
+export declare const readTokeniser: import("../shared/glue.ts").TokeniseGlue["readTokeniser"];

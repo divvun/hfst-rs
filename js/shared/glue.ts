@@ -54,3 +54,21 @@ export interface RuntimeGlue {
   /** Every optimized-lookup transducer in a stream, in stream order. */
   readTransducers(bytes: Uint8Array): TransducerGlue[];
 }
+
+type TokeniseOptions = import("./tokenise.ts").TokeniseOptions;
+type FormatOptions = import("./tokenise.ts").FormatOptions;
+type Token = import("./tokenise.ts").Token;
+
+/** A tokeniser the glue holds, from `crates/hfst-wasm-runtime/src/tokenise.rs`. */
+export interface TokeniserGlue extends GlueObject {
+  /** The tokens of `text`, which the module builds as plain objects. */
+  tokenise(text: string, options: TokeniseOptions): Token[];
+  /** What `hfst tokenise` prints for `text` in the format named `format`. */
+  format(text: string, format: string, options: FormatOptions): string;
+}
+
+/** The tokeniser export of `crates/hfst-wasm-runtime`, which both packages carry. */
+export interface TokeniseGlue {
+  /** The tokeniser in a pmatch container's bytes. */
+  readTokeniser(bytes: Uint8Array): TokeniserGlue;
+}

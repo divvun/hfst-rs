@@ -21,6 +21,7 @@ mod sink;
 pub mod stream;
 #[cfg(feature = "test-hooks")]
 mod test_hooks;
+mod tokenise;
 mod transducer;
 
 pub use error::{GlueError, code_of};
@@ -28,6 +29,7 @@ pub use format::Format;
 pub use sink::{install, set_log_level};
 #[cfg(feature = "test-hooks")]
 pub use test_hooks::{TestObject, test_compile_error, test_library_error, test_log, test_panic};
+pub use tokenise::{Tokeniser, read_tokeniser};
 pub use transducer::{Machine, Transducer, property_pairs, read_transducers};
 
 /// The Divvun HFST version this module was built from.

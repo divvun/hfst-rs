@@ -25,3 +25,11 @@ export type {
 } from "../shared/errors.ts";
 export type { InitSource } from "../shared/core.ts";
 export type { LogEvent, Logger, LogLevel } from "../shared/logging.ts";
+export { readTokeniser, Tokeniser } from "./tokenise.ts";
+export type {
+  FormatOptions,
+  Reading,
+  Token,
+  TokeniseFormat,
+  TokeniseOptions,
+} from "../shared/tokenise.ts";

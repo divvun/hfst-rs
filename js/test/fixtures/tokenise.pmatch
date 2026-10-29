@@ -1,0 +1,14 @@
+! The tokeniser the tokenise tests load. It has multiword tokens, a word with
+! a weighted second reading, a word two paths analyse alike (so dedupe has
+! something to drop), an unknown-word reading in the ` ??` form Giella
+! tokenisers use, punctuation, and non-ASCII words, one of them astral.
+set need-separators off
+define Blank [ Whitespace | # ] ;
+define Noun [ {cat} | {Øl} | {🐱} ] 0:"+N" ;
+define Dog [ {dog} 0:"+N" ] | [ {dog} 0:"+N" EndTag(token) ] ;
+define Saw [ {saw}:{see} 0:"+V" 0:"+Past" ] | [ {saw} 0:"+N" ]::0.1 ;
+define Multi [ {New York} 0:"+Prop" ] | [ {ice cream} 0:"+N" ] ;
+define Mark [ "," | "!" | "." | "?" ] 0:"+CLB" ;
+define Known [ Noun | Dog | Saw | Multi ] LC(Blank) RC([ Blank | Mark ]) ;
+define Unknown [ Alpha+ 0:% %?%? ]::100 LC(Blank) RC([ Blank | Mark ]) ;
+define TOP [ Known | Unknown | Mark ] EndTag(token) ;
