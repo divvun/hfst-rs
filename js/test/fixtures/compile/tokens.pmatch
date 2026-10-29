@@ -1,0 +1,4 @@
+@include"pets.pmatch"
+define Farm @bin"animals.hfst" ;
+define Word [Pet | Farm] EndTag(Animal) ;
+define TOP Word | Ins(Word) {s} EndTag(Plural) ;

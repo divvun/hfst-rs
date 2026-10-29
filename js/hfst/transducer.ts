@@ -127,3 +127,8 @@ export function readAtt(text: string, type: TransducerType = "openfst-tropical")
   const all = core.call(() => glue.readAtt(text, type).map((transducer) => wrap(transducer)));
   return single(all, "readAtt", "the text");
 }
+
+/** The `Transducer` for a transducer the glue made, for this package's other modules. */
+export function wrapTransducer(transducer: FullTransducerGlue): Transducer {
+  return wrap(transducer);
+}

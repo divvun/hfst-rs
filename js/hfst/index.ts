@@ -37,3 +37,15 @@ export type {
   TokeniseFormat,
   TokeniseOptions,
 } from "../shared/tokenise.ts";
+export { compileLexc, compilePmatch, compileRegex, compileTwolc } from "./compile.ts";
+export type {
+  CompiledPmatch,
+  CompiledTransducer,
+  CompiledTransducers,
+  CompileOptions,
+  LexcOptions,
+  LexcWarningSwitch,
+  PmatchOptions,
+  RegexOptions,
+  TwolcOptions,
+} from "./compile.ts";

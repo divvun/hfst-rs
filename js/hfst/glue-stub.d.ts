@@ -12,3 +12,7 @@ export declare const readTransducers: RuntimeGlue["readTransducers"];
 export declare const readAnyTransducers: FullGlue["readAnyTransducers"];
 export declare const readAtt: FullGlue["readAtt"];
 export declare const readTokeniser: import("../shared/glue.ts").TokeniseGlue["readTokeniser"];
+export declare const compileRegex: FullGlue["compileRegex"];
+export declare const compileLexc: FullGlue["compileLexc"];
+export declare const compileTwolc: FullGlue["compileTwolc"];
+export declare const compilePmatch: FullGlue["compilePmatch"];

@@ -16,6 +16,12 @@ test-hooks = ["hfst-wasm-runtime/test-hooks"]
 [dependencies]
 hfst = { workspace = true, features = ["foma"] }
 hfst-wasm-runtime = { path = "../hfst-wasm-runtime" }
+# The compilers build at the tropical OpenFst backend, as the hfst tools do.
+hfst-openfst = { workspace = true }
+js-sys = "0.3.95"
+# Compile options cross from the wrapper as JSON, and diagnostics return to it as JSON.
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 wasm-bindgen = "=0.2.118"
 
 [lints]

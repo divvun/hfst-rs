@@ -11,6 +11,7 @@ import { fileURLToPath } from "node:url";
 import { gunzipSync } from "node:zlib";
 import { buildLookupFixtures } from "./lookup-fixtures.mjs";
 import { buildTokeniseFixtures } from "./tokenise-fixtures.mjs";
+import { buildCompileFixtures } from "./compile-fixtures.mjs";
 
 const sources = join(dirname(fileURLToPath(import.meta.url)), "fixtures");
 
@@ -67,6 +68,7 @@ export function buildFixtures(hfst, out) {
   buildLookupFixtures(tool, out, sources, TYPES);
 
   buildTokeniseFixtures(hfst, sources, out);
+  buildCompileFixtures(hfst, out, TYPES);
 }
 
 /** Builds the hfst tools with cargo and returns the binary's path. */

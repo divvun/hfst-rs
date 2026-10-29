@@ -1,0 +1,8 @@
+Alphabet a b c d e:i ;
+Rules
+"e raising before c"
+e:i => _ c ;
+"e raising before d"
+e:i => _ d ;
+"no raising after b"
+e:e /<= b _ ;

@@ -11,9 +11,12 @@
 // Rust with no host facilities behind it.
 pub use hfst_wasm_runtime::*;
 
+mod compile;
+mod diagnostic;
 mod lookup;
 mod transducer;
 
+pub use compile::{compile_lexc, compile_pmatch, compile_regex, compile_twolc};
 pub use transducer::{FullTransducer, read_any_transducers, read_att};
 
 #[cfg(test)]
