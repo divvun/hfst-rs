@@ -8175,6 +8175,14 @@ children (
                     wasm.xfst
                     wasm.algebra
                 )
+                log (
+                    {
+                        at 2026-10-29T11:31:32.616729Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "Found in wasm.transducer-io (4f59b42): foma output bytes depend on which flate2 backend the build unifies. hfst-cli pulls flate2's zlib-rs backend through its zip dependency; the hfst library alone and the wasm modules get miniz_oxide. The same foma text compresses to different bytes, so the transducer-io tests compare foma payloads after decompressing. Byte-identical compiled transducers (javascript.native-parity) need one backend everywhere, most likely the hfst library naming flate2 with zlib-rs under its foma feature, after checking zlib-rs builds for wasm32-unknown-unknown and which backend matches C++ foma's zlib output."
+                    }
+                )
             }
 
             {
