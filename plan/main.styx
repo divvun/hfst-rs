@@ -8184,6 +8184,9 @@ children (
                     wasm.algebra
                     wasm.general-lookup-time-limit
                     wasm.unweighted-convert-weights
+                    wasm.compile-warnings-as-diagnostics
+                    wasm.diagnostic-source-anchoring
+                    wasm.pmatch-empty-ruleset
                 )
                 log (
                     {
@@ -8230,6 +8233,27 @@ children (
                         text "Found by wasm.lookup (0cc3eb8): a transducer converted in memory to optimized-lookup-unweighted (AnyTransducer::convert) still reports its source weights from lookup; written and read back, the same transducer reports weight 0. Reproduce with convert('optimized-lookup-unweighted') on a weighted tropical fixture, then compare lookup before and after a toBytes/readTransducer round trip."
                     }
                 )
+            }
+
+            {
+                id wasm.compile-warnings-as-diagnostics
+                title "Compile warnings reach callers as diagnostics, not log lines: lexc's missing and unused lexicon warnings (and the -W switch families), twolc rule conflict reports, and every pmatch warning become hfst::diag Diagnostics with spans where the source has them, so compileLexc/Twolc/Pmatch return them and warnings: [\"error\"] fails with the real diagnostic; CLI stderr stays byte-identical"
+                kind @fix
+                deps (wasm.compile)
+            }
+
+            {
+                id wasm.diagnostic-source-anchoring
+                title "Diagnostics point into the text the user wrote: lexc reports regex errors and warnings against its re-printed regex named &lt;regex&gt;, and pmatch reports errors after an @include against the expanded script; both must carry the original file name and offsets. The xre @re file read must not overwrite the compiler's source text, which makes its error point into the wrong text"
+                kind @fix
+                deps (wasm.compile-warnings-as-diagnostics)
+            }
+
+            {
+                id wasm.pmatch-empty-ruleset
+                title "A pmatch script with no rules (comments only, or definitions without a TOP) compiles to an empty container and hfst pmatch2fst exits 0; it must fail with a diagnostic saying there is nothing to match, in the library, the CLI and compilePmatch, after checking no lang-* tokeniser build relies on the empty result"
+                kind @fix
+                deps (wasm.diagnostic-source-anchoring)
             }
         )
         log (
