@@ -9,21 +9,28 @@
 // wasm-bindgen CLI at the version Cargo.lock pins, and npx. wasm-opt is used
 // when it is on PATH.
 //
+// The release build fails when the module carries code from the compilers, the
+// foma backend, the tropical OpenFst backend or the transducer algebra. The
+// check reads the module's function names, which wasm-opt strips, so it runs
+// on a copy taken before wasm-opt, kept at target/js-check for the suite.
+//
 // A test build turns on the crate's test-hooks feature and adds the testing
 // entry module. It is written to target/js-test, never to js/, so the hooks
 // cannot reach the published package. It also builds the hfst tools and
 // writes the transducer fixtures to target/js-test/fixtures.
 
 import { execFileSync, spawnSync } from "node:child_process";
-import { cpSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
+import { cpSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { buildFixtures, buildTools } from "./test/fixtures.mjs";
+import { assertReadOnlyModule } from "./test/read-only-module.ts";
 
 const js = dirname(fileURLToPath(import.meta.url));
 const root = dirname(js);
 const packageDir = join(js, "hfst");
 const testBuild = join(root, "target", "js-test");
+const checkBuild = join(root, "target", "js-check");
 
 function run(command, args) {
   console.log(`$ ${command} ${args.join(" ")}`);
@@ -44,12 +51,19 @@ function cargoBuild(testHooks) {
   return join(root, "target", "wasm32-unknown-unknown", profileDir, "hfst_wasm.wasm");
 }
 
-function bindgen(wasm, outDir, optimise) {
+function bindgen(wasm, outDir) {
   rmSync(outDir, { recursive: true, force: true });
   run("wasm-bindgen", ["--target", "web", "--out-dir", outDir, wasm]);
-  const module = join(outDir, `${basename(wasm, ".wasm")}_bg.wasm`);
-  if (optimise && hasCommand("wasm-opt")) run("wasm-opt", ["-Oz", module, "-o", module]);
-  return module;
+  return join(outDir, `${basename(wasm, ".wasm")}_bg.wasm`);
+}
+
+function assertReadOnly(module) {
+  rmSync(checkBuild, { recursive: true, force: true });
+  mkdirSync(checkBuild, { recursive: true });
+  const named = join(checkBuild, basename(module));
+  cpSync(module, named);
+  const checked = assertReadOnlyModule(readFileSync(named));
+  console.log(`read-only module: none of ${checked} functions comes from a compiler, foma, OpenFst or the algebra`);
 }
 
 // The release build never turns test-hooks on; this makes that a checked fact.
@@ -94,7 +108,9 @@ export function assertNoAny(dist) {
 function buildPackage() {
   const pkgDir = join(packageDir, "pkg");
   const dist = join(packageDir, "dist");
-  const module = bindgen(cargoBuild(false), pkgDir, true);
+  const module = bindgen(cargoBuild(false), pkgDir);
+  assertReadOnly(module);
+  if (hasCommand("wasm-opt")) run("wasm-opt", ["-Oz", module, "-o", module]);
   assertNoTestHooks(pkgDir);
   tsc(join(packageDir, "tsconfig.json"), dist);
   cpSync(pkgDir, join(dist, "pkg"), { recursive: true });
@@ -108,7 +124,7 @@ function buildPackage() {
 function buildTestPackage() {
   const dist = join(testBuild, "dist");
   tsc(join(packageDir, "tsconfig.test.json"), dist);
-  bindgen(cargoBuild(true), join(dist, "pkg"), false);
+  bindgen(cargoBuild(true), join(dist, "pkg"));
 }
 
 // The tests import this module for its checks, so it builds only when run.

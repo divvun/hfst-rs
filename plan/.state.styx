@@ -1,6 +1,6 @@
 schema_version 7
 
-last_sync_at 2026-10-29T14:45:08.924476Z
+last_sync_at 2026-10-29T15:09:40.793646Z
 
 rule_versions (
     {id determinize-envelope.bounded-strategies, version 0}
@@ -1015,5 +1015,10 @@ impl_evidence (
         {impl_name target-impl, rule xre-finalization.root-optimize}
     ), rule_versions_seen (
         {id xre-finalization.root-optimize, version 0}
+    )}
+    {id wasm.runtime-package, covered_rules (
+        javascript.read-only-module
+    ), covered_claims (
+        {impl_name target-impl, rule javascript.read-only-module}
     )}
 )

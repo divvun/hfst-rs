@@ -22,6 +22,14 @@ mod test_hooks;
 mod tokenise;
 mod transducer;
 
+// [spec:hfst:req:javascript.read-only-module]
+// These and version() are the module's exports, with the test hooks only in a
+// test build. Apart from the log sink and version(), each reads an
+// optimized-lookup transducer, a pmatch container or a DHFST file, or runs
+// lookup or tokenise on one. None reaches a compiler, the foma backend, the
+// tropical OpenFst backend or the transducer algebra, so the linker leaves
+// their code out, and js/build.mjs fails the build when a function from any
+// of them is in the module.
 pub use dhfst::{DhfstAcceptor, DhfstErrorModel, read_dhfst};
 pub use sink::{install, set_log_level};
 #[cfg(feature = "test-hooks")]

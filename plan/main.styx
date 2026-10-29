@@ -8131,6 +8131,14 @@ children (
                     target-impl ([spec:hfst:req:javascript.read-only-module])
                 }
                 deps (wasm.single-package wasm.dhfst)
+                log (
+                    {
+                        at 2026-10-29T15:04:14.544362Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "Module size at 49830ae (wasm-release, LTO, opt-level z). Shipped js/hfst/pkg/hfst_wasm_bg.wasm after wasm-opt -Oz: 390333 B (381.2 KiB). The named copy build.mjs keeps at target/js-check (after wasm-bindgen, before wasm-opt): 592829 B, 1183 functions plus 28 imports, of which the name section is 159739 B (shipped without it). Of the 592829 B: .rodata data segment 115502 B (19.5%, one merged segment, so its split is not visible by name; string constants plus the compiled ICU data behind icu_normalizer and icu_segmenter); core 68883 B and alloc 51172 B (mostly generic instantiations: BTreeMap/Vec/String/fmt for hfst types); wasm-bindgen export bodies 56321 B (readDhfst 16548, dhfstacceptor_lookup 8017, readTokeniser 6352, readTransducers 4498, tokeniser_tokenise 3800; LTO inlined much of hfst::dhfst, hfst::dhfst_acceptor and the readers into them); hfst::pmatch_state 21439; hfst::pmatch_tokenize 20043 (print_location_vector alone 11719); hfst::transducer 14566 (Encoder::read_alias_forms 5735); hfst::pmatch 13836 (PmatchAlphabet::new_from_alphabet 11017); dlmalloc 7279; hfst::lookup_state 6107; tracing_subscriber 6098; hfst_wasm::stream 4172; icu_normalizer 3788; hfst::hfst_flag_diacritics 3785; hfst_wasm::tokenise 3729; hfst::error 3110; icu_collections 2853; smallvec 2577; wasm_bindgen 2528; std 2362; tracing_core 2243; icu_segmenter 1856. Measured with twiggy top on the target/js-check copy, grouped by crate::module. No function from xre, lexc, twolc, pmatch_compiler, xfst_compiler, the nfst_* front-ends, foma, rustfst, hfst_openfst, tropical_weight_transducer, hfst_transducer, AlgebraBackend, hfst_rules, hfst_xerox_rules, compose_intersect_* or harmonize is present, in the release copy or in the dev test build (8047 functions). A scratch export calling hfst::xre::XreCompiler::<StdVectorFst>::compile (not committed) grew the pre-opt module to 2639895 B and failed the build: 1381 offending functions (regex compiler 218, tropical OpenFst backend 1022, algebra 141)."
+                    }
+                )
             }
 
             {
