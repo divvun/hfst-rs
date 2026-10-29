@@ -1,4 +1,4 @@
-// Tokenising with both packages as they ship, against what this checkout's
+// Tokenising with the package as it ships, against what this checkout's
 // hfst tokenise prints for the same text and flags. The cases, each a set of
 // flags beside the options that stand for them, are in
 // js/test/fixtures/tokenise-cases.json; js/test/tokenise-fixtures.mjs runs
@@ -9,7 +9,7 @@ import type {
   Token,
   TokeniseFormat,
   TokeniseOptions,
-} from "../hfst-runtime/index.ts";
+} from "../hfst/index.ts";
 import {
   assert,
   assertEqual,

@@ -1,16 +1,15 @@
-// Runs the JavaScript test suite against the built packages, under Node and
+// Runs the JavaScript test suite against the built package, under Node and
 // Bun.
 //
 //   node js/build.mjs --test && node js/test/run.mjs [--runtime node] [--runtime bun]
 //
-// Each scenario variant runs in a process of its own, once per runtime and
-// package, because a started or poisoned module instance cannot be reset.
-// Scenarios that need the test hooks run against the test build in
-// target/js-test; the rest run against the packages as they would ship. A
-// scenario marked `only` runs against that one package. The transducer
-// fixtures the test build writes to target/js-test/fixtures are read by path.
-// The runner also serves each package's .wasm file over HTTP, so the suite can
-// start a package from an http: URL and from a fetched Response.
+// Each scenario variant runs in a process of its own, once per runtime,
+// because a started or poisoned module instance cannot be reset. Scenarios
+// that need the test hooks run against the test build in target/js-test; the
+// rest run against the package as it would ship. The transducer fixtures the
+// test build writes to target/js-test/fixtures are read by path. The runner
+// also serves the package's .wasm file over HTTP, so the suite can start the
+// package from an http: URL and from a fetched Response.
 
 import { spawn } from "node:child_process";
 import { readdirSync, readFileSync } from "node:fs";
@@ -19,13 +18,10 @@ import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const js = dirname(dirname(fileURLToPath(import.meta.url)));
-const testBuilds = join(dirname(js), "target", "js-test");
-const fixtures = `${pathToFileURL(join(testBuilds, "fixtures")).href}/`;
+const testBuild = join(dirname(js), "target", "js-test");
+const fixtures = `${pathToFileURL(join(testBuild, "fixtures")).href}/`;
 
-const packages = [
-  { name: "@divvun/hfst-runtime", dir: "hfst-runtime", artifact: "hfst_wasm_runtime" },
-  { name: "@divvun/hfst", dir: "hfst", artifact: "hfst_wasm" },
-];
+const wasmFile = "hfst_wasm_bg.wasm";
 
 const scenarios = [
   {
@@ -36,11 +32,8 @@ const scenarios = [
   { file: "contract.ts", build: "test", variants: ["main"] },
   { file: "poison.ts", build: "test", variants: ["function", "method"] },
   { file: "transducers.ts", build: "release", variants: ["main"] },
-  { file: "transducers-full.ts", build: "release", variants: ["main"], only: "@divvun/hfst" },
   { file: "lookup.ts", build: "release", variants: ["main"] },
-  { file: "lookup-full.ts", build: "release", variants: ["main"], only: "@divvun/hfst" },
   { file: "tokenise.ts", build: "release", variants: ["main"] },
-  { file: "compile.ts", build: "release", variants: ["main"], only: "@divvun/hfst" },
 ];
 
 // Node only collects garbage on request with --expose-gc; Bun has Bun.gc.
@@ -68,22 +61,21 @@ function chosenRuntimes(argv) {
   return chosen.length > 0 ? chosen : ["node", "bun"];
 }
 
-function locate(pkg) {
-  const release = join(js, pkg.dir, "dist", pkg.dir);
-  const test = join(testBuilds, pkg.dir, "dist", pkg.dir);
-  const manifest = JSON.parse(readFileSync(join(js, pkg.dir, "package.json"), "utf8"));
+function locate() {
+  const release = join(js, "hfst", "dist");
+  const test = join(testBuild, "dist");
+  const manifest = JSON.parse(readFileSync(join(js, "hfst", "package.json"), "utf8"));
   return {
-    ...pkg,
+    name: manifest.name,
     version: manifest.version,
-    release: { module: join(release, "index.js"), wasm: join(release, "pkg", `${pkg.artifact}_bg.wasm`) },
-    test: { module: join(test, "testing.js"), wasm: join(test, "pkg", `${pkg.artifact}_bg.wasm`) },
+    release: { module: join(release, "index.js"), wasm: join(release, "pkg", wasmFile) },
+    test: { module: join(test, "testing.js"), wasm: join(test, "pkg", wasmFile) },
   };
 }
 
-function serve(located) {
+function serve(pkg) {
   const server = createServer((request, response) => {
-    const pkg = located.find((p) => request.url === `/${p.artifact}_bg.wasm`);
-    if (pkg === undefined) {
+    if (request.url !== `/${wasmFile}`) {
       response.writeHead(404).end();
       return;
     }
@@ -107,8 +99,8 @@ function runFile(runtime, path, args) {
   });
 }
 
-const located = packages.map(locate);
-const server = await serve(located);
+const pkg = locate();
+const server = await serve(pkg);
 const base = `http://127.0.0.1:${server.address().port}`;
 let failures = 0;
 let runs = 0;
@@ -117,25 +109,22 @@ for (const runtime of chosenRuntimes(process.argv.slice(2))) {
     runs += 1;
     if (!(await runFile(runtime, path, []))) failures += 1;
   }
-  for (const pkg of located) {
-    for (const { file, build, variants, only } of scenarios) {
-      if (only !== undefined && only !== pkg.name) continue;
-      for (const variant of variants) {
-        const label = `${pkg.name} ${file} ${variant}`;
-        const args = {
-          module: pathToFileURL(pkg[build].module).href,
-          wasm: pathToFileURL(pkg[build].wasm).href,
-          http: `${base}/${pkg.artifact}_bg.wasm`,
-          package: pkg.name,
-          version: pkg.version,
-          fixtures,
-          variant,
-          label,
-        };
-        const passed = await runFile(runtime, join(js, "test", file), [JSON.stringify(args)]);
-        runs += 1;
-        if (!passed) failures += 1;
-      }
+  for (const { file, build, variants } of scenarios) {
+    for (const variant of variants) {
+      const label = `${pkg.name} ${file} ${variant}`;
+      const args = {
+        module: pathToFileURL(pkg[build].module).href,
+        wasm: pathToFileURL(pkg[build].wasm).href,
+        http: `${base}/${wasmFile}`,
+        package: pkg.name,
+        version: pkg.version,
+        fixtures,
+        variant,
+        label,
+      };
+      const passed = await runFile(runtime, join(js, "test", file), [JSON.stringify(args)]);
+      runs += 1;
+      if (!passed) failures += 1;
     }
   }
 }

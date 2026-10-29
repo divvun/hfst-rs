@@ -906,19 +906,6 @@ version = "0.1.0"
 dependencies = [
  "hfst",
  "hfst-openfst",
- "hfst-wasm-runtime",
- "js-sys",
- "serde",
- "serde_json",
- "wasm-bindgen",
-]
-
-[[package]]
-name = "hfst-wasm-runtime"
-version = "0.1.0"
-dependencies = [
- "hfst",
- "hfst-openfst",
  "js-sys",
  "tracing",
  "tracing-core",

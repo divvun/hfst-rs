@@ -1,51 +1,66 @@
-// [spec:hfst:def:javascript.packages]
+// [spec:hfst:def:javascript.packages+1]
 /**
- * `@divvun/hfst`: Divvun HFST for JavaScript. Everything
- * `@divvun/hfst-runtime` exports, under the same names, with the whole hfst
- * library behind it, in browsers, Deno, Node and Bun.
+ * `@divvun/hfst`: Divvun HFST for JavaScript. It loads optimized-lookup
+ * transducers and pmatch containers and runs lookup and tokenisation, in
+ * browsers, Web Workers, Deno, Node and Bun. It replaces `hfst-js` for
+ * reading and looking up transducers, and does not compile, write or
+ * transform them.
  *
  * @module
  */
-import { runtimeApi } from "../shared/api.ts";
 import { core } from "./binding.ts";
+import type { InitSource } from "./core.ts";
+import type { Logger, LogLevel } from "./logging.ts";
+import { tokeniserReader } from "./tokenise.ts";
+import { transducerReaders } from "./transducer.ts";
 
-export const { init, version, setLogger, setLogLevel } = runtimeApi(core);
-export {
-  readAtt,
-  readTransducer,
-  readTransducers,
-  Transducer,
-  writeTransducers,
-} from "./transducer.ts";
-export type { TransducerType } from "./transducer.ts";
-export type { TransducerProperties } from "../shared/transducer.ts";
-export { HfstCompileError, HfstError } from "../shared/errors.ts";
-export type {
-  Diagnostic,
-  DiagnosticLabel,
-  HfstErrorCode,
-  Span,
-} from "../shared/errors.ts";
-export type { InitSource } from "../shared/core.ts";
-export type { LogEvent, Logger, LogLevel } from "../shared/logging.ts";
-export type { LookupOptions, LookupResult } from "../shared/lookup.ts";
-export { readTokeniser, Tokeniser } from "./tokenise.ts";
+// [spec:hfst:req:javascript.typed-surface+1]
+// This module declares the whole public API. Results are plain values, and
+// js/build.mjs fails a build whose declarations use any.
+/**
+ * Loads and starts the package's WebAssembly module. Call it once and wait
+ * for it before anything else. With no argument it loads the `.wasm` file
+ * that ships beside the package. Calling it again returns the same promise.
+ */
+export function init(source?: InitSource): Promise<void> {
+  return core.init(source);
+}
+
+/** The Divvun HFST version the package was built from. */
+export function version(): string {
+  return core.call((glue) => glue.version());
+}
+
+/**
+ * Sends the library's log events to `logger`. `null` puts back the default,
+ * which writes each event to the console method for its level.
+ */
+export function setLogger(logger: Logger | null): void {
+  core.setLogger(logger);
+}
+
+/**
+ * Logs events at `level` and the more severe levels; `off` logs nothing.
+ * The default is `warn`. The module never sends the levels below it.
+ */
+export function setLogLevel(level: LogLevel): void {
+  core.setLogLevel(level);
+}
+
+export const { readTransducers, readTransducer } = transducerReaders(core);
+export const { readTokeniser } = tokeniserReader(core);
+export { Transducer } from "./transducer.ts";
+export type { TransducerProperties, TransducerType } from "./transducer.ts";
+export { Tokeniser } from "./tokenise.ts";
 export type {
   FormatOptions,
   Reading,
   Token,
   TokeniseFormat,
   TokeniseOptions,
-} from "../shared/tokenise.ts";
-export { compileLexc, compilePmatch, compileRegex, compileTwolc } from "./compile.ts";
-export type {
-  CompiledPmatch,
-  CompiledTransducer,
-  CompiledTransducers,
-  CompileOptions,
-  LexcOptions,
-  LexcWarningSwitch,
-  PmatchOptions,
-  RegexOptions,
-  TwolcOptions,
-} from "./compile.ts";
+} from "./tokenise.ts";
+export { HfstError } from "./errors.ts";
+export type { HfstErrorCode } from "./errors.ts";
+export type { InitSource } from "./core.ts";
+export type { LogEvent, Logger, LogLevel } from "./logging.ts";
+export type { LookupOptions, LookupResult } from "./lookup.ts";

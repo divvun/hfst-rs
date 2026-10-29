@@ -1,4 +1,4 @@
-// Checks every npm package must pass, run against a built package directory.
+// Checks the npm package must pass, run against its built package directory.
 
 import { assert, assertEqual, readBytes, test } from "./harness.ts";
 
@@ -48,7 +48,7 @@ export function packageTests(dir: URL, name: string): void {
     assertEqual(manifest.files.join(" "), "dist", "files");
   });
 
-  // [spec:hfst:req:javascript.typed-surface/test]
+  // [spec:hfst:req:javascript.typed-surface+1/test]
   test("the entry module and its declarations are where the exports map says", async () => {
     const manifest = await readManifest(dir);
     const files = await listFiles(dir);

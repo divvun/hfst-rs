@@ -1,7 +1,7 @@
-// The runtime contract against the real module of a test build: errors from
+// The API contract against the real module of a test build: errors from
 // the library, object lifetime, and logging fed by the library's tracing.
 
-import type * as Testing from "../hfst-runtime/testing.ts";
+import type * as Testing from "../hfst/testing.ts";
 import {
   assert,
   assertEqual,
@@ -47,31 +47,17 @@ function thrown(f: () => unknown): unknown {
   throw new Error("nothing was thrown");
 }
 
-// [spec:hfst:req:javascript.errors/test]
+// [spec:hfst:req:javascript.errors+1/test]
 test("a library error is thrown as an HfstError with its code and the library's message", () => {
   const error = thrown(() => testing.libraryError("left is foma"));
   assert(error instanceof pkg.HfstError, "an HfstError");
-  assert(error instanceof Error && !(error instanceof pkg.HfstCompileError), "a plain HfstError");
   assertEqual(error.name, "HfstError", "name");
   assertEqual(error.code, "type-mismatch", "code");
   assertEqual(error.message, "transducer type mismatch: left is foma", "message");
-});
-
-// [spec:hfst:req:javascript.errors/test]
-test("a failed compile is thrown as an HfstCompileError with the diagnostics", () => {
-  const error = thrown(() => testing.compileError("lexc failed"));
-  assert(error instanceof pkg.HfstCompileError, "an HfstCompileError");
-  assert(error instanceof pkg.HfstError, "which is an HfstError");
-  assertEqual(error.code, "compile-error", "code");
-  assertEqual(error.message, "lexc failed", "message");
-  const [diagnostic] = error.diagnostics;
-  assertEqual(diagnostic?.message, "unexpected ;", "the diagnostic's message");
-  assertEqual(diagnostic?.start, 4, "its span");
-  assertEqual(diagnostic?.help, "remove it", "its help");
   assertEqual(testing.createObject("after").label(), "after", "the module carries on");
 });
 
-// [spec:hfst:req:javascript.handle-lifetime/test]
+// [spec:hfst:req:javascript.handle-lifetime+1/test]
 test("free releases the object's memory once, and a call after it throws freed", () => {
   const events = capture("debug");
   const object = testing.createObject("a");
@@ -83,7 +69,7 @@ test("free releases the object's memory once, and a call after it throws freed",
   reset();
 });
 
-// [spec:hfst:req:javascript.handle-lifetime/test]
+// [spec:hfst:req:javascript.handle-lifetime+1/test]
 test("a using declaration and Symbol.dispose free the object", () => {
   const events = capture("debug");
   {
@@ -97,7 +83,7 @@ test("a using declaration and Symbol.dispose free the object", () => {
   reset();
 });
 
-// [spec:hfst:req:javascript.handle-lifetime/test]
+// [spec:hfst:req:javascript.handle-lifetime+1/test]
 test("an object dropped without free is released after garbage collection", async () => {
   const events = capture("debug");
   (() => {
@@ -107,7 +93,7 @@ test("an object dropped without free is released after garbage collection", asyn
   reset();
 });
 
-// [spec:hfst:req:javascript.init/test]
+// [spec:hfst:req:javascript.init+1/test]
 test("init again keeps the instance and the objects already made in it", async () => {
   const object = testing.createObject("before");
   await pkg.init();
@@ -125,7 +111,7 @@ test("by default warnings and errors from the library reach the console, and low
     const seen = lines.map(({ method, text }) => `${method} ${text}`);
     assertEqual(
       seen.join("; "),
-      "error hfst_wasm_runtime::test_hooks: at error; warn hfst_wasm_runtime::test_hooks: at warn",
+      "error hfst_wasm::test_hooks: at error; warn hfst_wasm::test_hooks: at warn",
       "console lines",
     );
   });
@@ -137,7 +123,7 @@ test("a replaced logger gets each event's level, target and message", () => {
   testing.log("info", "hello");
   assertEqual(
     JSON.stringify(events),
-    '[{"level":"info","target":"hfst_wasm_runtime::test_hooks","message":"hello"}]',
+    '[{"level":"info","target":"hfst_wasm::test_hooks","message":"hello"}]',
     "events",
   );
   reset();

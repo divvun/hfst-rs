@@ -19,7 +19,7 @@
 .port-staging/
 /dist/
 
-# JavaScript build output: wasm-bindgen glue and the compiled packages
-/js/*/pkg/
-/js/*/dist/
+# JavaScript build output: wasm-bindgen glue and the compiled package
+/js/hfst/pkg/
+/js/hfst/dist/
 /js/**/node_modules/

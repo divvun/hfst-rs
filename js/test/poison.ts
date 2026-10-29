@@ -2,7 +2,7 @@
 // method that holds a borrow of its object. Each variant runs alone, since
 // the instance stays poisoned.
 
-import type * as Testing from "../hfst-runtime/testing.ts";
+import type * as Testing from "../hfst/testing.ts";
 import {
   assert,
   assertEqual,
@@ -32,7 +32,7 @@ function trigger(): void {
   else testing.panic("boom");
 }
 
-// [spec:hfst:req:javascript.errors/test]
+// [spec:hfst:req:javascript.errors+1/test]
 test("a panic is rethrown as HfstError poisoned, carrying the panic message", () => {
   let error: unknown = null;
   try {
@@ -45,7 +45,7 @@ test("a panic is rethrown as HfstError poisoned, carrying the panic message", ()
   assert(error.message.includes("boom"), `the panic message: ${error.message}`);
 });
 
-// [spec:hfst:req:javascript.errors/test]
+// [spec:hfst:req:javascript.errors+1/test]
 test("every later call throws poisoned without running", () => {
   const before = messages.length;
   const calls: [string, () => unknown][] = [
@@ -63,7 +63,7 @@ test("every later call throws poisoned without running", () => {
   assertEqual(messages.length, before, "events from the module after the trap");
 });
 
-// [spec:hfst:req:javascript.handle-lifetime/test]
+// [spec:hfst:req:javascript.handle-lifetime+1/test]
 test("freeing after the trap does nothing and never enters the module", () => {
   survivor.free();
   survivor.free();
@@ -72,7 +72,7 @@ test("freeing after the trap does nothing and never enters the module", () => {
   assert(!messages.some((message) => message.startsWith("dropped")), "nothing was dropped");
 });
 
-// [spec:hfst:req:javascript.handle-lifetime/test]
+// [spec:hfst:req:javascript.handle-lifetime+1/test]
 test("an object dropped after the trap is never freed through the module", async () => {
   doomed = null;
   await collectUntil(() => false);

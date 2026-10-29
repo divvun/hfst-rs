@@ -82,7 +82,7 @@ fn outputs(t: &AnyTransducer, input: &str) -> Vec<String> {
         .collect()
 }
 
-// [spec:hfst:req:javascript.load-bytes+1/test]
+// [spec:hfst:req:javascript.load-bytes+2/test]
 // The definitions of a container are written with an empty alphabet; they
 // read as transducers of their own with TOP's alphabet, in stream order.
 #[test]
@@ -97,7 +97,7 @@ fn a_pmatch_container_reads_as_its_transducers() {
     assert!(outputs(&members[1], "mouse").is_empty());
 }
 
-// [spec:hfst:req:javascript.load-bytes+1/test]
+// [spec:hfst:req:javascript.load-bytes+2/test]
 // Each transducer carries the properties of its own header: TOP's pmatch
 // settings do not leak onto the definition after it.
 #[test]
@@ -109,7 +109,7 @@ fn each_member_has_only_its_own_header_properties() {
     assert!(!members[1].get_properties().contains_key("max-recursion"));
 }
 
-// [spec:hfst:req:javascript.load-bytes+1/test]
+// [spec:hfst:req:javascript.load-bytes+2/test]
 // What `hfst fst2fst -b` writes: payloads with no HFST3 header, one after
 // another, weighted and unweighted.
 #[test]
@@ -145,7 +145,7 @@ fn headerless_optimized_lookup_reads_in_stream_order() {
     }
 }
 
-// [spec:hfst:req:javascript.load-bytes+1/test]
+// [spec:hfst:req:javascript.load-bytes+2/test]
 // A stream that starts with a headerless payload and goes on with a headered
 // one of the same type reads both, as the type of each member is all the
 // stream checks.
@@ -159,7 +159,6 @@ fn headered_and_headerless_members_of_one_type_mix() {
     assert_eq!(names, ["", "named"]);
 }
 
-// [spec:hfst:req:javascript.load-bytes+1/test]
 // `converted` builds the same transducer `convert` does and leaves its source
 // as it was, whatever the pair of types.
 #[test]
@@ -193,7 +192,7 @@ fn converted_matches_convert_and_keeps_its_source() {
     }
 }
 
-// [spec:hfst:req:javascript.load-bytes+1/test]
+// [spec:hfst:req:javascript.load-bytes+2/test]
 // A container member read on its own has no TOP to borrow from, so it does not
 // load as a transducer.
 #[test]

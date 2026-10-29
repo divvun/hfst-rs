@@ -11,17 +11,11 @@ import { fileURLToPath } from "node:url";
 import { gunzipSync } from "node:zlib";
 import { buildLookupFixtures } from "./lookup-fixtures.mjs";
 import { buildTokeniseFixtures } from "./tokenise-fixtures.mjs";
-import { buildCompileFixtures } from "./compile-fixtures.mjs";
 
 const sources = join(dirname(fileURLToPath(import.meta.url)), "fixtures");
 
-/** The transducer types, under the names both the tools and the API use. */
-export const TYPES = [
-  "openfst-tropical",
-  "optimized-lookup-weighted",
-  "optimized-lookup-unweighted",
-  "foma",
-];
+/** The transducer types the package reads, under the names both the tools and the API use. */
+const READ = ["optimized-lookup-weighted", "optimized-lookup-unweighted"];
 
 /** Writes every fixture to `out`, using the hfst binary at `hfst`. */
 export function buildFixtures(hfst, out) {
@@ -32,21 +26,20 @@ export function buildFixtures(hfst, out) {
   const tool = (...args) => execFileSync(hfst, [...args, "-q"], { stdio: ["ignore", "ignore", "pipe"] });
   const concat = (name, ...parts) => writeFileSync(at(name), Buffer.concat(parts.map((p) => readFileSync(at(p)))));
 
-  // One transducer in each type, and each optimized-lookup type with no header.
+  // One transducer in each type, headered and headerless: the two the package
+  // reads, and tropical OpenFst (what regexp2fst writes) and foma, which the
+  // package turns down.
   tool("regexp2fst", source("words.regexp"), "-o", at("words.openfst-tropical.hfst"));
-  for (const type of TYPES.slice(1)) {
+  for (const type of [...READ, "foma"]) {
     tool("fst2fst", "-f", type, at("words.openfst-tropical.hfst"), "-o", at(`words.${type}.hfst`));
   }
-  for (const type of TYPES) {
+  for (const type of ["openfst-tropical", ...READ, "foma"]) {
     tool("fst2fst", "-b", "-f", type, at("words.openfst-tropical.hfst"), "-o", at(`words.${type}.bare`));
   }
   // A native foma file is gzip-compressed, and foma also reads it uncompressed.
   writeFileSync(at("words.foma.plain"), gunzipSync(readFileSync(at("words.foma.bare"))));
 
-  // Several transducers: as the writer emits them, and concatenated, which an
-  // HFST3 stream is.
-  tool("regexp2fst", source("two.regexp"), "-o", at("two.openfst-tropical.hfst"));
-  tool("fst2fst", "-w", at("two.openfst-tropical.hfst"), "-o", at("two.optimized-lookup-weighted.hfst"));
+  // Several transducers concatenated, which an HFST3 stream is.
   for (const name of ["first", "second"]) {
     tool("edit-metadata", "-a", `name=${name}`, at("words.optimized-lookup-weighted.hfst"), "-o", at(`${name}.hfst`));
   }
@@ -56,19 +49,8 @@ export function buildFixtures(hfst, out) {
 
   tool("pmatch2fst", source("animals.pmatch"), "-o", at("animals.pmhfst"));
 
-  // What the native tools make of the same transducers, for the full package.
-  for (const from of TYPES) {
-    tool("fst2txt", at(`words.${from}.hfst`), "-o", at(`words.${from}.att`));
-    tool("txt2fst", "-f", from, source("small.att"), "-o", at(`att.${from}.hfst`));
-    for (const to of TYPES) {
-      tool("fst2fst", "-f", to, at(`words.${from}.hfst`), "-o", at(`convert.${from}.${to}.hfst`));
-    }
-  }
-  writeFileSync(at("small.att"), readFileSync(source("small.att")));
-  buildLookupFixtures(tool, out, sources, TYPES);
-
+  buildLookupFixtures(tool, out, sources, READ);
   buildTokeniseFixtures(hfst, sources, out);
-  buildCompileFixtures(hfst, out, TYPES);
 }
 
 /** Builds the hfst tools with cargo and returns the binary's path. */

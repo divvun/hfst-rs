@@ -3,10 +3,10 @@
 // process of its own, because a module instance, once started, stays started
 // for the life of the process.
 
-import type * as RuntimePackage from "../hfst-runtime/index.ts";
+import type * as Entry from "../hfst/index.ts";
 
-/** The surface both packages export; the full package adds to it. */
-export type Package = typeof RuntimePackage;
+/** What the package exports. */
+export type Package = typeof Entry;
 
 /** What `run.mjs` hands each scenario process, as JSON in its first argument. */
 export interface ScenarioArgs {
@@ -127,7 +127,7 @@ export function assertEqual<T>(actual: T, expected: T, what: string): void {
   }
 }
 
-/** The `HfstError` class under test: a package's export, or the shared one. */
+/** The `HfstError` class under test: the package's export, or the module's own. */
 export type ErrorClass = abstract new (...args: never[]) => Error & { code: string };
 
 /** The `code` of the `HfstError` that `f` throws. Fails if it returns or throws anything else. */

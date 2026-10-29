@@ -1,4 +1,4 @@
-// Lookup on optimized-lookup transducers, against both packages as they ship.
+// Lookup on optimized-lookup transducers, against the package as it ships.
 // Each result list is compared with what this checkout's `hfst lookup` printed
 // for the same transducer, input and limit (js/test/lookup-fixtures.mjs).
 

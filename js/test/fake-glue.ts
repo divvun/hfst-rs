@@ -1,18 +1,20 @@
-// A stand-in for the generated glue, so the shared wrapper can be tested
-// without a build. It behaves as the real module does at the boundary: it
-// filters log events by the level set, reports a panic to the sink before it
-// traps, and throws plain error objects.
+// A stand-in for the generated glue, so the wrapper can be tested without a
+// build. It behaves as the real module does at the boundary: it filters log
+// events by the level set, reports a panic to the sink before it traps, and
+// throws plain error objects.
 
 import type {
+  Glue,
   GlueInitInput,
   GlueObject,
   GlueSink,
-  RuntimeGlue,
+  TokeniserGlue,
   TransducerGlue,
-} from "../shared/glue.ts";
-import type { LookupResult } from "../shared/lookup.ts";
+} from "../hfst/glue.ts";
+import type { LookupResult } from "../hfst/lookup.ts";
+import type { FormatOptions, Token, TokeniseOptions } from "../hfst/tokenise.ts";
 
-export class FakeGlue implements RuntimeGlue {
+export class FakeGlue implements Glue {
   readonly inputs: GlueInitInput[] = [];
   /** How many init calls fail before one succeeds. */
   failures = 0;
@@ -25,6 +27,8 @@ export class FakeGlue implements RuntimeGlue {
   freed: string[] = [];
   /** What readTransducers hands out, as [format, name, ...property pairs]. */
   stream: string[][] = [];
+  /** Every transducer and tokeniser handed out, in order. */
+  readonly made: FakeObject[] = [];
 
   default(options: { module_or_path: GlueInitInput }): Promise<unknown> {
     this.inputs.push(options.module_or_path);
@@ -54,7 +58,18 @@ export class FakeGlue implements RuntimeGlue {
 
   readTransducers(_bytes: Uint8Array): TransducerGlue[] {
     this.entered += 1;
-    return this.stream.map(([format = "", name = "", ...pairs]) => new FakeTransducer(this, format, name, pairs));
+    const transducers = this.stream.map(
+      ([format = "", name = "", ...pairs]) => new FakeTransducer(this, format, name, pairs),
+    );
+    this.made.push(...transducers);
+    return transducers;
+  }
+
+  readTokeniser(_bytes: Uint8Array): TokeniserGlue {
+    this.entered += 1;
+    const tokeniser = new FakeTokeniser(this, "tokeniser");
+    this.made.push(tokeniser);
+    return tokeniser;
   }
 
   /** Logs as the module does: only at or above the level set. */
@@ -71,9 +86,9 @@ export class FakeGlue implements RuntimeGlue {
   }
 
   /** Throws the way a failing export does. */
-  fail(code: string, message: string, diagnostics?: unknown[]): never {
+  fail(code: string, message: string): never {
     this.entered += 1;
-    throw diagnostics === undefined ? { code, message } : { code, message, diagnostics };
+    throw { code, message };
   }
 
   object(label: string): FakeObject {
@@ -129,5 +144,21 @@ export class FakeTransducer extends FakeObject implements TransducerGlue {
   lookup(input: string, limit: number | undefined, timeLimitMs: number | undefined): LookupResult[] {
     this.lookups.push([input, limit, timeLimitMs]);
     return [{ output: input, symbols: [...input], weight: 0 }];
+  }
+}
+
+export class FakeTokeniser extends FakeObject implements TokeniserGlue {
+  /** Every call, with its arguments. */
+  readonly calls: string[] = [];
+
+  /** Answers every text with one analysed token covering it. */
+  tokenise(text: string, options: TokeniseOptions): Token[] {
+    this.calls.push(`tokenise ${text} ${JSON.stringify(options)}`);
+    return [{ surface: text, start: 0, end: text.length, analysed: true, readings: [] }];
+  }
+
+  format(text: string, format: string, options: FormatOptions): string {
+    this.calls.push(`format ${text} ${format} ${JSON.stringify(options)}`);
+    return text;
   }
 }

@@ -1,216 +1,117 @@
-//! Transducers of every format the library reads and writes, as the full
-//! package holds them. The runtime glue's `Transducer` holds optimized-lookup
-//! tables only; this one holds the library's stream sum, so it can be
-//! written, converted and printed.
+//! Transducers loaded from bytes.
 
-use std::cell::OnceCell;
+use std::collections::BTreeMap;
 
-use hfst::file_resolver::{FileResolver, MemoryFiles};
-use hfst::hfst_basic_transducer::HfstBasicTransducer;
-use hfst::hfst_input_stream::HfstInputStream;
-use hfst::hfst_output_stream::HfstOutputStream;
-use hfst::hfst_transducer::{AnyTransducer, HfstTransducer};
-use hfst_wasm_runtime::{Format, GlueError, property_pairs, stream};
+use hfst::transducer::{
+    ContainerAlphabet, OlMember, Transducer as OlTransducer, UnweightedTables, WeightedTables,
+};
 use wasm_bindgen::prelude::*;
 
-use crate::lookup::GeneralLookup;
+use crate::error::GlueError;
+use crate::format::Format;
+use crate::stream::{self, Properties};
 
-/// A transducer of any format the full package carries. The wrapper's
-/// `Transducer` class in `js/hfst/transducer.ts` owns one.
-#[wasm_bindgen]
-pub struct FullTransducer {
-    pub(crate) any: AnyTransducer,
-    format: Format,
-    /// Built from `any` on the first lookup of a tropical or foma transducer
-    /// and kept. It matches `any` only while no method changes the language
-    /// of `any` in place.
-    pub(crate) general: OnceCell<GeneralLookup>,
+pub enum Machine {
+    Weighted(OlTransducer<WeightedTables>),
+    Unweighted(OlTransducer<UnweightedTables>),
 }
 
-impl FullTransducer {
-    pub(crate) fn new(any: AnyTransducer) -> Result<Self, GlueError> {
-        let ty = any.get_type();
-        let format = Format::of(ty).ok_or_else(|| {
-            GlueError::new(
-                "internal",
-                format!(
-                    "the library produced a transducer of type {ty:?}, which has no format name"
-                ),
-            )
-        })?;
-        Ok(FullTransducer {
-            any,
-            format,
-            general: OnceCell::new(),
-        })
-    }
+/// A transducer the package read, with the properties of its HFST3 header.
+/// The wrapper's `Transducer` class in `js/hfst/transducer.ts` owns one.
+#[wasm_bindgen]
+pub struct Transducer {
+    pub(crate) machine: Machine,
+    properties: Properties,
 }
 
 #[wasm_bindgen]
-impl FullTransducer {
+impl Transducer {
     pub fn format(&self) -> String {
-        self.format.name().to_owned()
+        let format = match self.machine {
+            Machine::Weighted(_) => Format::OptimizedLookupWeighted,
+            Machine::Unweighted(_) => Format::OptimizedLookupUnweighted,
+        };
+        format.name().to_owned()
     }
 
     pub fn name(&self) -> String {
-        self.any.get_name()
+        self.properties.get("name").cloned().unwrap_or_default()
     }
 
     #[wasm_bindgen(js_name = propertyPairs)]
     pub fn property_pairs(&self) -> Vec<String> {
-        property_pairs(self.any.get_properties())
-    }
-
-    // [spec:hfst:req:javascript.load-bytes+1]
-    /// This transducer as an HFST3 stream in its own format: what
-    /// `HfstOutputStream` writes for it.
-    #[wasm_bindgen(js_name = toBytes)]
-    pub fn to_bytes(&mut self) -> Result<Vec<u8>, GlueError> {
-        const FILE: &str = "transducer";
-        let files = MemoryFiles::default();
-        let sink = files
-            .create(FILE)
-            .map_err(|error| GlueError::new("internal", error.to_string()))?;
-        let mut stream = HfstOutputStream::from_writer(sink, self.any.get_type(), true)?;
-        self.any.write(&mut stream)?;
-        stream.close();
-        files
-            .get(FILE)
-            .ok_or_else(|| GlueError::new("internal", "the stream wrote no file"))
-    }
-
-    // [spec:hfst:req:javascript.load-bytes+1]
-    /// A new transducer of the format named `format`, made as `hfst fst2fst`
-    /// makes it. This one is left as it was.
-    pub fn convert(&self, format: &str) -> Result<FullTransducer, GlueError> {
-        let format = parse_format(format)?;
-        FullTransducer::new(self.any.converted(format.implementation_type(), "")?)
-    }
-
-    // [spec:hfst:req:javascript.load-bytes+1]
-    /// This transducer as AT&T text, as `hfst fst2txt` prints it: weights
-    /// for every format but foma, which has none.
-    #[wasm_bindgen(js_name = toAtt)]
-    pub fn to_att(&self) -> Result<String, GlueError> {
-        let weights = self.format != Format::Foma;
-        let mut text = Vec::new();
-        let written = match &self.any {
-            AnyTransducer::Tropical(t) => t.write_in_att_format_file(&mut text, weights),
-            AnyTransducer::OlW(t) => t.write_in_att_format_file(&mut text, weights),
-            AnyTransducer::OlU(t) => t.write_in_att_format_file(&mut text, weights),
-            AnyTransducer::Foma(t) => t.write_in_att_format_file(&mut text, weights),
-            AnyTransducer::Thfst(t) => t.write_in_att_format_file(&mut text, weights),
-        };
-        written.map_err(|error| GlueError::new("internal", error.to_string()))?;
-        Ok(String::from_utf8_lossy(&text).into_owned())
+        property_pairs(&self.properties)
     }
 }
 
-// [spec:hfst:req:javascript.load-bytes+1]
-/// Every transducer in `bytes`, in stream order, read by `HfstInputStream`.
-/// The first member is described the way the runtime describes it, so bytes
-/// neither package reads fail with the runtime's error.
-#[wasm_bindgen(js_name = readAnyTransducers)]
-pub fn read_any_transducers(bytes: &[u8]) -> Result<Vec<FullTransducer>, GlueError> {
+/// A transducer's properties as the wrapper shows them, flattened to key,
+/// value, key, value. `version` and `type` describe the stream, not the
+/// transducer, and `name` has its own accessor, so all three are left out.
+fn property_pairs(properties: &BTreeMap<String, String>) -> Vec<String> {
+    properties
+        .iter()
+        .filter(|(key, _)| !matches!(key.as_str(), "version" | "type" | "name"))
+        .flat_map(|(key, value)| [key.clone(), value.clone()])
+        .collect()
+}
+
+// [spec:hfst:req:javascript.load-bytes+2]
+/// Every transducer in `bytes`, in stream order. Optimized-lookup members are
+/// read with the library's member reader, so a pmatch container's
+/// definitions take its first transducer's alphabet as they do natively.
+/// Members in a format the package does not read are turned down, by the
+/// format's name, before any reader runs.
+#[wasm_bindgen(js_name = readTransducers)]
+pub fn read_transducers(bytes: &[u8]) -> Result<Vec<Transducer>, GlueError> {
     if bytes.is_empty() {
         return Err(stream::empty());
     }
-    stream::member(bytes)?;
-    let mut cursor = bytes;
-    let mut input = HfstInputStream::read_from(&mut cursor).map_err(stream::read_error)?;
+    let mut rest = bytes;
+    let mut first: Option<Format> = None;
+    let mut container: Option<ContainerAlphabet> = None;
     let mut transducers = Vec::new();
-    while input.is_good() {
-        let any = input.read().map_err(stream::read_error)?;
-        transducers.push(FullTransducer::new(any)?);
+    while !rest.is_empty() {
+        let member = stream::member(rest)?;
+        let format = *first.get_or_insert(member.format);
+        if member.format != format {
+            return Err(stream::mixed(format, member.format));
+        }
+        if !format.is_read() {
+            return Err(stream::unsupported(&format!(
+                "a transducer in the {} format",
+                format.name()
+            )));
+        }
+        let mut cursor = member.payload;
+        let ol = OlMember::read_from(&mut cursor, container.as_ref())
+            .map_err(|error| ol_error(error, cursor.is_empty()))?;
+        rest = cursor;
+        if container.is_none() && !rest.is_empty() {
+            container = Some(ol.container_alphabet());
+        }
+        let machine = match ol {
+            OlMember::Weighted(t) => Machine::Weighted(t),
+            OlMember::Unweighted(t) => Machine::Unweighted(t),
+        };
+        transducers.push(Transducer {
+            machine,
+            properties: member.properties,
+        });
     }
     Ok(transducers)
 }
 
-// [spec:hfst:req:javascript.load-bytes+1]
-/// Every transducer in the AT&T text `text`, in the format named `format`,
-/// made as `hfst txt2fst` makes them: read with `@0@` as epsilon into a
-/// tropical transducer, then converted.
-#[wasm_bindgen(js_name = readAtt)]
-pub fn read_att(text: &str, format: &str) -> Result<Vec<FullTransducer>, GlueError> {
-    let format = parse_format(format)?;
-    let mut input = text.as_bytes();
-    let mut transducers = Vec::new();
-    while !input.is_empty() {
-        let mut lines = 0;
-        let net = HfstBasicTransducer::read_in_att_format(&mut input, "@0@", &mut lines, false)?;
-        let tropical = AnyTransducer::Tropical(HfstTransducer::new_from_basic(&net)?);
-        let any = tropical.convert(format.implementation_type(), "")?;
-        transducers.push(FullTransducer::new(any)?);
-    }
-    if transducers.is_empty() {
-        return Err(GlueError::new(
+/// The error for an optimized-lookup payload that did not read. The library
+/// reports a short read as the transducer having the wrong type, so a read
+/// that used up the bytes is called what it is.
+fn ol_error(error: hfst::error::Error, used_up: bool) -> GlueError {
+    if used_up {
+        return GlueError::new(
             "invalid-format",
-            "the text is empty, and AT&T text holds at least one transducer",
-        ));
+            format!(
+                "the stream ends inside an optimized-lookup transducer, so the bytes are truncated ({error})"
+            ),
+        );
     }
-    Ok(transducers)
-}
-
-fn parse_format(name: &str) -> Result<Format, GlueError> {
-    Format::from_name(name).ok_or_else(|| {
-        GlueError::new(
-            "invalid-argument",
-            format!("there is no transducer type called {name}"),
-        )
-    })
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    const ATT: &str = "0\t1\ta\tb\t0.5\n1\t2\tc\t@0@\t0\n2\t0.25\n";
-
-    fn one(transducers: Result<Vec<FullTransducer>, GlueError>) -> FullTransducer {
-        let mut all = transducers.expect("reads");
-        assert_eq!(all.len(), 1);
-        all.remove(0)
-    }
-
-    // Reading gives a transducer whose header had no name an empty one, as
-    // the C++ reader did, so the bytes settle after the first round.
-    #[test]
-    fn every_format_survives_bytes_and_text() {
-        for format in Format::ALL {
-            let mut t = one(read_att(ATT, format.name()));
-            assert_eq!(t.format(), format.name());
-            let mut again = one(read_any_transducers(&t.to_bytes().expect("writes")));
-            assert_eq!(again.format(), format.name());
-            assert_eq!(again.to_att().expect("prints"), t.to_att().expect("prints"));
-            let bytes = again.to_bytes().expect("writes again");
-            let mut third = one(read_any_transducers(&bytes));
-            assert_eq!(third.to_bytes().expect("writes a third time"), bytes);
-        }
-    }
-
-    #[test]
-    fn convert_reaches_every_format_and_leaves_the_source() {
-        for from in Format::ALL {
-            let mut source = one(read_att(ATT, from.name()));
-            let before = source.to_bytes().expect("writes");
-            for to in Format::ALL {
-                let converted = source.convert(to.name()).expect("converts");
-                assert_eq!(converted.format(), to.name(), "{from:?} -> {to:?}");
-            }
-            assert_eq!(source.to_bytes().expect("writes"), before);
-        }
-    }
-
-    #[test]
-    fn unknown_type_names_are_invalid_arguments() {
-        let t = one(read_att(ATT, "openfst-tropical"));
-        assert!(matches!(t.convert("thfst"), Err(e) if e.code() == "invalid-argument"));
-        assert!(matches!(read_att(ATT, "sfst"), Err(e) if e.code() == "invalid-argument"));
-    }
-
-    #[test]
-    fn several_att_transducers_read_in_order() {
-        let all = read_att(&format!("{ATT}--\n0\t1\tx\tx\n1\n"), "foma").expect("reads");
-        assert_eq!(all.len(), 2);
-    }
+    stream::read_error(error)
 }

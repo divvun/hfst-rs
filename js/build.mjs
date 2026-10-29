@@ -1,18 +1,18 @@
-// Builds the two npm packages from the binding crates.
+// Builds the npm package @divvun/hfst from crates/hfst-wasm.
 //
-//   node js/build.mjs          the packages
-//   node js/build.mjs --test   the packages, then a test build of each
+//   node js/build.mjs          the package
+//   node js/build.mjs --test   the package, then a test build of it
 //
-// For each package this writes js/<package>/pkg (the wasm-bindgen output) and
-// js/<package>/dist (the compiled wrapper, with a copy of pkg where the
-// compiled binding module imports it from). It needs cargo with the
-// wasm32-unknown-unknown target, the wasm-bindgen CLI at the version
-// Cargo.lock pins, and npx. wasm-opt is used when it is on PATH.
+// This writes js/hfst/pkg (the wasm-bindgen output) and js/hfst/dist (the
+// compiled wrapper, with a copy of pkg where the compiled binding module
+// imports it from). It needs cargo with the wasm32-unknown-unknown target, the
+// wasm-bindgen CLI at the version Cargo.lock pins, and npx. wasm-opt is used
+// when it is on PATH.
 //
-// A test build turns on the crates' test-hooks feature and adds the testing
-// entry module. It is written to target/js-test/<package>, never to js/, so
-// the hooks cannot reach a published package. It also builds the hfst tools
-// and writes the transducer fixtures to target/js-test/fixtures.
+// A test build turns on the crate's test-hooks feature and adds the testing
+// entry module. It is written to target/js-test, never to js/, so the hooks
+// cannot reach the published package. It also builds the hfst tools and
+// writes the transducer fixtures to target/js-test/fixtures.
 
 import { execFileSync, spawnSync } from "node:child_process";
 import { cpSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
@@ -22,11 +22,8 @@ import { buildFixtures, buildTools } from "./test/fixtures.mjs";
 
 const js = dirname(fileURLToPath(import.meta.url));
 const root = dirname(js);
-
-const packages = [
-  { name: "@divvun/hfst-runtime", dir: "hfst-runtime", crate: "hfst-wasm-runtime", artifact: "hfst_wasm_runtime" },
-  { name: "@divvun/hfst", dir: "hfst", crate: "hfst-wasm", artifact: "hfst_wasm" },
-];
+const packageDir = join(js, "hfst");
+const testBuild = join(root, "target", "js-test");
 
 function run(command, args) {
   console.log(`$ ${command} ${args.join(" ")}`);
@@ -38,16 +35,13 @@ function hasCommand(command) {
   return probe.error === undefined && probe.status === 0;
 }
 
-// One cargo invocation per crate. Cargo unifies features across the packages
-// of one invocation, which would build the runtime module with hfst's foma
-// backend that the full crate turns on. A test build uses the dev profile, so
-// it never overwrites the release modules.
-function cargoBuild(pkg, testHooks) {
+// A test build uses the dev profile, so it never overwrites the release module.
+function cargoBuild(testHooks) {
   const profile = testHooks ? "dev" : "wasm-release";
   const features = testHooks ? ["--features", "test-hooks"] : [];
-  run("cargo", ["build", "--target", "wasm32-unknown-unknown", "--profile", profile, "-p", pkg.crate, ...features]);
+  run("cargo", ["build", "--target", "wasm32-unknown-unknown", "--profile", profile, "-p", "hfst-wasm", ...features]);
   const profileDir = testHooks ? "debug" : "wasm-release";
-  return join(root, "target", "wasm32-unknown-unknown", profileDir, `${pkg.artifact}.wasm`);
+  return join(root, "target", "wasm32-unknown-unknown", profileDir, "hfst_wasm.wasm");
 }
 
 function bindgen(wasm, outDir, optimise) {
@@ -59,9 +53,9 @@ function bindgen(wasm, outDir, optimise) {
 }
 
 // The release build never turns test-hooks on; this makes that a checked fact.
-function assertNoTestHooks(pkgDir, pkg) {
-  const glue = readFileSync(join(pkgDir, `${pkg.artifact}.d.ts`), "utf8");
-  if (glue.includes("testPanic")) throw new Error(`${pkg.name}: the release glue has test hooks`);
+function assertNoTestHooks(pkgDir) {
+  const glue = readFileSync(join(pkgDir, "hfst_wasm.d.ts"), "utf8");
+  if (glue.includes("testPanic")) throw new Error("the release glue has test hooks");
 }
 
 function tsc(project, outDir) {
@@ -80,7 +74,7 @@ function* declarations(dir) {
   }
 }
 
-// [spec:hfst:req:javascript.typed-surface]
+// [spec:hfst:req:javascript.typed-surface+1]
 // The wrapper's declarations are the public API, so none of them may use any.
 // The generated glue under pkg is internal and is not checked.
 export function assertNoAny(dist) {
@@ -96,35 +90,33 @@ export function assertNoAny(dist) {
   }
 }
 
-function buildPackage(pkg) {
-  const dir = join(js, pkg.dir);
-  const pkgDir = join(dir, "pkg");
-  const dist = join(dir, "dist");
-  const module = bindgen(cargoBuild(pkg, false), pkgDir, true);
-  assertNoTestHooks(pkgDir, pkg);
-  tsc(join(dir, "tsconfig.json"), dist);
-  cpSync(pkgDir, join(dist, pkg.dir, "pkg"), { recursive: true });
+/** Builds the package and returns the size of its .wasm file in bytes. */
+function buildPackage() {
+  const pkgDir = join(packageDir, "pkg");
+  const dist = join(packageDir, "dist");
+  const module = bindgen(cargoBuild(false), pkgDir, true);
+  assertNoTestHooks(pkgDir);
+  tsc(join(packageDir, "tsconfig.json"), dist);
+  cpSync(pkgDir, join(dist, "pkg"), { recursive: true });
   assertNoAny(dist);
-  return { name: pkg.name, bytes: statSync(module).size };
+  return statSync(module).size;
 }
 
-// tsc type-checks the testing entry against the release glue in js/<package>/pkg,
+// tsc type-checks the testing entry against the release glue in js/hfst/pkg,
 // so the release build must come first. The test hooks are looked up at run
 // time, which the release glue's types do not need to know about.
-function buildTestPackage(pkg) {
-  const dist = join(root, "target", "js-test", pkg.dir, "dist");
-  tsc(join(js, pkg.dir, "tsconfig.test.json"), dist);
-  bindgen(cargoBuild(pkg, true), join(dist, pkg.dir, "pkg"), false);
+function buildTestPackage() {
+  const dist = join(testBuild, "dist");
+  tsc(join(packageDir, "tsconfig.test.json"), dist);
+  bindgen(cargoBuild(true), join(dist, "pkg"), false);
 }
 
 // The tests import this module for its checks, so it builds only when run.
 if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const sizes = packages.map(buildPackage);
+  const bytes = buildPackage();
   if (process.argv.includes("--test")) {
-    packages.forEach(buildTestPackage);
-    buildFixtures(buildTools(root, run), join(root, "target", "js-test", "fixtures"));
+    buildTestPackage();
+    buildFixtures(buildTools(root, run), join(testBuild, "fixtures"));
   }
-  for (const { name, bytes } of sizes) {
-    console.log(`${name}: ${bytes} bytes of WebAssembly (${(bytes / 1024).toFixed(1)} KiB)`);
-  }
+  console.log(`@divvun/hfst: ${bytes} bytes of WebAssembly (${(bytes / 1024).toFixed(1)} KiB)`);
 }

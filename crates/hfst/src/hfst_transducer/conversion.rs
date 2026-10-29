@@ -439,7 +439,6 @@ mod tests {
         AnyTransducer::Tropical(t)
     }
 
-    // [spec:hfst:req:javascript.load-bytes+1/test]
     // `converted` reaches each type with the metadata and leaves its source;
     // `convert` reaches the same type.
     #[test]
@@ -461,7 +460,6 @@ mod tests {
         }
     }
 
-    // [spec:hfst:req:javascript.load-bytes+1/test]
     #[test]
     fn types_with_no_backend_are_refused() {
         for ty in [
@@ -476,7 +474,6 @@ mod tests {
         }
     }
 
-    // [spec:hfst:req:javascript.load-bytes+1/test]
     #[test]
     fn a_copy_keeps_the_name_and_alphabet() {
         let source = pair()

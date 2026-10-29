@@ -7,22 +7,35 @@ repository.workspace = true
 description = "wasm-bindgen glue behind @divvun/hfst, Divvun HFST for JavaScript"
 publish = false
 
+# The glue reaches users only through the npm package under js/hfst, so the
+# crate is never published.
 [lib]
 crate-type = ["cdylib"]
 
 [features]
-test-hooks = ["hfst-wasm-runtime/test-hooks"]
+# Exports a small owned object, a panic, log events and a library error for
+# the JavaScript test suite. Only `js/build.mjs --test` turns it on, and that
+# build writes outside the package directory.
+test-hooks = []
 
 [dependencies]
-hfst = { workspace = true, features = ["foma"] }
-hfst-wasm-runtime = { path = "../hfst-wasm-runtime" }
-# The compilers build at the tropical OpenFst backend, as the hfst tools do.
-hfst-openfst = { workspace = true }
+# Without default features, so the module carries no foma backend.
+hfst = { workspace = true }
 js-sys = "0.3.95"
-# Compile options cross from the wrapper as JSON, and diagnostics return to it as JSON.
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+tracing = "0.1.44"
+tracing-core = "0.1.36"
+# The registry keeps the span bookkeeping that tracing asks of a subscriber;
+# the layer on it only filters and forwards events.
+tracing-subscriber = { version = "0.3.23", default-features = false, features = ["registry", "std"] }
+# The wasm-bindgen CLI that writes the JavaScript glue must be this exact
+# version, or it refuses the module.
 wasm-bindgen = "=0.2.118"
+
+[dev-dependencies]
+# The tokeniser tests compile their pmatch fixture with the library's compiler,
+# which builds on the tropical backend. Tests run natively, so none of it
+# reaches the module.
+hfst-openfst = { workspace = true }
 
 [lints]
 workspace = true
