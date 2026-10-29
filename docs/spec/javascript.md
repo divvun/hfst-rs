@@ -158,11 +158,15 @@ every other embedder.
 > tokenisation output. A test suite MUST check this on shared fixtures under
 > Deno, Node and Bun, and in at least one browser engine.
 
-> [spec:hfst:req:javascript.hfst-js-parity+1]
+> [spec:hfst:req:javascript.hfst-js-parity+2]
 > For every optimized-lookup transducer `hfst-js` loads, `lookup` MUST return
 > the same analyses with the same weights as `hfst-js` returns for the same
 > input, except where `hfst-js` disagrees with the reference C++ `hfst-lookup`;
-> there `lookup` MUST equal the reference. Results compare as sets, since
+> there `lookup` MUST equal the reference. One further exception: the hfst
+> library reads the other Unicode normalisation form of a symbol (hfst#439),
+> which neither `hfst-js` nor the reference does, so for an input spelled in
+> the other form `lookup` MUST equal the reference's result for the spelling
+> that matches the transducer's symbols. Results compare as sets, since
 > `hfst-js` reports analyses in search order and may repeat one, and with
 > `hfst-js`'s weights rounded to 32-bit floats, since it sums them in 64 bits
 > where HFST sums in 32. Every kind of disagreement MUST be listed in the
