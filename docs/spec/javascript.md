@@ -133,16 +133,19 @@ every other embedder.
 > output formats (CG, Giella CG, Xerox, plain) as one string, byte for byte
 > what `hfst tokenise` prints for the same input and settings.
 
-> [spec:hfst:req:javascript.dhfst]
+> [spec:hfst:req:javascript.dhfst+1]
 > `readDhfst(bytes)` MUST load a DHFST file of either type, run the validation
 > divvunspell runs on load, and say which type it holds. An acceptor's
-> `lookup(word)` MUST return the least weight of a path that accepts `word`,
-> final weight included, or `null` when no path does, walking free arcs and
-> obeying flag diacritics as divvunspell does. For an acceptor written from an
-> optimized-lookup transducer, that weight MUST equal the least weight the
-> transducer's own lookup returns for the same word. An error model MUST expose
-> its metadata (version, state count, symbols and meta text). The package
-> offers no suggestion search: that is divvunspell's.
+> `lookup(word)` MUST answer as divvunspell's speller does: it splits `word`
+> into extended grapheme clusters, maps each to the acceptor symbol with the
+> same text or else to the acceptor's unknown symbol, and returns the least
+> weight of a path that consumes them, final weight included, walking free
+> arcs and obeying flag diacritics as divvunspell does, or `null` when no path
+> does. For an acceptor written from an optimized-lookup transducer whose
+> symbols are each one grapheme cluster, that weight MUST equal the least
+> weight the transducer's own lookup returns for the same word. An error model
+> MUST expose its metadata (version, state count, symbols and meta text). The
+> package offers no suggestion search: that is divvunspell's.
 
 ## Parity
 

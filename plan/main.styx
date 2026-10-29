@@ -8189,6 +8189,14 @@ children (
                     target-impl ([spec:hfst:req:javascript.dhfst])
                 }
                 deps (wasm.single-package)
+                log (
+                    {
+                        at 2026-10-29T13:58:27.563834Z
+                        author "brendan@necessary.nu"
+                        kind @decision
+                        text "Acceptor lookup follows divvunspell's input mapping, not hfst lookup's: split the word into grapheme clusters (divvunspell speller/mod.rs to_input_vec_lexicon), map each by exact symbol text, else to @_UNKNOWN_SYMBOL_@, else the path dies (worker.rs lexicon_consume); no longest-match, no NFC/NFD alternates, no identity or default arcs. Reason: a DHFST acceptor is a speller lexicon, and is-this-word-correct must agree with divvunspell. Equality with the source OL transducer's lookup is required only where every symbol is one grapheme cluster. javascript.dhfst bumped to +1. Note: ~/git/divvun/divvunspell is behind; the current source is in the cargo checkout ~/.cargo/git/checkouts/divvunspell-3f43c31305b53454/6f17d4d. icu's GraphemeClusterSegmenter (already linked) may differ from divvunspell's unic_segment on clusters added in newer Unicode versions."
+                    }
+                )
             }
 
             {
