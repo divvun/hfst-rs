@@ -8043,6 +8043,14 @@ children (
                     js-impl ([spec:hfst:req:javascript.errors] [spec:hfst:req:javascript.handle-lifetime] [spec:hfst:req:javascript.logging])
                 }
                 deps (wasm.crates)
+                log (
+                    {
+                        at 2026-10-28T23:48:40.991827Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
+                )
             }
 
             {

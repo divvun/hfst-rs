@@ -47,6 +47,46 @@ export async function readBytes(url: string): Promise<Uint8Array<ArrayBuffer>> {
   return await fs.readFile(new URL(url));
 }
 
+/**
+ * Collects garbage and gives finalizers a turn until `done()` holds, at most
+ * 50 times. Node needs --expose-gc for this; run.mjs passes it.
+ */
+export async function collectUntil(done: () => boolean): Promise<boolean> {
+  const bun: unknown = Reflect.get(globalThis, "Bun");
+  const gc: unknown =
+    typeof bun === "object" && bun !== null ? Reflect.get(bun, "gc") : Reflect.get(globalThis, "gc");
+  if (typeof gc !== "function") throw new Error("no gc(): run node with --expose-gc");
+  for (let round = 0; round < 50 && !done(); round += 1) {
+    Reflect.apply(gc, bun, [true]);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  return done();
+}
+
+type ConsoleMethod = "error" | "warn" | "info" | "debug";
+
+/** Runs `body` with the console's methods recording what they are given. */
+export async function withConsole(
+  body: (lines: { method: ConsoleMethod; text: string }[]) => void | Promise<void>,
+): Promise<void> {
+  const lines: { method: ConsoleMethod; text: string }[] = [];
+  const methods: ConsoleMethod[] = ["error", "warn", "info", "debug"];
+  const real = methods.map((method) => console[method]);
+  for (const method of methods) {
+    console[method] = (...data: unknown[]) => {
+      lines.push({ method, text: data.map(String).join(" ") });
+    };
+  }
+  try {
+    await body(lines);
+  } finally {
+    methods.forEach((method, index) => {
+      const original = real[index];
+      if (original !== undefined) console[method] = original;
+    });
+  }
+}
+
 type Body = () => void | Promise<void>;
 
 const tests: { name: string; body: Body }[] = [];

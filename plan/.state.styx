@@ -1,6 +1,6 @@
 schema_version 7
 
-last_sync_at 2026-10-28T23:41:20.225993Z
+last_sync_at 2026-10-29T00:07:27.772197Z
 
 rule_versions (
     {id determinize-envelope.bounded-strategies, version 0}
@@ -845,6 +845,22 @@ impl_evidence (
     ), rule_versions_seen (
         {id virtual-flag-algebra.subtraction, version 0}
     )}
+    {id wasm.crates, covered_rules (
+        javascript.init
+        javascript.packages
+        javascript.portable-build
+        javascript.typed-surface
+    ), covered_claims (
+        {impl_name js-impl, rule javascript.init}
+        {impl_name js-impl, rule javascript.packages}
+        {impl_name js-impl, rule javascript.typed-surface}
+        {impl_name target-impl, rule javascript.portable-build}
+    ), rule_versions_seen (
+        {id javascript.init, version 0}
+        {id javascript.packages, version 0}
+        {id javascript.portable-build, version 0}
+        {id javascript.typed-surface, version 0}
+    )}
     {id wasm.file-resolver, covered_rules (
         javascript.named-file-resolver
     ), covered_claims (
@@ -965,15 +981,13 @@ impl_evidence (
     ), rule_versions_seen (
         {id xre-finalization.root-optimize, version 0}
     )}
-    {id wasm.crates, covered_rules (
-        javascript.init
-        javascript.packages
-        javascript.portable-build
-        javascript.typed-surface
+    {id wasm.errors-and-handles, covered_rules (
+        javascript.errors
+        javascript.handle-lifetime
+        javascript.logging
     ), covered_claims (
-        {impl_name js-impl, rule javascript.init}
-        {impl_name js-impl, rule javascript.packages}
-        {impl_name js-impl, rule javascript.typed-surface}
-        {impl_name target-impl, rule javascript.portable-build}
+        {impl_name js-impl, rule javascript.errors}
+        {impl_name js-impl, rule javascript.handle-lifetime}
+        {impl_name js-impl, rule javascript.logging}
     )}
 )

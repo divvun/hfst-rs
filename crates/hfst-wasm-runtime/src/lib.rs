@@ -15,6 +15,16 @@
 // threads or filesystem behind the features chosen.
 use wasm_bindgen::prelude::wasm_bindgen;
 
+mod error;
+mod sink;
+#[cfg(feature = "test-hooks")]
+mod test_hooks;
+
+pub use error::{GlueError, code_of};
+pub use sink::{install, set_log_level};
+#[cfg(feature = "test-hooks")]
+pub use test_hooks::{TestObject, test_compile_error, test_library_error, test_log, test_panic};
+
 /// The Divvun HFST version this module was built from.
 #[wasm_bindgen]
 pub fn version() -> String {

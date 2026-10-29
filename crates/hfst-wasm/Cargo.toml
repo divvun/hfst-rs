@@ -10,6 +10,9 @@ publish = false
 [lib]
 crate-type = ["cdylib"]
 
+[features]
+test-hooks = ["hfst-wasm-runtime/test-hooks"]
+
 [dependencies]
 hfst = { workspace = true, features = ["foma"] }
 hfst-wasm-runtime = { path = "../hfst-wasm-runtime" }

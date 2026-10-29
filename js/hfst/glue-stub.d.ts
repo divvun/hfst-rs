@@ -4,4 +4,6 @@ import type { RuntimeGlue } from "../shared/glue.ts";
 
 declare const init: RuntimeGlue["default"];
 export default init;
+export declare const install: RuntimeGlue["install"];
+export declare const setLogLevel: RuntimeGlue["setLogLevel"];
 export declare const version: RuntimeGlue["version"];

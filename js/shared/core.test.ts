@@ -1,29 +1,10 @@
-// Unit tests for the wrapper's module instance. They run against a fake glue,
-// so they need no build.
+// Unit tests for starting the wrapper's module instance. They run against a
+// fake glue, so they need no build.
 
 import { assert, assertEqual, rejectedCode, runTests, test, thrownCode } from "../test/harness.ts";
+import { FakeGlue } from "../test/fake-glue.ts";
 import { Core } from "./core.ts";
 import { HfstError } from "./errors.ts";
-import type { GlueInitInput, RuntimeGlue } from "./glue.ts";
-
-/** A glue that records what init hands it, and fails as often as it is told to. */
-class FakeGlue implements RuntimeGlue {
-  readonly inputs: GlueInitInput[] = [];
-  failures = 0;
-
-  default(options: { module_or_path: GlueInitInput }): Promise<unknown> {
-    this.inputs.push(options.module_or_path);
-    if (this.failures > 0) {
-      this.failures -= 1;
-      return Promise.reject(new Error("not a module"));
-    }
-    return Promise.resolve({});
-  }
-
-  version(): string {
-    return "0.0.0-fake";
-  }
-}
 
 const nowhere = new URL("http://127.0.0.1:9/never.wasm");
 const emptyModule = new Uint8Array([0, 0x61, 0x73, 0x6d, 1, 0, 0, 0]);
@@ -114,6 +95,7 @@ test("init twice returns the first promise and starts the glue once", async () =
   await first;
   assert(core.init() === first, "a second init after the first resolved");
   assertEqual(glue.inputs.length, 1, "glue starts");
+  assertEqual(glue.installs, 1, "sinks installed");
   assertEqual(version(core), "0.0.0-fake", "a call after init");
 });
 

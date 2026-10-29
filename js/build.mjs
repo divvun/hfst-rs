@@ -1,12 +1,17 @@
 // Builds the two npm packages from the binding crates.
 //
-//   node js/build.mjs
+//   node js/build.mjs          the packages
+//   node js/build.mjs --test   the packages, then a test build of each
 //
 // For each package this writes js/<package>/pkg (the wasm-bindgen output) and
 // js/<package>/dist (the compiled wrapper, with a copy of pkg where the
 // compiled binding module imports it from). It needs cargo with the
 // wasm32-unknown-unknown target, the wasm-bindgen CLI at the version
 // Cargo.lock pins, and npx. wasm-opt is used when it is on PATH.
+//
+// A test build turns on the crates' test-hooks feature and adds the testing
+// entry module. It is written to target/js-test/<package>, never to js/, so
+// the hooks cannot reach a published package.
 
 import { execFileSync, spawnSync } from "node:child_process";
 import { cpSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
@@ -33,26 +38,28 @@ function hasCommand(command) {
 
 // One cargo invocation per crate. Cargo unifies features across the packages
 // of one invocation, which would build the runtime module with hfst's foma
-// backend that the full crate turns on.
-function cargoBuild(pkg) {
-  run("cargo", [
-    "build",
-    "--target",
-    "wasm32-unknown-unknown",
-    "--profile",
-    "wasm-release",
-    "-p",
-    pkg.crate,
-  ]);
-  return join(root, "target", "wasm32-unknown-unknown", "wasm-release", `${pkg.artifact}.wasm`);
+// backend that the full crate turns on. A test build uses the dev profile, so
+// it never overwrites the release modules.
+function cargoBuild(pkg, testHooks) {
+  const profile = testHooks ? "dev" : "wasm-release";
+  const features = testHooks ? ["--features", "test-hooks"] : [];
+  run("cargo", ["build", "--target", "wasm32-unknown-unknown", "--profile", profile, "-p", pkg.crate, ...features]);
+  const profileDir = testHooks ? "debug" : "wasm-release";
+  return join(root, "target", "wasm32-unknown-unknown", profileDir, `${pkg.artifact}.wasm`);
 }
 
-function bindgen(wasm, outDir) {
+function bindgen(wasm, outDir, optimise) {
   rmSync(outDir, { recursive: true, force: true });
   run("wasm-bindgen", ["--target", "web", "--out-dir", outDir, wasm]);
   const module = join(outDir, `${basename(wasm, ".wasm")}_bg.wasm`);
-  if (hasCommand("wasm-opt")) run("wasm-opt", ["-Oz", module, "-o", module]);
+  if (optimise && hasCommand("wasm-opt")) run("wasm-opt", ["-Oz", module, "-o", module]);
   return module;
+}
+
+// The release build never turns test-hooks on; this makes that a checked fact.
+function assertNoTestHooks(pkgDir, pkg) {
+  const glue = readFileSync(join(pkgDir, `${pkg.artifact}.d.ts`), "utf8");
+  if (glue.includes("testPanic")) throw new Error(`${pkg.name}: the release glue has test hooks`);
 }
 
 function tsc(project, outDir) {
@@ -91,16 +98,27 @@ function buildPackage(pkg) {
   const dir = join(js, pkg.dir);
   const pkgDir = join(dir, "pkg");
   const dist = join(dir, "dist");
-  const module = bindgen(cargoBuild(pkg), pkgDir);
+  const module = bindgen(cargoBuild(pkg, false), pkgDir, true);
+  assertNoTestHooks(pkgDir, pkg);
   tsc(join(dir, "tsconfig.json"), dist);
   cpSync(pkgDir, join(dist, pkg.dir, "pkg"), { recursive: true });
   assertNoAny(dist);
   return { name: pkg.name, bytes: statSync(module).size };
 }
 
+// tsc type-checks the testing entry against the release glue in js/<package>/pkg,
+// so the release build must come first. The test hooks are looked up at run
+// time, which the release glue's types do not need to know about.
+function buildTestPackage(pkg) {
+  const dist = join(root, "target", "js-test", pkg.dir, "dist");
+  tsc(join(js, pkg.dir, "tsconfig.test.json"), dist);
+  bindgen(cargoBuild(pkg, true), join(dist, pkg.dir, "pkg"), false);
+}
+
 // The tests import this module for its checks, so it builds only when run.
 if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const sizes = packages.map(buildPackage);
+  if (process.argv.includes("--test")) packages.forEach(buildTestPackage);
   for (const { name, bytes } of sizes) {
     console.log(`${name}: ${bytes} bytes of WebAssembly (${(bytes / 1024).toFixed(1)} KiB)`);
   }

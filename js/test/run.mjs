@@ -1,10 +1,12 @@
 // Runs the JavaScript test suite against the built packages, under Node and
 // Bun.
 //
-//   node js/build.mjs && node js/test/run.mjs [--runtime node] [--runtime bun]
+//   node js/build.mjs --test && node js/test/run.mjs [--runtime node] [--runtime bun]
 //
 // Each scenario variant runs in a process of its own, once per runtime and
-// package, because a started module instance cannot be reset.
+// package, because a started or poisoned module instance cannot be reset.
+// Scenarios that need the test hooks run against the test build in
+// target/js-test; the rest run against the packages as they would ship.
 // The runner also serves each package's .wasm file over HTTP, so the suite can
 // start a package from an http: URL and from a fetched Response.
 
@@ -15,6 +17,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const js = dirname(dirname(fileURLToPath(import.meta.url)));
+const testBuilds = join(dirname(js), "target", "js-test");
 
 const packages = [
   { name: "@divvun/hfst-runtime", dir: "hfst-runtime", artifact: "hfst_wasm_runtime" },
@@ -24,9 +27,15 @@ const packages = [
 const scenarios = [
   {
     file: "init.ts",
+    build: "release",
     variants: ["bytes", "file-url", "http-url", "response", "module", "default", "retry"],
   },
+  { file: "contract.ts", build: "test", variants: ["main"] },
+  { file: "poison.ts", build: "test", variants: ["function", "method"] },
 ];
+
+// Node only collects garbage on request with --expose-gc; Bun has Bun.gc.
+const runtimeFlags = { node: ["--expose-gc"] };
 
 // Unit and package tests: every *.test.ts and *.test.mjs outside build output.
 function unitTests(dir = js) {
@@ -51,13 +60,14 @@ function chosenRuntimes(argv) {
 }
 
 function locate(pkg) {
-  const dist = join(js, pkg.dir, "dist", pkg.dir);
+  const release = join(js, pkg.dir, "dist", pkg.dir);
+  const test = join(testBuilds, pkg.dir, "dist", pkg.dir);
   const manifest = JSON.parse(readFileSync(join(js, pkg.dir, "package.json"), "utf8"));
   return {
     ...pkg,
-    module: pathToFileURL(join(dist, "index.js")).href,
-    wasm: join(dist, "pkg", `${pkg.artifact}_bg.wasm`),
     version: manifest.version,
+    release: { module: join(release, "index.js"), wasm: join(release, "pkg", `${pkg.artifact}_bg.wasm`) },
+    test: { module: join(test, "testing.js"), wasm: join(test, "pkg", `${pkg.artifact}_bg.wasm`) },
   };
 }
 
@@ -69,7 +79,7 @@ function serve(located) {
       return;
     }
     response.writeHead(200, { "content-type": "application/wasm" });
-    response.end(readFileSync(pkg.wasm));
+    response.end(readFileSync(pkg.release.wasm));
   });
   return new Promise((resolve) => {
     server.listen(0, "127.0.0.1", () => resolve(server));
@@ -78,7 +88,8 @@ function serve(located) {
 
 function runFile(runtime, path, args) {
   return new Promise((resolve) => {
-    const child = spawn(runtime, [path, ...args], { stdio: ["ignore", "inherit", "inherit"] });
+    const flags = runtimeFlags[runtime] ?? [];
+    const child = spawn(runtime, [...flags, path, ...args], { stdio: ["ignore", "inherit", "inherit"] });
     child.on("error", (error) => {
       console.log(`not ok - ${runtime} ${path}: cannot start ${runtime}: ${error.message}`);
       resolve(false);
@@ -98,12 +109,12 @@ for (const runtime of chosenRuntimes(process.argv.slice(2))) {
     if (!(await runFile(runtime, path, []))) failures += 1;
   }
   for (const pkg of located) {
-    for (const { file, variants } of scenarios) {
+    for (const { file, build, variants } of scenarios) {
       for (const variant of variants) {
         const label = `${pkg.name} ${file} ${variant}`;
         const args = {
-          module: pkg.module,
-          wasm: pathToFileURL(pkg.wasm).href,
+          module: pathToFileURL(pkg[build].module).href,
+          wasm: pathToFileURL(pkg[build].wasm).href,
           http: `${base}/${pkg.artifact}_bg.wasm`,
           version: pkg.version,
           variant,

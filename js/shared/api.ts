@@ -1,4 +1,5 @@
 import type { Core, InitSource } from "./core.ts";
+import type { Logger, LogLevel } from "./logging.ts";
 
 // [spec:hfst:req:javascript.typed-surface]
 /**
@@ -14,6 +15,16 @@ export interface RuntimeApi {
   init(source?: InitSource): Promise<void>;
   /** The Divvun HFST version the package was built from. */
   version(): string;
+  /**
+   * Sends the library's log events to `logger`. `null` puts back the default,
+   * which writes each event to the console method for its level.
+   */
+  setLogger(logger: Logger | null): void;
+  /**
+   * Logs events at `level` and the more severe levels; `off` logs nothing.
+   * The default is `warn`. The module never sends the levels below it.
+   */
+  setLogLevel(level: LogLevel): void;
 }
 
 /** The {@link RuntimeApi} functions, bound to one package's module instance. */
@@ -21,5 +32,7 @@ export function runtimeApi(core: Core): RuntimeApi {
   return {
     init: (source) => core.init(source),
     version: () => core.call((glue) => glue.version()),
+    setLogger: (logger) => core.setLogger(logger),
+    setLogLevel: (level) => core.setLogLevel(level),
   };
 }
