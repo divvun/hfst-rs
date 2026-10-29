@@ -1,33 +1,38 @@
 # JavaScript and WebAssembly
 
-Divvun HFST runs in JavaScript as WebAssembly, published to npm as two
-packages. These rules fix what each package contains, what the hfst library
-must do so it can run without a host operating system, and how the JavaScript
-API behaves.
+Divvun HFST runs in JavaScript as WebAssembly, published to npm as
+`@divvun/hfst`, a read-only package that replaces `hfst-js`. These rules fix
+what the package contains, what the hfst library must do so it can run without
+a host operating system, and how the API behaves.
 
-## Packages
+## Package
 
-> [spec:hfst:def:javascript.packages]
-> Divvun HFST ships to npm as two packages built from this repository.
-> `@divvun/hfst-runtime` loads optimized-lookup transducers and pmatch
-> containers, and runs lookup and tokenisation. `@divvun/hfst` carries
-> everything the runtime carries, plus the compilers, the xfst session, the
-> transducer algebra, and every format the hfst library reads and writes. Each
-> package is one ES module entry point with one `.wasm` file beside it, and
-> loads unchanged in browsers, Deno, Node 20 or later, and Bun. Both declare
-> LGPL-3.0-or-later and name Divvun HFST, copyright UiT.
+> [spec:hfst:def:javascript.packages+1]
+> Divvun HFST ships to npm as one package, `@divvun/hfst`, built from this
+> repository. It loads optimized-lookup transducers, pmatch containers and
+> DHFST files, and runs lookup, tokenisation and DHFST acceptor lookup. It does
+> not compile, write or transform transducers. The package is one ES module
+> entry point with one `.wasm` file beside it, and loads unchanged in browsers,
+> Web Workers, Deno, Node 20 or later, and Bun. It declares LGPL-3.0-or-later
+> and names Divvun HFST, copyright UiT.
 
-> [spec:hfst:req:javascript.init]
-> Importing a package MUST NOT fetch or compile its `.wasm` file. The caller
+> [spec:hfst:req:javascript.init+1]
+> Importing the package MUST NOT fetch or compile its `.wasm` file. The caller
 > starts the package with one async init call that accepts a URL, a `Response`,
 > or the module's bytes. Calling init again MUST return the same instance. A
 > call to anything else before init has resolved MUST throw an `HfstError` with
 > code `not-initialised`.
 
+> [spec:hfst:req:javascript.read-only-module]
+> The package's WebAssembly module MUST NOT link the compilers (regex, lexc,
+> twolc, pmatch, xfst), the foma backend, the tropical OpenFst backend or the
+> transducer algebra. A build check MUST fail when code from any of them is
+> reachable from the module's exports.
+
 ## Library groundwork
 
-> [spec:hfst:req:javascript.portable-build]
-> The hfst library and both binding crates MUST build for
+> [spec:hfst:req:javascript.portable-build+1]
+> The hfst library and the binding crate MUST build for
 > `wasm32-unknown-unknown` from their manifests alone. The build MUST NOT need
 > `RUSTFLAGS`, a cargo config file, or a `getrandom` backend setting. A
 > dependency whose default features need OS entropy, threads or a filesystem is
@@ -40,6 +45,10 @@ API behaves.
 > search when the limit passes. Random seeds MUST come from a source that works
 > there. Code that splits work across threads MUST run it on the calling thread
 > when no threads are available, with the same result.
+
+The next three rules make the library embeddable without a terminal or a
+filesystem. The package does not compile, but the library keeps them for
+every other embedder.
 
 > [spec:hfst:req:javascript.diagnostics-as-data]
 > Every compile entry point in the hfst library (regex, lexc, twolc, pmatch,
@@ -66,29 +75,28 @@ API behaves.
 
 ## API conventions
 
-> [spec:hfst:req:javascript.typed-surface]
-> Each package MUST ship TypeScript declarations for its whole public API. No
+> [spec:hfst:req:javascript.typed-surface+1]
+> The package MUST ship TypeScript declarations for its whole public API. No
 > exported signature may use `any`. Results MUST be plain objects and arrays
 > with declared shapes, never opaque handles that need another call to read.
 > Names follow JavaScript conventions (camelCase functions and methods,
 > PascalCase classes), not the Rust names.
 
-> [spec:hfst:req:javascript.errors]
+> [spec:hfst:req:javascript.errors+1]
 > Every error the library returns MUST reach JavaScript as a thrown
 > `HfstError`, a subclass of `Error` carrying a stable string `code` and the
-> library's message. A failed compile MUST throw an `HfstCompileError`, a
-> subclass of `HfstError` that also carries the diagnostics. A WebAssembly trap
-> MUST be rethrown as an `HfstError` with code `poisoned`, and every later call
-> into that module instance MUST throw the same code without running, because
-> the module's memory can no longer be trusted.
+> library's message. A WebAssembly trap MUST be rethrown as an `HfstError`
+> with code `poisoned`, and every later call into that module instance MUST
+> throw the same code without running, because the module's memory can no
+> longer be trusted.
 
-> [spec:hfst:req:javascript.handle-lifetime]
-> An object that owns WebAssembly memory (a transducer, tokeniser, compiler or
-> xfst session) MUST release it when its `free()` or `[Symbol.dispose]()`
-> method is called, so `using` declarations work. An object the caller drops
-> without freeing SHOULD be released through a `FinalizationRegistry`. Any call
-> on a freed object MUST throw an `HfstError` with code `freed`. Freeing twice
-> MUST do nothing.
+> [spec:hfst:req:javascript.handle-lifetime+1]
+> An object that owns WebAssembly memory (a transducer, a tokeniser or a DHFST
+> model) MUST release it when its `free()` or `[Symbol.dispose]()` method is
+> called, so `using` declarations work. An object the caller drops without
+> freeing SHOULD be released through a `FinalizationRegistry`. Any call on a
+> freed object MUST throw an `HfstError` with code `freed`. Freeing twice MUST
+> do nothing.
 
 > [spec:hfst:req:javascript.logging]
 > The library's `tracing` events MUST reach a logger the caller can replace.
@@ -96,18 +104,15 @@ API behaves.
 > levels. The caller can set the level and the function that receives each
 > event's level, target and message.
 
-## Runtime
+## Loading and lookup
 
-> [spec:hfst:req:javascript.load-bytes+1]
-> Transducers load from bytes, never from paths. The runtime package MUST read
+> [spec:hfst:req:javascript.load-bytes+2]
+> Transducers load from bytes, never from paths. The package MUST read
 > weighted and unweighted optimized-lookup transducers and pmatch containers,
-> with or without an HFST header. The full package MUST also read and write
-> tropical OpenFst and foma transducers and AT&T text, and convert between all
-> of these. A stream holding several transducers MUST load as an array in
-> stream order. Bytes in a format the package does not carry MUST throw an
-> `HfstError` with code `unsupported-format` that names the format and, in the
-> runtime package, says that `@divvun/hfst` reads it. THFST, a directory, and
-> DHFST, a speller format, are not transducer streams and are outside this API.
+> with or without an HFST header, and DHFST files of both types. A stream
+> holding several transducers MUST load as an array in stream order. Bytes in
+> any other format MUST throw an `HfstError` with code `unsupported-format`
+> that names the format.
 
 > [spec:hfst:req:javascript.lookup]
 > `lookup(input, options)` on a transducer MUST return every result the
@@ -128,63 +133,37 @@ API behaves.
 > output formats (CG, Giella CG, Xerox, plain) as one string, byte for byte
 > what `hfst tokenise` prints for the same input and settings.
 
-## Runtime and full package
-
-> [spec:hfst:req:javascript.runtime-excludes-compilers]
-> The runtime package's WebAssembly module MUST NOT link the compilers (regex,
-> lexc, twolc, pmatch, xfst), the foma backend, or the transducer algebra. A
-> build check MUST fail when code from any of them is reachable from the
-> runtime module's exports.
-
-> [spec:hfst:req:javascript.shared-surface]
-> Every export of `@divvun/hfst-runtime` MUST exist in `@divvun/hfst` with the
-> same name, type and behaviour, so code written against the runtime runs
-> unchanged on the full package. The runtime's test suite MUST run against both
-> packages.
-
-## Compiling
-
-> [spec:hfst:req:javascript.compile]
-> The full package MUST compile regular expressions, lexc, twolc and pmatch
-> sources given as strings, with the options the library's compilers take.
-> Files a source names MUST come from a map of names to bytes or strings that
-> the caller passes in. A successful compile MUST return its transducers
-> together with any warnings as diagnostics. A failed compile MUST throw an
-> `HfstCompileError` holding every diagnostic the compiler produced, and MUST
-> NOT return an empty or partial transducer as though it had succeeded.
-
-> [spec:hfst:req:javascript.xfst-session]
-> An xfst session MUST run single commands and whole scripts, and return for
-> each run the text the commands printed and their diagnostics. Its stack and
-> defined networks MUST be readable as transducer objects and writable from
-> them. Files the commands read MUST come from the session's file map, and
-> files they write MUST be readable from it afterwards. A failing command MUST
-> stop a script the way the command-line tool's quit-on-fail setting does, and
-> the error MUST say which command failed.
-
-> [spec:hfst:req:javascript.algebra]
-> Transducer operations in the full package (composition, intersection,
-> union, concatenation, subtraction, repetition, inversion, projection,
-> determinisation, minimisation, weight pushing, and the other operations
-> `HfstTransducer` offers) MUST return a new transducer and MUST NOT change
-> their receiver or arguments. Combining transducers of different
-> implementation types MUST either convert them as the library does or throw
-> an `HfstError` with code `type-mismatch`. It MUST NOT silently produce an
-> empty result.
+> [spec:hfst:req:javascript.dhfst]
+> `readDhfst(bytes)` MUST load a DHFST file of either type, run the validation
+> divvunspell runs on load, and say which type it holds. An acceptor's
+> `lookup(word)` MUST return the least weight of a path that accepts `word`,
+> final weight included, or `null` when no path does, walking free arcs and
+> obeying flag diacritics as divvunspell does. For an acceptor written from an
+> optimized-lookup transducer, that weight MUST equal the least weight the
+> transducer's own lookup returns for the same word. An error model MUST expose
+> its metadata (version, state count, symbols and meta text). The package
+> offers no suggestion search: that is divvunspell's.
 
 ## Parity
 
-> [spec:hfst:req:javascript.native-parity]
-> For the same input bytes, source text and options, the JavaScript API MUST
-> give the same results as the native hfst library: the same lookup results,
-> the same tokenisation output, and compiled transducers whose written bytes
-> are identical. A test suite MUST check this on shared fixtures under Deno,
-> Node and Bun, and in at least one browser engine.
+> [spec:hfst:req:javascript.native-parity+1]
+> For the same input bytes and options, the package MUST give the same results
+> as the native hfst library: the same lookup results and the same
+> tokenisation output. A test suite MUST check this on shared fixtures under
+> Node and Bun and in at least one browser engine. Under Deno the package is
+> type-checked.
+
+> [spec:hfst:req:javascript.hfst-js-parity]
+> For every optimized-lookup transducer `hfst-js` loads, `lookup` MUST return
+> the same analyses with the same weights as `hfst-js` returns for the same
+> input, compared as sets, since `hfst-js` reports analyses in search order and
+> may repeat one. Load time and uncached lookup time MUST be measured against
+> `hfst-js` on the same files and machine, and the figures published with the
+> package.
 
 ## Limits
 
-A wasm32 module addresses at most 4 GiB. The largest Giella grammars need more
-than that to compile natively (the lang-sma pmatch tokeniser peaks near
-4.7 GB), so those builds stay on the command line. Lookup and tokenisation
-with prebuilt artifacts fit comfortably. Every call is synchronous, so a long
-compile belongs in a Web Worker or worker thread where it cannot block a page.
+A wasm32 module addresses at most 4 GiB, far more than any shipped analyser,
+tokeniser or speller model needs. Every call is synchronous, so tokenising a
+large text belongs in a Web Worker or worker thread, where it cannot block a
+page.

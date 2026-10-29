@@ -7972,7 +7972,7 @@ children (
 
     {
         id wasm
-        title "Divvun HFST for JavaScript: wasm builds of the hfst library with TypeScript APIs, published to npm as @divvun/hfst-runtime (lookup, tokenise) and @divvun/hfst (full: compilers, xfst, algebra, every format) [docs/spec/javascript.md]"
+        title "Divvun HFST for JavaScript: one read-only wasm package, @divvun/hfst, that replaces hfst-js: optimized-lookup lookup, pmatch tokenise and DHFST acceptor lookup, with TypeScript declarations, for browsers, Web Workers, Deno, Node and Bun [docs/spec/javascript.md]"
         kind @feat
         children (
             {
@@ -8125,69 +8125,22 @@ children (
 
             {
                 id wasm.runtime-package
-                title "Runtime package boundary: a build check fails if the compilers, foma or the transducer algebra are reachable from @divvun/hfst-runtime's exports; the runtime test suite runs unchanged against @divvun/hfst; record both module sizes on this node"
+                title "Read-only module boundary: a build check fails if compiler, foma, tropical OpenFst or algebra code is reachable from @divvun/hfst's exports; record the module size and its largest contributors on this node"
                 kind @feat
                 implements {
-                    js-impl ([spec:hfst:req:javascript.shared-surface])
-                    target-impl ([spec:hfst:req:javascript.runtime-excludes-compilers])
+                    target-impl ([spec:hfst:req:javascript.read-only-module])
                 }
-                deps (wasm.lookup wasm.tokenise)
-            }
-
-            {
-                id wasm.compile
-                title "Compilers in @divvun/hfst: compileRegex, compileLexc, compileTwolc, compilePmatch over source strings plus a caller-supplied file map; success returns transducers with warning diagnostics, failure throws HfstCompileError with every diagnostic and never an empty transducer"
-                kind @feat
-                implements {
-                    target-impl ([spec:hfst:req:javascript.compile])
-                }
-                deps (
-                    wasm.transducer-io
-                    wasm.diagnostics
-                    wasm.file-resolver
-                    pmatch2fst-syntax-error-exit-zero
-                    xre-eval-error-message
-                )
-            }
-
-            {
-                id wasm.algebra
-                title "Transducer algebra in @divvun/hfst: the HfstTransducer operations as methods that return new transducers and never change receiver or arguments; mixed implementation types convert as the library does or throw type-mismatch, never an empty result"
-                kind @feat
-                implements {
-                    target-impl ([spec:hfst:req:javascript.algebra])
-                }
-                deps (wasm.transducer-io)
-            }
-
-            {
-                id wasm.xfst
-                title "xfst session in @divvun/hfst: run commands and scripts returning printed text and diagnostics per run; stack and defined networks readable/writable as transducers; reads and writes go through the session's file map; quit-on-fail stops a script and names the failing command"
-                kind @feat
-                implements {
-                    target-impl ([spec:hfst:req:javascript.xfst-session])
-                }
-                deps (wasm.compile wasm.xfst-output)
+                deps (wasm.single-package wasm.dhfst)
             }
 
             {
                 id wasm.parity
-                title "Native parity suite: shared fixtures run under Deno, Node, Bun and headless Chromium (Playwright's cached build) against the native hfst library: same lookup results, same tokenise output, byte-identical compiled transducers"
+                title "Native parity suite: shared fixtures run under Node, Bun and headless Chromium (Playwright's cached build) against the native hfst library: same lookup results, same tokenise output, same DHFST acceptor answers as the source transducers; Deno type-checked with deno check"
                 kind @test
                 implements {
                     js-impl ([spec:hfst:req:javascript.native-parity])
                 }
-                deps (
-                    wasm.runtime-package
-                    wasm.compile
-                    wasm.xfst
-                    wasm.algebra
-                    wasm.general-lookup-time-limit
-                    wasm.unweighted-convert-weights
-                    wasm.compile-warnings-as-diagnostics
-                    wasm.diagnostic-source-anchoring
-                    wasm.pmatch-empty-ruleset
-                )
+                deps (wasm.runtime-package wasm.dhfst)
                 log (
                     {
                         at 2026-10-29T11:31:32.616729Z
@@ -8200,60 +8153,36 @@ children (
 
             {
                 id wasm.publish
-                title "Publish @divvun/hfst-runtime and @divvun/hfst 0.1.0 to npm: package.json (LGPL-3.0-or-later, Divvun HFST, copyright UiT, github.com/divvun/hfst-rs), README with the 4 GiB compile limit and worker advice, a release build script; the operator confirms before the actual npm publish"
+                title "Publish @divvun/hfst 0.1.0 to npm: package.json (LGPL-3.0-or-later, Divvun HFST, copyright UiT, github.com/divvun/hfst-rs), README with a migration guide from hfst-js and the hfst-js benchmark figures, a release build script; the operator confirms before the actual npm publish"
                 kind @build
-                deps (wasm.parity)
+                deps (wasm.parity wasm.hfst-js-parity)
             }
 
             {
-                id wasm.general-lookup-time-limit
-                title "General lookup honours a time limit: the library's non-OL lookup (HfstBasicTransducer::lookup, used for tropical and foma) takes a time cutoff on the web-time clock and returns the results found so far when it passes; hfst lookup -t applies it to every transducer type, and the full JS package passes timeLimitMs through instead of ignoring it"
-                kind @fix
-                deps (wasm.lookup)
-                log (
-                    {
-                        at 2026-10-29T12:04:48.212229Z
-                        author "brendan@necessary.nu"
-                        kind @note
-                        text "Found by wasm.lookup (0cc3eb8): the full package's lookup on tropical and foma goes through the same general-lookup path as hfst lookup's slow path (basic transducer, tokeniser, can-match check, infinite-ambiguity check with 5 cycles, flag-obeying lookup), and that path has no clock, so timeLimitMs is ignored there. hfst lookup -t likewise only cuts off optimized-lookup transducers. The TS docs state the gap until this lands."
-                    }
-                )
+                id wasm.single-package
+                title "One read-only package: delete crates/hfst-wasm and js/hfst (the full package: compilers, format writing and conversion, their tests and fixtures), rename crates/hfst-wasm-runtime to crates/hfst-wasm and js/hfst-runtime to js/hfst published as @divvun/hfst, fold js/shared into it now that one package binds it, and re-pin the annotations of the rules the scope change bumped"
+                kind @refactor
+                deps (wasm.lookup wasm.tokenise)
             }
 
             {
-                id wasm.unweighted-convert-weights
-                title "Converting to optimized-lookup-unweighted in memory keeps the source weights until the transducer is written, so lookup on the converted transducer reports weights that the same transducer read back from bytes reports as 0; the in-memory conversion must drop weights exactly as write-then-read does"
-                kind @fix
-                deps (wasm.transducer-io)
-                log (
-                    {
-                        at 2026-10-29T12:04:50.849683Z
-                        author "brendan@necessary.nu"
-                        kind @note
-                        text "Found by wasm.lookup (0cc3eb8): a transducer converted in memory to optimized-lookup-unweighted (AnyTransducer::convert) still reports its source weights from lookup; written and read back, the same transducer reports weight 0. Reproduce with convert('optimized-lookup-unweighted') on a weighted tropical fixture, then compare lookup before and after a toBytes/readTransducer round trip."
-                    }
-                )
+                id wasm.dhfst
+                title "DHFST in @divvun/hfst: readDhfst(bytes) loads error models (type 1) and acceptors (type 2) with divvunspell's load validation; an acceptor answers lookup(word) with the least accepting weight or null, walking free arcs and obeying flags as divvunspell does, equal to the source OL transducer's best lookup weight; an error model exposes its metadata; no suggestion search"
+                kind @feat
+                implements {
+                    target-impl ([spec:hfst:req:javascript.dhfst])
+                }
+                deps (wasm.single-package)
             }
 
             {
-                id wasm.compile-warnings-as-diagnostics
-                title "Compile warnings reach callers as diagnostics, not log lines: lexc's missing and unused lexicon warnings (and the -W switch families), twolc rule conflict reports, and every pmatch warning become hfst::diag Diagnostics with spans where the source has them, so compileLexc/Twolc/Pmatch return them and warnings: [\"error\"] fails with the real diagnostic; CLI stderr stays byte-identical"
-                kind @fix
-                deps (wasm.compile)
-            }
-
-            {
-                id wasm.diagnostic-source-anchoring
-                title "Diagnostics point into the text the user wrote: lexc reports regex errors and warnings against its re-printed regex named &lt;regex&gt;, and pmatch reports errors after an @include against the expanded script; both must carry the original file name and offsets. The xre @re file read must not overwrite the compiler's source text, which makes its error point into the wrong text"
-                kind @fix
-                deps (wasm.compile-warnings-as-diagnostics)
-            }
-
-            {
-                id wasm.pmatch-empty-ruleset
-                title "A pmatch script with no rules (comments only, or definitions without a TOP) compiles to an empty container and hfst pmatch2fst exits 0; it must fail with a diagnostic saying there is nothing to match, in the library, the CLI and compilePmatch, after checking no lang-* tokeniser build relies on the empty result"
-                kind @fix
-                deps (wasm.diagnostic-source-anchoring)
+                id wasm.hfst-js-parity
+                title "Replace hfst-js: on the test fixtures and real Giella analysers (.hfstol), lookup returns the same analysis and weight sets as hfst-js 1.4.0; benchmark load time and uncached lookup time against hfst-js on the same files and machine, and record the figures for the README"
+                kind @test
+                implements {
+                    js-impl ([spec:hfst:req:javascript.hfst-js-parity])
+                }
+                deps (wasm.single-package)
             }
         )
         log (
@@ -8269,6 +8198,13 @@ children (
                 author "brendan@necessary.nu"
                 kind @note
                 text "Probe 2026-10-28 (scratch crate depending on hfst by path, cargo check --target wasm32-unknown-unknown): hfst with and without foma compiles for wasm32 once getrandom 0.3 gets its wasm_js backend. getrandom comes only from rustfst's rand/rand_chacha, used only by algorithms/randgen (UniformTrSelector::new calls ChaCha8Rng::from_os_rng); hfst does not use randgen, hence wasm.rustfst-entropy. Runtime hazards found: Instant::now in lookup_state.rs and pmatch_state/matching.rs, SystemTime::now in pmatch_compiler.rs clock() and tropical path_extraction.rs random seeds, std::thread::scope in dhfst_writer.rs, std::fs in xfst_compiler file_io/dispatch and pmatch_compiler and xre/eval, diag.rs eprint! of the ariadne render, and xfst_compiler print!/println! with set_output_stream left as a stub. Compiler entry points already take &str and HfstInputStream::read_from takes any BufRead. HfstTransducer is generic over its backend, so bindings wrap AnyTransducer. Toolchain present: wasm-pack, wasm-bindgen, deno, node, bun, Playwright Chromium 1243."
+            }
+
+            {
+                at 2026-10-29T13:04:57.997824Z
+                author "brendan@necessary.nu"
+                kind @decision
+                text "Operator scope change 2026-10-29, superseding the 2026-10-28 choices: the goal is to replace the npm package hfst-js (a pure-JS pyhfst port that only does .hfstol lookup). Ship ONE read-only package, @divvun/hfst: optimized-lookup transducers, pmatch containers and DHFST (acceptor lookup; error models load with metadata, no suggestion search, which stays in divvunspell). No compilers, xfst, algebra or format writing; the full @divvun/hfst package, its crate and its compile work are removed, and the unpushed algebra merge was dropped (still on local branch nplan/wasm.algebra). Foma support may come later as @divvun/hfst/foma. Native API only, with a migration guide from hfst-js, no compatibility layer. The five library defects the full-package work found (empty pmatch ruleset exits 0, lexc/twolc/pmatch warnings only in the log, diagnostics anchored in rewritten text, tropical/foma lookup ignores -t, in-memory unweighted conversion keeps weights) are deleted from the plan at the operator's request. The library groundwork already merged (wasm-safe clocks and threads, diagnostics as data, file resolver, xfst output writer, native .pmhfst reading, headerless OL detection, xre/pmatch error fixes) stays."
             }
         )
     }
