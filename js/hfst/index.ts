@@ -1,4 +1,4 @@
-// [spec:hfst:def:javascript.packages+1]
+// [spec:hfst:def:javascript.packages+2]
 /**
  * `@divvun/hfst`: Divvun HFST for JavaScript. It loads optimized-lookup
  * transducers, pmatch containers and DHFST spellers and runs lookup,

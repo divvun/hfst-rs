@@ -8227,9 +8227,9 @@ children (
 
             {
                 id wasm.performance
-                title "Load and look up at least as fast as hfst-js: profile @divvun/hfst on the hfst-js benchmark files (first measure: load 2-3x slower everywhere, lookup 2x slower on kal and 2.7x on sme) and remove the costs on the load path (copies into wasm memory, table parsing, validation) and the lookup path (run-state and tokeniser setup, result conversion across the JS boundary, sorting), keeping results identical"
+                title "Performance against hfst-js: measure on a quiet machine; the optimised lookup (divvun-fst) must load and look up no slower than hfst-js on the benchmark files; cut binding overhead for both lookups (reuse run state, one boundary crossing per lookup instead of a Reflect.set per property, allocator); update BENCHMARKS.md with both lookups"
                 kind @perf
-                deps (wasm.hfst-js-parity)
+                deps (wasm.optimised-lookup wasm.hfst-js-parity)
                 log (
                     {
                         at 2026-10-29T15:55:53.369839Z
@@ -8238,6 +8238,35 @@ children (
                         text "Measurements 2026-10-29 (machine load 10-70, so ratios not absolutes; same 3000 kal-analyser-gt-desc words, 13364 analyses from every tool): C++ hfst-lookup (libhfst hfst_ol::Transducer with the infinite-ambiguity pre-check) 3848 us/word; Rust hfst lookup (port of that code, same pre-check) 1214; Rust library LookupState::new + lookup_fd, the binding's call, 504-664; hfst-js 1.4.0 367; C++ standalone hfst-optimized-lookup 180. gle analyser-gt-norm: C++ OL 20, Rust library 21-29, hfst-js 54, wasm ~72. sme generator: C++ OL 71, Rust library 124-158, hfst-js 112, wasm ~300. Conclusion: hfst-js (pyhfst) ports the lean standalone hfst-optimized-lookup walk; we ported libhfst's heavier engine, already ~3x faster than its C++ source. Removing the plain-epsilon guard (hfst#293/#476) gave no gain (kal 664->1063 within noise), so it is not the cost. Native profile hot spots: try_epsilon_transitions, flag-state SmallVec clones, memmove, malloc/free, String clones. wasm + binding add 1.5-2.4x: fresh LookupState per call, results built with one Reflect.set per property, wasm's default allocator. Load: native table parse 12-31 ms vs hfst-js 9-15 ms in-process; wasm 17-56 ms (copy into wasm memory plus slower parse). Proposed plan, awaiting operator go-ahead: a lean OL lookup engine in the library modelled on hfst-optimized-lookup's walk (flag array with undo, symbol-number output stack, no per-step allocation) keeping our identity/unknown, NFC/NFD, flag and epsilon-loop fixes, results identical under the parity suites; binding reuses run state and crosses the boundary once per lookup; then allocator and load."
                     }
                 )
+            }
+
+            {
+                id wasm.divvun-fst-wasm32
+                title "divvunspell repo: divvun-fst builds for wasm32-unknown-unknown with no RUSTFLAGS: every format loads from bytes (a bytes-backed VFS beside the memmap2/std::fs one, which moves behind a native feature), no threads or OS facilities on the lookup and speller paths, native behaviour and tests unchanged; landed on divvunspell main through operator-run commit scripts (the nplan hook blocks commits there) and released in a form hfst can depend on"
+                kind @build
+            }
+
+            {
+                id wasm.divvun-fst-lookup
+                title "divvunspell repo: a plain lookup entry point on divvun-fst transducers (analysers and generators, not only spellers): word in, every analysis with its weight out, read the way divvunspell reads input, with native tests; the engine @divvun/hfst's optimised lookup and @divvun/fst both call"
+                kind @feat
+            }
+
+            {
+                id wasm.fst-package
+                title "divvunspell repo: @divvun/fst, divvunspell's own wasm npm package: load spellers and transducers from bytes, isCorrect, suggest (with SpellerConfig), optimised lookup; TypeScript declarations; tests under Deno, Node, Bun and a browser; release prepared, with the operator confirming the npm publish"
+                kind @feat
+                deps (wasm.divvun-fst-wasm32 wasm.divvun-fst-lookup)
+            }
+
+            {
+                id wasm.optimised-lookup
+                title "Optimised lookup in @divvun/hfst: crates/hfst-wasm depends on divvun-fst and offers an optimised lookup on optimized-lookup transducers that returns exactly what divvun-fst returns, beside the hfst-semantics lookup; parity tests against native divvun-fst; documented differences from lookup"
+                kind @feat
+                implements {
+                    target-impl ([spec:hfst:req:javascript.optimised-lookup])
+                }
+                deps (wasm.divvun-fst-wasm32 wasm.divvun-fst-lookup)
             }
         )
         log (
@@ -8260,6 +8289,13 @@ children (
                 author "brendan@necessary.nu"
                 kind @decision
                 text "Operator scope change 2026-10-29, superseding the 2026-10-28 choices: the goal is to replace the npm package hfst-js (a pure-JS pyhfst port that only does .hfstol lookup). Ship ONE read-only package, @divvun/hfst: optimized-lookup transducers, pmatch containers and DHFST (acceptor lookup; error models load with metadata, no suggestion search, which stays in divvunspell). No compilers, xfst, algebra or format writing; the full @divvun/hfst package, its crate and its compile work are removed, and the unpushed algebra merge was dropped (still on local branch nplan/wasm.algebra). Foma support may come later as @divvun/hfst/foma. Native API only, with a migration guide from hfst-js, no compatibility layer. The five library defects the full-package work found (empty pmatch ruleset exits 0, lexc/twolc/pmatch warnings only in the log, diagnostics anchored in rewritten text, tropical/foma lookup ignores -t, in-memory unweighted conversion keeps weights) are deleted from the plan at the operator's request. The library groundwork already merged (wasm-safe clocks and threads, diagnostics as data, file resolver, xfst output writer, native .pmhfst reading, headerless OL detection, xre/pmatch error fixes) stays."
+            }
+
+            {
+                at 2026-10-29T17:11:13.420931Z
+                author "brendan@necessary.nu"
+                kind @decision
+                text "Operator 2026-10-29: divvunspell is our optimised lookup. Two lookups in @divvun/hfst: lookup keeps hfst's semantics on the hfst engine; an optimised lookup runs on divvunspell's divvun-fst and returns exactly what divvun-fst returns. divvun-fst also gets its own wasm npm package, @divvun/fst, in the divvunspell repo, with spelling (isCorrect, suggest) and the optimised lookup. The performance target against hfst-js applies to the optimised lookup. Commits in the divvunspell repo (not nplan-managed) are blocked by the nplan hook from these sessions, so that work lands through commit scripts the operator runs."
             }
         )
     }

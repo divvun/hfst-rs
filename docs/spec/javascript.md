@@ -7,11 +7,14 @@ a host operating system, and how the API behaves.
 
 ## Package
 
-> [spec:hfst:def:javascript.packages+1]
+> [spec:hfst:def:javascript.packages+2]
 > Divvun HFST ships to npm as one package, `@divvun/hfst`, built from this
 > repository. It loads optimized-lookup transducers, pmatch containers and
-> DHFST files, and runs lookup, tokenisation and DHFST acceptor lookup. It does
-> not compile, write or transform transducers. The package is one ES module
+> DHFST files, and runs lookup on the hfst library's engine, optimised lookup
+> on divvunspell's `divvun-fst` engine, tokenisation and DHFST acceptor
+> lookup. It does not compile, write or transform transducers. Spelling
+> (correctness checks and suggestions) is not in this package: divvunspell's
+> own wasm package, `@divvun/fst`, carries it. The package is one ES module
 > entry point with one `.wasm` file beside it, and loads unchanged in browsers,
 > Web Workers, Deno, Node 20 or later, and Bun. It declares LGPL-3.0-or-later
 > and names Divvun HFST, copyright UiT.
@@ -122,6 +125,17 @@ every other embedder.
 > them. The options MUST accept a result limit and a time limit in
 > milliseconds. An expired time limit MUST return the results found so far
 > rather than throw.
+
+> [spec:hfst:req:javascript.optimised-lookup]
+> The package MUST offer an optimised lookup on optimized-lookup transducers
+> that returns what divvunspell's `divvun-fst` returns for the same transducer
+> and input, as an array of `{ output, symbols, weight }` ordered by weight and
+> then by output. It reads input the way divvunspell does, so it can differ
+> from `lookup` where hfst lookup takes a longer multicharacter symbol, reads
+> the other Unicode normalisation form of a symbol, or follows identity and
+> unknown arcs; `lookup` keeps hfst's answers. Loading a transducer for the
+> optimised lookup, and each uncached lookup, MUST be no slower than
+> `hfst-js` on the files and words the `hfst-js` comparison uses.
 
 > [spec:hfst:req:javascript.tokenise]
 > A tokeniser loads from pmatch container bytes. `tokenise(text, options)` MUST
