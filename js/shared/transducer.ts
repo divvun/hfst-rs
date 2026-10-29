@@ -2,6 +2,7 @@ import type { Core } from "./core.ts";
 import { HfstError } from "./errors.ts";
 import type { TransducerGlue } from "./glue.ts";
 import { Handle } from "./handle.ts";
+import { type LookupOptions, type LookupResult, lookupArgs } from "./lookup.ts";
 
 // [spec:hfst:req:javascript.load-bytes+1]
 /**
@@ -72,6 +73,25 @@ export abstract class TransducerBase<T extends string, G extends TransducerGlue>
    */
   get properties(): TransducerProperties {
     return this.use(() => this.#properties);
+  }
+
+  // [spec:hfst:req:javascript.lookup]
+  /**
+   * Every result the hfst library's lookup finds for `input` within the
+   * limits, ordered by weight, lightest first, then by output in code point
+   * order, then by symbols. Flag diacritics are obeyed, so a path they block
+   * is not a result. Input with no analyses, such as input in symbols the
+   * transducer cannot read, gives an empty array; a time limit that runs out
+   * gives the results found so far.
+   *
+   * An optimized-lookup transducer runs the library's optimized lookup. In
+   * `@divvun/hfst`, a tropical or foma transducer runs the general lookup
+   * `hfst lookup` runs on it, tokenising the input as `hfst lookup` does, so
+   * the results are the ones it prints.
+   */
+  lookup(input: string, options?: LookupOptions): LookupResult[] {
+    const [text, limit, timeLimitMs] = lookupArgs(input, options);
+    return this.use((g) => g.lookup(text, limit, timeLimitMs));
   }
 }
 

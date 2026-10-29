@@ -3,6 +3,8 @@
 //! tables only; this one holds the library's stream sum, so it can be
 //! written, converted and printed.
 
+use std::cell::OnceCell;
+
 use hfst::file_resolver::{FileResolver, MemoryFiles};
 use hfst::hfst_basic_transducer::HfstBasicTransducer;
 use hfst::hfst_input_stream::HfstInputStream;
@@ -11,12 +13,18 @@ use hfst::hfst_transducer::{AnyTransducer, HfstTransducer};
 use hfst_wasm_runtime::{Format, GlueError, property_pairs, stream};
 use wasm_bindgen::prelude::*;
 
+use crate::lookup::GeneralLookup;
+
 /// A transducer of any format the full package carries. The wrapper's
 /// `Transducer` class in `js/hfst/transducer.ts` owns one.
 #[wasm_bindgen]
 pub struct FullTransducer {
-    any: AnyTransducer,
+    pub(crate) any: AnyTransducer,
     format: Format,
+    /// Built from `any` on the first lookup of a tropical or foma transducer
+    /// and kept. It matches `any` only while no method changes the language
+    /// of `any` in place.
+    pub(crate) general: OnceCell<GeneralLookup>,
 }
 
 impl FullTransducer {
@@ -30,7 +38,11 @@ impl FullTransducer {
                 ),
             )
         })?;
-        Ok(FullTransducer { any, format })
+        Ok(FullTransducer {
+            any,
+            format,
+            general: OnceCell::new(),
+        })
     }
 }
 

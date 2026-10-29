@@ -28,3 +28,4 @@ export type {
 } from "../shared/errors.ts";
 export type { InitSource } from "../shared/core.ts";
 export type { LogEvent, Logger, LogLevel } from "../shared/logging.ts";
+export type { LookupOptions, LookupResult } from "../shared/lookup.ts";

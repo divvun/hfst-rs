@@ -21,7 +21,7 @@ pub enum Machine {
 /// one.
 #[wasm_bindgen]
 pub struct Transducer {
-    machine: Machine,
+    pub(crate) machine: Machine,
     properties: Properties,
 }
 
