@@ -298,7 +298,7 @@ impl AcceptorReader<'_> {
     /// accepting path the walk takes is the lightest. A negative weight can
     /// make a path lighter than one the walk has already taken, and the walk
     /// does not go back for it.
-    // [spec:hfst:req:javascript.dhfst+1]
+    // [spec:hfst:req:javascript.dhfst+2]
     pub fn lookup(&self, word: &str) -> Option<f32> {
         let alphabet = self.lexicon_alphabet();
         let input = input_symbols(alphabet, word)?;
@@ -380,7 +380,7 @@ mod tests {
         })
     }
 
-    // [spec:hfst:req:javascript.dhfst+1/test]
+    // [spec:hfst:req:javascript.dhfst+2/test]
     #[test]
     fn symbols_are_read_as_divvunspell_reads_them() {
         let read = alphabet(&[
@@ -409,7 +409,7 @@ mod tests {
         assert_eq!(alphabet(&["@_EPSILON_SYMBOL_@", "a"]).symbol("q"), None);
     }
 
-    // [spec:hfst:req:javascript.dhfst+1/test]
+    // [spec:hfst:req:javascript.dhfst+2/test]
     #[test]
     fn flags_pass_and_set_as_divvunspell_does() {
         use FlagOperator::{Clear, Disallow, NegativeSet, PositiveSet, Require, Unify};
@@ -446,7 +446,7 @@ mod tests {
         }
     }
 
-    // [spec:hfst:req:javascript.dhfst+1/test]
+    // [spec:hfst:req:javascript.dhfst+2/test]
     #[test]
     fn the_lightest_path_wins_through_epsilons_and_flags() {
         let bytes = written(&lexicon(LEXICON), 1).bytes;

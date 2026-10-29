@@ -38,7 +38,7 @@ impl DhfstAcceptor {
         info_to_js(self.reader.info())
     }
 
-    // [spec:hfst:req:javascript.dhfst+1]
+    // [spec:hfst:req:javascript.dhfst+2]
     /// The least weight of a path that accepts `word`, as divvunspell's
     /// speller reads the word, or nothing when no path does.
     pub fn lookup(&self, word: &str) -> Option<f32> {
@@ -83,7 +83,7 @@ enum Model {
     ErrorModel(DhfstErrorModel),
 }
 
-// [spec:hfst:req:javascript.dhfst+1]
+// [spec:hfst:req:javascript.dhfst+2]
 // [spec:hfst:req:javascript.load-bytes+2]
 /// The DHFST file in `bytes`, as a plain object: `type`, `acceptor` or
 /// `error-model`, and `model`, the object of that type. The bytes are
@@ -256,7 +256,7 @@ mod tests {
         }
     }
 
-    // [spec:hfst:req:javascript.dhfst+1/test]
+    // [spec:hfst:req:javascript.dhfst+2/test]
     #[test]
     fn an_acceptor_loads_and_looks_words_up() {
         let Ok(Model::Acceptor(acceptor)) = read(&acceptor()) else {
@@ -274,7 +274,7 @@ mod tests {
         assert_eq!(acceptor.lookup("tal"), None);
     }
 
-    // [spec:hfst:req:javascript.dhfst+1/test]
+    // [spec:hfst:req:javascript.dhfst+2/test]
     #[test]
     fn an_error_model_loads_with_its_metadata() {
         let Ok(Model::ErrorModel(model)) = read(&error_model()) else {
@@ -286,7 +286,7 @@ mod tests {
         assert!(model.meta().is_some_and(|meta| meta.contains("\"a-to-b\"")));
     }
 
-    // [spec:hfst:req:javascript.dhfst+1/test]
+    // [spec:hfst:req:javascript.dhfst+2/test]
     // [spec:hfst:req:javascript.load-bytes+2/test]
     #[test]
     fn invalid_or_foreign_bytes_are_refused() {

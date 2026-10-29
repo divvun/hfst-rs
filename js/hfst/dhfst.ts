@@ -3,11 +3,11 @@ import { HfstError } from "./errors.ts";
 import type { DhfstAcceptorGlue, DhfstErrorModelGlue, DhfstGlue, GlueObject } from "./glue.ts";
 import { Handle } from "./handle.ts";
 
-// [spec:hfst:req:javascript.dhfst+1]
+// [spec:hfst:req:javascript.dhfst+2]
 /** Which of divvunspell's DHFST formats a file holds: type 2 or type 1. */
 export type DhfstType = "acceptor" | "error-model";
 
-// [spec:hfst:req:javascript.dhfst+1]
+// [spec:hfst:req:javascript.dhfst+2]
 /** How a DHFST acceptor stores its arcs, as `dhfst-tools` reports it. */
 export interface AcceptorInfo {
   /** State numbers: every state is numbered below this. */
@@ -101,7 +101,7 @@ export class DhfstAcceptor extends Handle<DhfstAcceptorGlue> {
     return this.use(() => this.#info);
   }
 
-  // [spec:hfst:req:javascript.dhfst+1]
+  // [spec:hfst:req:javascript.dhfst+2]
   /**
    * The least weight of a path that accepts `word`, final weight included,
    * or `null` when no path does: what divvunspell's speller finds checking
@@ -168,7 +168,7 @@ export class DhfstErrorModel extends Handle<DhfstErrorModelGlue> {
 }
 
 export interface DhfstReader {
-  // [spec:hfst:req:javascript.dhfst+1]
+  // [spec:hfst:req:javascript.dhfst+2]
   /**
    * The DHFST file in `bytes`, an acceptor or an error model, as its `type`
    * says. Bytes are copied into the module once; an error model keeps none of

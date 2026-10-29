@@ -72,7 +72,7 @@ function withByte(bytes: Uint8Array, at: number, value: number): Uint8Array {
   return copy;
 }
 
-// [spec:hfst:req:javascript.dhfst+1/test]
+// [spec:hfst:req:javascript.dhfst+2/test]
 // [spec:hfst:req:javascript.load-bytes+2/test]
 test("an acceptor loads with its metadata, and its info agrees with what the writer recorded", async () => {
   using speller = await acceptor("speller.acceptor.dhfst");
@@ -92,7 +92,7 @@ test("an acceptor loads with its metadata, and its info agrees with what the wri
   assert(speller.info.slots >= speller.info.ids + speller.info.labelMax, "slots");
 });
 
-// [spec:hfst:req:javascript.dhfst+1/test]
+// [spec:hfst:req:javascript.dhfst+2/test]
 test("lookup gives the least weight hfst lookup prints for every input, or null when it prints none", async () => {
   using speller = await acceptor("speller.acceptor.dhfst");
   const inputs = linesOf(await text("speller-inputs.txt"));
@@ -109,7 +109,7 @@ test("lookup gives the least weight hfst lookup prints for every input, or null 
   assertEqual(speller.lookup(`t${"a".repeat(20000)}`), null, "a long word ends");
 });
 
-// [spec:hfst:req:javascript.dhfst+1/test]
+// [spec:hfst:req:javascript.dhfst+2/test]
 test("a multichar symbol is read only from its graphemes' own symbols, and a symbol matches only its own form", async () => {
   using graphemes = await acceptor("graphemes.acceptor.dhfst");
   using lookup = pkg.readTransducer(await fixture("graphemes.optimized-lookup-weighted.hfst"));
@@ -126,7 +126,7 @@ test("a multichar symbol is read only from its graphemes' own symbols, and a sym
   assertEqual(graphemes.lookup("\u00f6"), null, "the speller does not");
 });
 
-// [spec:hfst:req:javascript.dhfst+1/test]
+// [spec:hfst:req:javascript.dhfst+2/test]
 // [spec:hfst:req:javascript.load-bytes+2/test]
 test("an error model loads with its metadata and has no lookup", async () => {
   using model = pkg.readDhfst(await fixture("errmodel.error-model.dhfst"));
@@ -142,7 +142,7 @@ test("an error model loads with its metadata and has no lookup", async () => {
   assert(!("lookup" in model), "an error model has no lookup");
 });
 
-// [spec:hfst:req:javascript.dhfst+1/test]
+// [spec:hfst:req:javascript.dhfst+2/test]
 test("files that fail divvunspell's validation or are truncated throw invalid-format with the reason", async () => {
   const speller = await fixture("speller.acceptor.dhfst");
   const errmodel = await fixture("errmodel.error-model.dhfst");
@@ -195,7 +195,7 @@ test("bytes that are not DHFST throw invalid-format, or unsupported-format namin
   assert(asTransducers.message.includes("readDhfst"), `the message says what reads it: ${asTransducers.message}`);
 });
 
-// [spec:hfst:req:javascript.dhfst+1/test]
+// [spec:hfst:req:javascript.dhfst+2/test]
 // [spec:hfst:req:javascript.handle-lifetime+1/test]
 test("a freed acceptor or error model throws freed, freeing twice does nothing, and using frees", async () => {
   const speller = await acceptor("speller.acceptor.dhfst");

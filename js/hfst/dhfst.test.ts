@@ -14,7 +14,7 @@ async function started(dhfstType: string) {
   return { glue, ...dhfstReader(core) };
 }
 
-// [spec:hfst:req:javascript.dhfst+1/test]
+// [spec:hfst:req:javascript.dhfst+2/test]
 test("an acceptor's type, metadata and info are plain values, and lookup gives null for no path", async () => {
   const { glue, readDhfst } = await started("acceptor");
   const model = readDhfst(new Uint8Array(1));
@@ -31,7 +31,7 @@ test("an acceptor's type, metadata and info are plain values, and lookup gives n
   assertEqual(fake.lookups.join(","), "ab,abc", "the words that reached the module");
 });
 
-// [spec:hfst:req:javascript.dhfst+1/test]
+// [spec:hfst:req:javascript.dhfst+2/test]
 test("an error model has its metadata and no lookup", async () => {
   const { readDhfst } = await started("error-model");
   const model = readDhfst(new Uint8Array(1));
@@ -41,7 +41,7 @@ test("an error model has its metadata and no lookup", async () => {
   assert(!("lookup" in model), "an error model has no lookup");
 });
 
-// [spec:hfst:req:javascript.dhfst+1/test]
+// [spec:hfst:req:javascript.dhfst+2/test]
 test("a word that is not a string and bytes that are not a Uint8Array throw invalid-argument", async () => {
   const { glue, readDhfst } = await started("acceptor");
   const before = glue.entered;
@@ -54,7 +54,7 @@ test("a word that is not a string and bytes that are not a Uint8Array throw inva
   assertEqual(thrownCode(HfstError, () => model.lookup(notWord)), "invalid-argument", "word");
 });
 
-// [spec:hfst:req:javascript.dhfst+1/test]
+// [spec:hfst:req:javascript.dhfst+2/test]
 test("a type the wrapper does not know is an internal error, and its model is freed", async () => {
   const { glue, readDhfst } = await started("thesaurus");
   assertEqual(thrownCode(HfstError, () => readDhfst(new Uint8Array(1))), "internal", "code");

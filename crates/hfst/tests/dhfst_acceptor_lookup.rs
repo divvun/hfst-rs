@@ -141,7 +141,7 @@ const FLAGS: &[&str] = &[
     "50\t1",
 ];
 
-// [spec:hfst:req:javascript.dhfst+1/test]
+// [spec:hfst:req:javascript.dhfst+2/test]
 #[test]
 fn lookup_matches_optimized_lookup_through_flags() {
     let fixture = Fixture::new(FLAGS);
@@ -177,7 +177,7 @@ fn lookup_matches_optimized_lookup_through_flags() {
     assert_eq!(accepted, 8, "the words the fixture accepts");
 }
 
-// [spec:hfst:req:javascript.dhfst+1/test]
+// [spec:hfst:req:javascript.dhfst+2/test]
 #[test]
 fn free_arc_cycles_and_long_words_end() {
     let fixture = Fixture::new(&[
@@ -202,7 +202,7 @@ fn free_arc_cycles_and_long_words_end() {
     assert_eq!(reader.lookup(&format!("{long}b")), None);
 }
 
-// [spec:hfst:req:javascript.dhfst+1/test]
+// [spec:hfst:req:javascript.dhfst+2/test]
 #[test]
 fn multichar_symbols_are_not_read_from_graphemes() {
     let fixture = Fixture::new(&[
@@ -223,7 +223,7 @@ fn multichar_symbols_are_not_read_from_graphemes() {
     assert_eq!(reader.lookup("xy"), None, "no grapheme spells xy");
 }
 
-// [spec:hfst:req:javascript.dhfst+1/test]
+// [spec:hfst:req:javascript.dhfst+2/test]
 #[test]
 fn a_symbol_matches_only_its_own_normalisation_form() {
     let fixture = Fixture::new(&[
@@ -253,7 +253,7 @@ fn a_symbol_matches_only_its_own_normalisation_form() {
     assert_eq!(reader.lookup("\u{f6}"), None, "the speller does not");
 }
 
-// [spec:hfst:req:javascript.dhfst+1/test]
+// [spec:hfst:req:javascript.dhfst+2/test]
 #[test]
 fn unknown_graphemes_read_as_the_unknown_symbol() {
     let fixture = Fixture::new(&[
@@ -285,7 +285,7 @@ fn unknown_graphemes_read_as_the_unknown_symbol() {
     );
 }
 
-// [spec:hfst:req:javascript.dhfst+1/test]
+// [spec:hfst:req:javascript.dhfst+2/test]
 #[test]
 fn owned_reader_agrees_and_corrupt_files_fail() {
     let fixture = Fixture::new(FLAGS);
