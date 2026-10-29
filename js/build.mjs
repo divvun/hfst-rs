@@ -11,12 +11,14 @@
 //
 // A test build turns on the crates' test-hooks feature and adds the testing
 // entry module. It is written to target/js-test/<package>, never to js/, so
-// the hooks cannot reach a published package.
+// the hooks cannot reach a published package. It also builds the hfst tools
+// and writes the transducer fixtures to target/js-test/fixtures.
 
 import { execFileSync, spawnSync } from "node:child_process";
 import { cpSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { buildFixtures, buildTools } from "./test/fixtures.mjs";
 
 const js = dirname(fileURLToPath(import.meta.url));
 const root = dirname(js);
@@ -118,7 +120,10 @@ function buildTestPackage(pkg) {
 // The tests import this module for its checks, so it builds only when run.
 if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const sizes = packages.map(buildPackage);
-  if (process.argv.includes("--test")) packages.forEach(buildTestPackage);
+  if (process.argv.includes("--test")) {
+    packages.forEach(buildTestPackage);
+    buildFixtures(buildTools(root, run), join(root, "target", "js-test", "fixtures"));
+  }
   for (const { name, bytes } of sizes) {
     console.log(`${name}: ${bytes} bytes of WebAssembly (${(bytes / 1024).toFixed(1)} KiB)`);
   }

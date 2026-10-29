@@ -15,9 +15,7 @@
 
 use crate::cli::{self, CommonArgs, ToolArgs, ToolResult};
 use crate::globals::CommonOptions;
-use crate::hfst_commandline::{
-    convert_any_with_options, error, hfst_set_program_name, verbose_print,
-};
+use crate::hfst_commandline::{error, hfst_set_program_name, verbose_print};
 use box_format::{
     BoxPath, Compression, CompressionConfig, HashMap as BoxHashMap, sync::BoxReader,
     sync::BoxWriter,
@@ -335,7 +333,7 @@ fn resolve_thfst_source(common: &CommonOptions, path_str: &str) -> Result<ThfstS
             return Err(1);
         }
     };
-    let converted = match convert_any_with_options(orig, ImplementationType::THFST_TYPE, "") {
+    let converted = match orig.convert(ImplementationType::THFST_TYPE, "") {
         Ok(v) => v,
         Err(e) => {
             error(common, 1, 0, &format!("cannot convert {path_str}: {e}"));
@@ -343,7 +341,7 @@ fn resolve_thfst_source(common: &CommonOptions, path_str: &str) -> Result<ThfstS
         }
     };
 
-    // convert_any_with_options into THFST_TYPE always yields the Thfst variant;
+    // Converting to THFST_TYPE always yields the Thfst variant;
     // any other variant would be a bug in the conversion path.
     let mut thfst = match converted {
         AnyTransducer::Thfst(t) => t,

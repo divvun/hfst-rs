@@ -26,6 +26,10 @@ impl GlueError {
         }
     }
 
+    pub fn code(&self) -> &'static str {
+        self.code
+    }
+
     /// A failed compile, carrying every diagnostic the compiler produced.
     pub fn compile(message: impl Into<String>, diagnostics: Vec<JsValue>) -> Self {
         GlueError {

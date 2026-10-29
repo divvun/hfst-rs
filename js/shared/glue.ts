@@ -30,6 +30,18 @@ export interface GlueObject {
   free(): void;
 }
 
+/**
+ * A transducer the glue holds, from `crates/hfst-wasm-runtime/src/transducer.rs`
+ * or, in the full package, `crates/hfst-wasm/src/transducer.rs`.
+ */
+export interface TransducerGlue extends GlueObject {
+  /** The name of its format, one the wrapper lists as a transducer type. */
+  format(): string;
+  name(): string;
+  /** Its other properties, flattened to key, value, key, value. */
+  propertyPairs(): string[];
+}
+
 /** The exports of `crates/hfst-wasm-runtime`, which both packages carry. */
 export interface RuntimeGlue {
   /** Instantiates the module. The generated glue keeps the instance it makes. */
@@ -39,4 +51,6 @@ export interface RuntimeGlue {
   /** Sends events at `level` and above from here on, and nothing below it. */
   setLogLevel(level: number): void;
   version(): string;
+  /** Every optimized-lookup transducer in a stream, in stream order. */
+  readTransducers(bytes: Uint8Array): TransducerGlue[];
 }

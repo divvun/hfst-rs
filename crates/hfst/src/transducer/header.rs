@@ -39,6 +39,22 @@ pub struct TransducerHeader {
 }
 
 impl TransducerHeader {
+    pub const SIZE: usize = 2 * 2 + 4 * 4 + 9 * 4;
+
+    /// The header at the start of `bytes`, when they begin with one a writer
+    /// could have produced for a transducer standing on its own. That is the
+    /// test for an optimized-lookup payload with no HFST3 header in front:
+    /// every flag is 0 or 1, and the alphabet holds at least epsilon and no
+    /// fewer symbols than the input side uses. Only a pmatch definition is
+    /// written with no symbols, and it is never written without its header.
+    pub fn sniff(bytes: &[u8]) -> Option<TransducerHeader> {
+        let mut head = bytes.get(..Self::SIZE)?;
+        let header = Self::read_from(&mut head).ok()?;
+        let standalone = header.number_of_symbols >= 1
+            && header.number_of_input_symbols <= header.number_of_symbols;
+        standalone.then_some(header)
+    }
+
     // [spec:hfst:def:transducer.hfst-ol.transducer-header.header-error-fn]
     // [spec:hfst:sem:transducer.hfst-ol.transducer-header.header-error-fn]
     fn header_error() -> crate::error::Error {
@@ -261,5 +277,42 @@ impl TransducerHeader {
         write_bool_property(self.has_input_epsilon_transitions, os);
         write_bool_property(self.has_input_epsilon_cycles, os);
         write_bool_property(self.has_unweighted_input_epsilon_cycles, os);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn written(header: &TransducerHeader) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        header.write(&mut bytes);
+        bytes
+    }
+
+    // [spec:hfst:req:javascript.load-bytes+1/test]
+    #[test]
+    fn sniff_finds_a_standalone_header() {
+        let header = TransducerHeader::new_sizes(2, 3, 4, 5, true);
+        let bytes = written(&header);
+        assert_eq!(bytes.len(), TransducerHeader::SIZE);
+        let found = TransducerHeader::sniff(&bytes).expect("a header a writer made");
+        assert_eq!(found.symbol_count(), 3);
+        assert!(found.probe_flag(HeaderFlag::Weighted));
+    }
+
+    // [spec:hfst:req:javascript.load-bytes+1/test]
+    // A pmatch definition's header declares no symbols, and is never sniffed.
+    #[test]
+    fn sniff_refuses_what_no_standalone_writer_makes() {
+        let short = written(&TransducerHeader::new_sizes(1, 1, 1, 0, false));
+        assert!(TransducerHeader::sniff(&short[..TransducerHeader::SIZE - 1]).is_none());
+        let definition = written(&TransducerHeader::new_sizes(0, 0, 1, 0, true));
+        assert!(TransducerHeader::sniff(&definition).is_none());
+        let more_inputs = written(&TransducerHeader::new_sizes(4, 3, 1, 0, true));
+        assert!(TransducerHeader::sniff(&more_inputs).is_none());
+        let mut bad_flag = short.clone();
+        bad_flag[20] = 7;
+        assert!(TransducerHeader::sniff(&bad_flag).is_none());
     }
 }

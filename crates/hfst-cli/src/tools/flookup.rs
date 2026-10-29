@@ -23,8 +23,8 @@ use crate::CliLookupReporter;
 use crate::cli::{self, CommonArgs, ToolArgs, ToolResult, UnaryIo};
 use crate::globals::CommonOptions;
 use crate::hfst_commandline::{
-    convert_any, hfst_error, hfst_error_at_line, hfst_set_program_name, hfst_strformat,
-    hfst_warning, verbose_print,
+    hfst_error, hfst_error_at_line, hfst_set_program_name, hfst_strformat, hfst_warning,
+    verbose_print,
 };
 use hfst::error::ErrorKind;
 use hfst::hfst_data_types::ImplementationType;
@@ -603,7 +603,7 @@ fn process_stream(
             } else {
                 // the C++ convert / invert / convert round-trip, as typed
                 // conversions at this boundary
-                trans = match convert_any(trans, ImplementationType::TROPICAL_OPENFST_TYPE) {
+                trans = match trans.convert(ImplementationType::TROPICAL_OPENFST_TYPE, "") {
                     Ok(v) => v,
                     Err(e) => {
                         hfst_error(common, 1, 0, &format!("{e}"));
@@ -616,7 +616,7 @@ fn process_stream(
                     hfst_error(common, 1, 0, &format!("{e}"));
                     return 1;
                 }
-                trans = match convert_any(trans, ty) {
+                trans = match trans.convert(ty, "") {
                     Ok(v) => v,
                     Err(e) => {
                         hfst_error(common, 1, 0, &format!("{e}"));

@@ -10,6 +10,15 @@ import { runtimeApi } from "../shared/api.ts";
 import { core } from "./binding.ts";
 
 export const { init, version, setLogger, setLogLevel } = runtimeApi(core);
+export {
+  readAtt,
+  readTransducer,
+  readTransducers,
+  Transducer,
+  writeTransducers,
+} from "./transducer.ts";
+export type { TransducerType } from "./transducer.ts";
+export type { TransducerProperties } from "../shared/transducer.ts";
 export { HfstCompileError, HfstError } from "../shared/errors.ts";
 export type {
   Diagnostic,

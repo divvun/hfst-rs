@@ -7,3 +7,4 @@ export default init;
 export declare const install: RuntimeGlue["install"];
 export declare const setLogLevel: RuntimeGlue["setLogLevel"];
 export declare const version: RuntimeGlue["version"];
+export declare const readTransducers: RuntimeGlue["readTransducers"];

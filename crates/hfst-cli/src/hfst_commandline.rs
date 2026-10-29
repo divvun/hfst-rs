@@ -419,89 +419,6 @@ pub fn conversion_type(type1: ImplementationType, type2: ImplementationType) -> 
     }
 }
 
-/// The typed replacement for the C++ 'HfstTransducer::convert(type)' at the
-/// CLI stream boundary ([dec:hfst:monomorphic-backends]): re-type a stream
-/// sum to 'ty' through the interchange transducer. OL targets build
-/// weighted-shaped tables whatever the requested weightedness — exactly as
-/// the C++ convert did — with the header flag carrying the OL/OLW tag.
-pub fn convert_any(t: AnyTransducer, ty: ImplementationType) -> hfst::error::Result<AnyTransducer> {
-    convert_any_with_options(t, ty, "")
-}
-
-/// ['convert_any'] with the C++ convert's options string ("quick" relaxes the
-/// optimized-lookup table packing; only fst2fst's -Q sets it).
-pub fn convert_any_with_options(
-    t: AnyTransducer,
-    ty: ImplementationType,
-    options: &str,
-) -> hfst::error::Result<AnyTransducer> {
-    if t.get_type() == ty {
-        return Ok(t);
-    }
-    Ok(match ty {
-        ImplementationType::TROPICAL_OPENFST_TYPE => AnyTransducer::Tropical(t.into_typed()?),
-        #[cfg(feature = "foma")]
-        ImplementationType::FOMA_TYPE => AnyTransducer::Foma(t.into_typed()?),
-        ImplementationType::HFST_OLW_TYPE | ImplementationType::HFST_OL_TYPE => {
-            let weighted = ty == ImplementationType::HFST_OLW_TYPE;
-            match t {
-                AnyTransducer::Tropical(x) => AnyTransducer::OlW(x.to_ol(weighted, options)?),
-                // OL -> OL retag (only the header weightedness differs):
-                // through the algebra, as the C++ went through basic.
-                other @ AnyTransducer::OlW(_) | other @ AnyTransducer::OlU(_) => {
-                    let x: HfstTransducer<hfst_openfst::StdVectorFst> = other.into_typed()?;
-                    AnyTransducer::OlW(x.to_ol(weighted, options)?)
-                }
-                // Foma routes through the tropical algebra into weighted OL
-                // tables, exactly as the OlU arm does.
-                #[cfg(feature = "foma")]
-                other @ AnyTransducer::Foma(_) => {
-                    let x: HfstTransducer<hfst_openfst::StdVectorFst> = other.into_typed()?;
-                    AnyTransducer::OlW(x.to_ol(weighted, options)?)
-                }
-                // THFST -> OLW: O(1) table move back to the weighted engine,
-                // then the same weightedness retag as the OLW/OlU arms (through
-                // the tropical algebra, as the C++ went through basic).
-                // [spec:hfst:sem:thfst-backend.olw-moves]
-                AnyTransducer::Thfst(t) => {
-                    let x: HfstTransducer<hfst_openfst::StdVectorFst> =
-                        AnyTransducer::OlW(t.into_olw()).into_typed()?;
-                    AnyTransducer::OlW(x.to_ol(weighted, options)?)
-                }
-            }
-        }
-        // THFST target: O(1) table move from the weighted engine (OLW), or a
-        // build-through-OLW-then-move for everything else. THFST is a
-        // lookup-tier citizen like OLW; its target is always the weighted
-        // engine retagged as THFST.
-        // [spec:hfst:def:thfst-backend.olw-moves]
-        // [spec:hfst:sem:thfst-backend.olw-moves]
-        ImplementationType::THFST_TYPE => match t {
-            // O(1) table move: OLW is already the weighted engine THFST wraps.
-            AnyTransducer::OlW(x) => AnyTransducer::Thfst(x.into_thfst()),
-            // Build weighted OL tables through the algebra, then move.
-            AnyTransducer::Tropical(x) => {
-                AnyTransducer::Thfst(x.to_ol(true, options)?.into_thfst())
-            }
-            // OlU (and any foma source) routes through the tropical algebra
-            // into weighted OL tables, exactly as the OLW target's OlU arm does.
-            other @ AnyTransducer::OlU(_) => {
-                let x: HfstTransducer<hfst_openfst::StdVectorFst> = other.into_typed()?;
-                AnyTransducer::Thfst(x.to_ol(true, options)?.into_thfst())
-            }
-            #[cfg(feature = "foma")]
-            other @ AnyTransducer::Foma(_) => {
-                let x: HfstTransducer<hfst_openfst::StdVectorFst> = other.into_typed()?;
-                AnyTransducer::Thfst(x.to_ol(true, options)?.into_thfst())
-            }
-            // Thfst -> Thfst cannot reach here (early return on equal types),
-            // but the match must be exhaustive.
-            AnyTransducer::Thfst(x) => AnyTransducer::Thfst(x),
-        },
-        other => hfst::bail!(ImplementationTypeNotAvailable(other)),
-    })
-}
-
 // [spec:hfst:def:hfst-commandline.convert-transducers-fn]
 // [spec:hfst:sem:hfst-commandline.convert-transducers-fn]
 pub fn convert_transducers(
@@ -525,7 +442,7 @@ pub fn convert_transducers(
                 hfst_strformat(type1)
             ),
         );
-        let second = convert_any(second, type1)?;
+        let second = second.convert(type1, "")?;
         Ok((first, second))
     } else if ct == 2 {
         hfst_warning(
@@ -537,7 +454,7 @@ pub fn convert_transducers(
                 hfst_strformat(type2)
             ),
         );
-        let first = convert_any(first, type2)?;
+        let first = first.convert(type2, "")?;
         Ok((first, second))
     } else if ct == -1 {
         hfst_warning(
@@ -549,7 +466,7 @@ pub fn convert_transducers(
                 hfst_strformat(type1)
             ),
         );
-        let second = convert_any(second, type1)?;
+        let second = second.convert(type1, "")?;
         Ok((first, second))
     } else {
         // This should not happen.

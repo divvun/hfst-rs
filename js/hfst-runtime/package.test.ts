@@ -6,7 +6,11 @@ packageTests(dir, "@divvun/hfst-runtime");
 
 test("the entry module exports the runtime API", async () => {
   const names = Object.keys(await entryOf(dir)).sort();
-  assertEqual(names.join(" "), "HfstCompileError HfstError init setLogLevel setLogger version", "exports");
+  assertEqual(
+    names.join(" "),
+    "HfstCompileError HfstError Transducer init readTransducer readTransducers setLogLevel setLogger version",
+    "exports",
+  );
 });
 
 await runTests("hfst-runtime/package");

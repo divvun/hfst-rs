@@ -208,6 +208,109 @@ impl AnyTransducer {
     pub fn into_typed<B: FromAnyTransducer>(self) -> crate::error::Result<HfstTransducer<B>> {
         B::from_any(self)
     }
+
+    /// A deep copy, with the facade metadata.
+    pub fn copy(&self) -> crate::error::Result<AnyTransducer> {
+        Ok(match self {
+            AnyTransducer::Tropical(t) => AnyTransducer::Tropical(HfstTransducer::new_copy(t)?),
+            AnyTransducer::OlW(t) => AnyTransducer::OlW(HfstTransducer::new_copy(t)?),
+            AnyTransducer::OlU(t) => AnyTransducer::OlU(HfstTransducer::new_copy(t)?),
+            #[cfg(feature = "foma")]
+            AnyTransducer::Foma(t) => AnyTransducer::Foma(HfstTransducer::new_copy(t)?),
+            AnyTransducer::Thfst(t) => AnyTransducer::Thfst(HfstTransducer::new_copy(t)?),
+        })
+    }
+
+    /// This transducer as implementation type `ty`: the typed replacement for
+    /// the C++ `HfstTransducer::convert(type)` that `hfst fst2fst` and the
+    /// other tools run at the stream boundary
+    /// ([dec:hfst:monomorphic-backends]). A transducer already of type `ty`
+    /// comes back as it is, and weighted optimized lookup becomes THFST by
+    /// moving its tables; every other pair converts as
+    /// [`Self::converted`] does. `options` is the C++ convert's options
+    /// string: "quick" relaxes the optimized-lookup table packing.
+    pub fn convert(self, ty: ImplementationType, options: &str) -> crate::error::Result<Self> {
+        if self.get_type() == ty {
+            return Ok(self);
+        }
+        match self {
+            AnyTransducer::OlW(t) if ty == ImplementationType::THFST_TYPE => {
+                Ok(AnyTransducer::Thfst(t.into_thfst()))
+            }
+            other @ (AnyTransducer::Tropical(_)
+            | AnyTransducer::OlW(_)
+            | AnyTransducer::OlU(_)
+            | AnyTransducer::Thfst(_)) => other.converted(ty, options),
+            #[cfg(feature = "foma")]
+            other @ AnyTransducer::Foma(_) => other.converted(ty, options),
+        }
+    }
+
+    /// [`Self::convert`] for a caller that keeps this transducer: the result is
+    /// built beside it, and a transducer already of type `ty` is copied.
+    /// Optimized-lookup targets get weighted-shaped tables whatever the
+    /// requested weightedness, as the C++ convert built them, with the header
+    /// flag carrying the OL/OLW tag. The facade metadata comes along.
+    pub fn converted(&self, ty: ImplementationType, options: &str) -> crate::error::Result<Self> {
+        if self.get_type() == ty {
+            return self.copy();
+        }
+        Ok(match ty {
+            ImplementationType::TROPICAL_OPENFST_TYPE => AnyTransducer::Tropical(via_basic(self)?),
+            #[cfg(feature = "foma")]
+            ImplementationType::FOMA_TYPE => AnyTransducer::Foma(via_basic(self)?),
+            ImplementationType::HFST_OLW_TYPE | ImplementationType::HFST_OL_TYPE => {
+                let weighted = ty == ImplementationType::HFST_OLW_TYPE;
+                AnyTransducer::OlW(self.weighted_ol(weighted, options)?)
+            }
+            // THFST is the weighted engine retagged, so it is built as OLW
+            // and its tables moved.
+            // [spec:hfst:def:thfst-backend.olw-moves]
+            // [spec:hfst:sem:thfst-backend.olw-moves]
+            ImplementationType::THFST_TYPE => match self {
+                AnyTransducer::OlW(t) => {
+                    AnyTransducer::Thfst(HfstTransducer::new_copy(t)?.into_thfst())
+                }
+                other @ (AnyTransducer::Tropical(_)
+                | AnyTransducer::OlU(_)
+                | AnyTransducer::Thfst(_)) => {
+                    AnyTransducer::Thfst(other.weighted_ol(true, options)?.into_thfst())
+                }
+                #[cfg(feature = "foma")]
+                other @ AnyTransducer::Foma(_) => {
+                    AnyTransducer::Thfst(other.weighted_ol(true, options)?.into_thfst())
+                }
+            },
+            #[cfg(not(feature = "foma"))]
+            ImplementationType::FOMA_TYPE => crate::bail!(ImplementationTypeNotAvailable(ty)),
+            ImplementationType::SFST_TYPE
+            | ImplementationType::XFSM_TYPE
+            | ImplementationType::HFST2_TYPE
+            | ImplementationType::UNSPECIFIED_TYPE
+            | ImplementationType::ERROR_TYPE => crate::bail!(ImplementationTypeNotAvailable(ty)),
+        })
+    }
+
+    /// Weighted-shaped optimized-lookup tables for this transducer, tagged OLW
+    /// or OL by `weighted`. Every source but tropical goes through the
+    /// tropical algebra first, as the C++ convert went through the basic
+    /// transducer.
+    fn weighted_ol(
+        &self,
+        weighted: bool,
+        options: &str,
+    ) -> crate::error::Result<HfstTransducer<Transducer<WeightedTables>>> {
+        match self {
+            AnyTransducer::Tropical(t) => t.to_ol(weighted, options),
+            other @ (AnyTransducer::OlW(_) | AnyTransducer::OlU(_) | AnyTransducer::Thfst(_)) => {
+                via_basic::<StdVectorFst>(other)?.to_ol(weighted, options)
+            }
+            #[cfg(feature = "foma")]
+            other @ AnyTransducer::Foma(_) => {
+                via_basic::<StdVectorFst>(other)?.to_ol(weighted, options)
+            }
+        }
+    }
 }
 
 /// The per-backend arm of ['AnyTransducer::into_typed']: each backend takes
@@ -219,7 +322,7 @@ pub trait FromAnyTransducer: Backend {
 
 /// Re-tag a facade around a transformed backend, preserving the metadata
 /// (name, properties, anonymous, is_trie). The O(1)-move analogue of
-/// ['any_into_backend_via_basic']: the backend is transferred by 'f', not
+/// ['via_basic']: the backend is transferred by 'f', not
 /// rebuilt through the interchange transducer.
 /// [spec:hfst:def:thfst-backend.olw-moves]
 /// [spec:hfst:sem:thfst-backend.olw-moves]
@@ -236,15 +339,14 @@ fn rewrap_facade<A: Backend, B: Backend>(
     }
 }
 
-/// The convert-through-basic arm of ['AnyTransducer::into_typed'].
-fn any_into_backend_via_basic<B: Backend>(
-    any: AnyTransducer,
-) -> crate::error::Result<HfstTransducer<B>> {
+/// The convert-through-basic arm of ['AnyTransducer::into_typed'] and
+/// ['AnyTransducer::converted']. `any` is only read.
+fn via_basic<B: Backend>(any: &AnyTransducer) -> crate::error::Result<HfstTransducer<B>> {
     let net = any.to_basic()?;
     let mut t: HfstTransducer<B> = HfstTransducer::wrap(B::from_basic(&net)?);
     // The C++ convert replaced only the implementation; the facade metadata
     // survives.
-    any_delegate!(&any, s => {
+    any_delegate!(any, s => {
         t.name = s.name.clone();
         t.props = s.props.clone();
         t.anonymous = s.anonymous;
@@ -257,12 +359,10 @@ impl FromAnyTransducer for StdVectorFst {
     fn from_any(any: AnyTransducer) -> crate::error::Result<HfstTransducer<Self>> {
         match any {
             AnyTransducer::Tropical(t) => Ok(t),
-            other @ AnyTransducer::OlW(_) | other @ AnyTransducer::OlU(_) => {
-                any_into_backend_via_basic(other)
-            }
+            other @ AnyTransducer::OlW(_) | other @ AnyTransducer::OlU(_) => via_basic(&other),
             #[cfg(feature = "foma")]
-            other @ AnyTransducer::Foma(_) => any_into_backend_via_basic(other),
-            other @ AnyTransducer::Thfst(_) => any_into_backend_via_basic(other),
+            other @ AnyTransducer::Foma(_) => via_basic(&other),
+            other @ AnyTransducer::Thfst(_) => via_basic(&other),
         }
     }
 }
@@ -277,11 +377,9 @@ impl FromAnyTransducer for Transducer<WeightedTables> {
             // [spec:hfst:def:thfst-backend.olw-moves]
             // [spec:hfst:sem:thfst-backend.olw-moves]
             AnyTransducer::Thfst(t) => Ok(rewrap_facade(t, |b| b.into_ol())),
-            other @ AnyTransducer::Tropical(_) | other @ AnyTransducer::OlU(_) => {
-                any_into_backend_via_basic(other)
-            }
+            other @ AnyTransducer::Tropical(_) | other @ AnyTransducer::OlU(_) => via_basic(&other),
             #[cfg(feature = "foma")]
-            other @ AnyTransducer::Foma(_) => any_into_backend_via_basic(other),
+            other @ AnyTransducer::Foma(_) => via_basic(&other),
         }
     }
 }
@@ -294,12 +392,10 @@ impl FromAnyTransducer for Transducer<UnweightedTables> {
             // tables, which the interim invariant of
             // [dec:hfst:monomorphic-backends] rules out (conversions always
             // build weighted-shaped tables); 'from_basic' reports that.
-            other @ AnyTransducer::Tropical(_) | other @ AnyTransducer::OlW(_) => {
-                any_into_backend_via_basic(other)
-            }
+            other @ AnyTransducer::Tropical(_) | other @ AnyTransducer::OlW(_) => via_basic(&other),
             #[cfg(feature = "foma")]
-            other @ AnyTransducer::Foma(_) => any_into_backend_via_basic(other),
-            other @ AnyTransducer::Thfst(_) => any_into_backend_via_basic(other),
+            other @ AnyTransducer::Foma(_) => via_basic(&other),
+            other @ AnyTransducer::Thfst(_) => via_basic(&other),
         }
     }
 }
@@ -312,7 +408,7 @@ impl FromAnyTransducer for crate::backend_foma::FomaTransducer {
             other @ AnyTransducer::Tropical(_)
             | other @ AnyTransducer::OlW(_)
             | other @ AnyTransducer::OlU(_)
-            | other @ AnyTransducer::Thfst(_) => any_into_backend_via_basic(other),
+            | other @ AnyTransducer::Thfst(_) => via_basic(&other),
         }
     }
 }
@@ -325,11 +421,71 @@ impl FromAnyTransducer for crate::backend_thfst::ThfstTransducer {
             // and rewrap the facade metadata unchanged.
             // [spec:hfst:sem:thfst-backend.olw-moves]
             AnyTransducer::OlW(t) => Ok(rewrap_facade(t, crate::backend_thfst::ThfstTransducer)),
-            other @ AnyTransducer::Tropical(_) | other @ AnyTransducer::OlU(_) => {
-                any_into_backend_via_basic(other)
-            }
+            other @ AnyTransducer::Tropical(_) | other @ AnyTransducer::OlU(_) => via_basic(&other),
             #[cfg(feature = "foma")]
-            other @ AnyTransducer::Foma(_) => any_into_backend_via_basic(other),
+            other @ AnyTransducer::Foma(_) => via_basic(&other),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn pair() -> AnyTransducer {
+        let mut t = HfstTransducer::<StdVectorFst>::new_symbol_pair("a", "b").expect("a pair");
+        t.set_name("pair");
+        t.set_property("note", "kept");
+        AnyTransducer::Tropical(t)
+    }
+
+    // [spec:hfst:req:javascript.load-bytes+1/test]
+    // `converted` reaches each type with the metadata and leaves its source;
+    // `convert` reaches the same type.
+    #[test]
+    fn conversions_keep_metadata_and_source() {
+        let types = [
+            ImplementationType::TROPICAL_OPENFST_TYPE,
+            ImplementationType::HFST_OLW_TYPE,
+            ImplementationType::HFST_OL_TYPE,
+            ImplementationType::THFST_TYPE,
+        ];
+        for to in types {
+            let source = pair();
+            let kept = source.converted(to, "").expect("converts");
+            assert_eq!(kept.get_type(), to);
+            assert_eq!(kept.get_name(), "pair");
+            assert_eq!(kept.get_property("note"), "kept");
+            assert_eq!(source.get_type(), ImplementationType::TROPICAL_OPENFST_TYPE);
+            assert_eq!(source.convert(to, "").expect("converts").get_type(), to);
+        }
+    }
+
+    // [spec:hfst:req:javascript.load-bytes+1/test]
+    #[test]
+    fn types_with_no_backend_are_refused() {
+        for ty in [
+            ImplementationType::SFST_TYPE,
+            ImplementationType::XFSM_TYPE,
+            ImplementationType::HFST2_TYPE,
+            ImplementationType::UNSPECIFIED_TYPE,
+            ImplementationType::ERROR_TYPE,
+        ] {
+            assert!(pair().converted(ty, "").is_err(), "{ty:?}");
+            assert!(pair().convert(ty, "").is_err(), "{ty:?}");
+        }
+    }
+
+    // [spec:hfst:req:javascript.load-bytes+1/test]
+    #[test]
+    fn a_copy_keeps_the_name_and_alphabet() {
+        let source = pair()
+            .convert(ImplementationType::HFST_OLW_TYPE, "")
+            .expect("converts");
+        let copy = source.copy().expect("copies");
+        assert_eq!(copy.get_type(), source.get_type());
+        assert_eq!(copy.get_name(), "pair");
+        let alphabet = |t: &AnyTransducer| t.to_basic().expect("to basic").get_alphabet().clone();
+        assert_eq!(alphabet(&copy), alphabet(&source));
     }
 }

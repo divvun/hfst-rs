@@ -9,13 +9,18 @@
  * - `poisoned`: the module trapped, for instance on a panic. Its memory cannot
  *   be trusted after that, so every later call throws this without entering it.
  * - `freed`: a call on an object after its `free()`.
+ * - `transducer-count`: a call that takes exactly one transducer, such as
+ *   `readTransducer`, got bytes or text holding several.
  *
  * From the library, which `crates/hfst-wasm-runtime/src/error.rs` maps here:
  * - `type-mismatch`: transducers of different implementation types, or one of
  *   the wrong type for the operation.
  * - `unsupported-format`: a format or implementation type the package does
- *   not carry.
- * - `invalid-format`: input that is not well formed in the format expected.
+ *   not carry. The message names the format, and in `@divvun/hfst-runtime`
+ *   says when `@divvun/hfst` reads it.
+ * - `invalid-format`: input that is not well formed in the format expected,
+ *   such as bytes that are not a transducer stream, or that end partway
+ *   through one.
  * - `io`: a stream that cannot be read or written.
  * - `not-automaton`: an operation that needs automata got transducers.
  * - `cyclic`: an operation that needs a finite language got a cyclic one.
@@ -31,6 +36,7 @@ export const HFST_ERROR_CODES = [
   "init-failed",
   "poisoned",
   "freed",
+  "transducer-count",
   "type-mismatch",
   "unsupported-format",
   "invalid-format",

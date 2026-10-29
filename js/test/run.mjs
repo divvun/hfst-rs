@@ -6,7 +6,9 @@
 // Each scenario variant runs in a process of its own, once per runtime and
 // package, because a started or poisoned module instance cannot be reset.
 // Scenarios that need the test hooks run against the test build in
-// target/js-test; the rest run against the packages as they would ship.
+// target/js-test; the rest run against the packages as they would ship. A
+// scenario marked `only` runs against that one package. The transducer
+// fixtures the test build writes to target/js-test/fixtures are read by path.
 // The runner also serves each package's .wasm file over HTTP, so the suite can
 // start a package from an http: URL and from a fetched Response.
 
@@ -18,6 +20,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const js = dirname(dirname(fileURLToPath(import.meta.url)));
 const testBuilds = join(dirname(js), "target", "js-test");
+const fixtures = `${pathToFileURL(join(testBuilds, "fixtures")).href}/`;
 
 const packages = [
   { name: "@divvun/hfst-runtime", dir: "hfst-runtime", artifact: "hfst_wasm_runtime" },
@@ -32,6 +35,8 @@ const scenarios = [
   },
   { file: "contract.ts", build: "test", variants: ["main"] },
   { file: "poison.ts", build: "test", variants: ["function", "method"] },
+  { file: "transducers.ts", build: "release", variants: ["main"] },
+  { file: "transducers-full.ts", build: "release", variants: ["main"], only: "@divvun/hfst" },
 ];
 
 // Node only collects garbage on request with --expose-gc; Bun has Bun.gc.
@@ -109,14 +114,17 @@ for (const runtime of chosenRuntimes(process.argv.slice(2))) {
     if (!(await runFile(runtime, path, []))) failures += 1;
   }
   for (const pkg of located) {
-    for (const { file, build, variants } of scenarios) {
+    for (const { file, build, variants, only } of scenarios) {
+      if (only !== undefined && only !== pkg.name) continue;
       for (const variant of variants) {
         const label = `${pkg.name} ${file} ${variant}`;
         const args = {
           module: pathToFileURL(pkg[build].module).href,
           wasm: pathToFileURL(pkg[build].wasm).href,
           http: `${base}/${pkg.artifact}_bg.wasm`,
+          package: pkg.name,
           version: pkg.version,
+          fixtures,
           variant,
           label,
         };
