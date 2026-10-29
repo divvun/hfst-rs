@@ -1,0 +1,25 @@
+{
+  "name": "@divvun/hfst-runtime",
+  "version": "0.1.0",
+  "description": "Divvun HFST runtime for JavaScript: optimized-lookup and pmatch transducers, lookup and tokenisation, as WebAssembly for browsers, Deno, Node and Bun",
+  "keywords": ["hfst", "divvun", "finite-state", "transducer", "morphology", "tokeniser", "webassembly"],
+  "license": "LGPL-3.0-or-later",
+  "author": "UiT The Arctic University of Norway",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/divvun/hfst-rs.git",
+    "directory": "js/hfst-runtime"
+  },
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/hfst-runtime/index.d.ts",
+      "default": "./dist/hfst-runtime/index.js"
+    }
+  },
+  "files": ["dist"],
+  "sideEffects": false,
+  "engines": {
+    "node": ">=20"
+  }
+}

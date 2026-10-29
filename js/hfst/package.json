@@ -1,0 +1,25 @@
+{
+  "name": "@divvun/hfst",
+  "version": "0.1.0",
+  "description": "Divvun HFST for JavaScript: the whole hfst library (compilers, xfst, transducer algebra, every format, lookup and tokenisation) as WebAssembly for browsers, Deno, Node and Bun",
+  "keywords": ["hfst", "divvun", "finite-state", "transducer", "morphology", "lexc", "twolc", "xfst", "pmatch", "webassembly"],
+  "license": "LGPL-3.0-or-later",
+  "author": "UiT The Arctic University of Norway",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/divvun/hfst-rs.git",
+    "directory": "js/hfst"
+  },
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/hfst/index.d.ts",
+      "default": "./dist/hfst/index.js"
+    }
+  },
+  "files": ["dist"],
+  "sideEffects": false,
+  "engines": {
+    "node": ">=20"
+  }
+}

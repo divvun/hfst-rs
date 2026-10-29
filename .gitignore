@@ -18,3 +18,8 @@
 # Port scaffolding and local toolchain staging
 .port-staging/
 /dist/
+
+# JavaScript build output: wasm-bindgen glue and the compiled packages
+/js/*/pkg/
+/js/*/dist/
+/js/**/node_modules/

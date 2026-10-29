@@ -68,3 +68,11 @@ nfst-lexc = "0.4.1"
 nfst-pmatch = "0.4.0"
 nfst-twolc = "0.6.0"
 nfst-xfst = "0.5.0"
+
+# The wasm modules js/build.mjs ships to npm, optimised for size: every byte is
+# downloaded before a page can use the package.
+[profile.wasm-release]
+inherits = "release"
+opt-level = "z"
+lto = true
+codegen-units = 1
