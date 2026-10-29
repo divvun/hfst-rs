@@ -16,8 +16,9 @@
 //
 // A test build turns on the crate's test-hooks feature and adds the testing
 // entry module. It is written to target/js-test, never to js/, so the hooks
-// cannot reach the published package. It also builds the hfst tools and
-// writes the transducer fixtures to target/js-test/fixtures.
+// cannot reach the published package. It also builds the hfst tools, writes
+// the transducer fixtures to target/js-test/fixtures, and compiles the parity
+// scenario for browsers to target/js-test/browser.
 
 import { execFileSync, spawnSync } from "node:child_process";
 import { cpSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
@@ -125,6 +126,8 @@ function buildTestPackage() {
   const dist = join(testBuild, "dist");
   tsc(join(packageDir, "tsconfig.test.json"), dist);
   bindgen(cargoBuild(true), join(dist, "pkg"));
+  // A browser runs no TypeScript, so the parity scenario it runs is compiled.
+  tsc(join(js, "test", "tsconfig.browser.json"), join(testBuild, "browser"));
 }
 
 // The tests import this module for its checks, so it builds only when run.
