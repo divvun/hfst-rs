@@ -98,15 +98,16 @@ API behaves.
 
 ## Runtime
 
-> [spec:hfst:req:javascript.load-bytes]
+> [spec:hfst:req:javascript.load-bytes+1]
 > Transducers load from bytes, never from paths. The runtime package MUST read
 > weighted and unweighted optimized-lookup transducers and pmatch containers,
-> with or without an HFST header. The full package MUST read every format the
-> hfst library reads, and MUST write and convert to every format it writes. A
-> stream holding several transducers MUST load as an array in stream order.
-> Bytes in a format the package does not carry MUST throw an `HfstError` with
-> code `unsupported-format` that names the format and, in the runtime package,
-> says that `@divvun/hfst` reads it.
+> with or without an HFST header. The full package MUST also read and write
+> tropical OpenFst and foma transducers and AT&T text, and convert between all
+> of these. A stream holding several transducers MUST load as an array in
+> stream order. Bytes in a format the package does not carry MUST throw an
+> `HfstError` with code `unsupported-format` that names the format and, in the
+> runtime package, says that `@divvun/hfst` reads it. THFST, a directory, and
+> DHFST, a speller format, are not transducer streams and are outside this API.
 
 > [spec:hfst:req:javascript.lookup]
 > `lookup(input, options)` on a transducer MUST return every result the
