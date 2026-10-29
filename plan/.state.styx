@@ -1,6 +1,6 @@
 schema_version 7
 
-last_sync_at 2026-10-29T15:09:40.793646Z
+last_sync_at 2026-10-29T15:42:00.786083Z
 
 rule_versions (
     {id determinize-envelope.bounded-strategies, version 0}
@@ -897,7 +897,18 @@ impl_evidence (
     ), covered_claims (
         {impl_name target-impl, rule javascript.lookup}
     )}
-    {id wasm.parity}
+    {id wasm.parity, covered_rules (
+        javascript.native-parity
+    ), covered_claims (
+        {impl_name js-impl, rule javascript.native-parity}
+    )}
+    {id wasm.runtime-package, covered_rules (
+        javascript.read-only-module
+    ), covered_claims (
+        {impl_name target-impl, rule javascript.read-only-module}
+    ), rule_versions_seen (
+        {id javascript.read-only-module, version 0}
+    )}
     {id wasm.tokenise, covered_rules (
         javascript.tokenise
     ), covered_claims (
@@ -1015,10 +1026,5 @@ impl_evidence (
         {impl_name target-impl, rule xre-finalization.root-optimize}
     ), rule_versions_seen (
         {id xre-finalization.root-optimize, version 0}
-    )}
-    {id wasm.runtime-package, covered_rules (
-        javascript.read-only-module
-    ), covered_claims (
-        {impl_name target-impl, rule javascript.read-only-module}
     )}
 )

@@ -1,0 +1,8 @@
+{
+  "extends": "../hfst/tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "..",
+    "declaration": false
+  },
+  "files": ["parity-browser.ts"]
+}

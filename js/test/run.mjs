@@ -1,7 +1,13 @@
 // Runs the JavaScript test suite against the built package, under Node and
-// Bun.
+// Bun, and its parity scenario under Node, Bun and Deno and in a headless
+// Chromium (js/test/parity-runner.mjs).
 //
-//   node js/build.mjs --test && node js/test/run.mjs [--runtime node] [--runtime bun]
+//   node js/build.mjs --test && node js/test/run.mjs [--runtime node|bun|deno|chromium]... [--require-all]
+//
+// Deno and Chromium are skipped with a message when they are not installed.
+// --require-all, or HFST_JS_TEST_REQUIRE_ALL=1, fails the run instead, and
+// fails it when --runtime leaves any of the four out. HFST_JS_TEST_BROWSER
+// names the browser to run.
 //
 // Each scenario variant runs in a process of its own, once per runtime,
 // because a started or poisoned module instance cannot be reset. Scenarios
@@ -16,6 +22,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { PARITY_ONLY, requireAll, runParityElsewhere } from "./parity-runner.mjs";
 
 const js = dirname(dirname(fileURLToPath(import.meta.url)));
 const testBuild = join(dirname(js), "target", "js-test");
@@ -35,6 +42,7 @@ const scenarios = [
   { file: "lookup.ts", build: "release", variants: ["main"] },
   { file: "tokenise.ts", build: "release", variants: ["main"] },
   { file: "dhfst.ts", build: "release", variants: ["main"] },
+  { file: "parity-runtime.ts", build: "release", variants: ["main"] },
 ];
 
 // Node only collects garbage on request with --expose-gc; Bun has Bun.gc.
@@ -59,7 +67,7 @@ function chosenRuntimes(argv) {
   for (let i = 0; i < argv.length; i += 1) {
     if (argv[i] === "--runtime" && argv[i + 1] !== undefined) chosen.push(argv[(i += 1)]);
   }
-  return chosen.length > 0 ? chosen : ["node", "bun"];
+  return chosen.length > 0 ? chosen : ["node", "bun", ...PARITY_ONLY];
 }
 
 function locate() {
@@ -105,7 +113,8 @@ const server = await serve(pkg);
 const base = `http://127.0.0.1:${server.address().port}`;
 let failures = 0;
 let runs = 0;
-for (const runtime of chosenRuntimes(process.argv.slice(2))) {
+const runtimes = chosenRuntimes(process.argv.slice(2));
+for (const runtime of runtimes.filter((name) => !PARITY_ONLY.includes(name))) {
   for (const path of unitTests()) {
     runs += 1;
     if (!(await runFile(runtime, path, []))) failures += 1;
@@ -129,6 +138,10 @@ for (const runtime of chosenRuntimes(process.argv.slice(2))) {
     }
   }
 }
+const required = requireAll(process.argv.slice(2));
+const parity = await runParityElsewhere({ runtimes, required, pkg, testBuild });
+runs += parity.runs;
+failures += parity.failures;
 server.close();
 console.log(`${runs - failures} of ${runs} test files passed`);
 if (failures > 0) process.exitCode = 1;
