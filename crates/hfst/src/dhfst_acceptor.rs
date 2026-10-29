@@ -24,7 +24,10 @@
 //! and the ancillary `meta`. Every array is followed by at least 8 zero bytes
 //! inside its section.
 
+use std::borrow::Cow;
+
 use crate::dhfst::{corrupt, parse_symbols, u16_at, u32_at, u64_at};
+use crate::dhfst_acceptor_lookup::LexiconAlphabet;
 use crate::dhfst_header::{DhfstType, read_type, wrong_type};
 use crate::dhfst_source::flag_name;
 
@@ -151,10 +154,16 @@ pub struct AcceptorInfo {
 /// count, weight and distance, so no lookup afterwards reads outside the
 /// bytes.
 pub struct AcceptorReader<'a> {
-    bytes: &'a [u8],
+    bytes: Cow<'a, [u8]>,
+    parsed: Parsed,
+}
+
+/// Everything parsing learns about a file, none of it borrowed from the bytes.
+struct Parsed {
     layout: Layout,
     names: Vec<String>,
     free_symbols: Vec<bool>,
+    alphabet: LexiconAlphabet,
     meta: Option<String>,
     info: AcceptorInfo,
 }
@@ -164,6 +173,30 @@ impl<'a> AcceptorReader<'a> {
     // [spec:hfst:def:dhfst.acceptor-reader]
     // [spec:hfst:sem:dhfst.acceptor-reader]
     pub fn parse(bytes: &'a [u8]) -> crate::error::Result<AcceptorReader<'a>> {
+        let parsed = Parsed::from_bytes(bytes)?;
+        Ok(AcceptorReader {
+            bytes: Cow::Borrowed(bytes),
+            parsed,
+        })
+    }
+}
+
+impl AcceptorReader<'static> {
+    /// [`AcceptorReader::parse`], keeping the bytes, for a caller that cannot
+    /// hold them beside a reader that borrows them.
+    // [spec:hfst:def:dhfst.acceptor-reader]
+    pub fn parse_owned(bytes: Vec<u8>) -> crate::error::Result<AcceptorReader<'static>> {
+        let parsed = Parsed::from_bytes(&bytes)?;
+        Ok(AcceptorReader {
+            bytes: Cow::Owned(bytes),
+            parsed,
+        })
+    }
+}
+
+impl Parsed {
+    /// What [`AcceptorReader::parse`] validates and reads of `bytes`.
+    fn from_bytes(bytes: &[u8]) -> crate::error::Result<Parsed> {
         let sections = parse_sections(bytes)?;
         let find = |wanted: [u8; 4]| {
             sections
@@ -225,9 +258,9 @@ impl<'a> AcceptorReader<'a> {
             finals: layout.n_finals,
             distances: layout.n_distances > 0,
         };
-        Ok(AcceptorReader {
-            bytes,
+        Ok(Parsed {
             layout,
+            alphabet: LexiconAlphabet::new(&names),
             names,
             free_symbols,
             meta: find(tag::META)
@@ -236,20 +269,34 @@ impl<'a> AcceptorReader<'a> {
             info,
         })
     }
+}
+
+impl AcceptorReader<'_> {
+    /// The format version the file declares, which parsing checked is the
+    /// one this reader reads.
+    pub fn version(&self) -> u8 {
+        self.bytes[6]
+    }
 
     /// The number of state numbers: every state is numbered below it.
     pub fn id_count(&self) -> u32 {
-        self.layout.n_ids
+        self.parsed.layout.n_ids
     }
 
     /// Symbol names as stored, `@_EPSILON_SYMBOL_@` first.
     pub fn symbol_names(&self) -> &[String] {
-        &self.names
+        &self.parsed.names
+    }
+
+    /// The symbols as divvunspell's alphabet parser reads them, for lookup.
+    pub(crate) fn lexicon_alphabet(&self) -> &LexiconAlphabet {
+        &self.parsed.alphabet
     }
 
     /// Whether `symbol` is free: epsilon or a flag diacritic.
     pub fn is_free(&self, symbol: u16) -> bool {
-        self.free_symbols
+        self.parsed
+            .free_symbols
             .get(symbol as usize)
             .copied()
             .unwrap_or(false)
@@ -257,27 +304,27 @@ impl<'a> AcceptorReader<'a> {
 
     /// The writer's `meta` section, if the file carries one.
     pub fn meta(&self) -> Option<&str> {
-        self.meta.as_deref()
+        self.parsed.meta.as_deref()
     }
 
     /// How the file stores its arcs.
     pub fn info(&self) -> AcceptorInfo {
-        self.info
+        self.parsed.info
     }
 
     /// The 8 bytes at `at`, little-endian; validation put them in the file.
     fn word(&self, at: usize) -> u64 {
-        u64_at(self.bytes, at)
+        u64_at(&self.bytes, at)
     }
 
     /// The record at byte `at`.
     fn record(&self, at: usize) -> u64 {
-        self.word(at) & self.layout.record_mask
+        self.word(at) & self.parsed.layout.record_mask
     }
 
     /// The check of slot `slot`.
     fn check(&self, slot: usize) -> u32 {
-        let l = &self.layout;
+        let l = &self.parsed.layout;
         let low = self.bytes[l.checks + slot] as u32;
         if l.wide {
             low | (self.bytes[l.checks_hi + slot] as u32) << 8
@@ -290,7 +337,7 @@ impl<'a> AcceptorReader<'a> {
     /// Symbol 0 and the symbols no label reaches are refused before the table
     /// is read.
     fn slot(&self, q: u32, symbol: u16) -> Option<usize> {
-        let l = &self.layout;
+        let l = &self.parsed.layout;
         let s = symbol as u32;
         if s.wrapping_sub(1) >= l.label_max || q >= l.n_ids {
             return None;
@@ -312,7 +359,7 @@ impl<'a> AcceptorReader<'a> {
         let Some(slot) = self.slot(q, symbol) else {
             return;
         };
-        let l = &self.layout;
+        let l = &self.parsed.layout;
         let at = l.records + l.record_bytes * slot;
         let record = self.record(at);
         let (at, end) = if (record >> l.target_bits) & l.index_mask != l.index_mask {
@@ -339,7 +386,7 @@ impl<'a> AcceptorReader<'a> {
     /// weight)`, in the source's order.
     // [spec:hfst:sem:dhfst.acceptor-reader]
     pub fn for_each_free_arc<V: FnMut(u16, u32, f32)>(&self, q: u32, mut visit: V) {
-        let l = &self.layout;
+        let l = &self.parsed.layout;
         let (at, end) = self.free_run(q);
         for at in (at..end).step_by(l.record_bytes) {
             let r = self.record(at);
@@ -355,7 +402,7 @@ impl<'a> AcceptorReader<'a> {
     /// The records of the free arcs of state `q`, as the bytes `at .. end`:
     /// none when its slot is empty or holds another state's arcs.
     fn free_run(&self, q: u32) -> (usize, usize) {
-        let l = &self.layout;
+        let l = &self.parsed.layout;
         if q >= l.n_ids || self.check(q as usize) != 0 {
             return (0, 0);
         }
@@ -367,7 +414,7 @@ impl<'a> AcceptorReader<'a> {
 
     /// The regular arc weight `index`.
     fn weight(&self, index: usize) -> f32 {
-        f32::from_bits(u32_at(self.bytes, self.layout.weights + 4 * index))
+        f32::from_bits(u32_at(&self.bytes, self.parsed.layout.weights + 4 * index))
     }
 
     /// Whether state `q` is final.
@@ -377,7 +424,7 @@ impl<'a> AcceptorReader<'a> {
 
     /// The final weight of state `q`, if it is final.
     pub fn final_weight(&self, q: u32) -> Option<f32> {
-        let l = &self.layout;
+        let l = &self.parsed.layout;
         if q >= l.n_ids {
             return None;
         }
@@ -387,20 +434,20 @@ impl<'a> AcceptorReader<'a> {
         if (bits >> bit) & 1 == 0 {
             return None;
         }
-        let rank = u32_at(self.bytes, entry + 8) + (bits & ((1u64 << bit) - 1)).count_ones();
+        let rank = u32_at(&self.bytes, entry + 8) + (bits & ((1u64 << bit) - 1)).count_ones();
         Some(f32::from_bits(u32_at(
-            self.bytes,
+            &self.bytes,
             l.final_weights + 4 * rank as usize,
         )))
     }
 
     /// The distance of state `q` to a final state; 0 without `DIST`.
     pub fn distance(&self, q: u32) -> f32 {
-        let l = &self.layout;
+        let l = &self.parsed.layout;
         if q >= l.n_distances {
             return 0.0;
         }
-        f32::from_bits(u32_at(self.bytes, l.distances + 4 * q as usize))
+        f32::from_bits(u32_at(&self.bytes, l.distances + 4 * q as usize))
     }
 }
 

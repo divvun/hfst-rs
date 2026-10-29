@@ -1,15 +1,16 @@
 // [spec:hfst:def:javascript.packages+1]
 /**
  * `@divvun/hfst`: Divvun HFST for JavaScript. It loads optimized-lookup
- * transducers and pmatch containers and runs lookup and tokenisation, in
- * browsers, Web Workers, Deno, Node and Bun. It replaces `hfst-js` for
- * reading and looking up transducers, and does not compile, write or
- * transform them.
+ * transducers, pmatch containers and DHFST spellers and runs lookup,
+ * tokenisation and DHFST acceptor lookup, in browsers, Web Workers, Deno, Node
+ * and Bun. It replaces `hfst-js` for reading and looking up transducers, and
+ * does not compile, write or transform them.
  *
  * @module
  */
 import { core } from "./binding.ts";
 import type { InitSource } from "./core.ts";
+import { dhfstReader } from "./dhfst.ts";
 import type { Logger, LogLevel } from "./logging.ts";
 import { tokeniserReader } from "./tokenise.ts";
 import { transducerReaders } from "./transducer.ts";
@@ -49,6 +50,7 @@ export function setLogLevel(level: LogLevel): void {
 
 export const { readTransducers, readTransducer } = transducerReaders(core);
 export const { readTokeniser } = tokeniserReader(core);
+export const { readDhfst } = dhfstReader(core);
 export { Transducer } from "./transducer.ts";
 export type { TransducerProperties, TransducerType } from "./transducer.ts";
 export { Tokeniser } from "./tokenise.ts";
@@ -59,6 +61,8 @@ export type {
   TokeniseFormat,
   TokeniseOptions,
 } from "./tokenise.ts";
+export { DhfstAcceptor, DhfstErrorModel } from "./dhfst.ts";
+export type { AcceptorInfo, DhfstType } from "./dhfst.ts";
 export { HfstError } from "./errors.ts";
 export type { HfstErrorCode } from "./errors.ts";
 export type { InitSource } from "./core.ts";

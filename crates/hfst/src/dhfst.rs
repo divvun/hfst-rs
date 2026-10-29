@@ -272,6 +272,12 @@ impl<'a> DhfstReader<'a> {
         Ok(reader)
     }
 
+    /// The format version the file declares, which parsing checked is the
+    /// one this reader reads.
+    pub fn version(&self) -> u8 {
+        self.bytes[6]
+    }
+
     /// Number of states.
     pub fn state_count(&self) -> u32 {
         self.layout.n_states

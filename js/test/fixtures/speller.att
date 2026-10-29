@@ -1,0 +1,49 @@
+0	1	@P.CASE.NOM@	@P.CASE.NOM@	0
+0	2	@P.CASE.GEN@	@P.CASE.GEN@	0.5
+1	3	t	t	0.25
+2	3	t	t	0
+3	19	@0@	@0@	0
+19	3	@0@	@0@	0
+3	4	a	a	0
+4	18	@P.CASE.NOM@	@P.CASE.NOM@	0.0625
+18	4	@0@	@0@	0
+4	5	l	l	0.125
+5	6	o	o	0
+6	7	@R.CASE.NOM@	@R.CASE.NOM@	0
+6	8	@R.CASE.GEN@	@R.CASE.GEN@	0
+7	0.5
+8	9	n	n	1
+9	0
+0	10	@N.NUM.SG@	@N.NUM.SG@	0
+10	11	k	k	0
+11	13	@U.NUM.SG@	@U.NUM.SG@	0
+13	15	i	i	0
+11	14	@U.NUM.PL@	@U.NUM.PL@	0.25
+14	16	i	i	0
+16	17	@R.NUM.PL@	@R.NUM.PL@	0
+15	0
+17	0.25
+11	21	@D.NUM.SG@	@D.NUM.SG@	0
+21	22	e	e	0.25
+11	23	@D.NUM@	@D.NUM@	0
+23	22	e	e	0
+22	0
+11	24	@R.NUM@	@R.NUM@	0
+24	25	o	o	0.125
+11	26	@R.NUM.SG@	@R.NUM.SG@	0
+26	25	o	o	0
+25	0
+0	30	@P.X.A@	@P.X.A@	0
+30	31	@C.X@	@C.X@	0
+31	32	m	m	0
+32	33	@D.X@	@D.X@	0.25
+33	0
+32	34	@R.X@	@R.X@	0
+34	0
+0	40	c	c	0.5
+0	41	c	c	1
+40	42	a	a	0
+41	42	a	a	0
+42	0.125
+0	50	@0@	@0@	2
+50	1

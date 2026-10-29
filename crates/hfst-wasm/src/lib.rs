@@ -11,6 +11,7 @@
 // js-sys) has no OS entropy, threads or filesystem behind the features chosen.
 use wasm_bindgen::prelude::wasm_bindgen;
 
+mod dhfst;
 mod error;
 mod format;
 mod lookup;
@@ -21,6 +22,7 @@ mod test_hooks;
 mod tokenise;
 mod transducer;
 
+pub use dhfst::{DhfstAcceptor, DhfstErrorModel, read_dhfst};
 pub use sink::{install, set_log_level};
 #[cfg(feature = "test-hooks")]
 pub use test_hooks::{TestObject, test_library_error, test_log, test_panic};

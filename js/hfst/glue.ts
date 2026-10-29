@@ -5,6 +5,7 @@
 // lets the unit tests run the wrapper on a fake glue, and lets deno check the
 // wrapper on a checkout that has no build output.
 
+import type { AcceptorInfo } from "./dhfst.ts";
 import type { LookupResult } from "./lookup.ts";
 import type { FormatOptions, Token, TokeniseOptions } from "./tokenise.ts";
 
@@ -53,6 +54,32 @@ export interface TokeniserGlue extends GlueObject {
   format(text: string, format: string, options: FormatOptions): string;
 }
 
+/** A DHFST acceptor the glue holds, from `crates/hfst-wasm/src/dhfst.rs`. */
+export interface DhfstAcceptorGlue extends GlueObject {
+  version(): number;
+  symbols(): string[];
+  /** The `meta` section, or undefined when the file has none. */
+  meta(): string | undefined;
+  /** A plain object the module builds. */
+  info(): AcceptorInfo;
+  /** The least accepting weight, or undefined when nothing accepts `word`. */
+  lookup(word: string): number | undefined;
+}
+
+/** A DHFST error model's metadata, from `crates/hfst-wasm/src/dhfst.rs`. */
+export interface DhfstErrorModelGlue extends GlueObject {
+  version(): number;
+  stateCount(): number;
+  symbols(): string[];
+  /** The `meta` section, or undefined when the file has none. */
+  meta(): string | undefined;
+}
+
+/** What `readDhfst` hands back: a plain object naming the type of the model in it. */
+export type DhfstGlue =
+  | { type: "acceptor"; model: DhfstAcceptorGlue }
+  | { type: "error-model"; model: DhfstErrorModelGlue };
+
 /** The exports of `crates/hfst-wasm`. */
 export interface Glue {
   /** Instantiates the module. The generated glue keeps the instance it makes. */
@@ -66,4 +93,6 @@ export interface Glue {
   readTransducers(bytes: Uint8Array): TransducerGlue[];
   /** The tokeniser in a pmatch container's bytes. */
   readTokeniser(bytes: Uint8Array): TokeniserGlue;
+  /** The DHFST file in `bytes`, validated as divvunspell validates it. */
+  readDhfst(bytes: Uint8Array): DhfstGlue;
 }

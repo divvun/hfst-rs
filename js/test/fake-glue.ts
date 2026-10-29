@@ -3,7 +3,11 @@
 // events by the level set, reports a panic to the sink before it traps, and
 // throws plain error objects.
 
+import type { AcceptorInfo } from "../hfst/dhfst.ts";
 import type {
+  DhfstAcceptorGlue,
+  DhfstErrorModelGlue,
+  DhfstGlue,
   Glue,
   GlueInitInput,
   GlueObject,
@@ -27,7 +31,9 @@ export class FakeGlue implements Glue {
   freed: string[] = [];
   /** What readTransducers hands out, as [format, name, ...property pairs]. */
   stream: string[][] = [];
-  /** Every transducer and tokeniser handed out, in order. */
+  /** What readDhfst says it read; a type the wrapper does not know stands for a bad module. */
+  dhfstType = "acceptor";
+  /** Every transducer, tokeniser and DHFST model handed out, in order. */
   readonly made: FakeObject[] = [];
 
   default(options: { module_or_path: GlueInitInput }): Promise<unknown> {
@@ -70,6 +76,20 @@ export class FakeGlue implements Glue {
     const tokeniser = new FakeTokeniser(this, "tokeniser");
     this.made.push(tokeniser);
     return tokeniser;
+  }
+
+  readDhfst(_bytes: Uint8Array): DhfstGlue {
+    this.entered += 1;
+    if (this.dhfstType === "error-model") {
+      const model = new FakeDhfstErrorModel(this, this.dhfstType);
+      this.made.push(model);
+      return { type: "error-model", model };
+    }
+    const model = new FakeDhfstAcceptor(this, this.dhfstType);
+    this.made.push(model);
+    if (this.dhfstType === "acceptor") return { type: "acceptor", model };
+    const unknown: unknown = { type: this.dhfstType, model };
+    return unknown as DhfstGlue;
   }
 
   /** Logs as the module does: only at or above the level set. */
@@ -160,5 +180,66 @@ export class FakeTokeniser extends FakeObject implements TokeniserGlue {
   format(text: string, format: string, options: FormatOptions): string {
     this.calls.push(`format ${text} ${format} ${JSON.stringify(options)}`);
     return text;
+  }
+}
+
+const FAKE_INFO: AcceptorInfo = {
+  ids: 3,
+  slots: 9,
+  usedSlots: 4,
+  checkBytes: 1,
+  labelMax: 5,
+  recordBytes: 1,
+  listRecords: 0,
+  arcs: 4,
+  freeArcs: 1,
+  freePairs: 1,
+  weights: 2,
+  finals: 1,
+  distances: true,
+};
+
+export class FakeDhfstAcceptor extends FakeObject implements DhfstAcceptorGlue {
+  /** Every word looked up, in order. */
+  readonly lookups: string[] = [];
+
+  version(): number {
+    return 1;
+  }
+
+  symbols(): string[] {
+    return ["@_EPSILON_SYMBOL_@", "a", "b"];
+  }
+
+  meta(): string | undefined {
+    return undefined;
+  }
+
+  info(): AcceptorInfo {
+    return { ...FAKE_INFO };
+  }
+
+  /** Accepts the words of a and b only, each at a weight of its length. */
+  lookup(word: string): number | undefined {
+    this.lookups.push(word);
+    return /^[ab]*$/.test(word) ? word.length : undefined;
+  }
+}
+
+export class FakeDhfstErrorModel extends FakeObject implements DhfstErrorModelGlue {
+  version(): number {
+    return 1;
+  }
+
+  stateCount(): number {
+    return 2;
+  }
+
+  symbols(): string[] {
+    return ["@_EPSILON_SYMBOL_@", "a"];
+  }
+
+  meta(): string | undefined {
+    return '{"writer":"fake"}';
   }
 }
