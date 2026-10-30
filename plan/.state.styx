@@ -608,6 +608,8 @@ assertions (
     {id xre-eval-error-message, kind @complete, author "brendan@necessary.nu", at 2026-10-28T22:12:14.269416Z}
     {id xre-function-as-network-error, kind @complete, author "brendan@necessary.nu", at 2026-08-12T00:04:55.496721Z}
     {id xre-intermediate-optimization, kind @complete, author "brendan@necessary.nu", at 2026-08-19T23:55:03.286981Z}
+    {id wasm.divvun-fst-wasm32, kind @complete, author "brendan@necessary.nu", at 2026-10-30T15:55:35.198419Z}
+    {id wasm.divvun-fst-lookup, kind @complete, author "brendan@necessary.nu", at 2026-10-30T15:57:40.709629Z}
 )
 
 impl_evidence (

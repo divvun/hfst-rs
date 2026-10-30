@@ -8244,12 +8244,58 @@ children (
                 id wasm.divvun-fst-wasm32
                 title "divvunspell repo: divvun-fst builds for wasm32-unknown-unknown with no RUSTFLAGS: every format loads from bytes (a bytes-backed VFS beside the memmap2/std::fs one, which moves behind a native feature), no threads or OS facilities on the lookup and speller paths, native behaviour and tests unchanged; landed on divvunspell main through operator-run commit scripts (the nplan hook blocks commits there) and released in a form hfst can depend on"
                 kind @build
+                sealed true
+                log (
+                    {
+                        at 2026-10-30T15:55:20.674885Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
+
+                    {
+                        at 2026-10-30T15:55:28.446967Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "Landed on divvunspell main as 4796a91 (operator ran the commit script; pushed 7c34007..9b51084). A default `fs` feature holds memmap2, mmap-io, std::fs, unix FileExt, tempfile, fs_extra, paths, convert and box-format's file reader; with default-features = false every format loads from bytes (vfs::bytes, HfstTransducer/ErrorModel/DHFST from_bytes, BytesThfstTransducer, archive::from_bytes for BHFST v0 and v1 and ZHFST, the latter with `compression`) and divvun-fst builds for wasm32-unknown-unknown with no RUSTFLAGS. Consumer line: divvun-fst = { git = \"https://github.com/divvun/divvunspell\", default-features = false }. API change: vfs::File gained contents(); SpellerArchive::open needs `fs`. Native tests pass; divvun-runtime checks clean; real sma.bhfst and ga/smj ZHFSTs give identical suggestions from bytes and from files."
+                    }
+
+                    {
+                        at 2026-10-30T15:55:35.198419Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan complete)"
+                    }
+                )
             }
 
             {
                 id wasm.divvun-fst-lookup
                 title "divvunspell repo: a plain lookup entry point on divvun-fst transducers (analysers and generators, not only spellers): word in, every analysis with its weight out, read the way divvunspell reads input, with native tests; the engine @divvun/hfst's optimised lookup and @divvun/fst both call"
                 kind @feat
+                sealed true
+                log (
+                    {
+                        at 2026-10-30T15:57:17.704178Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
+
+                    {
+                        at 2026-10-30T15:57:30.555278Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "Landed on divvunspell main as 9b51084: transducer::lookup(&t, word) -> Vec<LookupResult { output, symbols, weight }> and a reusable transducer::Lookup, on HFST optimized lookup, THFST and both DHFST types. Input is read by longest match over the transducer's input symbols, fixed before the walk as hfst-optimized-lookup does (operator choice 2026-10-30, over the speller's grapheme reading, so generator tags read whole); unmatched text goes a grapheme cluster at a time to @_UNKNOWN_SYMBOL_@, else no path; flags evaluated by the speller's apply_operation; epsilon cycles cut; results unique by (output, weight), sorted by weight then output. Unweighted OL files were misread before (8-byte records read as 12) and now load correctly. Oracle (C++ hfst-optimized-lookup): no differences beyond the three by-design ones on lang-kal analysers (11,150 weighted, 3,000 unweighted), lang-sme (4,000), both sme generators (9,361 analyses each) and three kal generators (40,310 each). Generators run about 2x the oracle's time (225 s vs 112 s on 40,310 analyses)."
+                    }
+
+                    {
+                        at 2026-10-30T15:57:40.709629Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan complete)"
+                    }
+                )
             }
 
             {
