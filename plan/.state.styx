@@ -1,6 +1,6 @@
 schema_version 7
 
-last_sync_at 2026-10-29T16:40:05.429Z
+last_sync_at 2026-10-29T17:13:00.466749Z
 
 rule_versions (
     {id determinize-envelope.bounded-strategies, version 0}
@@ -46,7 +46,8 @@ rule_versions (
     {id javascript.named-file-resolver, version 0}
     {id javascript.native-parity, version 2}
     {id javascript.no-host-traps, version 0}
-    {id javascript.packages, version 1}
+    {id javascript.optimised-lookup, version 0}
+    {id javascript.packages, version 2}
     {id javascript.portable-build, version 1}
     {id javascript.read-only-module, version 0}
     {id javascript.tokenise, version 0}
@@ -262,11 +263,15 @@ derived_priorities (
     {id wasm.crates, priority 1, derived_at 2026-10-28T23:00:39.237354Z}
     {id wasm.dhfst, priority 3, derived_at 2026-10-29T13:08:33.271865Z}
     {id wasm.diagnostics, priority 0, derived_at 2026-10-28T23:00:39.237354Z}
+    {id wasm.divvun-fst-lookup, priority 0, derived_at 2026-10-29T17:13:00.466749Z}
+    {id wasm.divvun-fst-wasm32, priority 0, derived_at 2026-10-29T17:13:00.466749Z}
     {id wasm.errors-and-handles, priority 2, derived_at 2026-10-28T23:00:39.237354Z}
     {id wasm.file-resolver, priority 0, derived_at 2026-10-28T23:00:39.237354Z}
+    {id wasm.fst-package, priority 1, derived_at 2026-10-29T17:13:00.466749Z}
     {id wasm.hfst-js-parity, priority 3, derived_at 2026-10-29T13:08:33.271865Z}
     {id wasm.host-facilities, priority 0, derived_at 2026-10-28T23:00:39.237354Z}
     {id wasm.lookup, priority 3, derived_at 2026-10-28T23:00:39.237354Z}
+    {id wasm.optimised-lookup, priority 1, derived_at 2026-10-29T17:13:00.466749Z}
     {id wasm.parity, priority 3, derived_at 2026-10-28T23:00:39.237354Z}
     {id wasm.performance, priority 3, derived_at 2026-10-29T14:45:08.924476Z}
     {id wasm.publish, priority 3, derived_at 2026-10-28T23:00:39.237354Z}
@@ -857,6 +862,11 @@ impl_evidence (
         {impl_name js-impl, rule javascript.packages}
         {impl_name js-impl, rule javascript.typed-surface}
         {impl_name target-impl, rule javascript.portable-build}
+    ), rule_versions_seen (
+        {id javascript.init, version 1}
+        {id javascript.packages, version 2}
+        {id javascript.portable-build, version 1}
+        {id javascript.typed-surface, version 1}
     )}
     {id wasm.dhfst, covered_rules (
         javascript.dhfst
@@ -890,6 +900,8 @@ impl_evidence (
         javascript.hfst-js-parity
     ), covered_claims (
         {impl_name js-impl, rule javascript.hfst-js-parity}
+    ), rule_versions_seen (
+        {id javascript.hfst-js-parity, version 2}
     )}
     {id wasm.host-facilities, covered_rules (
         javascript.no-host-traps
@@ -905,6 +917,8 @@ impl_evidence (
         javascript.native-parity
     ), covered_claims (
         {impl_name js-impl, rule javascript.native-parity}
+    ), rule_versions_seen (
+        {id javascript.native-parity, version 2}
     )}
     {id wasm.runtime-package, covered_rules (
         javascript.read-only-module
