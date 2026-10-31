@@ -8392,6 +8392,36 @@ children (
             {
                 id zip-upgrade.divvunspell
                 title "divvunspell repo: zip 6.0.0 to 9.1 (at least 9.0.5) across the workspace: divvun-fst's zhfst reader, dhfst-tools, thfst-tools, the CLI and divvun-fst-wasm, default features still off; the wasm32 build, workspace tests and JS suite pass; lands by an operator-run script"
+                sealed true
+                log (
+                    {
+                        at 2026-10-31T17:42:30.284041Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
+
+                    {
+                        at 2026-10-31T17:55:24.390012Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "2026-10-31: prepared in scratch worktree divvunspell-zip (off 2280ce8), lands by land-zip-upgrade.sh (rebases and retests if origin/main moved). zip 6.0.0 -> 9.2.0; Cargo.lock otherwise only drops arbitrary/derive_arbitrary and adds nix (unix only) and typed-path. API changes handled: file_names() and name() are fallible, data_start() is Option (filled by by_name; None is now InvalidData). The compressed-member extraction in mmap_by_name now writes to a fixed name in its private tempdir instead of the archive-supplied mangled_name. Workspace tests (fs and no-fs), wasm32 builds of divvun-fst and divvun-fst-wasm, and the JS suite (31/31) pass; @divvun/fst wasm +25 KB. Not in scope: divvunspell's other open Dependabot alerts (rustls < 0.23.46, xxhash-rust < 0.8.16)."
+                    }
+
+                    {
+                        at 2026-10-31T18:02:53.016564Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "Landed on divvunspell main as 3da8215 (deps: zip 6.0.0 to 9.2), rebased onto the THFST fix 77c04ee with the workspace tests rerun before the push."
+                    }
+
+                    {
+                        at 2026-10-31T18:02:55.139381Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan complete)"
+                    }
+                )
             }
 
             {
