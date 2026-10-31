@@ -139,20 +139,28 @@ export function combined(samples) {
   };
 }
 
-/** Plain sentences on where ours is slower or faster, from the figures. */
-export function verdict(results) {
+/**
+ * Plain sentences on where `subject`, timed by the `which` figures of each
+ * result (`ours` or `optimised`), is slower or faster than hfst-js.
+ */
+export function verdict(results, which = "ours", subject = "@divvun/hfst") {
   const times = (x) => `${x.toFixed(1)} times`;
-  const load = results.map((r) => r.loadMs.ours / r.loadMs.hfstJs);
+  const load = results.map((r) => r.loadMs[which] / r.loadMs.hfstJs);
+  const range = `${Math.min(...load).toFixed(1)} to ${times(Math.max(...load))}`;
   const sentences = [];
   const slowerLoads = load.filter((x) => x > 1);
-  sentences.push(
-    slowerLoads.length === load.length
-      ? `@divvun/hfst loads every transducer more slowly than hfst-js, taking ${Math.min(...load).toFixed(1)} to ${times(Math.max(...load))} as long.`
-      : `@divvun/hfst loads ${slowerLoads.length} of ${load.length} transducers more slowly than hfst-js, taking up to ${times(Math.max(...load))} as long.`,
-  );
-  const slower = results.filter((r) => r.lookupUs.ours > r.lookupUs.hfstJs);
-  const faster = results.filter((r) => r.lookupUs.ours <= r.lookupUs.hfstJs);
-  const lookup = (r) => r.lookupUs.ours / r.lookupUs.hfstJs;
+  if (slowerLoads.length === load.length) {
+    sentences.push(`${subject} loads every transducer more slowly than hfst-js, taking ${range} as long.`);
+  } else if (slowerLoads.length === 0) {
+    sentences.push(`${subject} loads every transducer faster than hfst-js, in ${range} the time.`);
+  } else {
+    sentences.push(
+      `${subject} loads ${slowerLoads.length} of ${load.length} transducers more slowly than hfst-js, taking up to ${times(Math.max(...load))} as long.`,
+    );
+  }
+  const lookup = (r) => r.lookupUs[which] / r.lookupUs.hfstJs;
+  const slower = results.filter((r) => lookup(r) > 1);
+  const faster = results.filter((r) => lookup(r) <= 1);
   if (slower.length > 0) {
     sentences.push(
       `It looks words up more slowly than uncached hfst-js on ${slower.length} of ${results.length} transducers, taking up to ${times(Math.max(...slower.map(lookup)))} as long.`,
@@ -234,7 +242,12 @@ ${verdict(run.results)}`,
 
 \`readOptimisedTransducer(bytes)\` and its \`lookup\`, the engine of divvunspell's \`divvun-fst\`, measured in the same processes as the figures above and in the same way, taking turns with the other two. **Ours** is @divvun/hfst's \`lookup\`.
 
-${optimisedRuns.map((run) => `### ${name(run)}\n\n${optimisedTable(run.results)}`).join("\n\n")}
+${optimisedRuns
+  .map(
+    (run) =>
+      `### ${name(run)}\n\n${optimisedTable(run.results)}\n\n${verdict(run.results, "optimised", "The optimised lookup")}`,
+  )
+  .join("\n\n")}
 `;
 
   const markdown = `# @divvun/hfst against hfst-js

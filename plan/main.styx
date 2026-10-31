@@ -8230,6 +8230,7 @@ children (
                 title "Performance against hfst-js: measure on a quiet machine; the optimised lookup (divvun-fst) must load and look up no slower than hfst-js on the benchmark files; cut binding overhead for both lookups (reuse run state, one boundary crossing per lookup instead of a Reflect.set per property, allocator); update BENCHMARKS.md with both lookups"
                 kind @perf
                 deps (wasm.optimised-lookup wasm.hfst-js-parity)
+                sealed true
                 log (
                     {
                         at 2026-10-29T15:55:53.369839Z
@@ -8243,6 +8244,20 @@ children (
                         author "brendan@necessary.nu"
                         kind @decision
                         text "2026-10-31 findings and fixes. The optimised lookup (divvun-fst in wasm32) was 2.8-6.7x hfst-js's time per word. Two causes, both fixed in divvunspell (land-lookup-speed.sh, two commits): (1) without the fs feature, which wasm builds use, every table field was read through a byteorder Cursor; natively LLVM optimises that away (base fs and no-fs both ~275 us/word on kal analyser; an earlier 1227 figure was load noise), but in wasm32 it cost 2.2-3.2x. Now u16_at/u32_at on every target, which also drops the unaligned ptr::read of index targets. (2) The lookup walk hashed at least twice per node (path set, interned flag states); in wasm32 foldhash is four 32-bit multiplies. New walk: flag array with an undo log, cycle check only against the path's frames at the same input position behind a 4096-bucket count of path states, found outputs in one buffer, HFST records read whole with one bounds check (new Transducer::for_each_free_arc, default = old two walks so DHFST error models keep their epsilons), dense TransducerAlphabet::flag_operation. Results byte-identical (weights to the bit) on all 13 benchmark transducers; a unit test pins the record walks to the cursor walk at every place of three fixtures. wasm32 ratios vs hfst-js after: kal analyser 0.41-0.45, kal generator 0.56-0.64, gle analyser 0.69-0.73, gle generator 0.44-0.45, sme gramcheck generator 0.57-0.61; load 4-14x faster than hfst-js. Binding: the hfst-engine lookup now returns one JSON string like the optimised one (sme generator -21%, gle generator -14%, analysers -2 to -4%). Not done: reusing LookupState across calls (it borrows the machine, so keeping one beside it would make the binding object self-referential; needs a library API split, and its per-call cost is a few empty Vecs), and a different wasm allocator (no measured need)."
+                    }
+
+                    {
+                        at 2026-10-31T19:32:50.632633Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "Delivered 2026-10-31. divvunspell landed 45fff12 + 9b6c98c (lookup speed), pinned in hfst-wasm (0cd8884, which also brings zip 9.2 and the chunked THFST fix). BENCHMARKS.md regenerated from 0cd8884 under Node and Bun (load average 5.5-40): the optimised lookup loads in 0.06-0.29x hfst-js's time and looks up in 0.31-0.64x on all 13 transducers in both runtimes, so javascript.optimised-lookup's speed clause holds on every benchmark file. bench.mjs now writes a verdict for the optimised lookup too. The hfst-engine lookup stays 1.0-2.2x hfst-js on kal and sme (it is libhfst's engine; no rule sets its speed) and 0.4-0.8x on gle. Gap seen, not fixed: plain deno check scans build output (js/hfst/dist, target/js-test) and reports module-not-found errors there; deno.json could exclude them."
+                    }
+
+                    {
+                        at 2026-10-31T19:32:50.735442Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan complete)"
                     }
                 )
             }
