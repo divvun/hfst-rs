@@ -46,7 +46,7 @@ tempfile = "3"
 # zopfli purely for writing. Naming the backend explicitly (not the bare
 # `deflate-flate2`) is what keeps flate2 compiling under
 # `--no-default-features`, where nothing else selects one for it.
-zip = { version = "6.0.0", default-features = false, features = ["deflate-flate2-zlib-rs"] }
+zip = { version = "9.2", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 
 [lints]
 workspace = true

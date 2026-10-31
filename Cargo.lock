@@ -98,15 +98,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "arbitrary"
-version = "1.4.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c3d036a3c4ab069c7b410a2ce876bd74808d2d0888a82667669f8e783a898bf1"
-dependencies = [
- "derive_arbitrary",
-]
-
-[[package]]
 name = "ariadne"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -527,17 +518,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "derive_arbitrary"
-version = "1.4.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1e567bd82dcff979e4b03460c307b3cdc9e96fde3d73bed1496d2bc75d9dd62a"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.119",
-]
-
-[[package]]
 name = "dhat"
 version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -600,7 +580,7 @@ dependencies = [
  "unic-segment",
  "unic-ucd-category",
  "unic-ucd-common",
- "zip 9.2.0",
+ "zip",
 ]
 
 [[package]]
@@ -958,7 +938,7 @@ dependencies = [
  "tempfile",
  "tracing",
  "tracing-subscriber",
- "zip 6.0.0",
+ "zip",
 ]
 
 [[package]]
@@ -3086,24 +3066,12 @@ dependencies = [
 
 [[package]]
 name = "zip"
-version = "6.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eb2a05c7c36fde6c09b08576c9f7fb4cda705990f73b58fe011abf7dfb24168b"
-dependencies = [
- "arbitrary",
- "crc32fast",
- "flate2",
- "indexmap",
- "memchr",
-]
-
-[[package]]
-name = "zip"
 version = "9.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3f5b58784007ff6e5f280ec82c8596686a3b9b5dd5836c63288d4479f84728b9"
 dependencies = [
  "crc32fast",
+ "flate2",
  "getrandom 0.4.3",
  "indexmap",
  "memchr",

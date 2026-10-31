@@ -8473,6 +8473,29 @@ children (
                 id zip-upgrade.hfst
                 title "hfst: hfst-cli zip 6.0.0 to 9.1 (bhfst's zhfst reader, deflate-flate2-zlib-rs kept) and hfst-wasm's divvun-fst pin moved to the divvunspell commit with zip 9, so Cargo.lock holds no zip below 9.0.5"
                 deps (zip-upgrade.divvunspell)
+                sealed true
+                log (
+                    {
+                        at 2026-10-31T19:35:54.662952Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
+
+                    {
+                        at 2026-10-31T19:37:48.376485Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "hfst-cli now takes zip 9.2 (deflate-flate2-zlib-rs kept); bhfst only calls ZipArchive::new and by_name, which zip 9 did not change, so no code moved. The divvun-fst pin reached a zip 9 commit with wasm.performance (0cd8884 pins 9b6c98c, after 3da8215). Cargo.lock now holds only zip 9.2.0 (arbitrary and derive_arbitrary gone with 6.0.0). hfst-cli and hfst-wasm: 245/245 tests pass, clippy clean."
+                    }
+
+                    {
+                        at 2026-10-31T19:37:53.145211Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan complete)"
+                    }
+                )
             }
         )
     }
