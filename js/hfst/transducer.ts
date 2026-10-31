@@ -21,11 +21,12 @@ export type TransducerType = (typeof TRANSDUCER_TYPES)[number];
 /** The HFST3 header properties a transducer carries. */
 export type TransducerProperties = Readonly<Record<string, string>>;
 
-function isTransducerType(type: string): type is TransducerType {
+export function isTransducerType(type: string): type is TransducerType {
   return (TRANSDUCER_TYPES as readonly string[]).includes(type);
 }
 
-function properties(pairs: readonly string[]): TransducerProperties {
+/** The properties the glue flattens to key, value, key, value, as one frozen object. */
+export function transducerProperties(pairs: readonly string[]): TransducerProperties {
   const object: Record<string, string> = {};
   for (let i = 0; i + 1 < pairs.length; i += 2) {
     const key = pairs[i];
@@ -56,7 +57,7 @@ export class Transducer extends Handle<TransducerGlue> {
     }
     this.#type = type;
     this.#name = this.use((g) => g.name());
-    this.#properties = properties(this.use((g) => g.propertyPairs()));
+    this.#properties = transducerProperties(this.use((g) => g.propertyPairs()));
   }
 
   static {
@@ -90,7 +91,8 @@ export class Transducer extends Handle<TransducerGlue> {
    * point order, then by symbols. Flag diacritics are obeyed, so a path they
    * block is not a result. Input with no analyses, such as input in symbols
    * the transducer cannot read, gives an empty array; a time limit that runs
-   * out gives the results found so far.
+   * out gives the results found so far. {@link OptimisedTransducer.lookup}
+   * gives divvunspell's results, and its class says where the two differ.
    */
   lookup(input: string, options?: LookupOptions): LookupResult[] {
     const [text, limit, timeLimitMs] = lookupArgs(input, options);

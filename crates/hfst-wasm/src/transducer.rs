@@ -47,7 +47,7 @@ impl Transducer {
 /// A transducer's properties as the wrapper shows them, flattened to key,
 /// value, key, value. `version` and `type` describe the stream, not the
 /// transducer, and `name` has its own accessor, so all three are left out.
-fn property_pairs(properties: &BTreeMap<String, String>) -> Vec<String> {
+pub(crate) fn property_pairs(properties: &BTreeMap<String, String>) -> Vec<String> {
     properties
         .iter()
         .filter(|(key, _)| !matches!(key.as_str(), "version" | "type" | "name"))

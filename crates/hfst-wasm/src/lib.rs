@@ -7,14 +7,16 @@
 // [spec:hfst:req:javascript.portable-build+1]
 // This crate builds for wasm32-unknown-unknown from its manifest alone. It
 // needs no RUSTFLAGS and no cargo config: hfst comes in with no features, and
-// every dependency it pulls in (rustfst without os-rng, web-time, wasm-bindgen,
-// js-sys) has no OS entropy, threads or filesystem behind the features chosen.
+// every dependency it pulls in (rustfst without os-rng, web-time, divvun-fst
+// without fs, wasm-bindgen, js-sys) has no OS entropy, threads or filesystem
+// behind the features chosen.
 use wasm_bindgen::prelude::wasm_bindgen;
 
 mod dhfst;
 mod error;
 mod format;
 mod lookup;
+mod optimised;
 mod sink;
 mod stream;
 #[cfg(feature = "test-hooks")]
@@ -26,11 +28,13 @@ mod transducer;
 // These and version() are the module's exports, with the test hooks only in a
 // test build. Apart from the log sink and version(), each reads an
 // optimized-lookup transducer, a pmatch container or a DHFST file, or runs
-// lookup or tokenise on one. None reaches a compiler, the foma backend, the
+// lookup or tokenise on one; the optimised lookup reads and looks up with
+// divvun-fst. None reaches a compiler, the foma backend, the
 // tropical OpenFst backend or the transducer algebra, so the linker leaves
 // their code out, and js/build.mjs fails the build when a function from any
 // of them is in the module.
 pub use dhfst::{DhfstAcceptor, DhfstErrorModel, read_dhfst};
+pub use optimised::{OptimisedTransducer, read_optimised_transducer};
 pub use sink::{install, set_log_level};
 #[cfg(feature = "test-hooks")]
 pub use test_hooks::{TestObject, test_library_error, test_log, test_panic};

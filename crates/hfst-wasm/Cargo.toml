@@ -19,6 +19,10 @@ crate-type = ["cdylib"]
 test-hooks = []
 
 [dependencies]
+# divvunspell's lookup engine, behind the optimised lookup. Without its default
+# `fs` feature it reads every format from bytes and needs no memory maps or
+# host file system, which wasm32-unknown-unknown does not have.
+divvun-fst = { git = "https://github.com/divvun/divvunspell", rev = "9b510842b79531429b0667b2bd8c28f0510380d6", default-features = false }
 # Without default features, so the module carries no foma backend.
 hfst = { workspace = true }
 js-sys = "0.3.95"
@@ -36,6 +40,16 @@ wasm-bindgen = "=0.2.118"
 # which builds on the tropical backend. Tests run natively, so none of it
 # reaches the module.
 hfst-openfst = { workspace = true }
+# The example that writes the optimised lookup's native expectations for the
+# JavaScript parity suite reads its request and writes its answer as JSON.
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# The example's test checks the native expectations the JavaScript parity
+# suite compares the optimised lookup with, so it runs with the crate's tests.
+[[example]]
+name = "js_optimised_expected"
+test = true
 
 [lints]
 workspace = true

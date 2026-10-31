@@ -10,7 +10,8 @@
  *   be trusted after that, so every later call throws this without entering it.
  * - `freed`: a call on an object after its `free()`.
  * - `transducer-count`: `readTransducer` got bytes holding more than one
- *   transducer.
+ *   transducer, or the module found more than one in the bytes
+ *   `readOptimisedTransducer` got.
  *
  * From the library, which `crates/hfst-wasm/src/error.rs` maps here:
  * - `type-mismatch`: transducers of different implementation types, or one of

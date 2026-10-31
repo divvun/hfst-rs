@@ -11,8 +11,8 @@ function result(transducer, loadMs, lookupUs) {
     words: 500,
     analyses: 0,
     initMs: 1,
-    loadMs: { ours: loadMs[0], hfstJs: loadMs[1] },
-    lookupUs: { ours: lookupUs[0], hfstJs: lookupUs[1], hfstJsCached: 1 },
+    loadMs: { ours: loadMs[0], optimised: loadMs[2] ?? 1, hfstJs: loadMs[1] },
+    lookupUs: { ours: lookupUs[0], optimised: lookupUs[2] ?? 1, hfstJs: lookupUs[1], hfstJsCached: 1 },
   };
 }
 
@@ -23,12 +23,16 @@ test("a transducer is named by its language repository, or else its directory", 
 
 test("each figure of several processes is their median, and the rest is the first's", () => {
   const all = combined([
-    { ...result("a", [30, 10], [500, 200]), initMs: 9 },
-    { ...result("a", [10, 30], [100, 400]), initMs: 1 },
-    { ...result("a", [20, 20], [300, 300]), initMs: 5 },
+    { ...result("a", [30, 10, 4], [500, 200, 70]), initMs: 9 },
+    { ...result("a", [10, 30, 6], [100, 400, 90]), initMs: 1 },
+    { ...result("a", [20, 20, 5], [300, 300, 80]), initMs: 5 },
   ]);
-  assertEqual(JSON.stringify(all.loadMs), JSON.stringify({ ours: 20, hfstJs: 20 }), "load");
-  assertEqual(JSON.stringify(all.lookupUs), JSON.stringify({ ours: 300, hfstJs: 300, hfstJsCached: 1 }), "lookup");
+  assertEqual(JSON.stringify(all.loadMs), JSON.stringify({ ours: 20, optimised: 5, hfstJs: 20 }), "load");
+  assertEqual(
+    JSON.stringify(all.lookupUs),
+    JSON.stringify({ ours: 300, optimised: 80, hfstJs: 300, hfstJsCached: 1 }),
+    "lookup",
+  );
   assertEqual(all.initMs, 5, "init");
   assertEqual(all.transducer, "a", "transducer");
 });

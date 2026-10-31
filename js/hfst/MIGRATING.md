@@ -19,10 +19,55 @@ kind of difference a test has found. [BENCHMARKS.md](BENCHMARKS.md) compares the
 | `transducer.lookup(word, seconds)` | `transducer.lookup(word, { timeLimitMs })` |
 | result cache, on unless turned off | no result cache |
 | none | `transducer.free()`, or declare it with `using` |
+| none | `readOptimisedTransducer(bytes)` for divvunspell's lookup; see below |
 
-hfst-js returns analyses in the order its search finds them and can return
-one twice. `@divvun/hfst` returns each analysis once, ordered by weight, then
-by output. `output` is what hfst-js calls the analysis.
+hfst-js returns analyses in the order its search finds them. `@divvun/hfst`
+orders them by weight, then by output. Either can return an analysis twice,
+once for each path that gives it. `output` is what hfst-js calls the analysis.
+
+## Two lookups
+
+`@divvun/hfst` looks words up in two ways. `readTransducer(bytes)` loads a
+`Transducer`, whose `lookup` is the hfst library's and returns what `hfst
+lookup` prints. `readOptimisedTransducer(bytes)` loads an
+`OptimisedTransducer`, whose `lookup` is divvunspell's (its `divvun-fst`
+crate) and returns what divvunspell returns for the same transducer and word.
+Both load weighted and unweighted optimized-lookup files, with or without an
+HFST3 header, and return `{ output, symbols, weight }[]` ordered by weight,
+then by output.
+
+Use `Transducer` where your results must match hfst's, and
+`OptimisedTransducer` where they must match divvunspell's, such as a
+speller's analyses. For most words the two agree: on the lang-kal and lang-gle
+analysers and generators and the North Sámi grammar checker's generator that
+[BENCHMARKS.md](BENCHMARKS.md) uses, every difference a test found was one of
+Unicode normalisation. Both read a word by longest match, the longest input
+symbol at each point, fixed before the search. They differ here:
+
+- **Unicode normalisation.** `lookup` also reads a symbol spelt in the other
+  normalisation form. The optimised lookup reads a symbol only from its own
+  code points. lang-gle `analyser-gt-norm.hfstol`, input `@=brúcht` with `ú`
+  written as `u` and U+0301: `lookup` `@=brúcht+Event 0`; the optimised lookup
+  nothing.
+- **Text outside the alphabet.** `lookup` reads each character no symbol
+  matches as a symbol of its own, which identity (`?`) arcs read and write
+  back. The optimised lookup reads such text an extended grapheme cluster at a
+  time as `@_UNKNOWN_SYMBOL_@`, which identity arcs never read. `%= ?*
+  0:%+Event`, input `=abc`: `lookup` `=abc+Event 0`; the optimised lookup
+  nothing.
+- **Cycles of arcs that read no input.** The optimised lookup never follows a
+  path back to a state it has reached at the same point of the input with the
+  same flag values. `lookup` can return paths that go once round such a cycle
+  of epsilon and flag diacritic arcs, at the weight the cycle adds. A
+  transducer that sets `@P.CASE.NOM@` at weight 0.0625 in an epsilon loop
+  after `ta`, input `talo`: `lookup` `talo 0.875`, `talo 0.9375` and
+  `talo 1.1875`; the optimised lookup `talo 0.875` and `talo 1.1875`.
+- **Duplicates.** `lookup` returns a result for each path, so two paths that
+  differ only in flags or epsilons give one analysis twice. The optimised
+  lookup returns each output at each weight once.
+- **Limits.** `lookup`'s `limit` stops the search after that many paths, so
+  they are the first found. The optimised lookup's `limit` returns the
+  lightest. The optimised lookup takes no `timeLimitMs`.
 
 ## Differences
 

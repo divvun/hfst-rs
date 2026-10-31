@@ -1,4 +1,5 @@
-// Benchmarks @divvun/hfst against hfst-js 1.4.0 and writes js/hfst/BENCHMARKS.md.
+// Benchmarks @divvun/hfst, both its lookup and its optimised lookup, against
+// hfst-js 1.4.0 and writes js/hfst/BENCHMARKS.md.
 //
 //   HFST_JS_PARITY=a.hfstol=a-words.txt:b.hfstol=b-words.txt \
 //     node js/bench/bench.mjs [--notes FILE] [--runtime node] [--runtime bun]
@@ -96,6 +97,25 @@ function table(results) {
   return lines.join("\n");
 }
 
+/** The optimised lookup's figures beside hfst-js's and @divvun/hfst lookup's, from the same processes. */
+function optimisedTable(results) {
+  const lines = [
+    "| Transducer | Load, hfst-js (ms) | Load, optimised (ms) | Optimised ÷ hfst-js | Lookup, hfst-js (µs/word) | Lookup, optimised (µs/word) | Optimised ÷ hfst-js | Lookup, ours (µs/word) | Optimised ÷ ours |",
+    "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+  ];
+  for (const r of results) {
+    lines.push(
+      `| ${label(r.transducer)} | ${ms(r.loadMs.hfstJs)} | ${ms(r.loadMs.optimised)} | ${ratio(r.loadMs.optimised, r.loadMs.hfstJs)} | ${us(r.lookupUs.hfstJs)} | ${us(r.lookupUs.optimised)} | ${ratio(r.lookupUs.optimised, r.lookupUs.hfstJs)} | ${us(r.lookupUs.ours)} | ${ratio(r.lookupUs.optimised, r.lookupUs.ours)} |`,
+    );
+  }
+  return lines.join("\n");
+}
+
+/** Whether every result of `run` has the optimised lookup's figures, which runs kept from before it was measured lack. */
+function hasOptimised(run) {
+  return run.results.every((r) => r.loadMs.optimised !== undefined && r.lookupUs.optimised !== undefined);
+}
+
 const median = (values) => [...values].sort((a, b) => a - b)[Math.floor(values.length / 2)];
 
 /** The figures of `samples`, one per process, with each timing the median of theirs. */
@@ -105,9 +125,14 @@ export function combined(samples) {
   return {
     ...first,
     initMs: of((s) => s.initMs),
-    loadMs: { ours: of((s) => s.loadMs.ours), hfstJs: of((s) => s.loadMs.hfstJs) },
+    loadMs: {
+      ours: of((s) => s.loadMs.ours),
+      optimised: of((s) => s.loadMs.optimised),
+      hfstJs: of((s) => s.loadMs.hfstJs),
+    },
     lookupUs: {
       ours: of((s) => s.lookupUs.ours),
+      optimised: of((s) => s.lookupUs.optimised),
       hfstJs: of((s) => s.lookupUs.hfstJs),
       hfstJsCached: of((s) => s.lookupUs.hfstJsCached),
     },
@@ -201,6 +226,16 @@ ${table(run.results)}
 
 ${verdict(run.results)}`,
   );
+  const optimisedRuns = runs.filter(hasOptimised);
+  const optimisedSection =
+    optimisedRuns.length === 0
+      ? ""
+      : `\n## The optimised lookup
+
+\`readOptimisedTransducer(bytes)\` and its \`lookup\`, the engine of divvunspell's \`divvun-fst\`, measured in the same processes as the figures above and in the same way, taking turns with the other two. **Ours** is @divvun/hfst's \`lookup\`.
+
+${optimisedRuns.map((run) => `### ${name(run)}\n\n${optimisedTable(run.results)}`).join("\n\n")}
+`;
 
   const markdown = `# @divvun/hfst against hfst-js
 
@@ -211,12 +246,12 @@ Machine: ${machines}. Measured under ${measured}. hfst-js is 1.4.0.
 ## Method
 
 - Each transducer is measured in ${PROCESSES} fresh processes per runtime, and each figure is the median of the ${PROCESSES}. The machine was shared with other work: its one-minute load average was ${loadText}. Load slows both libraries; the ratios, from the two taking turns in one process, move less than the times.
-- **Load** is the time from a transducer's bytes in memory to a transducer ready to look up: \`readTransducer(bytes)\` in @divvun/hfst and \`new HfstInputStream(bytes, false).read()\` in hfst-js. In each process it is the median of ${LOADS} loads, the two libraries taking turns. @divvun/hfst is measured after \`init\` has compiled its WebAssembly module, which happens once per process and took a median of ${initText}.
+- **Load** is the time from a transducer's bytes in memory to a transducer ready to look up: \`readTransducer(bytes)\` in @divvun/hfst (\`readOptimisedTransducer(bytes)\` for the optimised lookup) and \`new HfstInputStream(bytes, false).read()\` in hfst-js. In each process it is the median of ${LOADS} loads of each, the loaders taking turns. @divvun/hfst is measured after \`init\` has compiled its WebAssembly module, which happens once per process and took a median of ${initText}.
 - **Lookup** is the time per word over the first ${SAMPLE} words of the transducer's word list (fewer when the list is shorter), in each process the median of ${PASSES} passes after one untimed pass. hfst-js runs with its result cache off, so every lookup searches. @divvun/hfst keeps no result cache. **hfst-js cached** is the time per word when every word is already in hfst-js's cache, for context: it is the cost of a repeated word.
 - Neither library is tuned for the benchmark.
 
 ${sections.join("\n\n")}
-${notes === null ? "" : `\n## Word lists\n\n${readFileSync(notes, "utf8").trim()}\n`}`;
+${optimisedSection}${notes === null ? "" : `\n## Word lists\n\n${readFileSync(notes, "utf8").trim()}\n`}`;
 
   const out = join(js, "hfst", "BENCHMARKS.md");
   writeFileSync(out, markdown);

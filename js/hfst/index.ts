@@ -3,8 +3,10 @@
  * `@divvun/hfst`: Divvun HFST for JavaScript. It loads optimized-lookup
  * transducers, pmatch containers and DHFST spellers and runs lookup,
  * tokenisation and DHFST acceptor lookup, in browsers, Web Workers, Deno, Node
- * and Bun. It replaces `hfst-js` for reading and looking up transducers, and
- * does not compile, write or transform them.
+ * and Bun. Lookup comes in two kinds: `Transducer.lookup` gives hfst's
+ * results, and `OptimisedTransducer.lookup` divvunspell's. It replaces
+ * `hfst-js` for reading and looking up transducers, and does not compile,
+ * write or transform them.
  *
  * @module
  */
@@ -12,6 +14,7 @@ import { core } from "./binding.ts";
 import type { InitSource } from "./core.ts";
 import { dhfstReader } from "./dhfst.ts";
 import type { Logger, LogLevel } from "./logging.ts";
+import { optimisedTransducerReader } from "./optimised.ts";
 import { tokeniserReader } from "./tokenise.ts";
 import { transducerReaders } from "./transducer.ts";
 
@@ -49,10 +52,13 @@ export function setLogLevel(level: LogLevel): void {
 }
 
 export const { readTransducers, readTransducer } = transducerReaders(core);
+export const { readOptimisedTransducer } = optimisedTransducerReader(core);
 export const { readTokeniser } = tokeniserReader(core);
 export const { readDhfst } = dhfstReader(core);
 export { Transducer } from "./transducer.ts";
 export type { TransducerProperties, TransducerType } from "./transducer.ts";
+export { OptimisedTransducer } from "./optimised.ts";
+export type { OptimisedLookupOptions } from "./optimised.ts";
 export { Tokeniser } from "./tokenise.ts";
 export type {
   FormatOptions,

@@ -1,6 +1,6 @@
 schema_version 7
 
-last_sync_at 2026-10-29T17:13:00.466749Z
+last_sync_at 2026-10-31T16:13:26.446191Z
 
 rule_versions (
     {id determinize-envelope.bounded-strategies, version 0}
@@ -46,7 +46,7 @@ rule_versions (
     {id javascript.named-file-resolver, version 0}
     {id javascript.native-parity, version 2}
     {id javascript.no-host-traps, version 0}
-    {id javascript.optimised-lookup, version 0}
+    {id javascript.optimised-lookup, version 1}
     {id javascript.packages, version 2}
     {id javascript.portable-build, version 1}
     {id javascript.read-only-module, version 0}
@@ -594,6 +594,9 @@ assertions (
     {id version-banner-one-identity, kind @complete, author "brendan@necessary.nu", at 2026-09-28T14:53:15.900988Z}
     {id version-line-provenance, kind @complete, author "brendan@necessary.nu", at 2026-08-12T00:05:48.497893Z}
     {id virtual-flag-contract, kind @complete, author "brendan@necessary.nu", at 2026-08-18T11:19:28.704235Z}
+    {id wasm.divvun-fst-lookup, kind @complete, author "brendan@necessary.nu", at 2026-10-30T15:57:40.709629Z}
+    {id wasm.divvun-fst-wasm32, kind @complete, author "brendan@necessary.nu", at 2026-10-30T15:55:35.198419Z}
+    {id wasm.fst-package, kind @complete, author "brendan@necessary.nu", at 2026-10-31T16:13:17.296618Z}
     {id wasm.rustfst-entropy, kind @complete, author "brendan@necessary.nu", at 2026-10-28T23:08:51.232443Z}
     {id wasm.single-package, kind @complete, author "brendan@necessary.nu", at 2026-10-29T13:35:02.029483Z}
     {id weighted-determinize-fallback, kind @complete, author "brendan@necessary.nu", at 2026-08-20T00:54:06.249109Z}
@@ -608,9 +611,6 @@ assertions (
     {id xre-eval-error-message, kind @complete, author "brendan@necessary.nu", at 2026-10-28T22:12:14.269416Z}
     {id xre-function-as-network-error, kind @complete, author "brendan@necessary.nu", at 2026-08-12T00:04:55.496721Z}
     {id xre-intermediate-optimization, kind @complete, author "brendan@necessary.nu", at 2026-08-19T23:55:03.286981Z}
-    {id wasm.divvun-fst-wasm32, kind @complete, author "brendan@necessary.nu", at 2026-10-30T15:55:35.198419Z}
-    {id wasm.divvun-fst-lookup, kind @complete, author "brendan@necessary.nu", at 2026-10-30T15:57:40.709629Z}
-    {id wasm.fst-package, kind @complete, author "brendan@necessary.nu", at 2026-10-31T16:13:17.296618Z}
 )
 
 impl_evidence (
@@ -915,6 +915,11 @@ impl_evidence (
         javascript.lookup
     ), covered_claims (
         {impl_name target-impl, rule javascript.lookup}
+    )}
+    {id wasm.optimised-lookup, covered_rules (
+        javascript.optimised-lookup
+    ), covered_claims (
+        {impl_name target-impl, rule javascript.optimised-lookup}
     )}
     {id wasm.parity, covered_rules (
         javascript.native-parity

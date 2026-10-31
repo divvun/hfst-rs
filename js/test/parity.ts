@@ -1,8 +1,10 @@
-// The parity scenario: the package against the native hfst library on the
-// shared fixtures. js/test/parity-fixtures.mjs writes parity.json at test-build
-// time from the native library and this checkout's hfst tokenise; this module
-// starts the package as it ships, runs every fixture in that file through it
-// and compares each result with the native one, value for value. It is written
+// The parity scenario: the package against the native hfst library, and its
+// optimised lookup against native divvun-fst, on the shared fixtures.
+// js/test/parity-fixtures.mjs writes parity.json at test-build time from the
+// native library and this checkout's hfst tokenise, and
+// js/test/optimised-fixtures.mjs adds divvun-fst's lookups; this module starts
+// the package as it ships, runs every fixture in that file through it and
+// compares each result with the native one, value for value. It is written
 // once for every environment: parity-runtime.ts runs it under Node, Bun and
 // Deno, and parity-browser.ts in a browser, on a page and in a Web Worker.
 
@@ -12,6 +14,7 @@ import type {
   DhfstType,
   FormatOptions,
   LookupResult,
+  OptimisedTransducer,
   Tokeniser,
   TokeniseFormat,
   TokeniseOptions,
@@ -47,6 +50,8 @@ interface NativeToken {
 /** What parity.json holds: each native result beside the call that gave it. */
 interface Expected {
   lookup: { file: string; member: number; input: string; limit: number | null; results: LookupResult[] }[];
+  /** What native divvun-fst's lookup gives, from js/test/optimised-fixtures.mjs. */
+  optimised: { file: string; input: string; limit: number | null; results: LookupResult[] }[];
   tokens: { file: string; name: string; text: string; options: TokeniseOptions; tokens: NativeToken[] }[];
   formats: {
     file: string;
@@ -186,6 +191,23 @@ function lookups(pkg: Package, fixture: (name: string) => Promise<Uint8Array>, e
   );
 }
 
+// [spec:hfst:req:javascript.optimised-lookup+1/test]
+function optimised(pkg: Package, fixture: (name: string) => Promise<Uint8Array>, expected: Expected): Promise<Check> {
+  const check = new Check("optimised lookup in every optimized-lookup transducer, as native divvun-fst gives it, with and without a limit");
+  return check.run(() =>
+    withLoaded<OptimisedTransducer>(
+      async (file) => [pkg.readOptimisedTransducer(await fixture(file))],
+      async (load) => {
+        for (const { file, input, limit, results } of expected.optimised) {
+          const [transducer] = await load(file);
+          const found = transducer?.lookup(input, limit === null ? {} : { limit });
+          check.compare(`${file} ${JSON.stringify(input)} limit ${limit}`, found, results);
+        }
+      },
+    ),
+  );
+}
+
 function tokeniser(pkg: Package, fixture: (name: string) => Promise<Uint8Array>) {
   return async (file: string): Promise<Tokeniser[]> => [pkg.readTokeniser(await fixture(file))];
 }
@@ -272,6 +294,7 @@ export async function runParity(args: ParityArgs, read: ReadBytes): Promise<Pari
   const expected: Expected = JSON.parse(new TextDecoder().decode(await fixture("parity.json")));
   return [
     await lookups(pkg, fixture, expected),
+    await optimised(pkg, fixture, expected),
     await tokens(pkg, fixture, expected),
     await formats(pkg, fixture, expected),
     await acceptors(pkg, fixture, expected),
