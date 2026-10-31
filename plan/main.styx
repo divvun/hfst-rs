@@ -8383,4 +8383,22 @@ children (
             }
         )
     }
+
+    {
+        id zip-upgrade
+        title "Clear the zip 6.0.0 security advisories (one critical, fixed only in 9.0.5): move divvunspell and hfst to zip 9.1"
+        kind @build
+        children (
+            {
+                id zip-upgrade.divvunspell
+                title "divvunspell repo: zip 6.0.0 to 9.1 (at least 9.0.5) across the workspace: divvun-fst's zhfst reader, dhfst-tools, thfst-tools, the CLI and divvun-fst-wasm, default features still off; the wasm32 build, workspace tests and JS suite pass; lands by an operator-run script"
+            }
+
+            {
+                id zip-upgrade.hfst
+                title "hfst: hfst-cli zip 6.0.0 to 9.1 (bhfst's zhfst reader, deflate-flate2-zlib-rs kept) and hfst-wasm's divvun-fst pin moved to the divvunspell commit with zip 9, so Cargo.lock holds no zip below 9.0.5"
+                deps (zip-upgrade.divvunspell)
+            }
+        )
+    }
 )
