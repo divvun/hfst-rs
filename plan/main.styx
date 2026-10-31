@@ -8397,6 +8397,28 @@ children (
                     }
                 )
             }
+
+            {
+                id wasm.deno-check-root
+                title "Plain deno check from the repository root checks js/ with js/deno.json and skips build output: a root deno.json makes js/ a workspace member and excludes target/, so it no longer reports missing modules in js/hfst/dist and target/js-test or misses the dom lib"
+                kind @build
+                sealed true
+                log (
+                    {
+                        at 2026-10-31T19:40:49.319473Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
+
+                    {
+                        at 2026-10-31T19:42:40.017179Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan complete)"
+                    }
+                )
+            }
         )
         log (
             {

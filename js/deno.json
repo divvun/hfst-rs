@@ -8,6 +8,5 @@
   "imports": {
     "./hfst/pkg/hfst_wasm.js": "./hfst/glue-stub.d.ts"
   },
-  "exclude": ["**/dist/", "**/pkg/", "**/node_modules/", "**/*.mjs"],
-  "lock": false
+  "exclude": ["**/dist/", "**/pkg/", "**/node_modules/", "**/*.mjs"]
 }

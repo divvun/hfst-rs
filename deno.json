@@ -1,0 +1,5 @@
+{
+  "workspace": ["./js"],
+  "exclude": ["target/"],
+  "lock": false
+}
