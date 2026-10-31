@@ -8171,12 +8171,27 @@ children (
                 title "Publish @divvun/hfst 0.1.0 to npm: package.json (LGPL-3.0-or-later, Divvun HFST, copyright UiT, github.com/divvun/hfst-rs), README with a migration guide from hfst-js and the hfst-js benchmark figures, a release build script; the operator confirms before the actual npm publish"
                 kind @build
                 deps (wasm.parity wasm.hfst-js-parity wasm.performance)
+                sealed true
                 log (
                     {
                         at 2026-10-31T20:03:32.016351Z
                         author "brendan@necessary.nu"
                         kind @status
                         text "Todo → Doing (nplan start)"
+                    }
+
+                    {
+                        at 2026-10-31T20:37:08.247452Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "Published 2026-10-31: @divvun/hfst@0.1.0 on npm (LGPL-3.0-or-later, public access), built by publish-hfst.sh from main 1c5d29c; tarball 35 files, 251.2 kB, shasum f45d5bfbf8e8c0d93fa95c33e2ba99c58dec69b6, carrying README, MIGRATING.md, BENCHMARKS.md, dist/COPYING (GPLv3) and dist/COPYING.LESSER (LGPLv3). Verified from the registry: a clean npm install in an empty directory runs init and both lookups on lang-gle analyser-gt-desc as the README shows. Publishing needs the operator's npm login and a TOTP code, so a publish script must not build after asking for the code: codes expire in about 30 s."
+                    }
+
+                    {
+                        at 2026-10-31T20:37:12.299712Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan complete)"
                     }
                 )
             }
