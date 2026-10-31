@@ -1,6 +1,6 @@
 schema_version 7
 
-last_sync_at 2026-10-31T16:30:20.688289Z
+last_sync_at 2026-10-31T19:34:51.303285Z
 
 rule_versions (
     {id determinize-envelope.bounded-strategies, version 0}
@@ -122,6 +122,7 @@ derived_priorities (
     {id dhfst-writer-name, priority 1, derived_at 2026-10-06T21:03:19.004443Z}
     {id diag-parse-error-spans, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
     {id divvun-hfst-branding, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
+    {id divvunspell-alerts, priority 0, derived_at 2026-10-31T19:34:51.303285Z}
     {id drop-dead-commandline-def, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
     {id eliminate-flags-acyclic-hang, priority 0, derived_at 2026-10-06T21:03:19.004443Z}
     {id eliminate-flags-unconstrained-flags, priority 0, derived_at 2026-10-28T23:00:39.237354Z}
@@ -302,6 +303,8 @@ derived_priorities (
     {id xre-intermediate-optimization, priority 1, derived_at 2026-08-21T21:18:14.374864Z}
     {id xre-replace-pass, priority 0, derived_at 2026-10-06T21:03:19.004443Z}
     {id xre-root-finalization, priority 0, derived_at 2026-08-24T19:58:10.172058Z}
+    {id zip-upgrade.divvunspell, priority 0, derived_at 2026-10-31T19:34:51.303285Z}
+    {id zip-upgrade.hfst, priority 1, derived_at 2026-10-31T19:34:51.303285Z}
 )
 
 assertions (
