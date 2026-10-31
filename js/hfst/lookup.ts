@@ -31,6 +31,20 @@ export interface LookupOptions {
   timeLimitMs?: number;
 }
 
+/**
+ * The results in the JSON text the glue hands back for one lookup, from
+ * either lookup. JSON has no number for a weight that is not finite, so the
+ * glue writes such a weight as its name, a string `Number` reads back.
+ */
+export function decodeResults(text: string): LookupResult[] {
+  const results: LookupResult[] = JSON.parse(text);
+  for (const result of results) {
+    const weight: unknown = result.weight;
+    if (typeof weight === "string") result.weight = Number(weight);
+  }
+  return results;
+}
+
 export type GlueLookupArgs = [input: string, limit: number | undefined, timeLimitMs: number | undefined];
 
 /** The largest result limit the glue takes; more than any lookup can find. */

@@ -59,4 +59,18 @@ test("the verdict has no slower sentence when ours is faster everywhere, and cou
   assert(text.endsWith("It is faster on every transducer, in as little as 0.3 times the time."), text);
 });
 
+test("the optimised lookup's verdict is its own, and says so when every load is faster", () => {
+  const text = verdict(
+    [result("/x/lang-kal/a.hfstol", [20, 10, 2], [300, 100, 40]), result("/x/lang-gle/b.hfstol", [40, 10, 1], [50, 100, 60])],
+    "optimised",
+    "The optimised lookup",
+  );
+  assertEqual(
+    text,
+    "The optimised lookup loads every transducer faster than hfst-js, in 0.1 to 0.2 times the time. " +
+      "It is faster on every transducer, in as little as 0.4 times the time.",
+    "verdict",
+  );
+});
+
 await runTests("bench/bench");

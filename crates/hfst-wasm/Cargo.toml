@@ -22,7 +22,7 @@ test-hooks = []
 # divvunspell's lookup engine, behind the optimised lookup. Without its default
 # `fs` feature it reads every format from bytes and needs no memory maps or
 # host file system, which wasm32-unknown-unknown does not have.
-divvun-fst = { git = "https://github.com/divvun/divvunspell", rev = "9b510842b79531429b0667b2bd8c28f0510380d6", default-features = false }
+divvun-fst = { git = "https://github.com/divvun/divvunspell", rev = "9b6c98cbc837db148b334314259cb60f9e87e500", default-features = false }
 # Without default features, so the module carries no foma backend.
 hfst = { workspace = true }
 js-sys = "0.3.95"

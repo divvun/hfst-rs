@@ -598,8 +598,10 @@ assertions (
     {id wasm.divvun-fst-lookup, kind @complete, author "brendan@necessary.nu", at 2026-10-30T15:57:40.709629Z}
     {id wasm.divvun-fst-wasm32, kind @complete, author "brendan@necessary.nu", at 2026-10-30T15:55:35.198419Z}
     {id wasm.fst-package, kind @complete, author "brendan@necessary.nu", at 2026-10-31T16:13:17.296618Z}
+    {id wasm.performance, kind @complete, author "brendan@necessary.nu", at 2026-10-31T19:32:50.735442Z}
     {id wasm.rustfst-entropy, kind @complete, author "brendan@necessary.nu", at 2026-10-28T23:08:51.232443Z}
     {id wasm.single-package, kind @complete, author "brendan@necessary.nu", at 2026-10-29T13:35:02.029483Z}
+    {id wasm.thfst-chunked-panic, kind @complete, author "brendan@necessary.nu", at 2026-10-31T18:03:53.307235Z}
     {id weighted-determinize-fallback, kind @complete, author "brendan@necessary.nu", at 2026-08-20T00:54:06.249109Z}
     {id xfst-copyright-owner-plain, kind @complete, author "brendan@necessary.nu", at 2026-08-11T11:00:23.068557Z}
     {id xfst-diagnostics, kind @complete, author "brendan@necessary.nu", at 2026-08-12T09:21:47.266775Z}
@@ -613,7 +615,6 @@ assertions (
     {id xre-function-as-network-error, kind @complete, author "brendan@necessary.nu", at 2026-08-12T00:04:55.496721Z}
     {id xre-intermediate-optimization, kind @complete, author "brendan@necessary.nu", at 2026-08-19T23:55:03.286981Z}
     {id zip-upgrade.divvunspell, kind @complete, author "brendan@necessary.nu", at 2026-10-31T18:02:55.139381Z}
-    {id wasm.thfst-chunked-panic, kind @complete, author "brendan@necessary.nu", at 2026-10-31T18:03:53.307235Z}
 )
 
 impl_evidence (

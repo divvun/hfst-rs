@@ -2,7 +2,7 @@ import type { Core } from "./core.ts";
 import { HfstError } from "./errors.ts";
 import type { OptimisedTransducerGlue } from "./glue.ts";
 import { Handle } from "./handle.ts";
-import { type LookupResult, lookupArgs } from "./lookup.ts";
+import { decodeResults, type LookupResult, lookupArgs } from "./lookup.ts";
 import {
   isTransducerType,
   type TransducerProperties,
@@ -19,20 +19,6 @@ export interface OptimisedLookupOptions {
    * Leave it out for every result.
    */
   limit?: number;
-}
-
-/**
- * The results in the JSON text the glue hands back for one lookup. JSON has
- * no number for a weight that is not finite, so the glue writes such a weight
- * as its name, a string `Number` reads back.
- */
-function decodeResults(text: string): LookupResult[] {
-  const results: LookupResult[] = JSON.parse(text);
-  for (const result of results) {
-    const weight: unknown = result.weight;
-    if (typeof weight === "string") result.weight = Number(weight);
-  }
-  return results;
 }
 
 let wrap: (core: Core, glue: OptimisedTransducerGlue) => OptimisedTransducer;
