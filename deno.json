@@ -1,5 +1,8 @@
 {
   "workspace": ["./js"],
   "exclude": ["target/"],
-  "lock": false
+  "lock": false,
+  "imports": {
+    "./js/hfst/pkg/hfst_wasm.js": "./js/hfst/glue-stub.d.ts"
+  }
 }
