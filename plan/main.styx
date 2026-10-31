@@ -8303,6 +8303,29 @@ children (
                 title "divvunspell repo: @divvun/fst, divvunspell's own wasm npm package: load spellers and transducers from bytes, isCorrect, suggest (with SpellerConfig), optimised lookup; TypeScript declarations; tests under Deno, Node, Bun and a browser; release prepared, with the operator confirming the npm publish"
                 kind @feat
                 deps (wasm.divvun-fst-wasm32 wasm.divvun-fst-lookup)
+                sealed true
+                log (
+                    {
+                        at 2026-10-31T16:13:04.091313Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
+
+                    {
+                        at 2026-10-31T16:13:11.555978Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "Landed on divvunspell main as d6bd972 (vfs::bytes::Filesystem::paths) and 2280ce8 (@divvun/fst), operator-run script, pushed 9b51084..2280ce8. crates/divvun-fst-wasm (cdylib, wasm-bindgen =0.2.118, divvun-fst default-features off + compression) and js/fst (@divvun/fst 0.1.0, MIT OR Apache-2.0, ready for npm publish, not published). API: init, version, setLogger, setLogLevel, FstError with stable codes and trap poisoning; readSpeller(bytes) -> Speller { isCorrect, suggest, analyzeInput, analyzeOutput, each with optional config; metadata, locale, bundledConfig }; readTransducer(bytes, { member? }) -> Transducer { format, lookup }; defaultSpellerConfig. SpellerConfig drift: the binding names every struct field (a new field stops it compiling), Rust tests check the mirror against the struct's serialised names, JS tests compare defaults with native. Tests: 31/31 JS files under Node, Bun, Deno (narrow --allow-read) and headless Chromium main thread + Web Worker; 1,987 speller results and 240 lookups equal native; sma and se bhfst (box v0 and v1), ga.zhfst, fixtures, ten configs. .wasm 2,025,240 B (609 KB gzipped), the speller compiled per error-model x lexicon type. Operator confirmed MIT/Apache for the JS helpers copied from @divvun/hfst (Divvun's own code). Findings: native archive::open panics on small chunked-THFST tables (src/transducer/thfst/chunked.rs:243), fix planned next; Dependabot flags zip 6.0.0 (pre-existing, GHSA-m665-v7pm-7grj critical and three more, published 2026-10-28/29), affecting divvunspell and hfst-cli alike."
+                    }
+
+                    {
+                        at 2026-10-31T16:13:17.296618Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan complete)"
+                    }
+                )
             }
 
             {
@@ -8313,6 +8336,13 @@ children (
                     target-impl ([spec:hfst:req:javascript.optimised-lookup])
                 }
                 deps (wasm.divvun-fst-wasm32 wasm.divvun-fst-lookup)
+            }
+
+            {
+                id wasm.thfst-chunked-panic
+                title "divvunspell repo: archive::open on a BHFST picks the chunked THFST reader, which panics with an index out of bounds on small tables (src/transducer/thfst/chunked.rs:243, seen on tests/fixtures); a failing test first, then the bounds fix, landed by operator-run script"
+                kind @fix
+                deps (wasm.fst-package)
             }
         )
         log (
