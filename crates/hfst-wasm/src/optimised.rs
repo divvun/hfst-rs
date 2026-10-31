@@ -1,16 +1,15 @@
 //! The optimised lookup: an optimized-lookup transducer read by divvunspell's
 //! `divvun-fst`, and words looked up in it by that crate's lookup.
 
-use std::fmt::Write as _;
-
 use divvun_fst::transducer::hfst::HfstTransducer;
-use divvun_fst::transducer::{Lookup, LookupResult, TransducerLoader};
+use divvun_fst::transducer::{Lookup, TransducerLoader};
 use divvun_fst::vfs::bytes::{File, Filesystem};
 use hfst::transducer::TransducerHeader;
 use wasm_bindgen::prelude::*;
 
 use crate::error::GlueError;
 use crate::format::Format;
+use crate::lookup::encode;
 use crate::stream::{self, Member, Properties};
 use crate::transducer::property_pairs;
 
@@ -65,15 +64,17 @@ impl OptimisedTransducer {
 
     // [spec:hfst:req:javascript.optimised-lookup+2]
     /// What `divvun-fst`'s lookup returns for `input`, the first `limit` of
-    /// them when there is a limit, as the JSON text `encode` writes. One
-    /// string crosses to JavaScript, where the wrapper parses it, rather than
-    /// an object built a property at a time across the boundary.
+    /// them when there is a limit, as the JSON text `lookup::encode` writes.
     pub fn lookup(&mut self, input: &str, limit: Option<u32>) -> String {
         let results = self.lookup.lookup(&self.transducer, input);
         let kept = limit.map_or(results.len(), |limit| {
             usize::try_from(limit).map_or(results.len(), |limit| limit.min(results.len()))
         });
-        encode(&results[..kept])
+        encode(
+            results[..kept]
+                .iter()
+                .map(|result| (result.output.as_str(), &result.symbols[..], result.weight.0)),
+        )
     }
 }
 
@@ -167,70 +168,9 @@ fn with_empty_header(payload: &[u8]) -> Vec<u8> {
     bytes
 }
 
-/// `results` as a JSON array of `{ output, symbols, weight }` objects. Each
-/// weight is the f64 that holds the f32 exactly, written in the fewest digits
-/// that read back as that f64, so `JSON.parse` gives the same number. JSON
-/// has no number for a weight that is not finite, so such a weight is the
-/// string `Infinity`, `-Infinity` or `NaN`, which the wrapper turns back.
-fn encode(results: &[LookupResult]) -> String {
-    let mut text = String::with_capacity(results.len() * 64 + 2);
-    text.push('[');
-    for (i, result) in results.iter().enumerate() {
-        if i > 0 {
-            text.push(',');
-        }
-        text.push_str("{\"output\":");
-        push_json_string(&mut text, &result.output);
-        text.push_str(",\"symbols\":[");
-        for (j, symbol) in result.symbols.iter().enumerate() {
-            if j > 0 {
-                text.push(',');
-            }
-            push_json_string(&mut text, symbol);
-        }
-        text.push_str("],\"weight\":");
-        let weight = f64::from(result.weight.0);
-        if weight.is_finite() {
-            write!(text, "{weight}").expect("writing to a String does not fail");
-        } else if weight.is_nan() {
-            text.push_str("\"NaN\"");
-        } else if weight > 0.0 {
-            text.push_str("\"Infinity\"");
-        } else {
-            text.push_str("\"-Infinity\"");
-        }
-        text.push('}');
-    }
-    text.push(']');
-    text
-}
-
-/// `value` as a JSON string. Only the quote, the backslash and the control
-/// characters below U+0020 need escaping.
-fn push_json_string(text: &mut String, value: &str) {
-    text.push('"');
-    let mut plain = 0;
-    for (at, c) in value.char_indices() {
-        if !matches!(c, '"' | '\\' | '\0'..='\u{1f}') {
-            continue;
-        }
-        text.push_str(&value[plain..at]);
-        match c {
-            '"' => text.push_str("\\\""),
-            '\\' => text.push_str("\\\\"),
-            control => write!(text, "\\u{:04x}", u32::from(control))
-                .expect("writing to a String does not fail"),
-        }
-        plain = at + c.len_utf8();
-    }
-    text.push_str(&value[plain..]);
-    text.push('"');
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use divvun_fst::types::Weight;
     use hfst::file_resolver::{FileResolver, MemoryFiles};
     use hfst::hfst_basic_transducer::HfstBasicTransducer;
     use hfst::hfst_data_types::ImplementationType;
@@ -351,44 +291,5 @@ mod tests {
             code(read_optimised_transducer(b"##foma-net 1.0##\n".to_vec())),
             "unsupported-format"
         );
-    }
-
-    fn result(symbols: &[&str], weight: f32) -> LookupResult {
-        LookupResult {
-            output: symbols.concat().into(),
-            symbols: symbols.iter().map(|&symbol| symbol.into()).collect(),
-            weight: Weight(weight),
-        }
-    }
-
-    // [spec:hfst:req:javascript.optimised-lookup+2/test]
-    #[test]
-    fn results_encode_as_json_objects() {
-        let text = encode(&[result(&["c", "a", "t", "+N"], 0.1), result(&[], 2.0)]);
-        assert_eq!(
-            text,
-            "[{\"output\":\"cat+N\",\"symbols\":[\"c\",\"a\",\"t\",\"+N\"],\"weight\":0.10000000149011612},\
-             {\"output\":\"\",\"symbols\":[],\"weight\":2}]"
-        );
-        assert_eq!(encode(&[]), "[]");
-    }
-
-    #[test]
-    fn strings_escape_quotes_backslashes_and_control_characters() {
-        let mut text = String::new();
-        push_json_string(&mut text, "a\"b\\c\td\u{1}é😀");
-        assert_eq!(text, "\"a\\\"b\\\\c\\u0009d\\u0001é😀\"");
-    }
-
-    #[test]
-    fn weights_that_are_not_finite_are_named() {
-        let text = encode(&[
-            result(&["a"], f32::INFINITY),
-            result(&["b"], f32::NEG_INFINITY),
-            result(&["c"], f32::NAN),
-        ]);
-        assert!(text.contains("\"weight\":\"Infinity\""), "{text}");
-        assert!(text.contains("\"weight\":\"-Infinity\""), "{text}");
-        assert!(text.contains("\"weight\":\"NaN\""), "{text}");
     }
 }

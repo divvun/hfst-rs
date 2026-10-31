@@ -42,8 +42,8 @@ export interface TransducerGlue extends GlueObject {
   name(): string;
   /** Its other properties, flattened to key, value, key, value. */
   propertyPairs(): string[];
-  /** The results for `input` within the limits, in the order `lookup` returns them. */
-  lookup(input: string, limit: number | undefined, timeLimitMs: number | undefined): LookupResult[];
+  /** The results for `input` within the limits, in the order `lookup` returns them, as a JSON array of `LookupResult` objects. */
+  lookup(input: string, limit: number | undefined, timeLimitMs: number | undefined): string;
 }
 
 /** A transducer the glue holds for the optimised lookup, from `crates/hfst-wasm/src/optimised.rs`. */

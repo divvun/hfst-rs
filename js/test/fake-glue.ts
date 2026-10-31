@@ -16,7 +16,6 @@ import type {
   TokeniserGlue,
   TransducerGlue,
 } from "../hfst/glue.ts";
-import type { LookupResult } from "../hfst/lookup.ts";
 import type { FormatOptions, Token, TokeniseOptions } from "../hfst/tokenise.ts";
 
 export class FakeGlue implements Glue {
@@ -170,10 +169,10 @@ export class FakeTransducer extends FakeObject implements TransducerGlue {
   /** The arguments of every lookup, in order. */
   readonly lookups: [string, number | undefined, number | undefined][] = [];
 
-  /** Answers every input with one result whose output is the input. */
-  lookup(input: string, limit: number | undefined, timeLimitMs: number | undefined): LookupResult[] {
+  /** Answers every input with one result whose output is the input, as the JSON text the module writes. */
+  lookup(input: string, limit: number | undefined, timeLimitMs: number | undefined): string {
     this.lookups.push([input, limit, timeLimitMs]);
-    return [{ output: input, symbols: [...input], weight: 0 }];
+    return JSON.stringify([{ output: input, symbols: [...input], weight: 0 }]);
   }
 }
 

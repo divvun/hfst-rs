@@ -2,7 +2,7 @@ import type { Core } from "./core.ts";
 import { HfstError } from "./errors.ts";
 import type { TransducerGlue } from "./glue.ts";
 import { Handle } from "./handle.ts";
-import { type LookupOptions, type LookupResult, lookupArgs } from "./lookup.ts";
+import { decodeResults, type LookupOptions, type LookupResult, lookupArgs } from "./lookup.ts";
 
 // [spec:hfst:req:javascript.load-bytes+2]
 /**
@@ -96,7 +96,7 @@ export class Transducer extends Handle<TransducerGlue> {
    */
   lookup(input: string, options?: LookupOptions): LookupResult[] {
     const [text, limit, timeLimitMs] = lookupArgs(input, options);
-    return this.use((g) => g.lookup(text, limit, timeLimitMs));
+    return decodeResults(this.use((g) => g.lookup(text, limit, timeLimitMs)));
   }
 }
 
