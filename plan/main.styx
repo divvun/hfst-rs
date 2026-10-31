@@ -8454,4 +8454,10 @@ children (
             }
         )
     }
+
+    {
+        id divvunspell-alerts
+        title "divvunspell repo: clear the remaining Dependabot alerts: rustls to at least 0.23.46 and xxhash-rust to at least 0.8.16 in support/accuracy-viewer's own lockfile, the viewer still building; and confirm the four zip alerts close against 3da8215"
+        kind @build
+    }
 )
