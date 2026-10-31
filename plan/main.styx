@@ -8351,6 +8351,29 @@ children (
                 title "divvunspell repo: archive::open on a BHFST picks the chunked THFST reader, which panics with an index out of bounds on small tables (src/transducer/thfst/chunked.rs:243, seen on tests/fixtures); a failing test first, then the bounds fix, landed by operator-run script"
                 kind @fix
                 deps (wasm.fst-package)
+                sealed true
+                log (
+                    {
+                        at 2026-10-31T18:03:47.731246Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
+
+                    {
+                        at 2026-10-31T18:03:50.788352Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "Landed on divvunspell main as 77c04ee. Root cause: the cursor walk reads the record after a run of arcs to find its end; at a table's end that is one past the last record, and the chunked reader indexed its chunk list with it directly (every fixture triggered it, not only small tables). Two more faults found and fixed: a table split into several chunks was cut by bytes rather than records, and an empty table divided by zero. ThfstChunkedTransducer is now ThfstTransducer over ChunkedTable, which reads as one table and shares the whole-table walk code. tests/archive_open.rs opens every fixture pair through archive::open, whole tables and bytes and requires the same answers (all 9 pairs panicked before); unit tests cover 1-40 chunks and 0-40-record tables. Suggestions for 400 words from three real BHFST spellers unchanged. Follow-up not done: the @divvun/fst JS test build still avoids archive::open's chunked reader."
+                    }
+
+                    {
+                        at 2026-10-31T18:03:53.307235Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan complete)"
+                    }
+                )
             }
         )
         log (
