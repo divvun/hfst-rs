@@ -191,7 +191,7 @@ function lookups(pkg: Package, fixture: (name: string) => Promise<Uint8Array>, e
   );
 }
 
-// [spec:hfst:req:javascript.optimised-lookup+1/test]
+// [spec:hfst:req:javascript.optimised-lookup+2/test]
 function optimised(pkg: Package, fixture: (name: string) => Promise<Uint8Array>, expected: Expected): Promise<Check> {
   const check = new Check("optimised lookup in every optimized-lookup transducer, as native divvun-fst gives it, with and without a limit");
   return check.run(() =>

@@ -68,7 +68,7 @@ function assertClassified(disagreements: readonly Disagreement[], what: string):
 const READ = ["optimized-lookup-weighted", "optimized-lookup-unweighted"] as const;
 
 if (args.variant === "main") {
-  // [spec:hfst:req:javascript.optimised-lookup+1/test]
+  // [spec:hfst:req:javascript.optimised-lookup+2/test]
   test("a transducer loads with or without its header, with the type, name and properties a Transducer has", async () => {
     for (const type of READ) {
       for (const file of [`words.${type}.hfst`, `words.${type}.bare`, "first.hfst"]) {
@@ -84,7 +84,7 @@ if (args.variant === "main") {
     }
   });
 
-  // [spec:hfst:req:javascript.optimised-lookup+1/test]
+  // [spec:hfst:req:javascript.optimised-lookup+2/test]
   test("bytes in other formats, or not a transducer, are turned down as readTransducers turns them down", async () => {
     const weighted = await fixture("words.optimized-lookup-weighted.hfst");
     const cases: [string, Uint8Array][] = [
@@ -108,7 +108,7 @@ if (args.variant === "main") {
     assertEqual(thrownCode(pkg.HfstError, () => pkg.readOptimisedTransducer(notBytes)), "invalid-argument", "not bytes");
   });
 
-  // [spec:hfst:req:javascript.optimised-lookup+1/test]
+  // [spec:hfst:req:javascript.optimised-lookup+2/test]
   test("a stream of several transducers throws transducer-count", async () => {
     for (const file of ["ordered.hfst", "ordered.bare", "mixed.hfst", "animals.pmhfst"]) {
       const bytes = await fixture(file);
@@ -116,7 +116,7 @@ if (args.variant === "main") {
     }
   });
 
-  // [spec:hfst:req:javascript.optimised-lookup+1/test]
+  // [spec:hfst:req:javascript.optimised-lookup+2/test]
   test("a limit keeps the lightest results; a time limit is refused", async () => {
     using t = pkg.readOptimisedTransducer(await fixture("ties.optimized-lookup-weighted.hfst"));
     const all = t.lookup("a");
@@ -139,7 +139,7 @@ if (args.variant === "main") {
     assertEqual(thrownCode(pkg.HfstError, () => t.lookup(7 as unknown as string)), "invalid-argument", "a number");
   });
 
-  // [spec:hfst:req:javascript.optimised-lookup+1/test]
+  // [spec:hfst:req:javascript.optimised-lookup+2/test]
   test("a freed optimised transducer throws freed", async () => {
     const t = pkg.readOptimisedTransducer(await fixture("words.optimized-lookup-weighted.hfst"));
     t.free();
@@ -154,7 +154,7 @@ if (args.variant === "main") {
     }
   });
 
-  // [spec:hfst:req:javascript.optimised-lookup+1/test]
+  // [spec:hfst:req:javascript.optimised-lookup+2/test]
   test("on every fixture, the optimised lookup agrees with lookup but where a documented difference explains it", async () => {
     const expected: { optimised: { file: string; input: string; limit: number | null }[] } = JSON.parse(
       new TextDecoder().decode(await fixture("parity.json")),
@@ -203,7 +203,7 @@ if (args.variant === "main") {
     const separator = Reflect.get(Reflect.get(globalThis, "process"), "platform") === "win32" ? ";" : ":";
     for (const entry of listed.split(separator).filter((entry) => entry !== "")) {
       const [transducer, words] = entry.split("=");
-      // [spec:hfst:req:javascript.optimised-lookup+1/test]
+      // [spec:hfst:req:javascript.optimised-lookup+2/test]
       test(`${transducer}: the optimised lookup agrees with lookup but where a documented difference explains it`, async () => {
         assert(
           transducer !== undefined && words !== undefined,

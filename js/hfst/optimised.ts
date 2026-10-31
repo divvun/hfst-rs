@@ -10,7 +10,7 @@ import {
   transducerProperties,
 } from "./transducer.ts";
 
-// [spec:hfst:req:javascript.optimised-lookup+1]
+// [spec:hfst:req:javascript.optimised-lookup+2]
 /** Options of one optimised lookup. It has no time limit: the search always runs to its end. */
 export interface OptimisedLookupOptions {
   /**
@@ -37,7 +37,7 @@ function decodeResults(text: string): LookupResult[] {
 
 let wrap: (core: Core, glue: OptimisedTransducerGlue) => OptimisedTransducer;
 
-// [spec:hfst:req:javascript.optimised-lookup+1]
+// [spec:hfst:req:javascript.optimised-lookup+2]
 /**
  * An optimized-lookup transducer loaded for the optimised lookup, which is
  * divvunspell's: the `divvun-fst` crate reads the transducer and looks words
@@ -117,7 +117,7 @@ export class OptimisedTransducer extends Handle<OptimisedTransducerGlue> {
     return this.use(() => this.#properties);
   }
 
-  // [spec:hfst:req:javascript.optimised-lookup+1]
+  // [spec:hfst:req:javascript.optimised-lookup+2]
   /**
    * What divvunspell's lookup returns for `input`: every output of a path
    * that reads it, with the path's weight, final weight included, ordered by
@@ -137,7 +137,7 @@ export class OptimisedTransducer extends Handle<OptimisedTransducerGlue> {
 }
 
 export interface OptimisedTransducerReader {
-  // [spec:hfst:req:javascript.optimised-lookup+1]
+  // [spec:hfst:req:javascript.optimised-lookup+2]
   /**
    * The one optimized-lookup transducer in `bytes`, weighted or unweighted,
    * with or without an HFST3 header, loaded for the optimised lookup. Bytes

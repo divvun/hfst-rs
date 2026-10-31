@@ -30,7 +30,7 @@ const INDEX_RECORD: usize = 6;
 const TRANSITION_RECORD_WEIGHTED: usize = 12;
 const TRANSITION_RECORD_UNWEIGHTED: usize = 8;
 
-// [spec:hfst:req:javascript.optimised-lookup+1]
+// [spec:hfst:req:javascript.optimised-lookup+2]
 /// An optimized-lookup transducer as `divvun-fst` reads it, with the lookup
 /// tables it reuses from one word to the next and the properties of its HFST3
 /// header. The wrapper's `OptimisedTransducer` class in `js/hfst/optimised.ts`
@@ -63,7 +63,7 @@ impl OptimisedTransducer {
         property_pairs(&self.properties)
     }
 
-    // [spec:hfst:req:javascript.optimised-lookup+1]
+    // [spec:hfst:req:javascript.optimised-lookup+2]
     /// What `divvun-fst`'s lookup returns for `input`, the first `limit` of
     /// them when there is a limit, as the JSON text `encode` writes. One
     /// string crosses to JavaScript, where the wrapper parses it, rather than
@@ -77,7 +77,7 @@ impl OptimisedTransducer {
     }
 }
 
-// [spec:hfst:req:javascript.optimised-lookup+1]
+// [spec:hfst:req:javascript.optimised-lookup+2]
 // [spec:hfst:req:javascript.load-bytes+2]
 /// The one optimized-lookup transducer in `bytes`, read by `divvun-fst`.
 /// Bytes in another format are turned down as `readTransducers` turns them
@@ -272,7 +272,7 @@ mod tests {
         }
     }
 
-    // [spec:hfst:req:javascript.optimised-lookup+1/test]
+    // [spec:hfst:req:javascript.optimised-lookup+2/test]
     #[test]
     fn both_formats_read_with_and_without_a_header() {
         for weighted in [true, false] {
@@ -308,7 +308,7 @@ mod tests {
         }
     }
 
-    // [spec:hfst:req:javascript.optimised-lookup+1/test]
+    // [spec:hfst:req:javascript.optimised-lookup+2/test]
     #[test]
     fn a_limit_keeps_the_lightest_results() {
         let mut t = read_optimised_transducer(cat(true, true)).expect("the transducer reads");
@@ -324,7 +324,7 @@ mod tests {
         assert!(t.lookup("ca", None).contains("\"ca+X\""));
     }
 
-    // [spec:hfst:req:javascript.optimised-lookup+1/test]
+    // [spec:hfst:req:javascript.optimised-lookup+2/test]
     #[test]
     fn several_or_truncated_streams_are_turned_down() {
         for header in [true, false] {
@@ -361,7 +361,7 @@ mod tests {
         }
     }
 
-    // [spec:hfst:req:javascript.optimised-lookup+1/test]
+    // [spec:hfst:req:javascript.optimised-lookup+2/test]
     #[test]
     fn results_encode_as_json_objects() {
         let text = encode(&[result(&["c", "a", "t", "+N"], 0.1), result(&[], 2.0)]);

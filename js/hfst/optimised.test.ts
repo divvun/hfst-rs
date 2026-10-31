@@ -17,7 +17,7 @@ async function started(stream: string[][]) {
   return { glue, fake, transducer };
 }
 
-// [spec:hfst:req:javascript.optimised-lookup+1/test]
+// [spec:hfst:req:javascript.optimised-lookup+2/test]
 test("its type, name and properties are plain values read once", async () => {
   const { transducer } = await started([["optimized-lookup-unweighted", "lexicon", "a", "1"]]);
   assertEqual(transducer.type, "optimized-lookup-unweighted", "type");
@@ -26,7 +26,7 @@ test("its type, name and properties are plain values read once", async () => {
   assert(transducer.properties === transducer.properties, "the same object each time");
 });
 
-// [spec:hfst:req:javascript.optimised-lookup+1/test]
+// [spec:hfst:req:javascript.optimised-lookup+2/test]
 test("a limit reaches the module, and the JSON it answers becomes the results", async () => {
   const { fake, transducer } = await started([["optimized-lookup-weighted", "t"]]);
   assertEqual(
@@ -41,7 +41,7 @@ test("a limit reaches the module, and the JSON it answers becomes the results", 
   assertEqual(fake.lookups[0]?.[1], undefined, "no limit");
 });
 
-// [spec:hfst:req:javascript.optimised-lookup+1/test]
+// [spec:hfst:req:javascript.optimised-lookup+2/test]
 test("weights JSON cannot hold come back as numbers", async () => {
   const { fake, transducer } = await started([["optimized-lookup-weighted", "t"]]);
   fake.answer =
@@ -56,7 +56,7 @@ test("weights JSON cannot hold come back as numbers", async () => {
   assert(Number.isNaN(weights[3]), "NaN");
 });
 
-// [spec:hfst:req:javascript.optimised-lookup+1/test]
+// [spec:hfst:req:javascript.optimised-lookup+2/test]
 test("a time limit and bad arguments throw invalid-argument without entering the module", async () => {
   const { glue, fake, transducer } = await started([["optimized-lookup-weighted", "t"]]);
   const before = glue.entered;
@@ -71,7 +71,7 @@ test("a time limit and bad arguments throw invalid-argument without entering the
   assertEqual(fake.lookups.length, 0, "lookups");
 });
 
-// [spec:hfst:req:javascript.optimised-lookup+1/test]
+// [spec:hfst:req:javascript.optimised-lookup+2/test]
 test("a type the wrapper does not know is an internal error; a freed transducer throws freed", async () => {
   const glue = new FakeGlue();
   glue.stream = [["thfst", "x"]];

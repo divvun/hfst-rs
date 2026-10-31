@@ -126,7 +126,7 @@ every other embedder.
 > milliseconds. An expired time limit MUST return the results found so far
 > rather than throw.
 
-> [spec:hfst:req:javascript.optimised-lookup+1]
+> [spec:hfst:req:javascript.optimised-lookup+2]
 > The package MUST offer an optimised lookup on optimized-lookup transducers
 > that returns what divvunspell's `divvun-fst` lookup returns for the same
 > transducer and input, as an array of `{ output, symbols, weight }` ordered by
@@ -134,8 +134,9 @@ every other embedder.
 > transducer's input symbols, as `hfst-optimized-lookup` does, and reads text
 > no symbol matches as the unknown symbol. It can therefore differ from
 > `lookup` where hfst lookup reads the other Unicode normalisation form of a
-> symbol or follows identity arcs for characters outside the alphabet;
-> `lookup` keeps hfst's answers. Loading a transducer for the
+> symbol, follows identity arcs for characters outside the alphabet, or goes
+> once round an epsilon or flag cycle that returns with the same flags, which
+> `divvun-fst` cuts; `lookup` keeps hfst's answers. Loading a transducer for the
 > optimised lookup, and each uncached lookup, MUST be no slower than
 > `hfst-js` on the files and words the `hfst-js` comparison uses.
 
