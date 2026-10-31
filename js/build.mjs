@@ -115,6 +115,10 @@ function buildPackage() {
   assertNoTestHooks(pkgDir);
   tsc(join(packageDir, "tsconfig.json"), dist);
   cpSync(pkgDir, join(dist, "pkg"), { recursive: true });
+  // The library is LGPLv3, which is the GPLv3 with extra permissions, so the
+  // package carries both texts.
+  cpSync(join(root, "COPYING"), join(dist, "COPYING.LESSER"));
+  cpSync(join(root, "crates", "hfst-cli", "COPYING"), join(dist, "COPYING"));
   assertNoAny(dist);
   return statSync(module).size;
 }

@@ -45,7 +45,19 @@ export function packageTests(dir: URL, name: string): void {
     assertEqual(manifest.author, "UiT The Arctic University of Norway", "author");
     assertEqual(manifest.type, "module", "type");
     assert(manifest.description.includes("Divvun HFST"), "the description names Divvun HFST");
-    assertEqual(manifest.files.join(" "), "dist", "files");
+    assertEqual(manifest.files.join(" "), "dist MIGRATING.md BENCHMARKS.md", "files");
+  });
+
+  test("the package ships its README, its notes and both licence texts", async () => {
+    const manifest = await readManifest(dir);
+    const files = await listFiles(dir);
+    for (const path of ["README.md", ...manifest.files.filter((file) => file !== "dist")]) {
+      assert(files.includes(path), `${path} exists`);
+    }
+    const dist = await listFiles(new URL("dist/", dir));
+    for (const licence of ["COPYING", "COPYING.LESSER"]) {
+      assert(dist.includes(licence), `dist/${licence} exists`);
+    }
   });
 
   // [spec:hfst:req:javascript.typed-surface+1/test]

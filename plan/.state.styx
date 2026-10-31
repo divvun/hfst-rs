@@ -620,6 +620,7 @@ assertions (
     {id zip-upgrade.divvunspell, kind @complete, author "brendan@necessary.nu", at 2026-10-31T18:02:55.139381Z}
     {id zip-upgrade.hfst, kind @complete, author "brendan@necessary.nu", at 2026-10-31T19:37:53.145211Z}
     {id wasm.deno-check-root, kind @complete, author "brendan@necessary.nu", at 2026-10-31T19:42:40.017179Z}
+    {id wasm.publish, kind @doing, author "brendan@necessary.nu", at 2026-10-31T20:03:32.016351Z}
 )
 
 impl_evidence (

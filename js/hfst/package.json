@@ -10,6 +10,8 @@
     "url": "git+https://github.com/divvun/hfst-rs.git",
     "directory": "js/hfst"
   },
+  "homepage": "https://github.com/divvun/hfst-rs/tree/main/js/hfst#readme",
+  "bugs": "https://github.com/divvun/hfst-rs/issues",
   "type": "module",
   "exports": {
     ".": {
@@ -17,9 +19,12 @@
       "default": "./dist/index.js"
     }
   },
-  "files": ["dist"],
+  "files": ["dist", "MIGRATING.md", "BENCHMARKS.md"],
   "sideEffects": false,
   "engines": {
     "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

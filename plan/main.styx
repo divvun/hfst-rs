@@ -8171,6 +8171,14 @@ children (
                 title "Publish @divvun/hfst 0.1.0 to npm: package.json (LGPL-3.0-or-later, Divvun HFST, copyright UiT, github.com/divvun/hfst-rs), README with a migration guide from hfst-js and the hfst-js benchmark figures, a release build script; the operator confirms before the actual npm publish"
                 kind @build
                 deps (wasm.parity wasm.hfst-js-parity wasm.performance)
+                log (
+                    {
+                        at 2026-10-31T20:03:32.016351Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
+                )
             }
 
             {
