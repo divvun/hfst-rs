@@ -44,6 +44,7 @@ const scenarios = [
   { file: "dhfst.ts", build: "release", variants: ["main"] },
   { file: "parity-runtime.ts", build: "release", variants: ["main"] },
   { file: "hfst-js-parity.ts", build: "release", variants: ["fixtures", "analysers"] },
+  { file: "optimised.ts", build: "release", variants: ["main", "analysers"] },
 ];
 
 // Node only collects garbage on request with --expose-gc; Bun has Bun.gc.

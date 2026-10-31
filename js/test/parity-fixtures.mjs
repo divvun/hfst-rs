@@ -22,7 +22,7 @@ const READ = ["optimized-lookup-weighted", "optimized-lookup-unweighted"];
  * multicharacter symbols spelt whole and in parts, and é and ö composed and
  * decomposed.
  */
-const GRAPHEME_WORDS = ["ija", "ij", "i", "ja", "xy", "x", "\u00e9", "e\u0301", "o\u0308", "\u00f6", ""];
+export const GRAPHEME_WORDS = ["ija", "ij", "i", "ja", "xy", "x", "\u00e9", "e\u0301", "o\u0308", "\u00f6", ""];
 
 /** The text the animals container tokenises, with each of its patterns and a word none matches. */
 const ANIMALS = "a cat, a dog and a mouse\n";

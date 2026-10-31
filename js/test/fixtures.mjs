@@ -12,6 +12,7 @@ import { gunzipSync } from "node:zlib";
 import { buildDhfstFixtures } from "./dhfst-fixtures.mjs";
 import { buildHfstJsFixtures } from "./hfst-js-fixtures.mjs";
 import { buildLookupFixtures } from "./lookup-fixtures.mjs";
+import { buildOptimisedFixtures } from "./optimised-fixtures.mjs";
 import { buildParityFixtures } from "./parity-fixtures.mjs";
 import { buildTokeniseFixtures } from "./tokenise-fixtures.mjs";
 
@@ -57,6 +58,7 @@ export function buildFixtures(hfst, out) {
   buildDhfstFixtures(tool, out, sources);
   buildParityFixtures(hfst, out);
   buildHfstJsFixtures(tool, out, sources, READ);
+  buildOptimisedFixtures(out);
 }
 
 /** Builds the hfst tools with cargo and returns the binary's path. */

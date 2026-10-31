@@ -8313,6 +8313,14 @@ children (
                     target-impl ([spec:hfst:req:javascript.optimised-lookup])
                 }
                 deps (wasm.divvun-fst-wasm32 wasm.divvun-fst-lookup)
+                log (
+                    {
+                        at 2026-10-31T16:13:10.078387Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "readOptimisedTransducer(bytes) -> OptimisedTransducer (type, name, properties, lookup(input, { limit })), divvun-fst 9b51084 without fs. Results cross as one JSON string parsed in JS: on 4096 results/word it costs 0.4 us/result vs 1.85 for Reflect.set objects; under 1% of search time on real analysers. Parity with native divvun-fst: 612/612 in Node, Bun, Deno, Chromium page and worker. Against lookup: fixtures 189 agree, normalisation 6, outside-alphabet 8, epsilon-cycle 1 (speller fixture: hfst lookup goes once round a flag/epsilon cycle back to the same flags; divvun-fst never does; the spec rule's explanatory sentence names only the first two). Real analysers (13, words + non-words): all agree except normalisation (gle analyser-gt-norm 709, gle generators 37/33, se-zcheck 12). Speed, Node, loaded machine: optimised load 0.4-1.8 ms vs hfst-js 4-21 ms (0.05-0.28x); uncached lookup 2.7-6.8x hfst-js (kal analyser 1365 vs 343 us, kal generator 39.8 vs 5.8 ms, gle analyser 316 vs 55 us). Bun 1.8-4.8x. Native divvun-fst is 5-10x faster than its wasm build (kal analyser 267 us, gle 32 us), and opt-level 3 gains only 17%, so the gap is the engine on wasm32 (hashing per node is a likely cause), for wasm.performance. .wasm 390,277 -> 477,473 bytes."
+                    }
+                )
             }
         )
         log (

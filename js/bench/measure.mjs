@@ -1,5 +1,6 @@
-// Measures one transducer in @divvun/hfst and in hfst-js, in a process of
-// its own, and prints the figures as one line of JSON. js/bench/bench.mjs runs
+// Measures one transducer in @divvun/hfst, with both its lookups, and in
+// hfst-js, in a process of its own, and prints the figures as one line of
+// JSON. js/bench/bench.mjs runs
 // it under each runtime; it takes its settings as JSON in its first argument:
 // { transducer, words, loads, passes, sample }.
 
@@ -31,33 +32,40 @@ const initMs = performance.now() - initStart;
 const bytes = new Uint8Array(readFileSync(transducer));
 const words = [...new Set(readFileSync(wordsPath, "utf8").split("\n").filter((word) => word !== ""))].slice(0, sample);
 
-// Loads alternate between the libraries, so a slow spell of the machine falls
-// on both rather than on one.
+// Loads take turns between the libraries, so a slow spell of the machine
+// falls on each rather than on one.
 const oursLoad = [];
+const optimisedLoad = [];
 const theirsLoad = [];
 for (let i = 0; i < loads; i += 1) {
   oursLoad.push(time(() => hfst.readTransducer(bytes).free()));
+  optimisedLoad.push(time(() => hfst.readOptimisedTransducer(bytes).free()));
   theirsLoad.push(time(() => new HfstInputStream(bytes, false).read()));
 }
 
-// One untimed pass warms both libraries' code and fills hfst-js's cache.
+// One untimed pass warms every library's code and fills hfst-js's cache.
 const ours = hfst.readTransducer(bytes);
+const optimised = hfst.readOptimisedTransducer(bytes);
 const uncached = new HfstInputStream(bytes, false).read();
 const cached = new HfstInputStream(bytes, true).read();
 let analyses = 0;
 for (const word of words) {
   analyses += ours.lookup(word).length;
+  optimised.lookup(word);
   cached.lookup(word);
 }
 const oursPass = [];
+const optimisedPass = [];
 const theirsPass = [];
 const cachedPass = [];
 for (let i = 0; i < passes; i += 1) {
   oursPass.push(time(() => words.forEach((word) => ours.lookup(word))));
+  optimisedPass.push(time(() => words.forEach((word) => optimised.lookup(word))));
   theirsPass.push(time(() => words.forEach((word) => uncached.lookup(word))));
   cachedPass.push(time(() => words.forEach((word) => cached.lookup(word))));
 }
 ours.free();
+optimised.free();
 
 const perWordUs = (passMs) => (1000 * median(passMs)) / words.length;
 console.log(
@@ -67,7 +75,12 @@ console.log(
     words: words.length,
     analyses,
     initMs,
-    loadMs: { ours: median(oursLoad), hfstJs: median(theirsLoad) },
-    lookupUs: { ours: perWordUs(oursPass), hfstJs: perWordUs(theirsPass), hfstJsCached: perWordUs(cachedPass) },
+    loadMs: { ours: median(oursLoad), optimised: median(optimisedLoad), hfstJs: median(theirsLoad) },
+    lookupUs: {
+      ours: perWordUs(oursPass),
+      optimised: perWordUs(optimisedPass),
+      hfstJs: perWordUs(theirsPass),
+      hfstJsCached: perWordUs(cachedPass),
+    },
   }),
 );

@@ -1,6 +1,6 @@
 schema_version 7
 
-last_sync_at 2026-10-29T17:13:00.466749Z
+last_sync_at 2026-10-31T16:13:26.446191Z
 
 rule_versions (
     {id determinize-envelope.bounded-strategies, version 0}
@@ -46,7 +46,7 @@ rule_versions (
     {id javascript.named-file-resolver, version 0}
     {id javascript.native-parity, version 2}
     {id javascript.no-host-traps, version 0}
-    {id javascript.optimised-lookup, version 0}
+    {id javascript.optimised-lookup, version 1}
     {id javascript.packages, version 2}
     {id javascript.portable-build, version 1}
     {id javascript.read-only-module, version 0}
@@ -1046,5 +1046,10 @@ impl_evidence (
         {impl_name target-impl, rule xre-finalization.root-optimize}
     ), rule_versions_seen (
         {id xre-finalization.root-optimize, version 0}
+    )}
+    {id wasm.optimised-lookup, covered_rules (
+        javascript.optimised-lookup
+    ), covered_claims (
+        {impl_name target-impl, rule javascript.optimised-lookup}
     )}
 )

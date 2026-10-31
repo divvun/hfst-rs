@@ -8,7 +8,7 @@ test("the entry module exports the API", async () => {
   const names = Object.keys(await entryOf(dir)).sort();
   assertEqual(
     names.join(" "),
-    "DhfstAcceptor DhfstErrorModel HfstError Tokeniser Transducer init readDhfst readTokeniser readTransducer readTransducers setLogLevel setLogger version",
+    "DhfstAcceptor DhfstErrorModel HfstError OptimisedTransducer Tokeniser Transducer init readDhfst readOptimisedTransducer readTokeniser readTransducer readTransducers setLogLevel setLogger version",
     "exports",
   );
 });

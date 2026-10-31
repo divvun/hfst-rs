@@ -12,6 +12,7 @@ import type {
   GlueInitInput,
   GlueObject,
   GlueSink,
+  OptimisedTransducerGlue,
   TokeniserGlue,
   TransducerGlue,
 } from "../hfst/glue.ts";
@@ -69,6 +70,15 @@ export class FakeGlue implements Glue {
     );
     this.made.push(...transducers);
     return transducers;
+  }
+
+  /** The first transducer of `stream`, as the optimised lookup's reader hands it out. */
+  readOptimisedTransducer(_bytes: Uint8Array): OptimisedTransducerGlue {
+    this.entered += 1;
+    const [format = "", name = "", ...pairs] = this.stream[0] ?? [];
+    const transducer = new FakeOptimisedTransducer(this, format, name, pairs);
+    this.made.push(transducer);
+    return transducer;
   }
 
   readTokeniser(_bytes: Uint8Array): TokeniserGlue {
@@ -164,6 +174,38 @@ export class FakeTransducer extends FakeObject implements TransducerGlue {
   lookup(input: string, limit: number | undefined, timeLimitMs: number | undefined): LookupResult[] {
     this.lookups.push([input, limit, timeLimitMs]);
     return [{ output: input, symbols: [...input], weight: 0 }];
+  }
+}
+
+export class FakeOptimisedTransducer extends FakeObject implements OptimisedTransducerGlue {
+  readonly #format: string;
+  readonly #pairs: string[];
+  /** The arguments of every lookup, in order. */
+  readonly lookups: [string, number | undefined][] = [];
+  /** What every lookup answers, as the JSON text the module writes; null answers each input with itself. */
+  answer: string | null = null;
+
+  constructor(glue: FakeGlue, format: string, name: string, pairs: string[]) {
+    super(glue, name);
+    this.#format = format;
+    this.#pairs = pairs;
+  }
+
+  format(): string {
+    return this.#format;
+  }
+
+  name(): string {
+    return this.label;
+  }
+
+  propertyPairs(): string[] {
+    return this.#pairs;
+  }
+
+  lookup(input: string, limit: number | undefined): string {
+    this.lookups.push([input, limit]);
+    return this.answer ?? JSON.stringify([{ output: input, symbols: [...input], weight: 0 }]);
   }
 }
 

@@ -46,6 +46,17 @@ export interface TransducerGlue extends GlueObject {
   lookup(input: string, limit: number | undefined, timeLimitMs: number | undefined): LookupResult[];
 }
 
+/** A transducer the glue holds for the optimised lookup, from `crates/hfst-wasm/src/optimised.rs`. */
+export interface OptimisedTransducerGlue extends GlueObject {
+  /** The name of its format, one the wrapper lists as a transducer type. */
+  format(): string;
+  name(): string;
+  /** Its other properties, flattened to key, value, key, value. */
+  propertyPairs(): string[];
+  /** The results for `input`, at most `limit` of them, as a JSON array of `LookupResult` objects. */
+  lookup(input: string, limit: number | undefined): string;
+}
+
 /** A tokeniser the glue holds, from `crates/hfst-wasm/src/tokenise.rs`. */
 export interface TokeniserGlue extends GlueObject {
   /** The tokens of `text`, which the module builds as plain objects. */
@@ -91,6 +102,8 @@ export interface Glue {
   version(): string;
   /** Every optimized-lookup transducer in a stream, in stream order. */
   readTransducers(bytes: Uint8Array): TransducerGlue[];
+  /** The one optimized-lookup transducer in `bytes`, read by divvun-fst. */
+  readOptimisedTransducer(bytes: Uint8Array): OptimisedTransducerGlue;
   /** The tokeniser in a pmatch container's bytes. */
   readTokeniser(bytes: Uint8Array): TokeniserGlue;
   /** The DHFST file in `bytes`, validated as divvunspell validates it. */

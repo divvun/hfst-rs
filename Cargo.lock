@@ -273,7 +273,7 @@ source = "git+https://github.com/bbqsrc/box?rev=3d3818ce6251201916f2ce99a2aedfef
 dependencies = [
  "async-walkdir",
  "blake3",
- "box-fst",
+ "box-fst 0.1.0 (git+https://github.com/bbqsrc/box?rev=3d3818ce6251201916f2ce99a2aedfef321ba3ad)",
  "byteorder",
  "digest",
  "fastvint",
@@ -297,9 +297,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "box-format"
+version = "0.4.0"
+source = "git+https://github.com/bbqsrc/box#da96a74656aef7f582a061c16fc0b70288ed514a"
+dependencies = [
+ "box-fst 0.1.0 (git+https://github.com/bbqsrc/box)",
+ "byteorder",
+ "fastvint",
+ "hashbrown 0.15.5",
+]
+
+[[package]]
 name = "box-fst"
 version = "0.1.0"
 source = "git+https://github.com/bbqsrc/box?rev=3d3818ce6251201916f2ce99a2aedfef321ba3ad#3d3818ce6251201916f2ce99a2aedfef321ba3ad"
+dependencies = [
+ "fastvint",
+ "hashbrown 0.15.5",
+]
+
+[[package]]
+name = "box-fst"
+version = "0.1.0"
+source = "git+https://github.com/bbqsrc/box#da96a74656aef7f582a061c16fc0b70288ed514a"
 dependencies = [
  "fastvint",
  "hashbrown 0.15.5",
@@ -554,6 +574,40 @@ dependencies = [
  "quote",
  "syn 3.0.4",
 ]
+
+[[package]]
+name = "divvun-fst"
+version = "1.0.0-beta.13"
+source = "git+https://github.com/divvun/divvunspell?rev=9b510842b79531429b0667b2bd8c28f0510380d6#9b510842b79531429b0667b2bd8c28f0510380d6"
+dependencies = [
+ "box-format 0.4.0 (git+https://github.com/bbqsrc/box)",
+ "byteorder",
+ "eieio",
+ "hashbrown 0.16.1",
+ "itertools",
+ "libc",
+ "parking_lot",
+ "serde",
+ "serde-xml-rs",
+ "serde_json",
+ "smol_str",
+ "strsim",
+ "thiserror 2.0.20",
+ "tracing",
+ "unic-char-property",
+ "unic-char-range",
+ "unic-emoji-char",
+ "unic-segment",
+ "unic-ucd-category",
+ "unic-ucd-common",
+ "zip",
+]
+
+[[package]]
+name = "eieio"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0f3dd87dfc333e61e1be9ec6d6a4d946a98ece074da331eeb5d1c0b98b47ee34"
 
 [[package]]
 name = "either"
@@ -828,6 +882,19 @@ dependencies = [
 
 [[package]]
 name = "hashbrown"
+version = "0.16.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "841d1cc9bed7f9236f321df977030373f4a4163ae1a7dbfe1a51a2c1a51d9100"
+dependencies = [
+ "allocator-api2",
+ "equivalent",
+ "foldhash 0.2.0",
+ "serde",
+ "serde_core",
+]
+
+[[package]]
+name = "hashbrown"
 version = "0.17.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ed5909b6e89a2db4456e54cd5f673791d7eca6732202bbf2a9cc504fe2f9b84a"
@@ -876,7 +943,7 @@ dependencies = [
 name = "hfst-cli"
 version = "0.1.0"
 dependencies = [
- "box-format",
+ "box-format 0.4.0 (git+https://github.com/bbqsrc/box?rev=3d3818ce6251201916f2ce99a2aedfef321ba3ad)",
  "clap",
  "dhat",
  "hfst",
@@ -904,9 +971,12 @@ dependencies = [
 name = "hfst-wasm"
 version = "0.1.0"
 dependencies = [
+ "divvun-fst",
  "hfst",
  "hfst-openfst",
  "js-sys",
+ "serde",
+ "serde_json",
  "tracing",
  "tracing-core",
  "tracing-subscriber",
@@ -2418,12 +2488,32 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "80d7ff825a6a654ee85a63e80f92f054f904f21e7d12da4e22f9834a4aaa35bc"
 
 [[package]]
+name = "unic-emoji-char"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0b07221e68897210270a38bde4babb655869637af0f69407f96053a34f76494d"
+dependencies = [
+ "unic-char-property",
+ "unic-char-range",
+ "unic-ucd-version",
+]
+
+[[package]]
 name = "unic-normal"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f09d64d33589a94628bc2aeb037f35c2e25f3f049c7348b5aa5580b48e6bba62"
 dependencies = [
  "unic-ucd-normal",
+]
+
+[[package]]
+name = "unic-segment"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e4ed5d26be57f84f176157270c112ef57b86debac9cd21daaabbe56db0f88f23"
+dependencies = [
+ "unic-ucd-segment",
 ]
 
 [[package]]
