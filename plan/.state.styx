@@ -1,6 +1,6 @@
 schema_version 7
 
-last_sync_at 2026-10-31T16:13:26.446191Z
+last_sync_at 2026-10-31T16:30:20.688289Z
 
 rule_versions (
     {id determinize-envelope.bounded-strategies, version 0}
@@ -46,7 +46,7 @@ rule_versions (
     {id javascript.named-file-resolver, version 0}
     {id javascript.native-parity, version 2}
     {id javascript.no-host-traps, version 0}
-    {id javascript.optimised-lookup, version 1}
+    {id javascript.optimised-lookup, version 2}
     {id javascript.packages, version 2}
     {id javascript.portable-build, version 1}
     {id javascript.read-only-module, version 0}
@@ -278,6 +278,7 @@ derived_priorities (
     {id wasm.runtime-package, priority 3, derived_at 2026-10-28T23:00:39.237354Z}
     {id wasm.rustfst-entropy, priority 0, derived_at 2026-10-28T23:00:39.237354Z}
     {id wasm.single-package, priority 3, derived_at 2026-10-29T13:08:33.271865Z}
+    {id wasm.thfst-chunked-panic, priority 2, derived_at 2026-10-31T16:30:20.688289Z}
     {id wasm.tokenise, priority 3, derived_at 2026-10-28T23:00:39.237354Z}
     {id wasm.transducer-io, priority 3, derived_at 2026-10-28T23:00:39.237354Z}
     {id wasm.xfst-output, priority 0, derived_at 2026-10-28T23:00:39.237354Z}
@@ -920,6 +921,8 @@ impl_evidence (
         javascript.optimised-lookup
     ), covered_claims (
         {impl_name target-impl, rule javascript.optimised-lookup}
+    ), rule_versions_seen (
+        {id javascript.optimised-lookup, version 2}
     )}
     {id wasm.parity, covered_rules (
         javascript.native-parity
