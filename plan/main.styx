@@ -8683,6 +8683,22 @@ children (
                         id xfst-shell.cancel.design
                         title "Decide how cancellation works and record it as an AKM decision in plan/decisions: where the cancel signal lives given EngineConfig is Copy and the library holds no global mutable state (idiom5); which loops check it (the determinize/compose budget checkpoints, rustfst fork algorithms, the foma crate, lexc/twolc/pmatch compiles, lookup) and what bounds the time to stop; how SIGINT reaches it from hfst-cli (ctrlc or signal-hook) while rustyline holds the terminal in raw mode at a prompt; and how the error surfaces"
                         kind @docs
+                        sealed true
+                        log (
+                            {
+                                at 2026-11-03T11:56:50.308548Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Todo → Doing (nplan start)"
+                            }
+
+                            {
+                                at 2026-11-03T11:58:35.717386Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Doing → Done (nplan complete)"
+                            }
+                        )
                     }
 
                     {
