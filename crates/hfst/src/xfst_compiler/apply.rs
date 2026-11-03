@@ -74,11 +74,11 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         .with_note("'hfst fst2fst -O' converts a saved network to optimized lookup"))
     }
 
+    // [spec:hfst:sem:xfst-cmd.shell-messages]
     pub fn remove_optimization(&mut self) -> CmdResult {
-        self.top()?;
-        self.diag_warning("network is already in ordinary format");
-        self.prompt();
-        Ok(())
+        Err(CommandError::not_supported("remove-optimization").with_note(
+            "the stack never holds an optimized lookup network, so there is none to convert back",
+        ))
     }
 
     // (The former OL-only 'fn lookup' is gone: its 'lookup_fd_string'

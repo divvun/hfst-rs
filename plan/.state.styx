@@ -1125,4 +1125,9 @@ impl_evidence (
     ), covered_claims (
         {impl_name target-impl, rule xfst-cmd.shell-session-edges}
     )}
+    {id xfst-shell.messages, covered_rules (
+        xfst-cmd.shell-messages
+    ), covered_claims (
+        {impl_name target-impl, rule xfst-cmd.shell-messages}
+    )}
 )

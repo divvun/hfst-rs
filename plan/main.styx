@@ -8790,6 +8790,13 @@ children (
                         kind @decision
                         text "Dropped the dep on xfst-shell.nfst-xfst-0-6: nfst-xfst already escapes control characters in its lexer message (\"unexpected character '\\u{1b}'\"). The backslash comes from hfst's unexpected_character_diagnostic, which recovers the character by taking the first char of that message. All three items are hfst-only."
                     }
+
+                    {
+                        at 2026-11-03T12:16:31.16475Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
                 )
             }
         )

@@ -145,11 +145,12 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             } else {
                 write!(self.output, "Defined")?;
             }
+            // [spec:hfst:sem:xfst-cmd.shell-messages]
             writeln!(
                 self.output,
-                " function '{}@{})",
+                " function '{}({})'",
                 name,
-                arguments.len() as i32
+                arguments.join(", ")
             )?;
         }
 

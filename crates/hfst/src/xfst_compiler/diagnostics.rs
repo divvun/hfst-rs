@@ -136,7 +136,7 @@ pub fn parse_diagnostics(src: &str, e: &nfst_xfst::ParseError) -> Vec<Diagnostic
             out.push(unknown_command_diagnostic(text, span));
             continue;
         }
-        if let Some(rest) = d.message.strip_prefix("unexpected character ") {
+        if d.message.starts_with("unexpected character ") {
             if let Some(line) = bare_regex_line(src, span.start) {
                 // Every quote on the line trips the lexer; one report is enough.
                 if !out
@@ -147,7 +147,7 @@ pub fn parse_diagnostics(src: &str, e: &nfst_xfst::ParseError) -> Vec<Diagnostic
                 }
                 continue;
             }
-            out.push(unexpected_character_diagnostic(rest, span));
+            out.push(unexpected_character_diagnostic(text, span));
             continue;
         }
         // Everything else: keep the front-end wording but drop the debug dump
@@ -290,10 +290,12 @@ fn bare_regex_diagnostic(span: std::ops::Range<usize>) -> Diagnostic {
     )
 }
 
-fn unexpected_character_diagnostic(quoted: &str, span: std::ops::Range<usize>) -> Diagnostic {
-    // The front-end quotes the byte it stopped on; recover it to decide whether
-    // this is the quoting trap or an ordinary stray character.
-    let ch = quoted.trim().trim_matches('\'').chars().next();
+// [spec:hfst:sem:xfst-cmd.shell-messages]
+/// The diagnostic for the character `found` (the source under `span`), which
+/// no word may hold. A control character, such as the escape an arrow key
+/// sends, is shown escaped: printed raw, the terminal would act on it.
+fn unexpected_character_diagnostic(found: &str, span: std::ops::Range<usize>) -> Diagnostic {
+    let ch = found.chars().next();
     let mut notes = Vec::new();
     if matches!(ch, Some('"') | Some('\'')) {
         notes.push(String::from(
@@ -304,6 +306,9 @@ fn unexpected_character_diagnostic(quoted: &str, span: std::ops::Range<usize>) -
         ));
     }
     let message = match ch {
+        Some(c) if c.is_control() => {
+            format!("unexpected character '{}' in a word", c.escape_debug())
+        }
         Some(c) => format!("unexpected character '{}' in a word", c),
         None => String::from("unexpected character"),
     };
@@ -437,4 +442,55 @@ fn edit_distance(a: &str, b: &str, budget: usize) -> usize {
         std::mem::swap(&mut prev, &mut cur);
     }
     prev[b.len()]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use hfst_openfst::StdVectorFst;
+
+    /// What running `script` printed, and the messages it reported.
+    fn run(script: &str) -> (String, Vec<String>) {
+        let mut c = XfstCompiler::<StdVectorFst>::new();
+        c.set_verbosity(true);
+        let _ = c.parse(script);
+        let out = String::from_utf8(c.take_output()).expect("UTF-8 output");
+        let messages = c
+            .diagnostics()
+            .iter()
+            .map(|d| d.message().to_string())
+            .collect();
+        (out, messages)
+    }
+
+    // [spec:hfst:sem:xfst-cmd.shell-messages/test]
+    #[test]
+    fn a_function_definition_reports_its_parameters() {
+        assert_eq!(
+            run("define F(x, y) x y ;\n").0,
+            "Defined function 'F(x, y)'\n"
+        );
+    }
+
+    // [spec:hfst:sem:xfst-cmd.shell-messages/test]
+    // An up arrow sends ESC [ A. The message used to take the first character
+    // of the lexer's escaped rendering and so named a backslash.
+    #[test]
+    fn a_control_character_is_shown_escaped() {
+        let messages = run("\x1b[A\n").1;
+        assert!(
+            messages.contains(&String::from("unexpected character '\\u{1b}' in a word")),
+            "{messages:?}"
+        );
+    }
+
+    // [spec:hfst:sem:xfst-cmd.shell-messages/test]
+    #[test]
+    fn remove_optimization_fails_as_not_supported() {
+        let messages = run("regex a ;\nremove-optimization\n").1;
+        assert!(
+            messages.contains(&String::from("'remove-optimization' is not supported")),
+            "{messages:?}"
+        );
+    }
 }
