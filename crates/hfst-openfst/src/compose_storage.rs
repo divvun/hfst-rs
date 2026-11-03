@@ -376,6 +376,7 @@ where
     let mut state_index = 0_usize;
     let mut discovered = 1_usize;
     while state_index < discovered {
+        rustfst::interrupt::check_every(state_index + 1)?;
         let state =
             StateId::try_from(state_index).context("compose product exceeded StateId capacity")?;
         let trs = fst

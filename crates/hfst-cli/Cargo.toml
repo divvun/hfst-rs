@@ -51,6 +51,10 @@ tempfile = "3"
 # `--no-default-features`, where nothing else selects one for it.
 zip = { version = "9.2", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 
+# Ctrl-C in the interactive xfst shell sets the session's interrupt flag.
+[target.'cfg(unix)'.dependencies]
+signal-hook = "0.4"
+
 # Drives the xfst shell through a pseudo-terminal, where the line editor runs.
 [target.'cfg(unix)'.dev-dependencies]
 rexpect = "0.7"

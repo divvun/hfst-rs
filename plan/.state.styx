@@ -652,7 +652,6 @@ assertions (
     {id divvunspell-alerts, kind @complete, author "brendan@necessary.nu", at 2026-10-31T22:47:58.978301Z}
     {id xfst-shell.nfst-xfst-0-6, kind @doing, author "brendan@necessary.nu", at 2026-11-03T11:28:50.249511Z}
     {id xfst-shell.cancel.design, kind @complete, author "brendan@necessary.nu", at 2026-11-03T11:58:35.717386Z}
-    {id xfst-shell.cancel.interrupt, kind @doing, author "brendan@necessary.nu", at 2026-11-03T12:28:42.381257Z}
 )
 
 impl_evidence (
@@ -1135,5 +1134,10 @@ impl_evidence (
         xfst-cmd.shell-completion
     ), covered_claims (
         {impl_name target-impl, rule xfst-cmd.shell-completion}
+    )}
+    {id xfst-shell.cancel.interrupt, covered_rules (
+        xfst-cmd.shell-cancel
+    ), covered_claims (
+        {impl_name target-impl, rule xfst-cmd.shell-cancel}
     )}
 )

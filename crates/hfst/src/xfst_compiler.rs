@@ -24,6 +24,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::backend::{AlgebraBackend, Backend};
 use crate::diag::{Diagnostic, DiagnosticSink, Diagnostics, Severity};
@@ -182,6 +183,13 @@ impl CommandError {
         CommandError::new("empty stack: this command needs a network on the stack")
     }
 
+    // [spec:hfst:req:xfst-cmd.shell-cancel]
+    fn interrupted() -> Self {
+        CommandError::new("interrupted").with_note(
+            "the stack, definitions, lists and variables are as they were before the command",
+        )
+    }
+
     fn need_two() -> Self {
         CommandError::new("not enough networks on the stack: this operation needs two")
     }
@@ -304,6 +312,8 @@ pub struct XfstCompiler<B: AlgebraBackend> {
     line_source: Option<Box<dyn LineSource>>,
     /// What the running command may need put back if it fails.
     undo: Option<undo::Undo<B>>,
+    /// Set from outside, by Ctrl-C, to stop the running command.
+    interrupt: Option<&'static AtomicBool>,
     /// What running commands has reported, oldest first, until the caller
     /// takes it or a sink receives it. Includes what the embedded regex and
     /// lexc compilers reported.
@@ -395,6 +405,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             input: Box::new(std::io::empty()),
             line_source: None,
             undo: None,
+            interrupt: None,
             files: crate::file_resolver::default_resolver(),
             diagnostics: Diagnostics::default(),
         };
@@ -505,11 +516,22 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         for c in &script.value.commands {
             self.current_span = c.span.range.clone();
             let undoing = self.begin_undo(&c.value);
-            let outcome = self.eval_command(&c.value);
+            let interrupt = self.interrupt;
+            let outcome =
+                hfst_openfst::rustfst::interrupt::scope(interrupt, || self.eval_command(&c.value));
             self.absorb_nested_diagnostics();
             let outcome = match self.output_failure.take() {
                 Some(failure) => outcome.and(Err(failure)),
                 None => outcome,
+            };
+            // [spec:hfst:req:xfst-cmd.shell-cancel]
+            // A command that saw Ctrl-C fails whatever it returned: a fallback
+            // inside it may have swallowed the error and gone on.
+            let interrupted = interrupt.is_some_and(|flag| flag.load(Ordering::Relaxed));
+            let outcome = match outcome {
+                Err(e) if interrupted && e.reported => Err(e),
+                _ if interrupted => Err(CommandError::interrupted()),
+                outcome => outcome,
             };
             if undoing {
                 self.end_undo(outcome.is_err());
@@ -522,7 +544,9 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
                     if !e.reported {
                         self.diagnostics.push(failure.clone());
                     }
-                    if !self.stops_on_failure() {
+                    // Ctrl-C stops the whole line or script, not just this
+                    // command.
+                    if !interrupted && !self.stops_on_failure() {
                         continue;
                     }
                     return Err(ScriptError {

@@ -876,7 +876,10 @@ fn reverse_reachable(
         )
     })?;
     let mut sorted_edges = BufReader::with_capacity(budget.io_buffer_bytes, sorted_file);
+    let mut visited: usize = 0;
     while let Some(target) = queue.pop()? {
+        visited += 1;
+        rustfst::interrupt::check_every(visited)?;
         let (start, end) = read_offset_pair(&mut offsets, offsets_path, target)?;
         ensure!(
             start <= end && end <= pending.arc_count,

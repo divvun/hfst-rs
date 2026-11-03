@@ -35,6 +35,15 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         self
     }
 
+    // [spec:hfst:req:xfst-cmd.shell-cancel]
+    /// Stop the running command when `flag` is set, as Ctrl-C does: it fails
+    /// as interrupted and leaves the session as it was. The shell clears the
+    /// flag before each line it runs.
+    pub fn set_interrupt(&mut self, flag: &'static AtomicBool) -> &mut Self {
+        self.interrupt = Some(flag);
+        self
+    }
+
     // [spec:hfst:req:xfst-cmd.shell-in-library]
     // [spec:hfst:req:xfst-cmd.interactive-prompt]
     /// Run the interactive shell until end of input or `quit`: prompt for
@@ -70,6 +79,9 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             expression.push_str(&line);
             if expression_continues(&mut expression) {
                 continue;
+            }
+            if let Some(flag) = self.interrupt {
+                flag.store(false, Ordering::Relaxed);
             }
             // A failure is reported where it happens; the shell goes on.
             if let Ok(Flow::Quit) = self.parse(&format!("{}\n", expression)) {
@@ -365,6 +377,47 @@ mod tests {
         c.set_input_stream(std::io::Cursor::new(b"echo hi\n".to_vec()));
         c.interact().expect("the shell runs to end of input");
         assert_eq!(c.take_output(), b"hi\n");
+    }
+
+    // [spec:hfst:req:xfst-cmd.shell-cancel/test]
+    // With the flag already set the command fails as interrupted, the rest of
+    // the line does not run, and the stack is as it was.
+    #[test]
+    fn an_interrupted_command_changes_nothing() {
+        static FLAG: AtomicBool = AtomicBool::new(false);
+        let mut c = session();
+        c.set_interrupt(&FLAG);
+        // As at the prompt, the session goes on after a failure.
+        c.parse("set quit-on-fail OFF\nregex a:b ;\nregex c:d ;\n")
+            .expect("setup runs");
+        let _ = c.take_output();
+        FLAG.store(true, Ordering::Relaxed);
+        assert!(c.parse("compose net\necho after\n").is_err());
+        FLAG.store(false, Ordering::Relaxed);
+        assert!(
+            c.diagnostics().iter().any(|d| d.message() == "interrupted"),
+            "reported as interrupted"
+        );
+        c.parse("print stack\n").expect("print stack runs");
+        let out = String::from_utf8(c.take_output()).expect("UTF-8 output");
+        // What the command printed before it was stopped stays printed.
+        assert!(
+            out.ends_with("\n0: 2 states, 1 arcs\n1: 2 states, 1 arcs\n"),
+            "{out}"
+        );
+        assert!(!out.contains("after"), "the rest of the line did not run");
+    }
+
+    // [spec:hfst:req:xfst-cmd.shell-cancel/test]
+    // The shell clears the flag before each line, so an old Ctrl-C does not
+    // stop the next command.
+    #[test]
+    fn the_shell_clears_the_flag_before_each_line() {
+        static FLAG: AtomicBool = AtomicBool::new(true);
+        let (mut c, _) = scripted(&["echo ran"]);
+        c.set_interrupt(&FLAG);
+        c.interact().expect("the shell runs to end of input");
+        assert_eq!(c.take_output(), b"ran\n");
     }
 
     // [spec:hfst:req:xfst-cmd.shell-in-library/test]

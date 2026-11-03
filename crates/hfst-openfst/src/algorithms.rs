@@ -204,7 +204,10 @@ where
     let mut queue: VecDeque<(StateId, StateId)> = VecDeque::new();
     visited.insert((a, b));
     queue.push_back((a, b));
+    let mut compared: usize = 0;
     while let Some((q1, q2)) = queue.pop_front() {
+        compared += 1;
+        rustfst::interrupt::check_every(compared)?;
         if fst1.final_weight(q1)? != fst2.final_weight(q2)? {
             return Ok(false);
         }

@@ -473,6 +473,38 @@ pub(super) fn execute(args: Vec<String>) -> ToolResult {
     })
 }
 
+// [spec:hfst:req:xfst-cmd.shell-cancel]
+/// Make Ctrl-C stop the running command instead of the process: SIGINT sets
+/// the session's interrupt flag, and a second Ctrl-C while the first is still
+/// pending ends the process, for a loop that does not poll the flag.
+#[cfg(unix)]
+fn cancel_on_ctrl_c<B: hfst::backend::AlgebraBackend + hfst::hfst_transducer::FromAnyTransducer>(
+    common: &CommonOptions,
+    comp: &mut XfstCompiler<B>,
+) {
+    use signal_hook::consts::SIGINT;
+    use std::sync::Arc;
+    use std::sync::atomic::AtomicBool;
+    // The session borrows the flag for as long as the process runs.
+    let flag: &'static Arc<AtomicBool> = Box::leak(Box::new(Arc::new(AtomicBool::new(false))));
+    let registered =
+        signal_hook::flag::register_conditional_shutdown(SIGINT, 130, Arc::clone(flag))
+            .and_then(|_| signal_hook::flag::register(SIGINT, Arc::clone(flag)));
+    match registered {
+        Ok(_) => {
+            comp.set_interrupt(flag);
+        }
+        Err(e) => verbose_print(common, &format!("Ctrl-C will end the session ({e})\n")),
+    }
+}
+
+#[cfg(not(unix))]
+fn cancel_on_ctrl_c<B: hfst::backend::AlgebraBackend + hfst::hfst_transducer::FromAnyTransducer>(
+    _common: &CommonOptions,
+    _comp: &mut XfstCompiler<B>,
+) {
+}
+
 // [spec:hfst:req:xfst-cmd.shell-line-editing]
 /// The terminal line editor the shell reads every line through: cursor
 /// keys, deletion and up/down recall of this session's lines.
@@ -660,6 +692,9 @@ fn run_compiler<B: hfst::backend::AlgebraBackend + hfst::hfst_transducer::FromAn
                 );
             }
         }
+        if on_terminal {
+            cancel_on_ctrl_c(common, &mut comp);
+        }
         if !options.no_readline && on_terminal {
             match LineEditor::new() {
                 Ok(editor) => {
@@ -716,6 +751,23 @@ mod tests {
         assert_eq!(
             candidates("undefine B"),
             (9, vec![("Bar".into(), "Bar".into())])
+        );
+    }
+
+    // [spec:hfst:req:xfst-cmd.shell-cancel/test]
+    // One SIGINT, raised in this test's own process, sets the session's flag,
+    // so the next command fails as interrupted instead of the process ending.
+    #[cfg(unix)]
+    #[test]
+    fn ctrl_c_sets_the_sessions_interrupt() {
+        let mut comp = XfstCompiler::<hfst_openfst::StdVectorFst>::new();
+        cancel_on_ctrl_c(&CommonOptions::default(), &mut comp);
+        signal_hook::low_level::raise(signal_hook::consts::SIGINT).expect("raise SIGINT");
+        assert!(comp.parse("echo still here\n").is_err());
+        assert!(
+            comp.diagnostics()
+                .iter()
+                .any(|d| d.message() == "interrupted")
         );
     }
 

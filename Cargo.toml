@@ -53,7 +53,7 @@ hfst = { path = "crates/hfst", default-features = false }
 # Default features off drops os-rng, whose getrandom dependency cannot build for
 # wasm32-unknown-unknown without a RUSTFLAGS backend choice; hfst never calls
 # the entropy-seeded randgen it gates.
-rustfst = { git = "https://github.com/necessary-nu/rustfst", rev = "897e85b0e3c9a7f47fa2c5762542ed0e074a2caa", default-features = false, features = ["state-label-u32"] }
+rustfst = { git = "https://github.com/necessary-nu/rustfst", rev = "3f7f2b720751f634bd3d65145bd8b85ac9eea83c", default-features = false, features = ["state-label-u32"] }
 
 # parser front-ends (sibling repo: text -> AST). The port owns AST -> transducer.
 # 0.2 carries htwolcpre1's marker renames for bare 0/#/.#. — required by the

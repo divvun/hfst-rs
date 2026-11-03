@@ -1,6 +1,6 @@
 ---
 id [dec:hfst:xfst-cancellation]
-epitome "Ctrl-C in the xfst shell cancels the running command cooperatively: the host owns an interrupt flag set from SIGINT, a Copy handle to it rides in EngineConfig and the algorithm configs down to the long loops, which poll it every 1024 units of work and fail with an Interrupted error that the per-command undo turns back into the session as it was."
+epitome "Ctrl-C in the xfst shell cancels the running command cooperatively: the host owns an interrupt flag set from SIGINT, the session runs each command inside a scoped, thread-local interrupt in the rustfst fork, the long loops poll it every 1024 units of work and fail with Interrupted, and a set flag fails the command whatever it returned, so the per-command undo always puts the session back."
 state @decided
 category @executive
 scope {
@@ -25,17 +25,23 @@ alternatives (
         option "Carry an Arc<AtomicBool> in EngineConfig."
         rejected_because "EngineConfig is Copy and is copied at about 30 call sites (`let cfg = self.engine_config;`) into the budget plumbing. A borrowed `&'static AtomicBool` shares the flag just as well and keeps Copy; the host leaks one flag for the life of the process."
     }
+    {
+        option "Thread a Copy handle through EngineConfig and every rustfst config (DeterminizeConfig, compose options, minimize, rm_epsilon) to the loops."
+        rejected_because "The first version of this decision. Building it showed the regex, lexc and twolc compilers call rustfst from dozens of sites, many through EngineConfig::default() or no config at all, so threading would touch them all and still miss some. A scope set around the command reaches every rustfst call the command makes, by any path."
+    }
 )
 consequences {
     accepted (
-        "The interrupt is a Copy handle, `Interrupt(Option<&'static AtomicBool>)`, with equality by address. EngineConfig carries it, and so do the configs handed to rustfst (DeterminizeConfig, the lazy compute and compose options, minimize, rm_epsilon, connect, shortest distance) and to the foma crate's algorithms."
-        "Each long loop polls the flag with a relaxed load once every 1024 states, transitions or iterations, which is what bounds the time to stop. A tripped poll fails with a dedicated Interrupted error, distinct from the budget errors so no budget fallback swallows it. hfst maps it to ErrorKind::Interrupted and the xfst compiler to the command error 'interrupted', with a note that the session is as it was."
-        "Loops in hfst itself poll too: lexc, twolc and pmatch compiles, the regex compiler between operations, path extraction and the lookups behind apply and print words."
-        "Only an interactive session on a terminal installs the SIGINT handler, through signal-hook: `flag::register` sets the flag, and `flag::register_conditional_shutdown` makes a second Ctrl-C while the flag is still set end the process, as a way out of a loop that does not poll. The shell clears the flag before each command. Scripts, -p, -F and every other tool keep the default SIGINT, which ends the process."
+        "The session holds the flag as `Option<&'static AtomicBool>` (XfstCompiler::set_interrupt) and runs each command inside `rustfst::interrupt::scope(flag, ..)`, a thread-local that the call restores on the way out, even on panic. Outside a scope nothing polls. The hfst library still holds no global state: the scope is per thread and per call."
+        "The loops poll with `rustfst::interrupt::check_every`, a relaxed load every 1024 steps, which is what bounds the time to stop: rustfst's LazyFst expansion (behind determinize, compose, closure, concat and lazy epsilon removal), the cyclic minimizer and static epsilon removal, and in hfst-openfst the compose materializer, its trim pass and the equivalence walk. A tripped poll fails with rustfst::interrupt::Interrupted."
+        "After each command the session checks the flag itself: if it was set, the command fails as 'interrupted', with a note that the session is as it was, whatever it returned. A budget fallback that swallowed the error and went on cannot leave a half-done result standing. An interrupted command also stops the rest of its line or sourced script."
+        "The foma backend does not poll yet: Ctrl-C under -f foma takes effect when the running foma operation returns, and the backstop then fails the command."
+        "Only an interactive session on a terminal installs the SIGINT handler, through signal-hook on Unix: `flag::register` sets the flag, and `flag::register_conditional_shutdown` makes a second Ctrl-C while the flag is still set end the process, as a way out of a loop that does not poll. The shell clears the flag before each line it runs. Scripts, -p, -F, every other tool and Windows keep the default SIGINT, which ends the process."
         "At a prompt the line editor holds the terminal in raw mode, so Ctrl-C arrives as a key and only clears the line; SIGINT is only raised while a command runs, in cooked mode."
         "A cancelled command is a failed command: the undo of [spec:hfst:req:xfst-cmd.failed-command-no-effect] puts the stack, definitions, lists and variables back."
     )
     deferred (
+        "Polling inside the foma crate's algorithms, which needs a foma release."
         "Interrupting a command from the JavaScript package: wasm has no signals, so it would need a host-driven flag set from another worker, which no caller asks for yet."
     )
 }
@@ -56,8 +62,9 @@ command leaves behind.
 
 The flag lives with the host. The CLI is the only part that knows it runs on a terminal
 and owns signal handling, so it creates the flag, registers it for SIGINT and passes a
-handle to the session. The library only reads it. A borrowed `&'static` keeps the handle
-Copy, so it travels inside EngineConfig and the rustfst configs with no signature churn.
+handle to the session. The library only reads it. The session makes it the interrupt of
+a scope around each command, so every rustfst call the command makes sees it, however
+deep and by whatever path, without any signature changing.
 
 The loops that read it are the ones that can run for long. In practice that is the lazy
 expansion behind determinize and compose in rustfst, the minimization and epsilon removal
