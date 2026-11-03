@@ -312,23 +312,6 @@ fn parse_file<B: hfst::backend::AlgebraBackend + hfst::hfst_transducer::FromAnyT
     }
 }
 
-fn expression_continues(expr: &mut String) -> bool {
-    // get rid of extra newlines...
-    if expr.ends_with('\n') {
-        expr.pop();
-    }
-    // and carriage returns
-    if expr.ends_with('\r') {
-        expr.pop();
-    }
-    if expr.ends_with('\\') {
-        expr.pop();
-        expr.push('\n');
-        return true;
-    }
-    false
-}
-
 pub(super) fn execute(args: Vec<String>) -> ToolResult {
     let argv0 = args.first().cloned().unwrap_or_default();
 
@@ -576,34 +559,8 @@ fn run_compiler<B: hfst::backend::AlgebraBackend + hfst::hfst_transducer::FromAn
     // port, so USE_READLINE is always false here).
     else {
         verbose_print(common, "Starting interactive mode...\n");
-        // [spec:hfst:req:xfst-cmd.interactive-prompt]
-        // The loop prompts before each line it reads, and the commands print
-        // none of their own: a command's closing prompt would sit unflushed
-        // while the loop waits, and a blank line has no command to print one.
-        comp.set_prompt_verbosity(false);
-        comp.set_read_interactive_text_from_stdin(true);
-
-        let mut expression = String::new();
-        let mut line = String::new();
-        loop {
-            if !common.silent && comp.print_prompt().is_err() {
-                return EXIT_FAILURE;
-            }
-            line.clear();
-            if comp.input().read_line(&mut line).unwrap_or(0) == 0 {
-                break;
-            }
-            expression.push_str(line.trim_end_matches('\n'));
-            // C: std::cin.getline strips the newline; expression_continues
-            // then handles a trailing '\r' / '\\'.
-            if expression_continues(&mut expression) {
-                continue;
-            }
-            // The compiler has already reported a failure; the shell goes on.
-            if let Ok(Flow::Quit) = comp.parse(&format!("{}\n", expression)) {
-                break;
-            }
-            expression.clear();
+        if comp.interact().is_err() {
+            return EXIT_FAILURE;
         }
     }
     EXIT_SUCCESS

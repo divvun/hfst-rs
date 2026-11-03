@@ -35,24 +35,6 @@ impl Write for Output {
 }
 
 impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
-    // [spec:hfst:def:xfst-compiler.hfst.xfst.xfst-compiler.xfst-getline-fn]
-    // [spec:hfst:sem:xfst-compiler.hfst.xfst.xfst-compiler.xfst-getline-fn]
-    // @brief Get next line from \a file. Return NULL if end of file is reached.
-    // Use \a promptstr as prompt for readline, or print it to stderr if readline is not in use.
-    pub(super) fn read_prompted_line(&mut self, promptstr: &str) -> CmdResult<Option<String>> {
-        // The HAVE_READLINE and WINDOWS branches are not ported; mirror the
-        // generic getline path: print the prompt, then read a line of input.
-        write!(self.output, "{}", promptstr)?;
-        self.output.flush()?;
-
-        let mut line = String::new();
-        // getline keeps the trailing newline.
-        if self.input.read_line(&mut line)? == 0 {
-            return Ok(None);
-        }
-        Ok(Some(line))
-    }
-
     // [spec:hfst:def:xfst-compiler.hfst.xfst.xfst-compiler.remove-newline-fn]
     // [spec:hfst:sem:xfst-compiler.hfst.xfst.xfst-compiler.remove-newline-fn]
     // @brief Remove newline ('\n' and '\r') from the end of \a str.
@@ -162,16 +144,6 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             let written = self.output.write_all(prompt.as_bytes());
             self.keep_output_failure(written.map_err(CommandError::from));
         }
-    }
-
-    // [spec:hfst:req:xfst-cmd.interactive-prompt]
-    /// Print the prompt and flush it, for a shell that prompts for each line
-    /// itself rather than leaving it to the commands.
-    pub fn print_prompt(&mut self) -> CmdResult {
-        let prompt = self.get_prompt();
-        self.output.write_all(prompt.as_bytes())?;
-        self.output.flush()?;
-        Ok(())
     }
 
     // [spec:hfst:def:xfst-compiler.hfst.xfst.xfst-compiler.get-prompt-fn]

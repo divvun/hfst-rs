@@ -56,12 +56,14 @@ mod network_ops;
 mod print_words;
 mod printing;
 mod session;
+mod shell;
 mod stack;
 mod substitute;
 mod test_commands;
 mod variables;
 pub use diagnostics::parse_diagnostics;
 use session::run_shell;
+pub use shell::LineSource;
 use variables::{initialize_variable_explanations, parse_size};
 
 // Used internally in function 'apply_unary_operator'.
@@ -293,6 +295,10 @@ pub struct XfstCompiler<B: AlgebraBackend> {
     output_failure: Option<CommandError>,
     /// The input interactive commands read, apart from the script being run.
     input: Box<dyn BufRead>,
+    /// Where the shell and the interactive commands read their lines, when
+    /// the host supplies one; otherwise the input stream, prompting on the
+    /// output.
+    line_source: Option<Box<dyn LineSource>>,
     /// What running commands has reported, oldest first, until the caller
     /// takes it or a sink receives it. Includes what the embedded regex and
     /// lexc compilers reported.
@@ -379,6 +385,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             output: session::Output::default(),
             output_failure: None,
             input: Box::new(std::io::empty()),
+            line_source: None,
             files: crate::file_resolver::default_resolver(),
             diagnostics: Diagnostics::default(),
         };

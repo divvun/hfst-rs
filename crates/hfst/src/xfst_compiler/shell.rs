@@ -1,0 +1,207 @@
+//! The interactive shell: the loop that reads commands a line at a time,
+//! and the one place every interactive line is read.
+
+use super::*;
+
+/// A terminal the shell reads lines from, such as a line editor. Without
+/// one the session reads its input stream and prompts on its output.
+pub trait LineSource {
+    /// Show `prompt` and return the next line without its line break, or
+    /// `None` at end of input. A line that is not UTF-8 is an error of kind
+    /// `InvalidData`; the session reports it and reads on.
+    fn read_line(&mut self, prompt: &str) -> std::io::Result<Option<String>>;
+}
+
+impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
+    // [spec:hfst:req:xfst-cmd.shell-in-library]
+    /// Read the shell's lines, and the lines the interactive commands read,
+    /// from `source` from here on.
+    pub fn set_line_source(&mut self, source: Box<dyn LineSource>) -> &mut Self {
+        self.line_source = Some(source);
+        self
+    }
+
+    // [spec:hfst:req:xfst-cmd.shell-in-library]
+    // [spec:hfst:req:xfst-cmd.interactive-prompt]
+    /// Run the interactive shell until end of input or `quit`: prompt for
+    /// each line, run each command once its lines are in, and report a
+    /// failure and go on. The commands print no prompts of their own while
+    /// it runs. An error is a failure to read input or write output.
+    pub fn interact(&mut self) -> CmdResult {
+        self.verbose_prompt = false;
+        self.read_interactive_text_from_stdin = true;
+        let mut expression = String::new();
+        loop {
+            let prompt = if self.verbose {
+                self.get_prompt()
+            } else {
+                String::new()
+            };
+            let Some(line) = self.read_prompted_line(&prompt)? else {
+                return Ok(());
+            };
+            expression.push_str(&line);
+            if expression_continues(&mut expression) {
+                continue;
+            }
+            // A failure is reported where it happens; the shell goes on.
+            if let Ok(Flow::Quit) = self.parse(&format!("{}\n", expression)) {
+                return Ok(());
+            }
+            expression.clear();
+        }
+    }
+
+    // [spec:hfst:def:xfst-compiler.hfst.xfst.xfst-compiler.xfst-getline-fn]
+    // [spec:hfst:sem:xfst-compiler.hfst.xfst.xfst-compiler.xfst-getline-fn]
+    // [spec:hfst:req:xfst-cmd.shell-in-library]
+    /// Show `prompt` and read the next line, without its line break, from
+    /// the line source or else the input stream. `None` at end of input. A
+    /// line that is not UTF-8 is reported and skipped.
+    pub(super) fn read_prompted_line(&mut self, prompt: &str) -> CmdResult<Option<String>> {
+        loop {
+            let read = match &mut self.line_source {
+                Some(source) => source.read_line(prompt),
+                None => {
+                    self.output.write_all(prompt.as_bytes())?;
+                    self.output.flush()?;
+                    read_input_line(&mut *self.input)
+                }
+            };
+            match read {
+                Ok(line) => return Ok(line),
+                Err(e) if e.kind() == std::io::ErrorKind::InvalidData => {
+                    self.diagnostics.push(
+                        Diagnostic::error("input line is not valid UTF-8; it was skipped")
+                            .note("xfst reads its input as UTF-8"),
+                    );
+                }
+                Err(e) => return Err(e.into()),
+            }
+        }
+    }
+}
+
+/// The next line of `input` without its line break; `None` at end of input.
+fn read_input_line(input: &mut dyn BufRead) -> std::io::Result<Option<String>> {
+    let mut bytes = Vec::new();
+    if input.read_until(b'\n', &mut bytes)? == 0 {
+        return Ok(None);
+    }
+    if bytes.last() == Some(&b'\n') {
+        bytes.pop();
+    }
+    String::from_utf8(bytes)
+        .map(Some)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
+}
+
+/// Whether `expr` goes on to the next line: it ends in `\`, which becomes a
+/// line break. A trailing carriage return is dropped first.
+fn expression_continues(expr: &mut String) -> bool {
+    if expr.ends_with('\r') {
+        expr.pop();
+    }
+    if expr.ends_with('\\') {
+        expr.pop();
+        expr.push('\n');
+        return true;
+    }
+    false
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use hfst_openfst::StdVectorFst;
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    /// Lines handed out in order, with every prompt they were asked for.
+    struct Scripted {
+        lines: std::collections::VecDeque<std::io::Result<Option<String>>>,
+        prompts: Rc<RefCell<Vec<String>>>,
+    }
+
+    impl LineSource for Scripted {
+        fn read_line(&mut self, prompt: &str) -> std::io::Result<Option<String>> {
+            self.prompts.borrow_mut().push(prompt.to_string());
+            self.lines.pop_front().unwrap_or(Ok(None))
+        }
+    }
+
+    fn session() -> XfstCompiler<StdVectorFst> {
+        let mut c = XfstCompiler::<StdVectorFst>::new();
+        c.set_verbosity(true);
+        c
+    }
+
+    // [spec:hfst:req:xfst-cmd.shell-in-library/test]
+    // The shell, the apply word mode and inspect all read through the host's
+    // line source, each with its own prompt.
+    #[test]
+    fn every_interactive_line_comes_through_the_line_source() {
+        let prompts = Rc::new(RefCell::new(Vec::new()));
+        let lines = [
+            "regex a:b ;",
+            "apply down",
+            "a",
+            "<ctrl-d>",
+            "inspect net",
+            "0",
+            "print words",
+        ];
+        let mut c = session();
+        c.set_line_source(Box::new(Scripted {
+            lines: lines.iter().map(|l| Ok(Some(l.to_string()))).collect(),
+            prompts: Rc::clone(&prompts),
+        }));
+        c.interact().expect("the shell runs to end of input");
+        assert_eq!(
+            *prompts.borrow(),
+            [
+                "hfst[0]: ",
+                "hfst[1]: ",
+                "apply down> ",
+                "apply down> ",
+                "hfst[1]: ",
+                "",
+                "hfst[1]: ",
+                "hfst[1]: ",
+            ]
+        );
+        let out = String::from_utf8(c.take_output()).expect("UTF-8 output");
+        assert!(out.contains("b\n"), "apply down a gave b: {out}");
+        assert!(
+            out.ends_with("a:b\n"),
+            "print words ran after inspect: {out}"
+        );
+    }
+
+    // [spec:hfst:req:xfst-cmd.shell-in-library/test]
+    #[test]
+    fn a_non_utf8_line_is_reported_and_skipped() {
+        let mut c = session();
+        c.set_input_stream(std::io::Cursor::new(b"echo \xff\necho after\n".to_vec()));
+        c.interact().expect("the shell runs to end of input");
+        let out = String::from_utf8(c.take_output()).expect("UTF-8 output");
+        assert_eq!(out, "hfst[0]: hfst[0]: after\nhfst[0]: ");
+        assert!(
+            c.diagnostics()
+                .iter()
+                .any(|d| d.message().contains("not valid UTF-8")),
+            "the bad line is reported"
+        );
+    }
+
+    // [spec:hfst:req:xfst-cmd.shell-in-library/test]
+    #[test]
+    fn an_input_failure_ends_the_shell() {
+        let mut c = session();
+        c.set_line_source(Box::new(Scripted {
+            lines: [Err(std::io::Error::other("terminal went away"))].into(),
+            prompts: Rc::default(),
+        }));
+        assert!(c.interact().is_err());
+    }
+}

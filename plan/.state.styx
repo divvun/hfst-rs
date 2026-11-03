@@ -650,6 +650,7 @@ assertions (
     {id wasm.deno-check-root, kind @complete, author "brendan@necessary.nu", at 2026-10-31T19:42:40.017179Z}
     {id wasm.publish, kind @complete, author "brendan@necessary.nu", at 2026-10-31T20:37:12.299712Z}
     {id divvunspell-alerts, kind @complete, author "brendan@necessary.nu", at 2026-10-31T22:47:58.978301Z}
+    {id xfst-shell.nfst-xfst-0-6, kind @doing, author "brendan@necessary.nu", at 2026-11-03T11:28:50.249511Z}
 )
 
 impl_evidence (
@@ -1097,5 +1098,10 @@ impl_evidence (
         {impl_name target-impl, rule xre-finalization.root-optimize}
     ), rule_versions_seen (
         {id xre-finalization.root-optimize, version 0}
+    )}
+    {id xfst-shell.loop-in-library, covered_rules (
+        xfst-cmd.shell-in-library
+    ), covered_claims (
+        {impl_name target-impl, rule xfst-cmd.shell-in-library}
     )}
 )
