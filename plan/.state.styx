@@ -1130,4 +1130,9 @@ impl_evidence (
     ), covered_claims (
         {impl_name target-impl, rule xfst-cmd.shell-messages}
     )}
+    {id xfst-shell.completion, covered_rules (
+        xfst-cmd.shell-completion
+    ), covered_claims (
+        {impl_name target-impl, rule xfst-cmd.shell-completion}
+    )}
 )

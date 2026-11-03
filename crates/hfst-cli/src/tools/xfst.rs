@@ -17,8 +17,14 @@ use crate::hfst_commandline::{
     print_version, skip_elapsed, verbose_print, version_line,
 };
 use hfst::hfst_data_types::ImplementationType;
-use hfst::xfst_compiler::{Flow, LineSource, XfstCompiler};
+use hfst::xfst_compiler::{Completion, Flow, LineSource, XfstCompiler, complete};
+use rustyline::completion::{Completer, FilenameCompleter, Pair};
 use rustyline::error::ReadlineError;
+use rustyline::highlight::Highlighter;
+use rustyline::hint::Hinter;
+use rustyline::history::DefaultHistory;
+use rustyline::validate::Validator;
+use rustyline::{Editor, Helper};
 use std::io::{IsTerminal, Write};
 
 const EXIT_SUCCESS: i32 = 0;
@@ -470,9 +476,67 @@ pub(super) fn execute(args: Vec<String>) -> ToolResult {
 // [spec:hfst:req:xfst-cmd.shell-line-editing]
 /// The terminal line editor the shell reads every line through: cursor
 /// keys, deletion and up/down recall of this session's lines.
-struct LineEditor(rustyline::DefaultEditor);
+struct LineEditor(Editor<Completions, DefaultHistory>);
+
+impl LineEditor {
+    fn new() -> rustyline::Result<LineEditor> {
+        let mut editor = Editor::new()?;
+        editor.set_helper(Some(Completions {
+            defined: Vec::new(),
+            files: FilenameCompleter::new(),
+        }));
+        Ok(LineEditor(editor))
+    }
+}
+
+// [spec:hfst:req:xfst-cmd.shell-completion]
+/// Tab completion: what to complete comes from the library, and file names
+/// from the file system.
+struct Completions {
+    defined: Vec<String>,
+    files: FilenameCompleter,
+}
+
+impl Completer for Completions {
+    type Candidate = Pair;
+
+    fn complete(
+        &self,
+        line: &str,
+        pos: usize,
+        ctx: &rustyline::Context<'_>,
+    ) -> rustyline::Result<(usize, Vec<Pair>)> {
+        match complete(line, pos, &self.defined) {
+            Completion::Words { start, candidates } => Ok((
+                start,
+                candidates
+                    .into_iter()
+                    .map(|c| Pair {
+                        display: c.trim_end().to_string(),
+                        replacement: c,
+                    })
+                    .collect(),
+            )),
+            Completion::File { .. } => self.files.complete(line, pos, ctx),
+            Completion::None => Ok((pos, Vec::new())),
+        }
+    }
+}
+
+impl Hinter for Completions {
+    type Hint = String;
+}
+impl Highlighter for Completions {}
+impl Validator for Completions {}
+impl Helper for Completions {}
 
 impl LineSource for LineEditor {
+    fn set_defined_names(&mut self, names: &[String]) {
+        if let Some(completions) = self.0.helper_mut() {
+            completions.defined = names.to_vec();
+        }
+    }
+
     fn read_line(&mut self, prompt: &str) -> std::io::Result<Option<String>> {
         // The editor draws on the terminal itself, after what the commands
         // wrote through stdout's buffer.
@@ -597,9 +661,9 @@ fn run_compiler<B: hfst::backend::AlgebraBackend + hfst::hfst_transducer::FromAn
             }
         }
         if !options.no_readline && on_terminal {
-            match rustyline::DefaultEditor::new() {
+            match LineEditor::new() {
                 Ok(editor) => {
-                    comp.set_line_source(Box::new(LineEditor(editor)));
+                    comp.set_line_source(Box::new(editor));
                 }
                 Err(e) => verbose_print(
                     common,
@@ -612,4 +676,52 @@ fn run_compiler<B: hfst::backend::AlgebraBackend + hfst::hfst_transducer::FromAn
         }
     }
     EXIT_SUCCESS
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn candidates(line: &str) -> (usize, Vec<(String, String)>) {
+        let completions = Completions {
+            defined: vec!["Foo".into(), "Bar".into()],
+            files: FilenameCompleter::new(),
+        };
+        let history = DefaultHistory::new();
+        let (start, pairs) = completions
+            .complete(line, line.len(), &rustyline::Context::new(&history))
+            .expect("completion runs");
+        (
+            start,
+            pairs
+                .into_iter()
+                .map(|p| (p.display, p.replacement))
+                .collect(),
+        )
+    }
+
+    // [spec:hfst:req:xfst-cmd.shell-completion/test]
+    // A command is listed by name and inserted with the space after it.
+    #[test]
+    fn a_command_candidate_inserts_its_space() {
+        assert_eq!(
+            candidates("ech"),
+            (0, vec![("echo".into(), "echo ".into())])
+        );
+    }
+
+    // [spec:hfst:req:xfst-cmd.shell-completion/test]
+    #[test]
+    fn a_defined_name_is_inserted_as_it_is() {
+        assert_eq!(
+            candidates("undefine B"),
+            (9, vec![("Bar".into(), "Bar".into())])
+        );
+    }
+
+    // [spec:hfst:req:xfst-cmd.shell-completion/test]
+    #[test]
+    fn a_regex_body_completes_to_nothing() {
+        assert_eq!(candidates("regex a"), (7, Vec::new()));
+    }
 }

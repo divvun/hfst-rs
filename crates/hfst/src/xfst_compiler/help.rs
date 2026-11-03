@@ -634,6 +634,21 @@ static COMMANDS: &[Entry] = &[
     ),
 ];
 
+// [spec:hfst:req:xfst-cmd.shell-completion]
+/// Every name a command goes by, for completing at the prompt.
+pub(super) fn command_names() -> impl Iterator<Item = &'static str> {
+    COMMANDS
+        .iter()
+        .flat_map(|entry| entry.names.iter().copied())
+}
+
+/// Whether command `name` takes a file name.
+pub(super) fn takes_file(name: &str) -> bool {
+    COMMANDS
+        .iter()
+        .any(|entry| entry.names.contains(&name) && entry.args.contains("<filename>"))
+}
+
 // [spec:hfst:def:xfst-help-message.hfst.xfst.append-help-message-fn]
 // [spec:hfst:sem:xfst-help-message.hfst.xfst.append-help-message-fn]
 /// Append `entry` to `message`: its first name and arguments, padded to 30

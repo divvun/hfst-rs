@@ -8680,6 +8680,14 @@ children (
                     target-impl ([spec:hfst:req:xfst-cmd.shell-completion])
                 }
                 deps (xfst-shell.line-editor)
+                log (
+                    {
+                        at 2026-11-03T12:19:32.000457Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
+                )
             }
 
             {

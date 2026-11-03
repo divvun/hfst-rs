@@ -12,6 +12,10 @@ pub trait LineSource {
     /// prompt is an error of kind `Interrupted`; the shell drops the line and
     /// any unfinished command.
     fn read_line(&mut self, prompt: &str) -> std::io::Result<Option<String>>;
+
+    /// The names defined in the session, given before each read, for a
+    /// source that completes them.
+    fn set_defined_names(&mut self, _names: &[String]) {}
 }
 
 /// What one read at a prompt gave.
@@ -126,7 +130,12 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     pub(super) fn read_input(&mut self, prompt: &str) -> CmdResult<Input> {
         loop {
             let read = match &mut self.line_source {
-                Some(source) => source.read_line(prompt),
+                Some(source) => {
+                    let names: Vec<String> =
+                        self.definitions.keys().map(|k| k.to_string()).collect();
+                    source.set_defined_names(&names);
+                    source.read_line(prompt)
+                }
                 None => {
                     self.output.write_all(prompt.as_bytes())?;
                     self.output.flush()?;
