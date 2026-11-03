@@ -35,13 +35,12 @@ consequences {
         "The session holds the flag as `Option<&'static AtomicBool>` (XfstCompiler::set_interrupt) and runs each command inside `rustfst::interrupt::scope(flag, ..)`, a thread-local that the call restores on the way out, even on panic. Outside a scope nothing polls. The hfst library still holds no global state: the scope is per thread and per call."
         "The loops poll with `rustfst::interrupt::check_every`, a relaxed load every 1024 steps, which is what bounds the time to stop: rustfst's LazyFst expansion (behind determinize, compose, closure, concat and lazy epsilon removal), the cyclic minimizer and static epsilon removal, and in hfst-openfst the compose materializer, its trim pass and the equivalence walk. A tripped poll fails with rustfst::interrupt::Interrupted."
         "After each command the session checks the flag itself: if it was set, the command fails as 'interrupted', with a note that the session is as it was, whatever it returned. A budget fallback that swallowed the error and went on cannot leave a half-done result standing. An interrupted command also stops the rest of its line or sourced script."
-        "The foma backend does not poll yet: Ctrl-C under -f foma takes effect when the running foma operation returns, and the backstop then fails the command."
+        "The foma backend polls the same flag: each command also runs inside foma's interrupt::scope (foma 0.5.2), whose subset construction, product loops and Hopcroft minimization poll every 1024 steps. foma's algorithms cannot fail, so an interrupted one returns the empty machine instead, which the backstop discards with the rest of the command's result."
         "Only an interactive session on a terminal installs the SIGINT handler, through signal-hook on Unix: `flag::register` sets the flag, and `flag::register_conditional_shutdown` makes a second Ctrl-C while the flag is still set end the process, as a way out of a loop that does not poll. The shell clears the flag before each line it runs. Scripts, -p, -F, every other tool and Windows keep the default SIGINT, which ends the process."
         "At a prompt the line editor holds the terminal in raw mode, so Ctrl-C arrives as a key and only clears the line; SIGINT is only raised while a command runs, in cooked mode."
         "A cancelled command is a failed command: the undo of [spec:hfst:req:xfst-cmd.failed-command-no-effect] puts the stack, definitions, lists and variables back."
     )
     deferred (
-        "Polling inside the foma crate's algorithms, which needs a foma release."
         "Interrupting a command from the JavaScript package: wasm has no signals, so it would need a host-driven flag set from another worker, which no caller asks for yet."
     )
 }

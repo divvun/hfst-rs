@@ -1177,4 +1177,9 @@ impl_evidence (
     ), rule_versions_seen (
         {id xre-finalization.root-optimize, version 0}
     )}
+    {id xfst-shell.cancel.foma, covered_rules (
+        xfst-cmd.shell-cancel-foma
+    ), covered_claims (
+        {impl_name target-impl, rule xfst-cmd.shell-cancel-foma}
+    )}
 )

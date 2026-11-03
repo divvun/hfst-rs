@@ -143,3 +143,19 @@ fn ctrl_c_cancels_a_running_command() {
     p.exp_string("hfst[1]: ").expect("the stack is as it was");
     answers(&mut p, "print stack\r", "0: 2 states, 1 arcs", "hfst[1]: ");
 }
+
+// [spec:hfst:req:xfst-cmd.shell-cancel-foma/test]
+// Under foma the same compose runs over a minute in a debug build; Ctrl-C
+// stops it inside the five-second wait, as under the default backend.
+#[test]
+fn ctrl_c_cancels_a_command_under_foma() {
+    let mut p = shell(&["-f", "foma"]);
+    type_keys(&mut p, "regex a ;\r");
+    p.exp_string("hfst[1]: ").expect("prompt after regex");
+    type_keys(&mut p, "regex [[a|b]^1000]* .o. [[a|b]^999]* ;\r");
+    std::thread::sleep(std::time::Duration::from_millis(500));
+    type_keys(&mut p, "\x03");
+    p.exp_string("interrupted").expect("the command stops");
+    p.exp_string("hfst[1]: ").expect("the stack is as it was");
+    answers(&mut p, "print stack\r", "0: 2 states, 1 arcs", "hfst[1]: ");
+}

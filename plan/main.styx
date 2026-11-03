@@ -8774,6 +8774,24 @@ children (
                             }
                         )
                     }
+
+                    {
+                        id xfst-shell.cancel.foma
+                        title "Ctrl-C under -f foma stops a running command promptly: take foma 0.5.2, whose interrupt::scope polls in determinization, composition, intersection, cross product and Hopcroft minimization, and run each command inside it as well as rustfst's. Closes the foma item [dec:hfst:xfst-cancellation] deferred"
+                        kind @fix
+                        implements {
+                            target-impl ([spec:hfst:req:xfst-cmd.shell-cancel-foma])
+                        }
+                        deps (xfst-shell.cancel.interrupt)
+                        log (
+                            {
+                                at 2026-11-03T14:59:45.062619Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Todo → Doing (nplan start)"
+                            }
+                        )
+                    }
                 )
             }
 

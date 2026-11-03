@@ -243,6 +243,12 @@ what the C++ code did. Where they disagree with this file, this file wins.
 > before the command, and the session goes on. Elsewhere Ctrl-C ends the
 > process.
 
+> [spec:hfst:req:xfst-cmd.shell-cancel-foma]
+> Under the foma backend (`-f foma`), Ctrl-C MUST stop a running command in
+> bounded time just as under the default backend: each command runs inside
+> foma's interrupt scope as well as rustfst's, so foma's long loops poll the
+> same flag.
+
 > [spec:hfst:req:xfst-cmd.shell-session-edges]
 > On a terminal, the shell MUST print one line when it starts, naming the
 > tool and saying how to get help and how to quit. Ending the session with

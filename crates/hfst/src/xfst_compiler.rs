@@ -321,6 +321,22 @@ pub struct XfstCompiler<B: AlgebraBackend> {
     diagnostics: Diagnostics,
 }
 
+// [spec:hfst:req:xfst-cmd.shell-cancel]
+// [spec:hfst:req:xfst-cmd.shell-cancel-foma]
+/// Run `f` with `flag` as the interrupt of every algorithm library the build
+/// has, so whichever backend the session uses polls it.
+fn with_interrupt<T>(flag: Option<&'static AtomicBool>, f: impl FnOnce() -> T) -> T {
+    let in_rustfst = move || hfst_openfst::rustfst::interrupt::scope(flag, f);
+    #[cfg(feature = "foma")]
+    {
+        foma::interrupt::scope(flag, in_rustfst)
+    }
+    #[cfg(not(feature = "foma"))]
+    {
+        in_rustfst()
+    }
+}
+
 /// The deepest 'source' nesting allowed, so a script that sources itself
 /// fails instead of overflowing the stack.
 const MAX_SOURCE_DEPTH: u32 = 64;
@@ -518,8 +534,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             self.current_span = c.span.range.clone();
             let undoing = self.begin_undo(&c.value);
             let interrupt = self.interrupt;
-            let outcome =
-                hfst_openfst::rustfst::interrupt::scope(interrupt, || self.eval_command(&c.value));
+            let outcome = with_interrupt(interrupt, || self.eval_command(&c.value));
             self.absorb_nested_diagnostics();
             let outcome = match self.output_failure.take() {
                 Some(failure) => outcome.and(Err(failure)),
