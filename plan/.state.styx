@@ -1110,4 +1110,9 @@ impl_evidence (
     ), covered_claims (
         {impl_name target-impl, rule xfst-cmd.failed-command-no-effect}
     )}
+    {id xfst-shell.word-modes, covered_rules (
+        xfst-cmd.shell-word-modes
+    ), covered_claims (
+        {impl_name target-impl, rule xfst-cmd.shell-word-modes}
+    )}
 )

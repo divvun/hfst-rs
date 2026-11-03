@@ -32,40 +32,20 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         Ok(())
     }
 
-    // [spec:hfst:req:xfst-cmd.interactive-prompt]
+    // [spec:hfst:req:xfst-cmd.shell-word-modes]
     /// 'apply up', 'apply down' or 'apply med' typed at the shell with no
-    /// word: look up each line of the session input, under an 'apply up> '
-    /// style prompt, until end of input.
+    /// word: look up each word as it is read.
     pub(super) fn apply_interactively(&mut self, kind: &nfst_xfst::ApplyKind) -> CmdResult {
         use nfst_xfst::ApplyKind;
-        let (side, fsm) = match kind {
-            ApplyKind::Up => ("up", Some(self.lookup_network(true)?)),
-            ApplyKind::Down => ("down", Some(self.lookup_network(false)?)),
-            ApplyKind::Med => ("med", None),
+        let (command, fsm) = match kind {
+            ApplyKind::Up => ("apply up", Some(self.lookup_network(true)?)),
+            ApplyKind::Down => ("apply down", Some(self.lookup_network(false)?)),
+            ApplyKind::Med => ("apply med", None),
         };
-        let prompt = if self.verbose {
-            format!("apply {}> ", side)
-        } else {
-            String::new()
-        };
-        while let Some(line) = self.read_prompted_line(&prompt)? {
-            let word = self.remove_newline(line);
-            if word == APPLY_END_STRING {
-                break;
-            }
-            if word.is_empty() {
-                continue;
-            }
-            match &fsm {
-                Some(fsm) => self.lookup_basic(&word, fsm)?,
-                None => self.apply_med(&word)?,
-            }
-        }
-        // End of input leaves the cursor after the prompt.
-        if self.verbose {
-            writeln!(self.output)?;
-        }
-        Ok(())
+        self.read_words(command, |c, word| match &fsm {
+            Some(fsm) => c.lookup_basic(word, fsm),
+            None => c.apply_med(word),
+        })
     }
 
     /// The network apply looks words up in: the top network for apply down,

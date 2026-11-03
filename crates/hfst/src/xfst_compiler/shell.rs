@@ -52,6 +52,35 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         }
     }
 
+    // [spec:hfst:req:xfst-cmd.shell-word-modes]
+    /// The word mode of `command`: hand each non-blank line read under the
+    /// prompt 'COMMAND> ' to `word`, until end of input or a '<ctrl-d>' line.
+    pub(super) fn read_words(
+        &mut self,
+        command: &str,
+        mut word: impl FnMut(&mut Self, &str) -> CmdResult,
+    ) -> CmdResult {
+        let prompt = if self.verbose {
+            format!("{}> ", command)
+        } else {
+            String::new()
+        };
+        while let Some(line) = self.read_prompted_line(&prompt)? {
+            let line = line.trim_end_matches('\r');
+            if line == WORDS_END {
+                break;
+            }
+            if !line.trim().is_empty() {
+                word(self, line)?;
+            }
+        }
+        // End of input leaves the cursor after the prompt.
+        if self.verbose {
+            writeln!(self.output)?;
+        }
+        Ok(())
+    }
+
     // [spec:hfst:def:xfst-compiler.hfst.xfst.xfst-compiler.xfst-getline-fn]
     // [spec:hfst:sem:xfst-compiler.hfst.xfst.xfst-compiler.xfst-getline-fn]
     // [spec:hfst:req:xfst-cmd.shell-in-library]
@@ -81,6 +110,9 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         }
     }
 }
+
+/// The line that ends a word mode before end of input, as in a script.
+const WORDS_END: &str = "<ctrl-d>";
 
 /// The next line of `input` without its line break; `None` at end of input.
 fn read_input_line(input: &mut dyn BufRead) -> std::io::Result<Option<String>> {
@@ -191,6 +223,52 @@ mod tests {
                 .iter()
                 .any(|d| d.message().contains("not valid UTF-8")),
             "the bad line is reported"
+        );
+    }
+
+    fn scripted(lines: &[&str]) -> (XfstCompiler<StdVectorFst>, Rc<RefCell<Vec<String>>>) {
+        let prompts = Rc::new(RefCell::new(Vec::new()));
+        let mut c = session();
+        c.set_line_source(Box::new(Scripted {
+            lines: lines.iter().map(|l| Ok(Some(l.to_string()))).collect(),
+            prompts: Rc::clone(&prompts),
+        }));
+        (c, prompts)
+    }
+
+    // [spec:hfst:req:xfst-cmd.shell-word-modes/test]
+    // The words come through the line source under the command's prompt,
+    // blank lines are skipped, and the mode ends at '<ctrl-d>'.
+    #[test]
+    fn read_text_builds_from_the_lines_read() {
+        let (mut c, prompts) = scripted(&["read text", "ab", "", "c", "<ctrl-d>", "print words"]);
+        c.interact().expect("the shell runs to end of input");
+        let words = &prompts.borrow()[1..5];
+        assert!(words.iter().all(|p| p == "read text> "), "{words:?}");
+        let out = String::from_utf8(c.take_output()).expect("UTF-8 output");
+        assert!(out.ends_with("ab\nc\n"), "{out}");
+    }
+
+    // [spec:hfst:req:xfst-cmd.shell-word-modes/test]
+    // End of input ends the mode; the shell then reads on and ends too.
+    #[test]
+    fn end_of_input_ends_a_word_mode() {
+        let (mut c, prompts) = scripted(&["regex a:b ;", "apply up", "b"]);
+        c.interact().expect("the shell runs to end of input");
+        assert_eq!(
+            *prompts.borrow(),
+            [
+                "hfst[0]: ",
+                "hfst[1]: ",
+                "apply up> ",
+                "apply up> ",
+                "hfst[1]: "
+            ]
+        );
+        let out = String::from_utf8(c.take_output()).expect("UTF-8 output");
+        assert!(
+            out.contains("a\n\n"),
+            "the answer, then the line break after Ctrl-D: {out}"
         );
     }
 

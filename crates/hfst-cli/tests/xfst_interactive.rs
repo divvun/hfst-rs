@@ -75,12 +75,27 @@ fn the_prompt_arrives_before_the_shell_waits() {
     assert_eq!(String::from_utf8_lossy(&seen), "hfst[0]: hi\nhfst[0]: ");
 }
 
-// [spec:hfst:req:xfst-cmd.interactive-prompt/test]
+// [spec:hfst:req:xfst-cmd.shell-word-modes/test]
 #[test]
 fn apply_without_a_word_reads_the_following_lines() {
     assert_eq!(
         session("regex a:b ;\napply down\na\nc\n"),
         "hfst[0]: 2 states, 1 arcs\nhfst[1]: apply down> b\napply down> ???\napply down> \nhfst[1]: "
+    );
+}
+
+// [spec:hfst:req:xfst-cmd.shell-word-modes/test]
+// A bare 'read text' used to push an empty network and run its words as
+// commands.
+#[test]
+fn bare_read_text_reads_the_following_lines() {
+    assert_eq!(
+        session("read text\nfoo\nbar\n<ctrl-d>\nprint words\n"),
+        "hfst[0]: read text> read text> read text> \n6 states, 6 arcs\nhfst[1]: bar\nfoo\nhfst[1]: "
+    );
+    assert_eq!(
+        session("read spaced-text\nf o\n<ctrl-d>\nprint words\n"),
+        "hfst[0]: read spaced-text> read spaced-text> \n3 states, 2 arcs\nhfst[1]: fo\nhfst[1]: "
     );
 }
 

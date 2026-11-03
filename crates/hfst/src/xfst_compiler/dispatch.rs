@@ -204,6 +204,19 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         self.apply_text(kind, &s)
     }
 
+    // [spec:hfst:req:xfst-cmd.shell-word-modes]
+    /// The lines a bare 'read text' or 'read spaced-text' reads at the shell,
+    /// one per line, for building the network once input ends.
+    fn read_word_lines(&mut self, command: &str) -> CmdResult<String> {
+        let mut lines = String::new();
+        self.read_words(command, |_, line| {
+            lines.push_str(line);
+            lines.push('\n');
+            Ok(())
+        })?;
+        Ok(lines)
+    }
+
     fn apply_text(&mut self, kind: &ApplyKind, s: &str) -> CmdResult {
         match kind {
             ApplyKind::Up => self.apply_up(s),
@@ -215,6 +228,18 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     /// Dispatch a parsed ReadCmd to the corresponding read_* method.
     fn eval_read(&mut self, rc: &ReadCmd) -> CmdResult {
         match rc {
+            ReadCmd::Text(TextSource::Inline(s))
+                if s.is_empty() && self.read_interactive_text_from_stdin =>
+            {
+                let lines = self.read_word_lines("read text")?;
+                self.read_text(&lines)
+            }
+            ReadCmd::Spaced(TextSource::Inline(s))
+                if s.is_empty() && self.read_interactive_text_from_stdin =>
+            {
+                let lines = self.read_word_lines("read spaced-text")?;
+                self.read_spaced(&lines)
+            }
             ReadCmd::Text(TextSource::Inline(s)) => self.read_text(s),
             ReadCmd::Text(TextSource::File(p)) => self.read_text_from_file(p),
             ReadCmd::Spaced(TextSource::Inline(s)) => self.read_spaced(s),

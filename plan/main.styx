@@ -8652,6 +8652,14 @@ children (
                     target-impl ([spec:hfst:req:xfst-cmd.shell-word-modes])
                 }
                 deps (xfst-shell.loop-in-library)
+                log (
+                    {
+                        at 2026-11-03T11:59:26.902526Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
+                )
             }
 
             {
