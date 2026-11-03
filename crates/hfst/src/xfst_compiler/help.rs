@@ -22,10 +22,9 @@ const fn entry(
 }
 
 // [spec:hfst:req:xfst-cmd.help]
-// A command the compiler parses but fails as not supported, or accepts and
-// then ignores, is left out: alias, print aliases, cleanup net, collect
-// epsilon-loops, edit properties, print file-info, print label-maps, print
-// sigma-word-tally, lookup-optimize and remove-optimization.
+// A command the compiler parses but fails as not supported is left out:
+// cleanup net, collect epsilon-loops, edit properties, print file-info, print
+// label-maps, print sigma-word-tally, lookup-optimize and remove-optimization.
 static COMMANDS: &[Entry] = &[
     entry(
         &["ambiguous upper", "ambiguous"],
@@ -61,6 +60,16 @@ static COMMANDS: &[Entry] = &[
         &["apply med", "med"],
         "",
         "runs apply med on each line that follows, until end of input (Ctrl-D)",
+    ),
+    entry(
+        &["alias"],
+        "<name> <commands>",
+        "makes <name> a command that runs <commands>",
+    ),
+    entry(
+        &["alias"],
+        "<name>",
+        "makes <name> a command that runs the lines that follow, up to END;",
     ),
     entry(&["apropos"], "<word>", "searches the help for <word>"),
     entry(
@@ -244,6 +253,11 @@ static COMMANDS: &[Entry] = &[
         &["pop stack", "pop"],
         "",
         "removes the top network from the stack",
+    ),
+    entry(
+        &["print aliases", "aliases"],
+        "",
+        "prints every alias and its commands",
     ),
     entry(
         &["print arc-tally", "arc-tally"],

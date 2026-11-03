@@ -486,6 +486,25 @@ mod tests {
         assert!(rendered.iter().any(|r| r.contains(":2:")), "{rendered:?}");
     }
 
+    // [spec:hfst:sem:xfst-cmd.alias/test]
+    // An alias typed at the prompt over several lines reads on to its END;.
+    #[test]
+    fn an_alias_is_typed_over_several_lines() {
+        let (mut c, prompts) = scripted(&["alias go", "echo hi", "END;", "go"]);
+        c.interact().expect("the shell runs to end of input");
+        assert_eq!(
+            *prompts.borrow(),
+            [
+                "hfst[0]: ",
+                "       > ",
+                "       > ",
+                "hfst[0]: ",
+                "hfst[0]: "
+            ]
+        );
+        assert_eq!(c.take_output(), b"hi\n");
+    }
+
     // [spec:hfst:req:xfst-cmd.shell-in-library/test]
     #[test]
     fn an_input_failure_ends_the_shell() {

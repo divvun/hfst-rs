@@ -340,3 +340,66 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         retval
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use hfst_openfst::StdVectorFst;
+
+    fn run(script: &str) -> (String, Vec<String>) {
+        let mut c = XfstCompiler::<StdVectorFst>::new();
+        let _ = c.parse(script);
+        let out = String::from_utf8(c.take_output()).expect("UTF-8 output");
+        let messages = c
+            .diagnostics()
+            .iter()
+            .map(|d| d.message().to_string())
+            .collect();
+        (out, messages)
+    }
+
+    // [spec:hfst:sem:xfst-cmd.alias/test]
+    #[test]
+    fn a_one_line_alias_runs_its_commands() {
+        assert_eq!(run("alias pw print words\nregex a ;\npw\n").0, "a\n");
+    }
+
+    // [spec:hfst:sem:xfst-cmd.alias/test]
+    // The commands keep their own lines, so a regex body ends where it did.
+    #[test]
+    fn a_multi_line_alias_runs_its_lines() {
+        let script = "alias go\nregex a b ;\nprint words\nEND;\ngo\ngo\n";
+        assert_eq!(run(script).0, "ab\nab\n");
+    }
+
+    // [spec:hfst:sem:xfst-cmd.alias/test]
+    #[test]
+    fn print_aliases_reads_back() {
+        let script =
+            "alias go\nregex a ;\nprint words\nEND;\nalias pw print words\nprint aliases\n";
+        assert_eq!(
+            run(script).0,
+            "alias go\nregex a ;\nprint words\nEND;\nalias pw print words\n"
+        );
+    }
+
+    // [spec:hfst:sem:xfst-cmd.alias/test]
+    #[test]
+    fn a_word_naming_no_alias_is_unknown() {
+        let messages = run("detrminize\n").1;
+        assert!(
+            messages.contains(&String::from("unknown command 'detrminize'")),
+            "{messages:?}"
+        );
+    }
+
+    // [spec:hfst:sem:xfst-cmd.alias/test]
+    #[test]
+    fn an_alias_that_calls_itself_fails() {
+        let messages = run("alias again again\nagain\n").1;
+        assert!(
+            messages.iter().any(|m| m.contains("nested more than")),
+            "{messages:?}"
+        );
+    }
+}

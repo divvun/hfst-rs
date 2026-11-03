@@ -82,7 +82,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
                 return Err(CommandError::not_supported("edit properties"));
             }
             XfstCommand::Hfst(data) => self.hfst(data),
-            XfstCommand::Invoke(word) => return Err(unknown_command_error(word)),
+            XfstCommand::Invoke(word) => return self.invoke(word),
             // 'for' has no standalone production in the bison grammar.
             XfstCommand::For => self.prompt(),
 

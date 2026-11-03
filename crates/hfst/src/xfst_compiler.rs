@@ -571,12 +571,33 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             )));
         }
         let text = self.read_input_file(path)?;
+        self.run_nested(path, &text)
+    }
 
+    // [spec:hfst:sem:xfst-cmd.alias]
+    /// Run the alias `name`: its commands, as if they stood in its place. A
+    /// word that names no alias is an unknown command.
+    fn invoke(&mut self, name: &str) -> CmdResult<Flow> {
+        let Some(commands) = self.aliases.get(name).cloned() else {
+            return Err(unknown_command_error(name));
+        };
+        if self.source_depth >= MAX_SOURCE_DEPTH {
+            return Err(CommandError::new(format!(
+                "alias '{}' is nested more than {} deep; does it call itself?",
+                name, MAX_SOURCE_DEPTH
+            )));
+        }
+        self.run_nested(&format!("<alias {}>", name), &commands)
+    }
+
+    /// Run `text` as part of this session, its diagnostics naming `name` and
+    /// pointing into it.
+    fn run_nested(&mut self, name: &str, text: &str) -> CmdResult<Flow> {
         let saved_source = std::mem::take(&mut self.source);
-        let saved_name = std::mem::replace(&mut self.source_name, path.to_string());
+        let saved_name = std::mem::replace(&mut self.source_name, name.to_string());
         let saved_span = self.current_span.clone();
         self.source_depth += 1;
-        let outcome = self.parse(&text);
+        let outcome = self.parse(text);
         self.source_depth -= 1;
         self.source = saved_source;
         self.source_name = saved_name;

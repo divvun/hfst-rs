@@ -27,12 +27,15 @@ pub(super) struct Undo<B: AlgebraBackend> {
 
 impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     /// Save what `command` can change, when a failure would not end the run
-    /// and no command around it is already saving. `source` is left to the
-    /// commands it runs.
+    /// and no command around it is already saving. `source` and an alias are
+    /// left to the commands they run.
     pub(super) fn begin_undo(&mut self, command: &nfst_xfst::XfstCommand) -> bool {
         if self.undo.is_some()
             || self.stops_on_failure()
-            || matches!(command, nfst_xfst::XfstCommand::Source(_))
+            || matches!(
+                command,
+                nfst_xfst::XfstCommand::Source(_) | nfst_xfst::XfstCommand::Invoke(_)
+            )
         {
             return false;
         }

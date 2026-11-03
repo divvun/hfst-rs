@@ -118,8 +118,14 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
 
     // @brief Print aliases
     pub fn print_aliases(&mut self, oss: &mut dyn std::io::Write) -> CmdResult {
+        // [spec:hfst:sem:xfst-cmd.alias]
+        // In the form 'alias' reads, so the listing can be read back.
         for (name, commands) in &self.aliases {
-            writeln!(oss, "alias {} {}", name, commands)?;
+            if commands.contains('\n') {
+                writeln!(oss, "alias {}\n{}\nEND;", name, commands)?;
+            } else {
+                writeln!(oss, "alias {} {}", name, commands)?;
+            }
         }
         self.flush();
         self.prompt();
