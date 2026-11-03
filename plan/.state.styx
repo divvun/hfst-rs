@@ -1150,4 +1150,9 @@ impl_evidence (
     ), covered_claims (
         {impl_name target-impl, rule xfst-cmd.alias}
     )}
+    {id xfst-shell.terminal-output, covered_rules (
+        xfst-cmd.terminal-output
+    ), covered_claims (
+        {impl_name target-impl, rule xfst-cmd.terminal-output}
+    )}
 )

@@ -8821,6 +8821,14 @@ children (
                     target-impl ([spec:hfst:sem:xfst-cmd.terminal-output])
                 }
                 deps (xfst-shell.nfst-xfst-0-6)
+                log (
+                    {
+                        at 2026-11-03T14:30:34.949784Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
+                )
             }
 
             {

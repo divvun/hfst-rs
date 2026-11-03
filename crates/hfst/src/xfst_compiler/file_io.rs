@@ -567,3 +567,54 @@ fn escape_text_symbol(s: &str) -> String {
     }
     out
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use hfst_openfst::StdVectorFst;
+
+    fn printed(script: &str) -> String {
+        let mut c = XfstCompiler::<StdVectorFst>::new();
+        c.parse(script).expect("the script runs");
+        String::from_utf8(c.take_output()).expect("UTF-8 output")
+    }
+
+    // [spec:hfst:sem:xfst-cmd.terminal-output/test]
+    // With no file, the text writes print, as C++ does.
+    #[test]
+    fn a_write_with_no_file_prints() {
+        let out = printed("regex a:b c ;\nwrite prolog\nwrite text\nwrite spaced-text\n");
+        assert_eq!(
+            out,
+            "network(NO_NAME).\narc(NO_NAME, 0, 1, \"a\":\"b\").\narc(NO_NAME, 1, 2, \"c\").\nfinal(NO_NAME, 2).\nac\na:b c\n"
+        );
+        assert!(printed("regex a ;\nwrite dot\n").starts_with("digraph H {"));
+    }
+
+    // [spec:hfst:sem:xfst-cmd.terminal-output/test]
+    #[test]
+    fn a_redirected_write_goes_to_the_file() {
+        let path = std::env::temp_dir().join(format!("hfst-xfst-write-{}.pl", std::process::id()));
+        let script = format!("regex a ;\nwrite prolog > {}\n", path.display());
+        assert_eq!(printed(&script), "");
+        let written = std::fs::read_to_string(&path).expect("the file was written");
+        std::fs::remove_file(&path).expect("remove the scratch file");
+        assert!(written.starts_with("network(NO_NAME)."), "{written}");
+    }
+
+    // [spec:hfst:sem:xfst-cmd.terminal-output/test]
+    #[test]
+    fn print_list_names_one_list_or_fails() {
+        assert_eq!(
+            printed("list V a e ;\nprint list V\n"),
+            "         V: a e \n"
+        );
+        let mut c = XfstCompiler::<StdVectorFst>::new();
+        assert!(c.parse("print list W\n").is_err());
+        assert!(
+            c.diagnostics()
+                .iter()
+                .any(|d| d.message() == "no such list: 'W'")
+        );
+    }
+}

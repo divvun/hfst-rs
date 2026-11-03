@@ -289,7 +289,12 @@ static COMMANDS: &[Entry] = &[
         "",
         "prints how many arcs each symbol pair of the top network labels",
     ),
-    entry(&["print lists", "print list"], "", "prints every list"),
+    entry(
+        &["print list"],
+        "(<name>)",
+        "prints the list <name>, or every list",
+    ),
+    entry(&["print lists"], "", "prints every list"),
     entry(
         &["print longest-string", "longest-string", "pls"],
         "",
@@ -623,23 +628,23 @@ static COMMANDS: &[Entry] = &[
     ),
     entry(
         &["write dot", "wdot", "dot"],
-        "<filename>",
-        "writes the top network in Graphviz dot format",
+        "(<filename>)",
+        "writes the top network in Graphviz dot format, to standard output by default",
     ),
     entry(
         &["write prolog", "wpl"],
-        "<filename>",
-        "writes the top network in Prolog format",
+        "(<filename>)",
+        "writes the top network in Prolog format, to standard output by default",
     ),
     entry(
         &["write spaced-text", "wspaced-text"],
-        "<filename>",
-        "writes the paths of the top network, symbols separated by spaces",
+        "(<filename>)",
+        "writes the paths of the top network, symbols separated by spaces, to standard output by default",
     ),
     entry(
         &["write text", "wt"],
-        "<filename>",
-        "writes the strings of the upper side of the top network, one per line",
+        "(<filename>)",
+        "writes the strings of the upper side of the top network, to standard output by default",
     ),
     entry(
         &["zero-plus net", "zero-plus"],
