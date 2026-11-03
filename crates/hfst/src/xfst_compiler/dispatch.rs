@@ -82,6 +82,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
                 return Err(CommandError::not_supported("edit properties"));
             }
             XfstCommand::Hfst(data) => self.hfst(data),
+            XfstCommand::Invoke(word) => return Err(unknown_command_error(word)),
             // 'for' has no standalone production in the bison grammar.
             XfstCommand::For => self.prompt(),
 
@@ -424,7 +425,9 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             P::Defined => self.print_defined(oss),
             P::Dir => self.print_dir("*", oss),
             P::FileInfo => self.print_file_info(oss),
-            P::List | P::Lists => self.print_list(oss),
+            // [spec:hfst:sem:xfst-cmd.terminal-output]
+            P::List(Some(name)) => self.print_list_name(name, oss),
+            P::List(None) | P::Lists => self.print_list(oss),
             P::Words(n) => self.print_words("", n.unwrap_or(0), oss),
             P::LowerWords(n) => self.print_lower_words("", n.unwrap_or(0), oss),
             P::UpperWords(n) => self.print_upper_words("", n.unwrap_or(0), oss),

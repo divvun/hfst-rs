@@ -253,6 +253,20 @@ fn unknown_command_diagnostic(text: &str, span: std::ops::Range<usize>) -> Diagn
     if word.is_empty() {
         return script_error(span, String::from("expected a command here"), Vec::new());
     }
+    script_error(
+        span,
+        format!("unknown command '{}'", word),
+        unknown_command_notes(word),
+    )
+}
+
+/// The failure of a bare word that turned out to name no command and no
+/// alias, with the same notes the parser gives an unknown command.
+pub(super) fn unknown_command_error(word: &str) -> CommandError {
+    CommandError::new(format!("unknown command '{}'", word)).with_notes(unknown_command_notes(word))
+}
+
+fn unknown_command_notes(word: &str) -> Vec<String> {
     let mut notes = Vec::new();
     if let Some(near) = nearest_command(word) {
         notes.push(format!("did you mean '{}'?", near));
@@ -260,7 +274,7 @@ fn unknown_command_diagnostic(text: &str, span: std::ops::Range<usize>) -> Diagn
     notes.push(String::from(
         "'help' lists the commands this compiler accepts",
     ));
-    script_error(span, format!("unknown command '{}'", word), notes)
+    notes
 }
 
 /// The trimmed span of the line holding `pos`, when that line opens with a

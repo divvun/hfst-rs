@@ -8600,6 +8600,7 @@ children (
                 id xfst-shell.nfst-xfst-0-6
                 title "nfst-xfst 0.6.0 with what the shell needs, published to crates.io and taken into hfst: (1) a needs-more-input query, true while a regex body (regex, define with a body, define function, list) has not reached its ; outside brackets, quotes and comments, false for 'define NAME' at end of line; (2) write dot / prolog / text / spaced-text with an optional file name; (3) print list NAME; (4) alias bodies kept as source text in the Xerox alias syntax (today a multi-word command is flattened to 'printwords'); (5) control characters escaped in lexer messages (ESC shows as '\\' today)"
                 kind @build
+                sealed true
                 log (
                     {
                         at 2026-11-03T11:28:50.249511Z
@@ -8613,6 +8614,13 @@ children (
                         author "brendan@necessary.nu"
                         kind @blocker
                         text "nfst-xfst 0.6.0 is done in ~/git/necessary/nfst (uncommitted; 77 nfst-xfst tests pass; hfst's 771 pass against it through a temporary path patch). The nplan PreToolUse hook refuses a bare git commit even in the nfst repo, which is not nplan-managed, so the operator has to run the commit script: scratchpad nfst-xfst-0.6.0.sh (commit, push, cargo publish -p nfst-xfst). The hfst side of the take is saved as hfst-take-nfst-xfst-0.6.patch in the same scratchpad: Cargo.toml bump, XfstCommand::Invoke reported as an unknown command with the parser's notes, print list NAME through print_list_name. Item (5) moved to xfst-shell.messages: nfst-xfst already escapes control characters ('\\u{1b}'); hfst's unexpected_character_diagnostic takes the first char of that message, so it prints a backslash."
+                    }
+
+                    {
+                        at 2026-11-03T13:50:09.576786Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan complete)"
                     }
                 )
             }

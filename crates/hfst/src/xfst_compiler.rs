@@ -66,6 +66,7 @@ mod undo;
 mod variables;
 pub use completion::{Completion, complete};
 pub use diagnostics::parse_diagnostics;
+use diagnostics::unknown_command_error;
 use session::run_shell;
 pub use shell::LineSource;
 use variables::{initialize_variable_explanations, parse_size};

@@ -1692,9 +1692,9 @@ dependencies = [
 
 [[package]]
 name = "nfst-xfst"
-version = "0.5.0"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d001a2f1cebfabddfa02d29b8fddb2083178ca6b88f42f15712f19b186f353cc"
+checksum = "97f27fe1855c29009e416a555276ed9229f0d5407a85671d2e3439815c04850b"
 dependencies = [
  "nfst-syntax",
  "nfst-xre",
