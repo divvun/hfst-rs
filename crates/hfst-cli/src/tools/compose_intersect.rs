@@ -520,7 +520,7 @@ fn compose_streams_typed<
             common,
             &format!("Storing result in {}...\n", common.output_filename),
         );
-        if let Err(e) = outstream.write(&mut lexicon) {
+        if let Err(e) = outstream.write(&lexicon) {
             error(common, 1, 0, &format!("{e}"));
             return 1;
         }

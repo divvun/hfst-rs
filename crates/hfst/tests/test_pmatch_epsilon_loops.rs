@@ -51,11 +51,10 @@ fn write_ja(tag: &str) -> Result<String, hfst::error::Error> {
     let path = std::env::temp_dir().join(format!("i399_ja_{tag}.hfst"));
     let path_str = path.to_str().expect("temp path is valid UTF-8").to_string();
     let mut reader = std::io::BufReader::new(JA_ATT.as_bytes());
-    let mut ja =
-        HfstTransducer::<StdVectorFst>::read_in_att_format_file(&mut reader, "@0@", false)?;
+    let ja = HfstTransducer::<StdVectorFst>::read_in_att_format_file(&mut reader, "@0@", false)?;
     let mut out =
         HfstOutputStream::new_filename(&path_str, ImplementationType::TROPICAL_OPENFST_TYPE, true)?;
-    out.write(&mut ja)?;
+    out.write(&ja)?;
     out.close();
     Ok(path_str)
 }

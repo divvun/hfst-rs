@@ -377,7 +377,7 @@ pub fn debug_save_transducer<B: Backend>(
                 opts.program_name, name
             ),
         );
-        debug_out.write(&mut t)?;
+        debug_out.write(&t)?;
         debug_out.close();
     }
     Ok(())
@@ -487,16 +487,16 @@ pub fn redirect_converting<B: hfst::backend::AlgebraBackend>(
 ) -> hfst::error::Result<()> {
     match outstream.get_type() {
         ImplementationType::HFST_OL_TYPE | ImplementationType::HFST_OLW_TYPE => {
-            let mut ol = t.to_ol(
+            let ol = t.to_ol(
                 outstream.get_type() == ImplementationType::HFST_OLW_TYPE,
                 "",
             )?;
-            outstream.write(&mut ol)?;
+            outstream.write(&ol)?;
         }
         #[cfg(feature = "foma")]
         ImplementationType::FOMA_TYPE => {
-            let mut foma = t.to_foma()?;
-            outstream.write(&mut foma)?;
+            let foma = t.to_foma()?;
+            outstream.write(&foma)?;
         }
         _ => {
             outstream.write(t)?;

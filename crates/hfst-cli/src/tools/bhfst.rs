@@ -343,7 +343,7 @@ fn resolve_thfst_source(common: &CommonOptions, path_str: &str) -> Result<ThfstS
 
     // Converting to THFST_TYPE always yields the Thfst variant;
     // any other variant would be a bug in the conversion path.
-    let mut thfst = match converted {
+    let thfst = match converted {
         AnyTransducer::Thfst(t) => t,
         AnyTransducer::Tropical(_) | AnyTransducer::OlW(_) | AnyTransducer::OlU(_) => {
             error(
@@ -386,7 +386,7 @@ fn resolve_thfst_source(common: &CommonOptions, path_str: &str) -> Result<ThfstS
                 return Err(1);
             }
         };
-    if let Err(e) = outstream.write(&mut thfst) {
+    if let Err(e) = outstream.write(&thfst) {
         error(common, 1, 0, &format!("cannot write THFST: {e}"));
         return Err(1);
     }

@@ -261,14 +261,14 @@ pub mod expand_equivalences {
                     return;
                 }
 
-                let mut trans = match expand_equivalences(trans, &pairs, options.level) {
+                let trans = match expand_equivalences(trans, &pairs, options.level) {
                     Ok(v) => v,
                     Err(e) => {
                         error(common, 1, 0, &format!("{e}"));
                         return;
                     }
                 };
-                if let Err(e) = outstream.write(&mut trans) {
+                if let Err(e) = outstream.write(&trans) {
                     error(common, 1, 0, &format!("{e}"));
                     return;
                 }
@@ -988,7 +988,7 @@ pub mod fst2fst {
                 let src = orig.clone();
                 hfst_set_name_unary(&mut orig, &src, "convert");
                 hfst_set_formula_unary(&mut orig, &src, "Id");
-                if let Err(e) = outstream.write(&mut orig) {
+                if let Err(e) = outstream.write(&orig) {
                     error(common, 1, 0, &format!("{e}"));
                     return 1;
                 }

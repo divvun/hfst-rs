@@ -17,7 +17,7 @@ fn write_through_hfst_output_stream_round_trip() -> crate::error::Result<()> {
     let original = ab.disjunct(&cd)?;
     let states1 = original.to_basic().unwrap().states().len();
 
-    let mut tr = HfstTransducer::wrap(original);
+    let tr = HfstTransducer::wrap(original);
     let path = std::env::temp_dir().join(format!(
         "hfst_foma_facade_{}_{}.hfst",
         std::process::id(),
@@ -30,7 +30,7 @@ fn write_through_hfst_output_stream_round_trip() -> crate::error::Result<()> {
             true,
         )
         .expect("HfstOutputStream(FOMA_TYPE)");
-        out.write(&mut tr).expect("write foma transducer <<");
+        out.write(&tr).expect("write foma transducer <<");
         out.close();
     }
 

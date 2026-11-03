@@ -129,14 +129,14 @@ fn process_stream(
             } else {
                 verbose_print(common, &format!("Guessifying {}... {}\n", inputname, transducer_n));
             }
-            let mut t = match affix_guessify(&trans, direction, weight) {
+            let t = match affix_guessify(&trans, direction, weight) {
                 Ok(t) => t,
                 Err(e) => {
                     error(common, 1, 0, &format!("{e}"));
                     return 1;
                 }
             };
-            if let Err(e) = outstream.write(&mut t) {
+            if let Err(e) = outstream.write(&t) {
                 error(common, 1, 0, &format!("{e}"));
                 return 1;
             }

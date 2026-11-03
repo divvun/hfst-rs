@@ -140,18 +140,18 @@ fn writing_att_format<B: AlgebraBackend>() -> Result<(), hfst::error::Error> {
 fn stream_round_trip<B: AlgebraBackend + FromAnyTransducer>() -> Result<(), hfst::error::Error> {
     verbose_print("Writing to HfstOutputStream", B::TYPE);
 
-    let mut tr1 = HfstTransducer::<B>::new_symbol("foo")?;
-    let mut tr2 = HfstTransducer::<B>::new_symbol_pair("bar", "foo")?;
-    let mut tr3 = HfstTransducer::<B>::new_symbol("a")?;
-    let mut tr4 = HfstTransducer::<B>::new_symbol_pair("b", "c")?;
+    let tr1 = HfstTransducer::<B>::new_symbol("foo")?;
+    let tr2 = HfstTransducer::<B>::new_symbol_pair("bar", "foo")?;
+    let tr3 = HfstTransducer::<B>::new_symbol("a")?;
+    let tr4 = HfstTransducer::<B>::new_symbol_pair("b", "c")?;
 
     let path = temp_path(&format!("hfst_test_streams{:?}.hfst", B::TYPE));
     {
         let mut out = HfstOutputStream::new_filename(&path, B::TYPE, true)?;
-        out.write(&mut tr1)?;
-        out.write(&mut tr2)?;
-        out.write(&mut tr3)?;
-        out.write(&mut tr4)?;
+        out.write(&tr1)?;
+        out.write(&tr2)?;
+        out.write(&tr3)?;
+        out.write(&tr4)?;
         out.close();
     }
 
@@ -209,14 +209,14 @@ fn stream_round_trip_tropical() -> Result<(), hfst::error::Error> {
 // transducer loop, or the in-memory route is a second-class one.
 fn stream_round_trip_in_memory<B: AlgebraBackend + FromAnyTransducer>()
 -> Result<(), hfst::error::Error> {
-    let mut tr1 = HfstTransducer::<B>::new_symbol("foo")?;
-    let mut tr2 = HfstTransducer::<B>::new_symbol_pair("bar", "foo")?;
+    let tr1 = HfstTransducer::<B>::new_symbol("foo")?;
+    let tr2 = HfstTransducer::<B>::new_symbol_pair("bar", "foo")?;
 
     let path = temp_path(&format!("hfst_test_streams_mem{:?}.hfst", B::TYPE));
     {
         let mut out = HfstOutputStream::new_filename(&path, B::TYPE, true)?;
-        out.write(&mut tr1)?;
-        out.write(&mut tr2)?;
+        out.write(&tr1)?;
+        out.write(&tr2)?;
         out.close();
     }
     let bytes = std::fs::read(&path).expect("written archive is readable");
@@ -259,12 +259,12 @@ fn sparse_symtable_round_trip<B: AlgebraBackend + FromAnyTransducer>()
     let mut t = HfstTransducer::<B>::new_symbol_pair("a", "a")?;
     let tx = HfstTransducer::<B>::new_symbol_pair("x", "x")?;
     t.disjunct(&tx, true)?;
-    let mut killed = t.kill_paths("x");
+    let killed = t.kill_paths("x");
 
     let path = temp_path(&format!("hfst_sparse_symt{:?}.hfst", B::TYPE));
     {
         let mut out = HfstOutputStream::new_filename(&path, B::TYPE, true)?;
-        out.write(&mut killed)?;
+        out.write(&killed)?;
         out.close();
     }
 

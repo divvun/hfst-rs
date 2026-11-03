@@ -563,8 +563,8 @@ fn thfst_stream_roundtrip() {
         .expect("thfst output stream (hfst_format forced off)");
     assert_eq!(out.get_type(), THFST_TYPE);
     {
-        let mut facade = animals_thfst_facade();
-        out.write(&mut facade).expect("write thfst to directory");
+        let facade = animals_thfst_facade();
+        out.write(&facade).expect("write thfst to directory");
     }
     out.close();
 
@@ -633,14 +633,14 @@ fn thfst_stream_single() {
 
     // First write succeeds.
     {
-        let mut facade = animals_thfst_facade();
-        out.write(&mut facade).expect("first write succeeds");
+        let facade = animals_thfst_facade();
+        out.write(&facade).expect("first write succeeds");
     }
     // A .thfst directory holds exactly one transducer: the second write errors.
-    let mut facade2 =
+    let facade2 =
         HfstTransducer::<ThfstTransducer>::new_from_basic(&build_ab_weighted()).expect("thfst2");
     let err = out
-        .write(&mut facade2)
+        .write(&facade2)
         .err()
         .expect("second write into the same .thfst directory errors");
     assert_eq!(

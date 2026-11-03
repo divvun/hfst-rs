@@ -60,6 +60,7 @@ mod shell;
 mod stack;
 mod substitute;
 mod test_commands;
+mod undo;
 mod variables;
 pub use diagnostics::parse_diagnostics;
 use session::run_shell;
@@ -299,6 +300,8 @@ pub struct XfstCompiler<B: AlgebraBackend> {
     /// the host supplies one; otherwise the input stream, prompting on the
     /// output.
     line_source: Option<Box<dyn LineSource>>,
+    /// What the running command may need put back if it fails.
+    undo: Option<undo::Undo<B>>,
     /// What running commands has reported, oldest first, until the caller
     /// takes it or a sink receives it. Includes what the embedded regex and
     /// lexc compilers reported.
@@ -320,6 +323,7 @@ impl<B: AlgebraBackend> XfstCompiler<B> {
     }
     // Resolve a 'NetId' to the transducer it names in the arena, mutably.
     fn net_mut(&mut self, id: NetId) -> &mut HfstTransducer<B> {
+        self.save_before_change(id);
         &mut self.nets[id.0]
     }
     // Push a transducer into the arena and return the 'NetId' naming it.
@@ -338,6 +342,8 @@ impl<B: AlgebraBackend> XfstCompiler<B> {
         b: NetId,
     ) -> (&mut HfstTransducer<B>, &mut HfstTransducer<B>) {
         assert!(a.0 != b.0, "net_pair_mut requires distinct NetIds");
+        self.save_before_change(a);
+        self.save_before_change(b);
         if a.0 < b.0 {
             let (lo, hi) = self.nets.split_at_mut(b.0);
             (&mut lo[a.0], &mut hi[0])
@@ -386,6 +392,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             output_failure: None,
             input: Box::new(std::io::empty()),
             line_source: None,
+            undo: None,
             files: crate::file_resolver::default_resolver(),
             diagnostics: Diagnostics::default(),
         };
@@ -495,12 +502,16 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         };
         for c in &script.value.commands {
             self.current_span = c.span.range.clone();
+            let undoing = self.begin_undo(&c.value);
             let outcome = self.eval_command(&c.value);
             self.absorb_nested_diagnostics();
             let outcome = match self.output_failure.take() {
                 Some(failure) => outcome.and(Err(failure)),
                 None => outcome,
             };
+            if undoing {
+                self.end_undo(outcome.is_err());
+            }
             match outcome {
                 Ok(Flow::Continue) => {}
                 Ok(Flow::Quit) => return Ok(Flow::Quit),

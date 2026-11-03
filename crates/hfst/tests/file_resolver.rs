@@ -43,7 +43,7 @@ fn binary(src: &str, name: &str) -> Vec<u8> {
     let out = scratch.create("t.hfst").expect("create in memory");
     let mut stream = HfstOutputStream::from_writer(out, TROPICAL_OPENFST_TYPE, true)
         .expect("open a stream on the writer");
-    stream.write(&mut t).expect("write transducer");
+    stream.write(&t).expect("write transducer");
     stream.close();
     scratch.get("t.hfst").expect("the transducer was written")
 }
@@ -101,10 +101,10 @@ fn xfst_loads_a_thfst_directory_from_the_filesystem() {
     let dir = std::env::temp_dir().join(format!("hfst-file-resolver-{}.thfst", std::process::id()));
     let dir_name = dir.to_str().expect("utf8 temp path").to_string();
     let basic = regex("{cat}").to_basic().expect("basic transducer");
-    let mut thfst = HfstTransducer::<ThfstTransducer>::new_from_basic(&basic).expect("thfst");
+    let thfst = HfstTransducer::<ThfstTransducer>::new_from_basic(&basic).expect("thfst");
     let mut out =
         HfstOutputStream::new_filename(&dir_name, THFST_TYPE, true).expect("thfst stream");
-    out.write(&mut thfst).expect("write thfst");
+    out.write(&thfst).expect("write thfst");
     out.close();
     let mut c = XfstCompiler::<StdVectorFst>::new();
     let loaded = c.parse(&format!("load stack {dir_name}\n"));

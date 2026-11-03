@@ -8692,6 +8692,14 @@ children (
                         implements {
                             target-impl ([spec:hfst:req:xfst-cmd.failed-command-no-effect])
                         }
+                        log (
+                            {
+                                at 2026-11-03T11:44:18.989191Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Todo → Doing (nplan start)"
+                            }
+                        )
                     }
 
                     {

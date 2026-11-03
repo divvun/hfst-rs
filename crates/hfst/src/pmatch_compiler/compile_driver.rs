@@ -720,7 +720,7 @@ pub fn write_archive<B: AlgebraBackend>(
     for (k, v) in properties.iter() {
         output_tmp.set_property(k, v);
     }
-    outstream.write(&mut output_tmp)?;
+    outstream.write(&output_tmp)?;
 
     if verbose {
         let duration = (clock() - timer) as f64 / CLOCKS_PER_SEC as f64;
@@ -752,7 +752,7 @@ pub fn write_archive<B: AlgebraBackend>(
         let harmonized_tmp = harmonized_tmp?;
         let mut output_tmp = HfstTransducer::wrap(harmonized_tmp);
         output_tmp.set_name(key);
-        outstream.write(&mut output_tmp)?;
+        outstream.write(&output_tmp)?;
         if verbose {
             let duration = (clock() - timer) as f64 / CLOCKS_PER_SEC as f64;
             let _ = writeln!(msg, "converted in {:.2} seconds", duration);

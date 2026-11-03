@@ -187,7 +187,7 @@ pub fn print_dot_file<B: crate::backend::Backend>(
     writeln!(out, "}}")
 }
 
-pub fn print_dot_os<B: crate::backend::Backend>(out: &mut dyn Write, t: &mut HfstTransducer<B>) {
+pub fn print_dot_os<B: crate::backend::Backend>(out: &mut dyn Write, t: &HfstTransducer<B>) {
     // C++ 'out.precision(2)' sets the stream's general-format precision to 2
     // significant figures for '<<'-printed floats (the final-state weight
     // below). That is neither '%.2f' nor Rust '{}'; per the port convention we

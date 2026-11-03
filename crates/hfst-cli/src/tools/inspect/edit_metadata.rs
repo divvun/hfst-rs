@@ -246,7 +246,7 @@ fn process_stream(
                         trans.set_property(key, val);
                     }
                 }
-                if let Err(e) = outstream.write(&mut trans) {
+                if let Err(e) = outstream.write(&trans) {
                     error(common, 1, 0, &format!("{e}"));
                     return 1;
                 }

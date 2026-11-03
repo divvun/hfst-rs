@@ -133,7 +133,7 @@ mod tests {
                 &basic,
             )
             .expect("tropical");
-        let mut olw = tropical.to_ol(true, "").expect("weighted optimized lookup");
+        let olw = tropical.to_ol(true, "").expect("weighted optimized lookup");
         let memory = MemoryFiles::default();
         let mut out = HfstOutputStream::from_writer(
             memory.create("olw").expect("a file in memory"),
@@ -141,7 +141,7 @@ mod tests {
             true,
         )
         .expect("a stream");
-        out.write(&mut olw).expect("written");
+        out.write(&olw).expect("written");
         out.close();
         let bytes = memory.get("olw").expect("the bytes");
         HfstTransducer::from_bytes(&bytes, "olw").expect("divvun-fst reads it")

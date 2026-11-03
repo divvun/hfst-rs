@@ -1104,4 +1104,9 @@ impl_evidence (
     ), covered_claims (
         {impl_name target-impl, rule xfst-cmd.shell-in-library}
     )}
+    {id xfst-shell.cancel.transactional, covered_rules (
+        xfst-cmd.failed-command-no-effect
+    ), covered_claims (
+        {impl_name target-impl, rule xfst-cmd.failed-command-no-effect}
+    )}
 )

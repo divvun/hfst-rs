@@ -187,7 +187,7 @@ mod tests {
         let net =
             HfstBasicTransducer::read_in_att_format(&mut att.as_bytes(), "@0@", &mut lines, false)
                 .expect("the AT&T text parses");
-        let mut ol = AlgebraTransducer::<hfst_openfst::StdVectorFst>::new_from_basic(&net)
+        let ol = AlgebraTransducer::<hfst_openfst::StdVectorFst>::new_from_basic(&net)
             .expect("a transducer")
             .to_ol(weighted, "")
             .expect("optimized lookup");
@@ -200,7 +200,7 @@ mod tests {
         let sink = files.create("cat").expect("memory takes a file");
         let mut stream = HfstOutputStream::from_writer(sink, format, header)
             .expect("an optimized-lookup stream");
-        stream.write(&mut ol).expect("the transducer writes");
+        stream.write(&ol).expect("the transducer writes");
         stream.close();
         files.get("cat").expect("the transducer was written")
     }

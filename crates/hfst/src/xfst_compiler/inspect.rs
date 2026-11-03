@@ -121,7 +121,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
                     e
                 ))
             })?;
-            crate::hfst_print_dot::print_dot_os(&mut dotfile, self.net_mut(tmp));
+            crate::hfst_print_dot::print_dot_os(&mut dotfile, self.net(tmp));
         }
         let cmd1 = format!(
             "dot -Tpng {} > {} 2> /dev/null",

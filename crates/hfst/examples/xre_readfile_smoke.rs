@@ -37,9 +37,9 @@ fn main() -> hfst::error::Result<()> {
     // @bin: write a binary a:b transducer, then read it back through @bin.
     let bin = tmp("xre_readfile.hfst");
     {
-        let mut t = HfstTransducer::<StdVectorFst>::new_symbol_pair("a", "b")?;
+        let t = HfstTransducer::<StdVectorFst>::new_symbol_pair("a", "b")?;
         let mut out = HfstOutputStream::new_filename(&bin, TROPICAL_OPENFST_TYPE, true)?;
-        out.write(&mut t)?;
+        out.write(&t)?;
         out.close();
     }
     let from_bin = compile(&mut c, &format!("@bin\"{bin}\""));

@@ -86,7 +86,6 @@ fn process_stream(
         };
         // the one runtime dispatch per stream read ([dec:hfst:monomorphic-backends])
         crate::for_algebra!(any, trans => {
-            let mut trans = trans;
             let mut inputname = trans.get_name();
             if inputname.is_empty() {
                 inputname = common.input_filename.clone();
@@ -97,7 +96,7 @@ fn process_stream(
                 inputname, dupe_count, transducer_n
             ));
             for _ in 0..dupe_count {
-                if let Err(e) = outstream.write(&mut trans) {
+                if let Err(e) = outstream.write(&trans) {
                     eprintln!("hfst-multiply: {e}");
                     return 1;
                 }

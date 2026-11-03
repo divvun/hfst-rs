@@ -286,7 +286,7 @@ impl HfstOutputStream {
     /// Write `transducer` to this stream.
     pub fn write<B: Backend>(
         &mut self,
-        transducer: &mut HfstTransducer<B>,
+        transducer: &HfstTransducer<B>,
     ) -> crate::error::Result<&mut Self> {
         if !self.is_open {
             crate::bail!(StreamIsClosed);

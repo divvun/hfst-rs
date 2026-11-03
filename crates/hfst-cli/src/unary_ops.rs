@@ -152,7 +152,7 @@ pub fn unary_streams(
                     hfst_set_formula_unary(&mut trans, &src, &formula);
                 }
             }
-            if let Err(e) = outstream.write(&mut trans) {
+            if let Err(e) = outstream.write(&trans) {
                 error(common, 1, 0, &format!("{e}"));
                 return 1;
             }

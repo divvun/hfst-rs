@@ -32,11 +32,14 @@ what the C++ code did. Where they disagree with this file, this file wins.
 > treat a missing file as empty input, or skip the write in silence.
 
 > [spec:hfst:req:xfst-cmd.failed-command-no-effect]
-> A command that fails MUST leave the stack, the definitions, the lists and
-> the variables as they were before it ran. A failure part way through MUST
-> NOT drop the networks the command had taken from the stack, and MUST NOT
-> leave a network half changed. Output the command printed before failing
-> stays printed.
+> When the session goes on after a failure, at the prompt or with
+> `quit-on-fail` set to `OFF`, a command that fails MUST leave the stack,
+> the definitions, the lists and the variables as they were before it ran.
+> It MUST NOT drop the networks it had taken from the stack, and MUST NOT
+> leave a network half changed. Output it printed before failing stays
+> printed. `source` and an alias are the commands they run, and each of
+> those is undone alone. When a failure ends the run, nothing is kept for
+> undoing, so a script run pays no copies.
 
 ## No placeholders
 

@@ -199,7 +199,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     // @brief Save top networks dot form in @a outfile
     pub fn write_dot(&mut self, oss: &mut dyn std::io::Write) -> CmdResult {
         let tmp = self.top()?;
-        crate::hfst_print_dot::print_dot_os(oss, self.net_mut(tmp));
+        crate::hfst_print_dot::print_dot_os(oss, self.net(tmp));
         oss.flush()?;
         self.prompt();
         Ok(())
@@ -304,7 +304,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         if self.variables["name-nets"] == "ON" {
             tmp.set_name(name);
         }
-        outstream.write(&mut tmp)?;
+        outstream.write(&tmp)?;
         outstream.close();
         self.prompt();
         Ok(())
@@ -327,7 +327,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         for (name, def) in defs.iter() {
             let mut tmp = HfstTransducer::new_copy(self.net(*def))?;
             tmp.set_name(name);
-            outstream.write(&mut tmp)?;
+            outstream.write(&tmp)?;
         }
         outstream.close();
         self.prompt();
@@ -342,7 +342,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         let mut outstream = self.open_output_stream(outfilename, top_type)?;
         let ids: Vec<NetId> = self.stack.clone();
         for t in ids.iter() {
-            outstream.write(self.net_mut(*t))?;
+            outstream.write(self.net(*t))?;
         }
         outstream.close();
         self.prompt();
