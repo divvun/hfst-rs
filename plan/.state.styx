@@ -1,6 +1,6 @@
 schema_version 7
 
-last_sync_at 2026-11-03T11:26:50.047582Z
+last_sync_at 2026-11-03T14:40:56.449371Z
 
 rule_versions (
     {id determinize-envelope.bounded-strategies, version 0}
@@ -1053,6 +1053,83 @@ impl_evidence (
         {id xfst-cmd.errors-are-values, version 0}
         {id xfst-cmd.io-errors, version 0}
     )}
+    {id xfst-shell.alias, covered_rules (
+        xfst-cmd.alias
+    ), covered_claims (
+        {impl_name target-impl, rule xfst-cmd.alias}
+    ), rule_versions_seen (
+        {id xfst-cmd.alias, version 0}
+    )}
+    {id xfst-shell.cancel.interrupt, covered_rules (
+        xfst-cmd.shell-cancel
+    ), covered_claims (
+        {impl_name target-impl, rule xfst-cmd.shell-cancel}
+    ), rule_versions_seen (
+        {id xfst-cmd.shell-cancel, version 0}
+    )}
+    {id xfst-shell.cancel.transactional, covered_rules (
+        xfst-cmd.failed-command-no-effect
+    ), covered_claims (
+        {impl_name target-impl, rule xfst-cmd.failed-command-no-effect}
+    ), rule_versions_seen (
+        {id xfst-cmd.failed-command-no-effect, version 0}
+    )}
+    {id xfst-shell.complete-commands, covered_rules (
+        xfst-cmd.shell-complete-commands
+    ), covered_claims (
+        {impl_name target-impl, rule xfst-cmd.shell-complete-commands}
+    ), rule_versions_seen (
+        {id xfst-cmd.shell-complete-commands, version 0}
+    )}
+    {id xfst-shell.completion, covered_rules (
+        xfst-cmd.shell-completion
+    ), covered_claims (
+        {impl_name target-impl, rule xfst-cmd.shell-completion}
+    ), rule_versions_seen (
+        {id xfst-cmd.shell-completion, version 0}
+    )}
+    {id xfst-shell.line-editor, covered_rules (
+        xfst-cmd.shell-line-editing
+    ), covered_claims (
+        {impl_name target-impl, rule xfst-cmd.shell-line-editing}
+    ), rule_versions_seen (
+        {id xfst-cmd.shell-line-editing, version 0}
+    )}
+    {id xfst-shell.loop-in-library, covered_rules (
+        xfst-cmd.shell-in-library
+    ), covered_claims (
+        {impl_name target-impl, rule xfst-cmd.shell-in-library}
+    ), rule_versions_seen (
+        {id xfst-cmd.shell-in-library, version 0}
+    )}
+    {id xfst-shell.messages, covered_rules (
+        xfst-cmd.shell-messages
+    ), covered_claims (
+        {impl_name target-impl, rule xfst-cmd.shell-messages}
+    ), rule_versions_seen (
+        {id xfst-cmd.shell-messages, version 0}
+    )}
+    {id xfst-shell.session-edges, covered_rules (
+        xfst-cmd.shell-session-edges
+    ), covered_claims (
+        {impl_name target-impl, rule xfst-cmd.shell-session-edges}
+    ), rule_versions_seen (
+        {id xfst-cmd.shell-session-edges, version 0}
+    )}
+    {id xfst-shell.terminal-output, covered_rules (
+        xfst-cmd.terminal-output
+    ), covered_claims (
+        {impl_name target-impl, rule xfst-cmd.terminal-output}
+    ), rule_versions_seen (
+        {id xfst-cmd.terminal-output, version 0}
+    )}
+    {id xfst-shell.word-modes, covered_rules (
+        xfst-cmd.shell-word-modes
+    ), covered_claims (
+        {impl_name target-impl, rule xfst-cmd.shell-word-modes}
+    ), rule_versions_seen (
+        {id xfst-cmd.shell-word-modes, version 0}
+    )}
     {id xfst-source, covered_rules (
         xfst-cmd.source
     ), covered_claims (
@@ -1099,60 +1176,5 @@ impl_evidence (
         {impl_name target-impl, rule xre-finalization.root-optimize}
     ), rule_versions_seen (
         {id xre-finalization.root-optimize, version 0}
-    )}
-    {id xfst-shell.loop-in-library, covered_rules (
-        xfst-cmd.shell-in-library
-    ), covered_claims (
-        {impl_name target-impl, rule xfst-cmd.shell-in-library}
-    )}
-    {id xfst-shell.cancel.transactional, covered_rules (
-        xfst-cmd.failed-command-no-effect
-    ), covered_claims (
-        {impl_name target-impl, rule xfst-cmd.failed-command-no-effect}
-    )}
-    {id xfst-shell.word-modes, covered_rules (
-        xfst-cmd.shell-word-modes
-    ), covered_claims (
-        {impl_name target-impl, rule xfst-cmd.shell-word-modes}
-    )}
-    {id xfst-shell.line-editor, covered_rules (
-        xfst-cmd.shell-line-editing
-    ), covered_claims (
-        {impl_name target-impl, rule xfst-cmd.shell-line-editing}
-    )}
-    {id xfst-shell.session-edges, covered_rules (
-        xfst-cmd.shell-session-edges
-    ), covered_claims (
-        {impl_name target-impl, rule xfst-cmd.shell-session-edges}
-    )}
-    {id xfst-shell.messages, covered_rules (
-        xfst-cmd.shell-messages
-    ), covered_claims (
-        {impl_name target-impl, rule xfst-cmd.shell-messages}
-    )}
-    {id xfst-shell.completion, covered_rules (
-        xfst-cmd.shell-completion
-    ), covered_claims (
-        {impl_name target-impl, rule xfst-cmd.shell-completion}
-    )}
-    {id xfst-shell.cancel.interrupt, covered_rules (
-        xfst-cmd.shell-cancel
-    ), covered_claims (
-        {impl_name target-impl, rule xfst-cmd.shell-cancel}
-    )}
-    {id xfst-shell.complete-commands, covered_rules (
-        xfst-cmd.shell-complete-commands
-    ), covered_claims (
-        {impl_name target-impl, rule xfst-cmd.shell-complete-commands}
-    )}
-    {id xfst-shell.alias, covered_rules (
-        xfst-cmd.alias
-    ), covered_claims (
-        {impl_name target-impl, rule xfst-cmd.alias}
-    )}
-    {id xfst-shell.terminal-output, covered_rules (
-        xfst-cmd.terminal-output
-    ), covered_claims (
-        {impl_name target-impl, rule xfst-cmd.terminal-output}
     )}
 )
