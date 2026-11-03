@@ -1,6 +1,6 @@
 schema_version 7
 
-last_sync_at 2026-10-31T19:34:51.303285Z
+last_sync_at 2026-11-03T11:03:59.873001Z
 
 rule_versions (
     {id determinize-envelope.bounded-strategies, version 0}
@@ -76,6 +76,8 @@ rule_versions (
     {id xfst-cmd.ambiguity, version 0}
     {id xfst-cmd.apply-med, version 0}
     {id xfst-cmd.errors-are-values, version 0}
+    {id xfst-cmd.help, version 0}
+    {id xfst-cmd.interactive-prompt, version 0}
     {id xfst-cmd.io-errors, version 0}
     {id xfst-cmd.list-range, version 0}
     {id xfst-cmd.no-dead-surface, version 0}
@@ -262,6 +264,7 @@ derived_priorities (
     {id version-banner-one-identity, priority 0, derived_at 2026-10-06T21:03:19.004443Z}
     {id version-line-provenance, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
     {id wasm.crates, priority 1, derived_at 2026-10-28T23:00:39.237354Z}
+    {id wasm.deno-check-root, priority 0, derived_at 2026-11-03T11:03:14.890084Z}
     {id wasm.dhfst, priority 3, derived_at 2026-10-29T13:08:33.271865Z}
     {id wasm.diagnostics, priority 0, derived_at 2026-10-28T23:00:39.237354Z}
     {id wasm.divvun-fst-lookup, priority 0, derived_at 2026-10-29T17:13:00.466749Z}
@@ -288,6 +291,7 @@ derived_priorities (
     {id xfst-copyright-owner-plain, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
     {id xfst-flag-encode-nativize, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
     {id xfst-function-arg-substitution, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
+    {id xfst-interactive-help, priority 0, derived_at 2026-11-03T11:03:14.890084Z}
     {id xfst-list-ranges, priority 0, derived_at 2026-10-06T21:03:19.004443Z}
     {id xfst-no-placeholders, priority 1, derived_at 2026-10-06T21:03:19.004443Z}
     {id xfst-print-defined-body, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
@@ -976,6 +980,10 @@ impl_evidence (
         {id xfst-cmd.apply-med, version 0}
         {id xfst-cmd.substring, version 0}
     )}
+    {id xfst-interactive-help, rule_versions_seen (
+        {id xfst-cmd.help, version 0}
+        {id xfst-cmd.interactive-prompt, version 0}
+    )}
     {id xfst-list-ranges, covered_rules (
         xfst-cmd.list-range
     ), covered_claims (
@@ -1066,5 +1074,4 @@ impl_evidence (
     ), rule_versions_seen (
         {id xre-finalization.root-optimize, version 0}
     )}
-    {id xfst-interactive-help}
 )
