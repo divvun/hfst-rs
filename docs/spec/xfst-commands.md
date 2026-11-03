@@ -31,6 +31,13 @@ what the C++ code did. Where they disagree with this file, this file wins.
 > the same way when the file cannot be created or written. Neither may
 > treat a missing file as empty input, or skip the write in silence.
 
+> [spec:hfst:req:xfst-cmd.failed-command-no-effect]
+> A command that fails MUST leave the stack, the definitions, the lists and
+> the variables as they were before it ran. A failure part way through MUST
+> NOT drop the networks the command had taken from the stack, and MUST NOT
+> leave a network half changed. Output the command printed before failing
+> stays printed.
+
 ## No placeholders
 
 > [spec:hfst:req:xfst-cmd.no-placeholders]
@@ -181,6 +188,86 @@ what the C++ code did. Where they disagree with this file, this file wins.
 > reads, and that prompt MUST reach the terminal before the shell waits for
 > the line. This holds after a command that worked, after one that failed,
 > after a blank or comment line, and on a continuation line.
+
+> [spec:hfst:req:xfst-cmd.shell-in-library]
+> The shell MUST be a library function: reading lines, deciding when a
+> command is complete, prompting, running the command and reporting a
+> failure all happen in the hfst library. Every line the shell reads,
+> including the lines `apply`, `read text`, `read spaced-text` and `inspect
+> net` read, MUST come through one line source the host supplies. The host
+> supplies only the terminal: a plain reader or a line editor. A line that
+> is not valid UTF-8 MUST be reported as such, and the session goes on.
+
+> [spec:hfst:req:xfst-cmd.shell-complete-commands]
+> A command typed at the prompt MUST mean what the same text means in a
+> script. A command whose syntax ends in `;` (`regex`, `define` with a
+> body, a `define` function, `list`) is complete at that `;`, outside
+> brackets, quotes and comments. Until then, and after a line ending in
+> `\`, the shell MUST read more lines under a continuation prompt that
+> differs from the main one. `define NAME` with nothing after it is
+> complete. A diagnostic MUST point into the command as it was typed, with
+> its lines numbered from 1.
+
+> [spec:hfst:req:xfst-cmd.shell-word-modes]
+> `apply up`, `apply down`, `apply med`, `read text` and `read spaced-text`
+> with nothing after them at the prompt MUST read their words from the
+> lines that follow, each line under the command's own prompt, until end of
+> input (Ctrl-D) or a `<ctrl-d>` line, and then return to the shell. `apply`
+> answers each word as it is read. `read text` and `read spaced-text` build
+> their network from all the lines once input ends.
+
+> [spec:hfst:req:xfst-cmd.shell-line-editing]
+> When standard input and output are terminals and `-r` is not given, the
+> shell MUST read every line with a line editor: moving the cursor,
+> deleting, and recalling earlier lines with up and down. The lines read in
+> the word modes and in `inspect net` share this editor. History lasts for
+> the session only. With `-r`, or when input is not a terminal, lines are
+> read plainly. Ctrl-C at any prompt discards that line and any unfinished
+> command, and prompts again. Ctrl-D at the main prompt ends the session;
+> in a word mode it ends the mode.
+
+> [spec:hfst:req:xfst-cmd.shell-completion]
+> In the line editor, Tab at the start of a command MUST complete command
+> names, taken from the table `help` reads. After a command that takes a
+> file name, Tab completes file names. After a command that takes the name
+> of a defined network (`push defined`, `substitute defined`, `undefine`,
+> `print labels`, `write definition`), Tab completes defined names.
+
+> [spec:hfst:req:xfst-cmd.shell-cancel]
+> In an interactive session on a terminal, Ctrl-C while a command runs MUST
+> stop the command in bounded time and report that it was interrupted. The
+> stack, the definitions, the lists and the variables MUST be as they were
+> before the command, and the session goes on. Elsewhere Ctrl-C ends the
+> process.
+
+> [spec:hfst:req:xfst-cmd.shell-session-edges]
+> On a terminal, the shell MUST print one line when it starts, naming the
+> tool and saying how to get help and how to quit. Ending the session with
+> Ctrl-D MUST leave the terminal at the start of a new line. A session that
+> was interactive on a terminal MUST NOT print the invocation timing line
+> on exit; every other run keeps it. `hfst xfst --help` MUST describe the
+> line editor and `-r` as they are.
+
+> [spec:hfst:sem:xfst-cmd.alias]
+> `alias NAME` defines NAME as a sequence of commands, in the syntax Xerox
+> xfst gives it, keeping the commands as they were written. Typing NAME
+> where a command can stand, at the prompt or in a script, runs those
+> commands as if they stood in its place. `print aliases` prints each alias
+> and its commands.
+
+> [spec:hfst:sem:xfst-cmd.terminal-output]
+> `write dot`, `write prolog`, `write text` and `write spaced-text` with no
+> file name print to the session output, and `> FILE` after any of them
+> writes FILE. `print list NAME` prints the members of the one list NAME,
+> and fails naming NAME when no such list exists.
+
+> [spec:hfst:sem:xfst-cmd.shell-messages]
+> `define` reports `Defined 'NAME'` for a network and `Defined function
+> 'NAME(PARAMS)'` for a function, with its parameters as written. A
+> diagnostic that quotes input MUST show a control character escaped, as
+> `\u{1b}` for ESC, never raw. `lookup-optimize` and `remove-optimization`
+> fail as not supported, since the stack never holds an optimized network;
+> neither warns and succeeds.
 
 ## Tools
 

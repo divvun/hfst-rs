@@ -8590,4 +8590,153 @@ children (
             }
         )
     }
+
+    {
+        id xfst-shell
+        title "The hfst xfst interactive shell, fully fixed (follow-up to hfst-rs#8): typed text means what it means in a script, lines are edited and recalled, Tab completes, Ctrl-C clears a line or cancels a running command without losing the session, and nothing typed at the prompt is silently dropped or kills it. The shell loop moves into the library; the CLI supplies only the terminal"
+        kind @fix
+        children (
+            {
+                id xfst-shell.nfst-xfst-0-6
+                title "nfst-xfst 0.6.0 with what the shell needs, published to crates.io and taken into hfst: (1) a needs-more-input query, true while a regex body (regex, define with a body, define function, list) has not reached its ; outside brackets, quotes and comments, false for 'define NAME' at end of line; (2) write dot / prolog / text / spaced-text with an optional file name; (3) print list NAME; (4) alias bodies kept as source text in the Xerox alias syntax (today a multi-word command is flattened to 'printwords'); (5) control characters escaped in lexer messages (ESC shows as '\\' today)"
+                kind @build
+            }
+
+            {
+                id xfst-shell.loop-in-library
+                title "Move the shell loop out of hfst-cli into the library (per [dec:hfst:librarify-cli]) behind one host-supplied line source that the main prompt, the apply word mode and inspect net all read through; the CLI passes a plain reader for now. A line that is not UTF-8 is reported and the session goes on (today read_line's error ends the session silently with status 0)"
+                kind @fix
+                implements {
+                    target-impl ([spec:hfst:req:xfst-cmd.shell-in-library])
+                }
+            }
+
+            {
+                id xfst-shell.complete-commands
+                title "Typed commands mean what they mean in a script: 'regex a' then Enter keeps reading under a continuation prompt until the ;, as Xerox xfst, foma and our scripts do (today it compiles 'a' at the line break and runs the next line as commands, as C++ hfst-xfst also did). Diagnostics point into the command as typed, lines numbered from 1"
+                kind @fix
+                implements {
+                    target-impl ([spec:hfst:req:xfst-cmd.shell-complete-commands])
+                }
+                deps (xfst-shell.nfst-xfst-0-6 xfst-shell.loop-in-library)
+            }
+
+            {
+                id xfst-shell.word-modes
+                title "Word modes at the prompt: a bare read text / read spaced-text reads the following lines until Ctrl-D, like the apply mode e43d2de added (today it pushes an empty network and runs the words as commands); apply moves onto the shared line source and its tests move to this rule"
+                kind @fix
+                implements {
+                    target-impl ([spec:hfst:req:xfst-cmd.shell-word-modes])
+                }
+                deps (xfst-shell.loop-in-library)
+            }
+
+            {
+                id xfst-shell.line-editor
+                title "Line editor in hfst-cli (rustyline) when stdin and stdout are terminals: cursor keys, deletion, up/down history for the session only (operator 2026-11-03), shared by the word modes and inspect net; -r really turns it off (it is a no-op today); Ctrl-C at a prompt discards the line and any unfinished command; Ctrl-D ends the session or the word mode. Tested through a pseudo-terminal"
+                kind @feat
+                implements {
+                    target-impl ([spec:hfst:req:xfst-cmd.shell-line-editing])
+                }
+                deps (xfst-shell.loop-in-library)
+            }
+
+            {
+                id xfst-shell.completion
+                title "Tab completion in the line editor: command names from the help table (one source, as the C++ readline build completed from cmd.h), file names after file-taking commands, defined names after push defined / substitute defined / undefine / print labels / write definition"
+                kind @feat
+                implements {
+                    target-impl ([spec:hfst:req:xfst-cmd.shell-completion])
+                }
+                deps (xfst-shell.line-editor)
+            }
+
+            {
+                id xfst-shell.cancel
+                title "Ctrl-C cancels a running command and keeps the session (operator 2026-11-03): the command stops in bounded time, reports it was interrupted, and the stack, definitions, lists and variables are as they were before it"
+                kind @feat
+                children (
+                    {
+                        id xfst-shell.cancel.design
+                        title "Decide how cancellation works and record it as an AKM decision in plan/decisions: where the cancel signal lives given EngineConfig is Copy and the library holds no global mutable state (idiom5); which loops check it (the determinize/compose budget checkpoints, rustfst fork algorithms, the foma crate, lexc/twolc/pmatch compiles, lookup) and what bounds the time to stop; how SIGINT reaches it from hfst-cli (ctrlc or signal-hook) while rustyline holds the terminal in raw mode at a prompt; and how the error surfaces"
+                        kind @docs
+                    }
+
+                    {
+                        id xfst-shell.cancel.transactional
+                        title "A failed xfst command leaves the session as it was: today a failing 'shuffle net' (transducers are not automata) drops a network from the stack. Operands stay on the stack until the result is ready, and commands that change the top network in place work on a copy or commit at the end, so an error, and later an interrupt, never loses or half-changes a network"
+                        kind @fix
+                        implements {
+                            target-impl ([spec:hfst:req:xfst-cmd.failed-command-no-effect])
+                        }
+                    }
+
+                    {
+                        id xfst-shell.cancel.interrupt
+                        title "Implement the cancellation the design records: SIGINT during a command sets the cancel signal, the long-running loops stop and the command fails as interrupted; the transactional commands leave the session as it was. Tested by interrupting a deliberately slow compose through a pseudo-terminal"
+                        kind @feat
+                        implements {
+                            target-impl ([spec:hfst:req:xfst-cmd.shell-cancel])
+                        }
+                        deps (xfst-shell.cancel.design xfst-shell.cancel.transactional xfst-shell.line-editor)
+                    }
+                )
+            }
+
+            {
+                id xfst-shell.session-edges
+                title "Session start and end on a terminal: one start line naming the tool and how to get help and quit (hfst-rs#8 began with a user typing -h); Ctrl-D leaves the cursor on a new line instead of glued after the prompt; no 'INFO hfst-time' line after an interactive terminal session (operator 2026-11-03; scripts, -p, -F and other tools keep it); --help stops saying readline is 'enabled when configuring' and describes the editor and -r as they are"
+                kind @fix
+                implements {
+                    target-impl ([spec:hfst:req:xfst-cmd.shell-session-edges])
+                }
+                deps (xfst-shell.line-editor)
+            }
+
+            {
+                id xfst-shell.alias
+                title "alias works: check the Xerox xfst alias syntax (Beesley and Karttunen) first, then define NAME as its commands kept as written, and run them when NAME stands where a command can, at the prompt or in a script. Today 'alias hi echo hello ;' is stored and 'hi' is an unknown command (C++ could not even parse it). Add alias and print aliases back to the help table"
+                kind @fix
+                implements {
+                    target-impl ([spec:hfst:sem:xfst-cmd.alias])
+                }
+                deps (xfst-shell.nfst-xfst-0-6)
+            }
+
+            {
+                id xfst-shell.terminal-output
+                title "C++ parity for output at the prompt: write dot / write prolog / write text / write spaced-text with no file print to the session output and with > FILE write it (today they fail 'expected path'); print list NAME prints one list (today 'unknown command NAME'). Update their help entries"
+                kind @fix
+                implements {
+                    target-impl ([spec:hfst:sem:xfst-cmd.terminal-output])
+                }
+                deps (xfst-shell.nfst-xfst-0-6)
+            }
+
+            {
+                id xfst-shell.messages
+                title "Messages at the prompt say what happened: 'define F(x) x x ;' reports \"Defined function 'F@1)\" (should be 'F(x)'); a stray ESC from an arrow key is reported as '\\' (escape control characters); remove-optimization warns and succeeds having done nothing, so it fails as not supported like lookup-optimize"
+                kind @fix
+                implements {
+                    target-impl ([spec:hfst:sem:xfst-cmd.shell-messages])
+                }
+                deps (xfst-shell.nfst-xfst-0-6)
+            }
+        )
+        log (
+            {
+                at 2026-11-03T11:26:30.283666Z
+                author "brendan@necessary.nu"
+                kind @decision
+                text "Operator 2026-11-03: Ctrl-C during a command cancels it and keeps the session (not: end the session); line-editor history lasts for the session only (not persisted, as the C++ readline build); the INFO hfst-time line is left out after an interactive terminal session only. Mine, from the audit: mode selection stays flag-driven as in C++ (only -p/-F/-E run a script; every giella-core call already passes -p), and only line editing depends on stdin being a terminal, so the piped shell tests keep working. Typed regexes wait for their ; as Xerox xfst and foma do, not compile at the line break as C++ hfst-xfst did."
+            }
+
+            {
+                at 2026-11-03T11:26:32.321692Z
+                author "brendan@necessary.nu"
+                kind @note
+                text "Audit 2026-11-03 (Rust vs C++ /opt/hfst 3.16.2, piped and through a pty via script(1)). Out of scope, on purpose: letter machine, export cmatrix, test star-free, test sequential, sort in/out, psss/pssl. The C++ help listed them but C++ rejects them too ('Command letter is not recognised'), so they are new features, not shell bugs. The C++ oracle here was built without readline, so it cannot show line editing, history or completion; the C++ source (tools/src/parsers/hfst-xfst.cc) shows readline with in-memory add_history and completion from cmd.h/abbrcmd.h. Ctrl-C kills both shells today. inspect net works at the prompt but reads through its own read_prompted_line, so it moves onto the line source in loop-in-library."
+            }
+        )
+    }
 )

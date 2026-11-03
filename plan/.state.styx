@@ -1,6 +1,6 @@
 schema_version 7
 
-last_sync_at 2026-11-03T11:03:59.873001Z
+last_sync_at 2026-11-03T11:26:50.047582Z
 
 rule_versions (
     {id determinize-envelope.bounded-strategies, version 0}
@@ -73,9 +73,11 @@ rule_versions (
     {id virtual-flag-algebra.materialized-reference, version 0}
     {id virtual-flag-algebra.special-compose, version 0}
     {id virtual-flag-algebra.subtraction, version 0}
+    {id xfst-cmd.alias, version 0}
     {id xfst-cmd.ambiguity, version 0}
     {id xfst-cmd.apply-med, version 0}
     {id xfst-cmd.errors-are-values, version 0}
+    {id xfst-cmd.failed-command-no-effect, version 0}
     {id xfst-cmd.help, version 0}
     {id xfst-cmd.interactive-prompt, version 0}
     {id xfst-cmd.io-errors, version 0}
@@ -87,10 +89,19 @@ rule_versions (
     {id xfst-cmd.read-prolog, version 0}
     {id xfst-cmd.read-word-lists, version 0}
     {id xfst-cmd.replace-context-symbol, version 0}
+    {id xfst-cmd.shell-cancel, version 0}
+    {id xfst-cmd.shell-complete-commands, version 0}
+    {id xfst-cmd.shell-completion, version 0}
+    {id xfst-cmd.shell-in-library, version 0}
+    {id xfst-cmd.shell-line-editing, version 0}
+    {id xfst-cmd.shell-messages, version 0}
+    {id xfst-cmd.shell-session-edges, version 0}
+    {id xfst-cmd.shell-word-modes, version 0}
     {id xfst-cmd.sort, version 0}
     {id xfst-cmd.source, version 0}
     {id xfst-cmd.string-escapes, version 0}
     {id xfst-cmd.substring, version 0}
+    {id xfst-cmd.terminal-output, version 0}
     {id xfst-cmd.variables-take-effect, version 0}
     {id xfst-cmd.write-word-lists, version 0}
     {id xre-finalization.root-optimize, version 0}
@@ -299,6 +310,19 @@ derived_priorities (
     {id xfst-quoted-percent-and-bare-regex, priority 0, derived_at 2026-10-06T21:03:19.004443Z}
     {id xfst-read-and-sort, priority 1, derived_at 2026-10-06T21:03:19.004443Z}
     {id xfst-result-flow, priority 0, derived_at 2026-10-06T21:03:19.004443Z}
+    {id xfst-shell.alias, priority 1, derived_at 2026-11-03T11:26:50.047582Z}
+    {id xfst-shell.cancel.design, priority 0, derived_at 2026-11-03T11:26:50.047582Z}
+    {id xfst-shell.cancel.interrupt, priority 2, derived_at 2026-11-03T11:26:50.047582Z}
+    {id xfst-shell.cancel.transactional, priority 0, derived_at 2026-11-03T11:26:50.047582Z}
+    {id xfst-shell.complete-commands, priority 1, derived_at 2026-11-03T11:26:50.047582Z}
+    {id xfst-shell.completion, priority 2, derived_at 2026-11-03T11:26:50.047582Z}
+    {id xfst-shell.line-editor, priority 1, derived_at 2026-11-03T11:26:50.047582Z}
+    {id xfst-shell.loop-in-library, priority 0, derived_at 2026-11-03T11:26:50.047582Z}
+    {id xfst-shell.messages, priority 1, derived_at 2026-11-03T11:26:50.047582Z}
+    {id xfst-shell.nfst-xfst-0-6, priority 0, derived_at 2026-11-03T11:26:50.047582Z}
+    {id xfst-shell.session-edges, priority 2, derived_at 2026-11-03T11:26:50.047582Z}
+    {id xfst-shell.terminal-output, priority 1, derived_at 2026-11-03T11:26:50.047582Z}
+    {id xfst-shell.word-modes, priority 1, derived_at 2026-11-03T11:26:50.047582Z}
     {id xfst-source, priority 1, derived_at 2026-10-06T21:03:19.004443Z}
     {id xfst-variables-take-effect, priority 2, derived_at 2026-10-06T21:03:19.004443Z}
     {id xre-escapes-and-list-ranges, priority 0, derived_at 2026-10-06T21:03:19.004443Z}
