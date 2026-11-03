@@ -80,7 +80,8 @@ There is NO WARRANTY, to the extent permitted by law.
 /// chooses to emit. Foreign crates do NOT gate at their call sites, so the
 /// known-noisy third-party targets are clamped to WARN: serde-xml-rs / xml-rs
 /// (log records, bridged by tracing-log) and box-format (native tracing) would
-/// otherwise flood hfst-bhfst's stderr with parser/archive traces.
+/// otherwise flood hfst-bhfst's stderr with parser/archive traces, and
+/// rustyline would log every key pressed at the xfst prompt.
 ///
 /// The dispatcher calls this before any tool runs, so paths that never reach
 /// [`hfst_set_program_name`] still have somewhere to log.
@@ -104,7 +105,8 @@ pub fn init_logging() {
                 .with_default(LevelFilter::TRACE)
                 .with_target("serde_xml_rs", LevelFilter::WARN)
                 .with_target("xml", LevelFilter::WARN)
-                .with_target("box_format", LevelFilter::WARN),
+                .with_target("box_format", LevelFilter::WARN)
+                .with_target("rustyline", LevelFilter::WARN),
         )
         .try_init();
 }

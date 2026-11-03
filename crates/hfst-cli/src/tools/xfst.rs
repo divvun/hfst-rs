@@ -17,7 +17,9 @@ use crate::hfst_commandline::{
     print_version, verbose_print,
 };
 use hfst::hfst_data_types::ImplementationType;
-use hfst::xfst_compiler::{Flow, XfstCompiler};
+use hfst::xfst_compiler::{Flow, LineSource, XfstCompiler};
+use rustyline::error::ReadlineError;
+use std::io::{IsTerminal, Write};
 
 const EXIT_SUCCESS: i32 = 0;
 const EXIT_FAILURE: i32 = 1;
@@ -32,14 +34,8 @@ struct Options {
     pipe_input: bool,
     pipe_output: bool, // this has no effect on non-windows platforms
     restricted_mode: bool,
-    // HAVE_READLINE is not defined in this port.
-    #[allow(
-        dead_code,
-        reason = "the C's '-r' arm writes it and only the HAVE_READLINE branch \
-                  (not compiled in this port) would read it; kept so the option \
-                  surface still records the request"
-    )]
-    use_readline: bool,
+    /// '-r': read the shell's lines plainly, even on a terminal.
+    no_readline: bool,
     print_weight: bool,
 }
 
@@ -54,7 +50,7 @@ impl Default for Options {
             pipe_input: false,
             pipe_output: false,
             restricted_mode: false,
-            use_readline: false,
+            no_readline: false,
             print_weight: false,
         }
     }
@@ -347,7 +343,7 @@ pub(super) fn execute(args: Vec<String>) -> ToolResult {
         pipe_input,
         pipe_output,
         restricted_mode: args.restricted_mode,
-        use_readline: false,
+        no_readline: args.no_readline,
         print_weight: args.print_weight,
     };
     if options.output_format == ImplementationType::UNSPECIFIED_TYPE {
@@ -469,6 +465,33 @@ pub(super) fn execute(args: Vec<String>) -> ToolResult {
     })
 }
 
+// [spec:hfst:req:xfst-cmd.shell-line-editing]
+/// The terminal line editor the shell reads every line through: cursor
+/// keys, deletion and up/down recall of this session's lines.
+struct LineEditor(rustyline::DefaultEditor);
+
+impl LineSource for LineEditor {
+    fn read_line(&mut self, prompt: &str) -> std::io::Result<Option<String>> {
+        // The editor draws on the terminal itself, after what the commands
+        // wrote through stdout's buffer.
+        std::io::stdout().flush()?;
+        match self.0.readline(prompt) {
+            Ok(line) => {
+                if !line.trim().is_empty() {
+                    self.0
+                        .add_history_entry(line.as_str())
+                        .map_err(std::io::Error::other)?;
+                }
+                Ok(Some(line))
+            }
+            Err(ReadlineError::Eof) => Ok(None),
+            Err(ReadlineError::Interrupted) => Err(std::io::ErrorKind::Interrupted.into()),
+            Err(ReadlineError::Io(e)) => Err(e),
+            Err(e) => Err(std::io::Error::other(e)),
+        }
+    }
+}
+
 fn run_compiler<B: hfst::backend::AlgebraBackend + hfst::hfst_transducer::FromAnyTransducer>(
     common: &CommonOptions,
     options: &Options,
@@ -559,6 +582,18 @@ fn run_compiler<B: hfst::backend::AlgebraBackend + hfst::hfst_transducer::FromAn
     // port, so USE_READLINE is always false here).
     else {
         verbose_print(common, "Starting interactive mode...\n");
+        if !options.no_readline && std::io::stdin().is_terminal() && std::io::stdout().is_terminal()
+        {
+            match rustyline::DefaultEditor::new() {
+                Ok(editor) => {
+                    comp.set_line_source(Box::new(LineEditor(editor)));
+                }
+                Err(e) => verbose_print(
+                    common,
+                    &format!("No line editor ({e}); reading plain lines\n"),
+                ),
+            }
+        }
         if comp.interact().is_err() {
             return EXIT_FAILURE;
         }

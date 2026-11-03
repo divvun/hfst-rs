@@ -8,8 +8,18 @@ use super::*;
 pub trait LineSource {
     /// Show `prompt` and return the next line without its line break, or
     /// `None` at end of input. A line that is not UTF-8 is an error of kind
-    /// `InvalidData`; the session reports it and reads on.
+    /// `InvalidData`; the session reports it and reads on. Ctrl-C at the
+    /// prompt is an error of kind `Interrupted`; the shell drops the line and
+    /// any unfinished command.
     fn read_line(&mut self, prompt: &str) -> std::io::Result<Option<String>>;
+}
+
+/// What one read at a prompt gave.
+pub(super) enum Input {
+    Line(String),
+    /// Ctrl-C at the prompt.
+    Cancelled,
+    End,
 }
 
 impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
@@ -37,8 +47,13 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             } else {
                 String::new()
             };
-            let Some(line) = self.read_prompted_line(&prompt)? else {
-                return Ok(());
+            let line = match self.read_input(&prompt)? {
+                Input::Line(line) => line,
+                Input::Cancelled => {
+                    expression.clear();
+                    continue;
+                }
+                Input::End => return Ok(()),
             };
             expression.push_str(&line);
             if expression_continues(&mut expression) {
@@ -74,8 +89,9 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
                 word(self, line)?;
             }
         }
-        // End of input leaves the cursor after the prompt.
-        if self.verbose {
+        // Plain input leaves the cursor after the prompt at end of input; a
+        // host's line source ends the line itself.
+        if self.verbose && self.line_source.is_none() {
             writeln!(self.output)?;
         }
         Ok(())
@@ -83,11 +99,23 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
 
     // [spec:hfst:def:xfst-compiler.hfst.xfst.xfst-compiler.xfst-getline-fn]
     // [spec:hfst:sem:xfst-compiler.hfst.xfst.xfst-compiler.xfst-getline-fn]
+    /// Show `prompt` and read the next line, as `read_input` does, skipping
+    /// a line cancelled with Ctrl-C. `None` at end of input.
+    pub(super) fn read_prompted_line(&mut self, prompt: &str) -> CmdResult<Option<String>> {
+        loop {
+            match self.read_input(prompt)? {
+                Input::Line(line) => return Ok(Some(line)),
+                Input::Cancelled => {}
+                Input::End => return Ok(None),
+            }
+        }
+    }
+
     // [spec:hfst:req:xfst-cmd.shell-in-library]
     /// Show `prompt` and read the next line, without its line break, from
-    /// the line source or else the input stream. `None` at end of input. A
-    /// line that is not UTF-8 is reported and skipped.
-    pub(super) fn read_prompted_line(&mut self, prompt: &str) -> CmdResult<Option<String>> {
+    /// the line source or else the input stream. A line that is not UTF-8 is
+    /// reported and skipped.
+    pub(super) fn read_input(&mut self, prompt: &str) -> CmdResult<Input> {
         loop {
             let read = match &mut self.line_source {
                 Some(source) => source.read_line(prompt),
@@ -98,7 +126,11 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
                 }
             };
             match read {
-                Ok(line) => return Ok(line),
+                Ok(Some(line)) => return Ok(Input::Line(line)),
+                Ok(None) => return Ok(Input::End),
+                Err(e) if e.kind() == std::io::ErrorKind::Interrupted => {
+                    return Ok(Input::Cancelled);
+                }
                 Err(e) if e.kind() == std::io::ErrorKind::InvalidData => {
                     self.diagnostics.push(
                         Diagnostic::error("input line is not valid UTF-8; it was skipped")
@@ -266,10 +298,30 @@ mod tests {
             ]
         );
         let out = String::from_utf8(c.take_output()).expect("UTF-8 output");
-        assert!(
-            out.contains("a\n\n"),
-            "the answer, then the line break after Ctrl-D: {out}"
-        );
+        // The host's line source ends the line at Ctrl-D, so no blank line.
+        assert!(out.ends_with("2 states, 1 arcs\na\n"), "{out}");
+    }
+
+    // [spec:hfst:req:xfst-cmd.shell-line-editing/test]
+    // Ctrl-C on a continued line drops what was typed before it, so the
+    // half-typed echo never runs.
+    #[test]
+    fn ctrl_c_drops_the_unfinished_command() {
+        let prompts = Rc::new(RefCell::new(Vec::new()));
+        let mut c = session();
+        c.set_line_source(Box::new(Scripted {
+            lines: [
+                Ok(Some("echo lost \\".to_string())),
+                Err(std::io::Error::from(std::io::ErrorKind::Interrupted)),
+                Ok(Some("echo kept".to_string())),
+            ]
+            .into(),
+            prompts: Rc::clone(&prompts),
+        }));
+        c.interact().expect("the shell runs to end of input");
+        let out = String::from_utf8(c.take_output()).expect("UTF-8 output");
+        assert_eq!(out, "kept\n");
+        assert_eq!(prompts.borrow().len(), 4, "a fresh prompt after Ctrl-C");
     }
 
     // [spec:hfst:req:xfst-cmd.shell-in-library/test]

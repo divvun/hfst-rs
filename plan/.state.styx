@@ -1115,4 +1115,9 @@ impl_evidence (
     ), covered_claims (
         {impl_name target-impl, rule xfst-cmd.shell-word-modes}
     )}
+    {id xfst-shell.line-editor, covered_rules (
+        xfst-cmd.shell-line-editing
+    ), covered_claims (
+        {impl_name target-impl, rule xfst-cmd.shell-line-editing}
+    )}
 )
