@@ -8650,6 +8650,14 @@ children (
                     target-impl ([spec:hfst:req:xfst-cmd.shell-complete-commands])
                 }
                 deps (xfst-shell.nfst-xfst-0-6 xfst-shell.loop-in-library)
+                log (
+                    {
+                        at 2026-11-03T13:51:31.853927Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
+                )
             }
 
             {

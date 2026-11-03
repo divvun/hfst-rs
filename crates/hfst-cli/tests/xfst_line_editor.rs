@@ -48,7 +48,7 @@ fn backspace_edits_and_up_recalls_the_line() {
 fn ctrl_c_drops_the_unfinished_command() {
     let mut p = shell(&[]);
     type_keys(&mut p, "echo lost \\\r");
-    p.exp_string("hfst[0]: ").expect("the continuation prompt");
+    p.exp_string("       > ").expect("the continuation prompt");
     type_keys(&mut p, "\x03");
     p.exp_string("hfst[0]: ").expect("a fresh prompt");
     let before = answers(&mut p, "echo kept\r", "kept", "hfst[0]: ");

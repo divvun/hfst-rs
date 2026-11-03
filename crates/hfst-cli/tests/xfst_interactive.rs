@@ -33,10 +33,11 @@ fn session(input: &str) -> String {
 #[test]
 fn every_line_read_gets_one_prompt() {
     // A command that works, a blank line, a comment, a command that fails,
-    // and a regex continued over two lines, then end of input.
+    // and a regex continued over two lines under the continuation prompt,
+    // then end of input.
     assert_eq!(
         session("echo hi\n\n# c\nnosuch\nregex a \\\nb ;\n"),
-        "hfst[0]: hi\nhfst[0]: hfst[0]: hfst[0]: hfst[0]: hfst[0]: 3 states, 2 arcs\nhfst[1]: \n"
+        "hfst[0]: hi\nhfst[0]: hfst[0]: hfst[0]: hfst[0]:        > 3 states, 2 arcs\nhfst[1]: \n"
     );
 }
 

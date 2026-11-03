@@ -55,10 +55,12 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         self.read_interactive_text_from_stdin = true;
         let mut expression = String::new();
         loop {
-            let prompt = if self.verbose {
+            let prompt = if !self.verbose {
+                String::new()
+            } else if expression.is_empty() {
                 self.get_prompt()
             } else {
-                String::new()
+                continuation_prompt(&self.get_prompt())
             };
             let line = match self.read_input(&prompt)? {
                 Input::Line(line) => line,
@@ -67,6 +69,11 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
                     continue;
                 }
                 Input::End => {
+                    // [spec:hfst:req:xfst-cmd.shell-complete-commands]
+                    // As at the end of a script, what was typed runs.
+                    if !expression.trim().is_empty() {
+                        self.run_line(&expression);
+                    }
                     // [spec:hfst:req:xfst-cmd.shell-session-edges]
                     // Plain input leaves the cursor after the prompt; a
                     // host's line source ends the line itself.
@@ -80,14 +87,28 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             if expression_continues(&mut expression) {
                 continue;
             }
-            if let Some(flag) = self.interrupt {
-                flag.store(false, Ordering::Relaxed);
+            expression.push('\n');
+            // [spec:hfst:req:xfst-cmd.shell-complete-commands]
+            if nfst_xfst::needs_more_input(&expression) {
+                continue;
             }
-            // A failure is reported where it happens; the shell goes on.
-            if let Ok(Flow::Quit) = self.parse(&format!("{}\n", expression)) {
+            if self.run_line(&expression) == Flow::Quit {
                 return Ok(());
             }
             expression.clear();
+        }
+    }
+
+    /// Run the commands of one complete line, after clearing any Ctrl-C left
+    /// from before it. A failure is reported where it happens; the shell
+    /// goes on.
+    fn run_line(&mut self, line: &str) -> Flow {
+        if let Some(flag) = self.interrupt {
+            flag.store(false, Ordering::Relaxed);
+        }
+        match self.parse(line) {
+            Ok(flow) => flow,
+            Err(_) => Flow::Continue,
         }
     }
 
@@ -170,6 +191,13 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             }
         }
     }
+}
+
+// [spec:hfst:req:xfst-cmd.shell-complete-commands]
+/// The prompt for a line that goes on with an unfinished command: as wide as
+/// `prompt`, so the text lines up, and marked '>' so it reads differently.
+fn continuation_prompt(prompt: &str) -> String {
+    format!("{:>width$}", "> ", width = prompt.chars().count())
 }
 
 /// The line that ends a word mode before end of input, as in a script.
@@ -418,6 +446,44 @@ mod tests {
         c.set_interrupt(&FLAG);
         c.interact().expect("the shell runs to end of input");
         assert_eq!(c.take_output(), b"ran\n");
+    }
+
+    // [spec:hfst:req:xfst-cmd.shell-complete-commands/test]
+    // A regex typed over two lines is one regex, as in a script, and the
+    // second line is read under the continuation prompt.
+    #[test]
+    fn a_regex_runs_on_to_its_semicolon() {
+        let (mut c, prompts) = scripted(&["regex a", "b ;", "print words"]);
+        c.interact().expect("the shell runs to end of input");
+        assert_eq!(
+            *prompts.borrow(),
+            ["hfst[0]: ", "       > ", "hfst[1]: ", "hfst[1]: "]
+        );
+        let out = String::from_utf8(c.take_output()).expect("UTF-8 output");
+        assert!(out.ends_with("ab\n"), "{out}");
+    }
+
+    // [spec:hfst:req:xfst-cmd.shell-complete-commands/test]
+    // 'define NAME' alone is complete, and so is a body that was open at end
+    // of input: what was typed runs, as at the end of a script.
+    #[test]
+    fn complete_commands_run_at_once() {
+        let (mut c, prompts) = scripted(&["regex a ;", "define X", "define Y b | c"]);
+        c.interact().expect("the shell runs to end of input");
+        assert_eq!(prompts.borrow().len(), 4, "{:?}", prompts.borrow());
+        let mut names: Vec<String> = c.definitions.keys().map(|k| k.to_string()).collect();
+        names.sort();
+        assert_eq!(names, ["X", "Y"]);
+    }
+
+    // [spec:hfst:req:xfst-cmd.shell-complete-commands/test]
+    // A diagnostic counts the lines of the command as it was typed.
+    #[test]
+    fn a_diagnostic_points_into_the_typed_lines() {
+        let (mut c, _) = scripted(&["regex a", "[b ;"]);
+        c.interact().expect("the shell runs to end of input");
+        let rendered: Vec<String> = c.diagnostics().iter().map(|d| d.render(false)).collect();
+        assert!(rendered.iter().any(|r| r.contains(":2:")), "{rendered:?}");
     }
 
     // [spec:hfst:req:xfst-cmd.shell-in-library/test]
