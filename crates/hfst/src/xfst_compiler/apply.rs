@@ -8,26 +8,82 @@ static APPLY_END_STRING: &str = "<ctrl-d>";
 impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     // @brief Perform lookdowns on top of the stack, one per line
     pub fn apply_up(&mut self, indata: &str) -> CmdResult {
-        for line in indata.split('\n').filter(|s| !s.is_empty()) {
-            if line == APPLY_END_STRING {
-                break;
+        self.apply_lines(true, indata)
+    }
+
+    // @brief Perform lookups on top of the stack, one per line
+    pub fn apply_down(&mut self, indata: &str) -> CmdResult {
+        self.apply_lines(false, indata)
+    }
+
+    fn apply_lines(&mut self, up: bool, indata: &str) -> CmdResult {
+        let words: Vec<&str> = indata
+            .split('\n')
+            .filter(|s| !s.is_empty())
+            .take_while(|line| *line != APPLY_END_STRING)
+            .collect();
+        if !words.is_empty() {
+            let fsm = self.lookup_network(up)?;
+            for word in words {
+                self.lookup_basic(word, &fsm)?;
             }
-            self.apply_up_line(line)?;
         }
         self.prompt();
         Ok(())
     }
 
-    // @brief Perform lookups on top of the stack, one per line
-    pub fn apply_down(&mut self, indata: &str) -> CmdResult {
-        for line in indata.split('\n').filter(|s| !s.is_empty()) {
-            if line == APPLY_END_STRING {
+    // [spec:hfst:req:xfst-cmd.interactive-prompt]
+    /// 'apply up', 'apply down' or 'apply med' typed at the shell with no
+    /// word: look up each line of the session input, under an 'apply up> '
+    /// style prompt, until end of input.
+    pub(super) fn apply_interactively(&mut self, kind: &nfst_xfst::ApplyKind) -> CmdResult {
+        use nfst_xfst::ApplyKind;
+        let (side, fsm) = match kind {
+            ApplyKind::Up => ("up", Some(self.lookup_network(true)?)),
+            ApplyKind::Down => ("down", Some(self.lookup_network(false)?)),
+            ApplyKind::Med => ("med", None),
+        };
+        let prompt = if self.verbose {
+            format!("apply {}> ", side)
+        } else {
+            String::new()
+        };
+        while let Some(line) = self.read_prompted_line(&prompt)? {
+            let word = self.remove_newline(line);
+            if word == APPLY_END_STRING {
                 break;
             }
-            self.apply_down_line(line)?;
+            if word.is_empty() {
+                continue;
+            }
+            match &fsm {
+                Some(fsm) => self.lookup_basic(&word, fsm)?,
+                None => self.apply_med(&word)?,
+            }
         }
-        self.prompt();
+        // End of input leaves the cursor after the prompt.
+        if self.verbose {
+            writeln!(self.output)?;
+        }
         Ok(())
+    }
+
+    /// The network apply looks words up in: the top network for apply down,
+    /// its inversion for apply up. Built once per apply, so the warning about
+    /// the inversion's cost comes once too.
+    fn lookup_network(&mut self, up: bool) -> CmdResult<HfstBasicTransducer> {
+        let t = self.top()?;
+        if !up {
+            return Ok(ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(self.net(t))?);
+        }
+        if self.verbose {
+            self.diag_warning(
+                "apply up on this format is done by inverting and applying down; invert and minimize the top network yourself to avoid the cost",
+            );
+        }
+        let mut copy = HfstTransducer::new_copy(self.net(t))?;
+        copy.invert()?.minimize_with_config(&self.engine_config)?;
+        Ok(ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(&copy)?)
     }
 
     pub fn lookup_optimize(&mut self) -> CmdResult {
@@ -98,29 +154,6 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             }
             Ok(())
         })
-    }
-
-    // apply_down_line -> apply_up_line
-    fn apply_up_line(&mut self, line: &str) -> CmdResult {
-        let t = self.top()?;
-        if self.verbose {
-            self.diag_warning(
-                "apply up on this format is done by inverting and applying down; invert and minimize the top network yourself to avoid the cost",
-            );
-        }
-        let mut copy = HfstTransducer::new_copy(self.net(t))?;
-        copy.invert()?.minimize_with_config(&self.engine_config)?;
-        let fsm = ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(&copy)?;
-        self.lookup_basic(line, &fsm)?;
-        Ok(())
-    }
-
-    // apply_up_line -> apply_down_line
-    fn apply_down_line(&mut self, line: &str) -> CmdResult {
-        let t = self.top()?;
-        let fsm = ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(self.net(t))?;
-        self.lookup_basic(line, &fsm)?;
-        Ok(())
     }
 }
 

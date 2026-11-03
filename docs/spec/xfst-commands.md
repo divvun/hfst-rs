@@ -162,6 +162,26 @@ what the C++ code did. Where they disagree with this file, this file wins.
 > subtraction `A .-l. B` does the same on the output side. None of these
 > may yield an empty network in place of an error.
 
+## The interactive shell
+
+> [spec:hfst:req:xfst-cmd.help]
+> `help` (or `describe`) with no argument MUST print one entry for every
+> command the compiler accepts: its name, its arguments and what it does,
+> with the other names it goes by on the next line. `help NAME` MUST print
+> every entry with a name equal to NAME or starting with NAME and a space,
+> so `help print` lists every `print` command. `apropos WORD` MUST print
+> every entry whose names or description contain WORD as a whole word,
+> ignoring case, and `apropos` alone prints the entry for `apropos`. Each
+> name in the help MUST be a command the parser recognises, and a command
+> that fails as not supported MUST NOT be listed. When nothing matches, the
+> command says so and names what was asked for.
+
+> [spec:hfst:req:xfst-cmd.interactive-prompt]
+> The interactive shell MUST print exactly one prompt before each line it
+> reads, and that prompt MUST reach the terminal before the shell waits for
+> the line. This holds after a command that worked, after one that failed,
+> after a blank or comment line, and on a continuation line.
+
 ## Tools
 
 > [spec:hfst:req:xfst-cmd.no-dead-surface]

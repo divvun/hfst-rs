@@ -126,30 +126,23 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         Ok(())
     }
 
-    // @brief Search help directory
+    // [spec:hfst:req:xfst-cmd.help]
+    /// 'apropos WORD': the commands whose names or description hold WORD.
     pub fn apropos(&mut self, text: &str) -> CmdResult {
-        let mut message = String::new();
-        if !get_help_message(text, &mut message, HELP_MODE_APROPOS) {
-            writeln!(self.output, "nothing found for '{}'", text)?;
-        } else {
-            write!(self.output, "{}", message)?;
+        match help::apropos(text) {
+            Some(message) => write!(self.output, "{}", message)?,
+            None => writeln!(self.output, "nothing found for '{}'", text)?,
         }
         self.prompt();
         Ok(())
     }
 
-    // @brief Print help topics
+    // [spec:hfst:req:xfst-cmd.help]
+    /// 'help' and 'describe': every command, or the commands NAME names.
     pub fn describe(&mut self, text: &str) -> CmdResult {
-        let help_mode = if text.is_empty() {
-            HELP_MODE_ALL_COMMANDS
-        } else {
-            HELP_MODE_ONE_COMMAND
-        };
-        let mut message = String::new();
-        if !get_help_message(text, &mut message, help_mode) {
-            writeln!(self.output, "no help found for '{}'", text)?;
-        } else {
-            write!(self.output, "{}", message)?;
+        match help::help_for(text) {
+            Some(message) => write!(self.output, "{}", message)?,
+            None => writeln!(self.output, "no help found for '{}'", text)?,
         }
         self.prompt();
         Ok(())
@@ -169,6 +162,16 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             let written = self.output.write_all(prompt.as_bytes());
             self.keep_output_failure(written.map_err(CommandError::from));
         }
+    }
+
+    // [spec:hfst:req:xfst-cmd.interactive-prompt]
+    /// Print the prompt and flush it, for a shell that prompts for each line
+    /// itself rather than leaving it to the commands.
+    pub fn print_prompt(&mut self) -> CmdResult {
+        let prompt = self.get_prompt();
+        self.output.write_all(prompt.as_bytes())?;
+        self.output.flush()?;
+        Ok(())
     }
 
     // [spec:hfst:def:xfst-compiler.hfst.xfst.xfst-compiler.get-prompt-fn]
@@ -261,77 +264,4 @@ pub(super) fn run_shell(command: &str) -> i32 {
         Ok(status) => status.code().unwrap_or(-1),
         Err(_) => -1,
     }
-}
-
-// Help-message support: 'xfst_help_message.h' (get_help_message and the
-// HELP_MODE_* constants) was not ported, mirroring the C++ todo that 'helps
-// have not been written or copied'. We reproduce the documented behaviour:
-// no help is ever found.
-const HELP_MODE_APROPOS: i32 = 0;
-const HELP_MODE_ALL_COMMANDS: i32 = 1;
-const HELP_MODE_ONE_COMMAND: i32 = 2;
-
-fn get_help_message(_text: &str, _message: &mut String, _help_mode: i32) -> bool {
-    false
-}
-
-// The following three helpers are guarded by '#ifdef FOO' in the C++ source
-// (an undefined macro), so they are compiled out and unused there. They are
-// ported 1:1 for completeness and stay unused here too.
-
-// Convert 'str' to upper case.
-// [spec:hfst:def:xfst-compiler.hfst.xfst.to-upper-case-fn]
-// [spec:hfst:sem:xfst-compiler.hfst.xfst.to-upper-case-fn]
-// [spec:hfst:def:xfst-help-message.hfst.xfst.to-upper-case-fn]
-// [spec:hfst:sem:xfst-help-message.hfst.xfst.to-upper-case-fn]
-#[allow(dead_code)]
-fn to_upper_case(str: &str) -> String {
-    let str_bytes = str.as_bytes();
-    let mut retval = String::new();
-    for &b in str_bytes {
-        if (97..=122).contains(&b) {
-            retval.push((b - 32) as char);
-        } else {
-            retval.push(b as char);
-        }
-    }
-    retval
-}
-
-// Whether 'c' is allowed before or after a word when
-// searching for the word in text.
-// [spec:hfst:def:xfst-compiler.hfst.xfst.allow-char-fn]
-// [spec:hfst:sem:xfst-compiler.hfst.xfst.allow-char-fn]
-#[allow(dead_code)]
-fn allow_char(c: u8) -> bool {
-    let allowed_chars = b" \n\t.,;:?!-/'\"<>()|";
-    for &allowed in allowed_chars {
-        if allowed == c {
-            return true;
-        }
-    }
-    false
-}
-
-// Whether word 'str' is found in text 'text'.
-// Punctuation characters and upper/lower case are handled in this function.
-// [spec:hfst:def:xfst-compiler.hfst.xfst.string-found-fn]
-// [spec:hfst:sem:xfst-compiler.hfst.xfst.string-found-fn]
-#[allow(dead_code)]
-fn string_found(str: &str, text: &str) -> bool {
-    let str = to_upper_case(str);
-    let text = to_upper_case(text);
-    let text_bytes = text.as_bytes();
-    let pos = match text.find(&str) {
-        None => {
-            return false;
-        }
-        Some(p) => p,
-    };
-    if (pos == 0 || allow_char(text_bytes[pos - 1]))
-        && (pos + str.len() == text.len() || allow_char(text_bytes[pos + str.len()]))
-    {
-        return true;
-    }
-    false
 }

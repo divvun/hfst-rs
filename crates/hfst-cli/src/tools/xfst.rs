@@ -576,17 +576,19 @@ fn run_compiler<B: hfst::backend::AlgebraBackend + hfst::hfst_transducer::FromAn
     // port, so USE_READLINE is always false here).
     else {
         verbose_print(common, "Starting interactive mode...\n");
-        comp.set_prompt_verbosity(!common.silent);
+        // [spec:hfst:req:xfst-cmd.interactive-prompt]
+        // The loop prompts before each line it reads, and the commands print
+        // none of their own: a command's closing prompt would sit unflushed
+        // while the loop waits, and a blank line has no command to print one.
+        comp.set_prompt_verbosity(false);
         comp.set_read_interactive_text_from_stdin(true);
-        if !common.silent {
-            comp.prompt();
-            comp.flush();
-        }
-        // support for backspace
 
         let mut expression = String::new();
         let mut line = String::new();
         loop {
+            if !common.silent && comp.print_prompt().is_err() {
+                return EXIT_FAILURE;
+            }
             line.clear();
             if comp.input().read_line(&mut line).unwrap_or(0) == 0 {
                 break;
@@ -595,26 +597,13 @@ fn run_compiler<B: hfst::backend::AlgebraBackend + hfst::hfst_transducer::FromAn
             // C: std::cin.getline strips the newline; expression_continues
             // then handles a trailing '\r' / '\\'.
             if expression_continues(&mut expression) {
-                if !common.silent {
-                    comp.prompt();
-                    comp.flush();
-                }
                 continue;
             }
-
-            // The prompt reports a failure and carries on.
-            match comp.parse(&format!("{}\n", expression)) {
-                Ok(Flow::Quit) => break,
-                Ok(Flow::Continue) => {}
-                Err(_) => {
-                    if !common.silent {
-                        comp.prompt();
-                        comp.flush();
-                    }
-                }
+            // The compiler has already reported a failure; the shell goes on.
+            if let Ok(Flow::Quit) = comp.parse(&format!("{}\n", expression)) {
+                break;
             }
-
-            expression = String::new();
+            expression.clear();
         }
     }
     EXIT_SUCCESS

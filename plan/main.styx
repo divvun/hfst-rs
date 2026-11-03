@@ -8573,4 +8573,21 @@ children (
             }
         )
     }
+
+    {
+        id xfst-interactive-help
+        title "hfst-xfst interactive shell (hfst-rs#8): help and apropos found nothing because the C++ help table was never ported, and a command's closing prompt sat unflushed until the next error printed a second one. Write a help table for the commands this compiler accepts and let the shell own one flushed prompt per line"
+        kind @fix
+        implements {
+            rust ([spec:hfst:req:xfst-cmd.help] [spec:hfst:req:xfst-cmd.interactive-prompt])
+        }
+        log (
+            {
+                at 2026-11-03T10:50:13.628808Z
+                author "brendan@necessary.nu"
+                kind @status
+                text "Todo → Doing (nplan start)"
+            }
+        )
+    }
 )

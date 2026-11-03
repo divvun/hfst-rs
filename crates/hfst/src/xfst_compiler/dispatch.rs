@@ -185,6 +185,14 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     /// input string was given.
     fn eval_apply(&mut self, kind: &ApplyKind, input: &Option<String>) -> CmdResult {
         let s: String = match input {
+            // The shell hands over one line at a time, so a bare 'apply up'
+            // typed there arrives with no words or an empty body.
+            Some(s) if s.is_empty() && self.read_interactive_text_from_stdin => {
+                return self.apply_interactively(kind);
+            }
+            None if self.read_interactive_text_from_stdin => {
+                return self.apply_interactively(kind);
+            }
             Some(s) => s.clone(),
             None => {
                 use std::io::Read;
@@ -310,6 +318,9 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             {
                 let mut f = self.open_output_file(path, redirect.kind == RedirectKind::Append)?;
                 self.eval_save_to(s, &mut f)?;
+            }
+            (RedirectKind::Out, XfstCommand::Save(nfst_xfst::SaveCmd::Definition(name))) => {
+                self.write_definition(name, path)?
             }
             (RedirectKind::In, XfstCommand::Apply(kind, _)) => {
                 let s = self.read_input_file(path)?;

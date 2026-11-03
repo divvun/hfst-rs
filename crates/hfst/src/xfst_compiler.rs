@@ -50,6 +50,7 @@ mod definitions;
 mod diagnostics;
 mod dispatch;
 mod file_io;
+mod help;
 mod inspect;
 mod network_ops;
 mod print_words;

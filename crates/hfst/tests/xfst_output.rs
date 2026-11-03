@@ -39,11 +39,39 @@ fn print_net_lands_in_the_buffer() {
 }
 
 // [spec:hfst:req:javascript.xfst-output-sink/test]
+// [spec:hfst:req:xfst-cmd.help/test]
 #[test]
 fn help_text_lands_in_the_buffer() {
+    let union =
+        "union net                     unions the networks on the stack\n(union, disjunct)\n";
     assert_eq!(
         printed("help union\napropos union\n"),
-        "no help found for 'union'\nnothing found for 'union'\n"
+        format!("{union}{union}")
+    );
+}
+
+// [spec:hfst:req:xfst-cmd.help/test]
+// The issue that found the stub: 'help' alone printed "no help found for ''".
+#[test]
+fn help_alone_lists_every_command() {
+    let help = printed("help\n");
+    assert!(help.starts_with("ambiguous upper "), "{help}");
+    for command in [
+        "apply up <string>",
+        "print words (<count>)",
+        "zero-plus net",
+    ] {
+        assert!(help.contains(command), "help lacks {command}:\n{help}");
+    }
+    assert_eq!(printed("describe\n"), help);
+}
+
+// [spec:hfst:req:xfst-cmd.help/test]
+#[test]
+fn unknown_names_say_what_was_asked_for() {
+    assert_eq!(
+        printed("help nosuch\napropos nosuch\n"),
+        "no help found for 'nosuch'\nnothing found for 'nosuch'\n"
     );
 }
 

@@ -1066,4 +1066,5 @@ impl_evidence (
     ), rule_versions_seen (
         {id xre-finalization.root-optimize, version 0}
     )}
+    {id xfst-interactive-help}
 )
