@@ -8742,6 +8742,21 @@ children (
                             target-impl ([spec:hfst:req:xfst-cmd.shell-cancel])
                         }
                         deps (xfst-shell.cancel.design xfst-shell.cancel.transactional xfst-shell.line-editor)
+                        log (
+                            {
+                                at 2026-11-03T12:28:42.381257Z
+                                author "brendan@necessary.nu"
+                                kind @status
+                                text "Todo → Doing (nplan start)"
+                            }
+
+                            {
+                                at 2026-11-03T12:44:02.883666Z
+                                author "brendan@necessary.nu"
+                                kind @blocker
+                                text "Done in the working tree and passing (871/871 with a temporary [patch] to ~/git/necessary/rustfst/rustfst): rustfst gains interrupt::scope/check_every polled in LazyFst::compute_bounded, the cyclic minimizer and static rm_epsilon (rustfst suite 1614+55 green on branch feat/interrupt-scope off origin/main 897e85b0); hfst-openfst polls in the compose materializer, trim and the equivalence walk; XfstCompiler::set_interrupt + scope per command + backstop; hfst-cli registers SIGINT through signal-hook (unix). Blocked on landing rustfst: the hook refuses git commit in the rustfst repo, so the operator script (scratchpad nfst-xfst-0.6.0.sh, part 2) commits and pushes it to main and prints the rev; then the hfst pin moves to that rev and the [patch] goes. The decision [dec:hfst:xfst-cancellation] is updated to the built design (scoped thread-local in rustfst instead of config threading)."
+                            }
+                        )
                     }
                 )
             }
@@ -8821,6 +8836,20 @@ children (
                 author "brendan@necessary.nu"
                 kind @note
                 text "Audit 2026-11-03 (Rust vs C++ /opt/hfst 3.16.2, piped and through a pty via script(1)). Out of scope, on purpose: letter machine, export cmatrix, test star-free, test sequential, sort in/out, psss/pssl. The C++ help listed them but C++ rejects them too ('Command letter is not recognised'), so they are new features, not shell bugs. The C++ oracle here was built without readline, so it cannot show line editing, history or completion; the C++ source (tools/src/parsers/hfst-xfst.cc) shows readline with in-memory add_history and completion from cmd.h/abbrcmd.h. Ctrl-C kills both shells today. inspect net works at the prompt but reads through its own read_prompted_line, so it moves onto the line source in loop-in-library."
+            }
+
+            {
+                at 2026-11-03T12:53:02.731012Z
+                author "brendan@necessary.nu"
+                kind @blocker
+                text "2026-11-03: all 13 leaves are built. 9 are committed and pushed; the last 4 (cancel.interrupt, nfst-xfst-0-6, complete-commands, alias, terminal-output) are built and pass (883/883 workspace) in the hfst working tree, against local nfst-xfst 0.6.0 and the local rustfst interrupt change through temporary [patch] sections in Cargo.toml. They wait on the operator script (scratchpad nfst-xfst-0.6.0.sh): commit+push+publish nfst-xfst 0.6.0 (dry-run publish is clean), commit+push rustfst feat/interrupt-scope to main (prints the rev). The hook refuses a bare git commit in both repos. Landing then: per stage k in order (stage1 cancel.interrupt, stage2 nfst take, stage3 complete-commands, stage4 alias, stage5 terminal-output; snapshot shas in scratchpad stageN.sha, made with git stash create), restore crates/ docs/ Cargo.* from the snapshot (never plan/), set the rustfst rev pin, drop the [patch] blocks (stage1 keeps nfst-xfst 0.5.0; stage2+ use 0.6.0 from crates.io), test, nplan_commit with paths."
+            }
+
+            {
+                at 2026-11-03T13:14:07.828473Z
+                author "brendan@necessary.nu"
+                kind @note
+                text "Parked 2026-11-03 to keep the tree within the WIP budget: the five built stages are now git stash entries in the hfst checkout, labelled 'xfst-shell stageN <node> (parked until nfst-xfst 0.6.0 and the rustfst interrupt land)', each a full-tree snapshot; incremental patches stage1..5.patch are in the session scratchpad as a backup. The tree is back at the last commit. To land: after the operator script runs, for each stage in order restore crates/ Cargo.* docs/ plan/decisions/ from its stash entry (git checkout <stash> -- <paths>, never plan/main.styx or .state.styx), set the rustfst rev pin to the pushed rev, drop the [patch] blocks, test, and nplan_commit that stage with its node id."
             }
         )
     }
