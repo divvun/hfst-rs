@@ -36,7 +36,7 @@ fn every_line_read_gets_one_prompt() {
     // and a regex continued over two lines, then end of input.
     assert_eq!(
         session("echo hi\n\n# c\nnosuch\nregex a \\\nb ;\n"),
-        "hfst[0]: hi\nhfst[0]: hfst[0]: hfst[0]: hfst[0]: hfst[0]: 3 states, 2 arcs\nhfst[1]: "
+        "hfst[0]: hi\nhfst[0]: hfst[0]: hfst[0]: hfst[0]: hfst[0]: 3 states, 2 arcs\nhfst[1]: \n"
     );
 }
 
@@ -80,7 +80,7 @@ fn the_prompt_arrives_before_the_shell_waits() {
 fn apply_without_a_word_reads_the_following_lines() {
     assert_eq!(
         session("regex a:b ;\napply down\na\nc\n"),
-        "hfst[0]: 2 states, 1 arcs\nhfst[1]: apply down> b\napply down> ???\napply down> \nhfst[1]: "
+        "hfst[0]: 2 states, 1 arcs\nhfst[1]: apply down> b\napply down> ???\napply down> \nhfst[1]: \n"
     );
 }
 
@@ -91,11 +91,11 @@ fn apply_without_a_word_reads_the_following_lines() {
 fn bare_read_text_reads_the_following_lines() {
     assert_eq!(
         session("read text\nfoo\nbar\n<ctrl-d>\nprint words\n"),
-        "hfst[0]: read text> read text> read text> \n6 states, 6 arcs\nhfst[1]: bar\nfoo\nhfst[1]: "
+        "hfst[0]: read text> read text> read text> \n6 states, 6 arcs\nhfst[1]: bar\nfoo\nhfst[1]: \n"
     );
     assert_eq!(
         session("read spaced-text\nf o\n<ctrl-d>\nprint words\n"),
-        "hfst[0]: read spaced-text> read spaced-text> \n3 states, 2 arcs\nhfst[1]: fo\nhfst[1]: "
+        "hfst[0]: read spaced-text> read spaced-text> \n3 states, 2 arcs\nhfst[1]: fo\nhfst[1]: \n"
     );
 }
 
@@ -106,5 +106,36 @@ fn help_at_the_prompt_lists_the_commands() {
     let out = session("help\n");
     assert!(out.starts_with("hfst[0]: ambiguous upper "), "{out}");
     assert!(out.contains("\nhelp <name> "), "{out}");
-    assert!(out.ends_with("hfst[0]: "), "{out}");
+    assert!(out.ends_with("hfst[0]: \n"), "{out}");
+}
+
+// [spec:hfst:req:xfst-cmd.shell-session-edges/test]
+// Away from a terminal there is no start line, and the timing line stays
+// for the build logs that grep it.
+#[test]
+fn a_piped_session_keeps_the_timing_line() {
+    let mut child = Command::new(env!("CARGO_BIN_EXE_hfst"))
+        .env_remove("HFST_OPTIONS")
+        .arg("xfst")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn hfst xfst");
+    drop(child.stdin.take());
+    let out = child.wait_with_output().expect("wait for hfst xfst");
+    assert_eq!(String::from_utf8_lossy(&out.stdout), "hfst[0]: \n");
+    assert!(String::from_utf8_lossy(&out.stderr).contains("hfst-time"));
+}
+
+// [spec:hfst:req:xfst-cmd.shell-session-edges/test]
+#[test]
+fn help_describes_the_line_editor() {
+    let out = Command::new(env!("CARGO_BIN_EXE_hfst"))
+        .args(["xfst", "--help"])
+        .output()
+        .expect("run hfst xfst --help");
+    let help = String::from_utf8_lossy(&out.stdout);
+    assert!(help.contains("line editor"), "{help}");
+    assert!(!help.contains("if enabled when configuring"), "{help}");
 }

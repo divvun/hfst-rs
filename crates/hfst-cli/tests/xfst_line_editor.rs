@@ -73,3 +73,25 @@ fn no_readline_reads_plain_lines() {
     p.exp_string("unexpected character")
         .expect("the escape reaches the parser");
 }
+
+// [spec:hfst:req:xfst-cmd.shell-session-edges/test]
+// The start line comes before the first prompt, Ctrl-D ends the session on
+// a line of its own, and no timing line follows.
+#[test]
+fn a_terminal_session_starts_and_ends_cleanly() {
+    for args in [&[][..], &["-r"][..]] {
+        let mut cmd = Command::new(env!("CARGO_BIN_EXE_hfst"));
+        cmd.arg("xfst")
+            .args(args)
+            .env_remove("HFST_OPTIONS")
+            .env("NO_COLOR", "1");
+        let mut p = spawn_command(cmd, Some(5_000)).expect("spawn hfst xfst");
+        p.exp_string("Type 'help' for the commands, Ctrl-D to quit.")
+            .expect("the start line");
+        p.exp_string("hfst[0]: ").expect("the first prompt");
+        type_keys(&mut p, "\x04");
+        let rest = p.exp_eof().expect("the session ends");
+        assert!(rest.contains("\r\n"), "{args:?}: {rest:?}");
+        assert!(!rest.contains("hfst-time"), "{args:?}: {rest:?}");
+    }
+}

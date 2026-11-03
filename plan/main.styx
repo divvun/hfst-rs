@@ -8746,6 +8746,14 @@ children (
                     target-impl ([spec:hfst:req:xfst-cmd.shell-session-edges])
                 }
                 deps (xfst-shell.line-editor)
+                log (
+                    {
+                        at 2026-11-03T12:11:17.957943Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
+                )
             }
 
             {
@@ -8775,7 +8783,14 @@ children (
                 implements {
                     target-impl ([spec:hfst:sem:xfst-cmd.shell-messages])
                 }
-                deps (xfst-shell.nfst-xfst-0-6)
+                log (
+                    {
+                        at 2026-11-03T12:11:15.371027Z
+                        author "brendan@necessary.nu"
+                        kind @decision
+                        text "Dropped the dep on xfst-shell.nfst-xfst-0-6: nfst-xfst already escapes control characters in its lexer message (\"unexpected character '\\u{1b}'\"). The backslash comes from hfst's unexpected_character_diagnostic, which recovers the character by taking the first char of that message. All three items are hfst-only."
+                    }
+                )
             }
         )
         log (

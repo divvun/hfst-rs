@@ -1,8 +1,8 @@
 //! Faithful 1:1 port of tools/src/parsers/hfst-xfst.cc — the command-line
 //! program for compiling XFST scripts or executing XFST commands
-//! interactively, driving the hfst XfstCompiler. The readline branch
-//! (HAVE_READLINE) is not compiled in this port, so input always goes through
-//! the plain line-reading interactive branch.
+//! interactively, driving the hfst XfstCompiler. On a terminal the shell
+//! reads its lines through a rustyline editor in place of the C++ readline
+//! branch.
 //!
 //! Option handling is clap 4 derive through [`crate::cli`], but the shared
 //! [`crate::cli::CommonArgs`] group is NOT flattened in: the C++ copies the
@@ -14,7 +14,7 @@ use crate::cli::{self, CommonArgs, ToolArgs, ToolResult};
 use crate::globals::{ColourTristate, CommonOptions};
 use crate::hfst_commandline::{
     error, hfst_error, hfst_parse_format_name, hfst_set_program_name, parse_format_name_quiet,
-    print_version, verbose_print,
+    print_version, skip_elapsed, verbose_print, version_line,
 };
 use hfst::hfst_data_types::ImplementationType;
 use hfst::xfst_compiler::{Flow, LineSource, XfstCompiler};
@@ -69,7 +69,9 @@ impl Default for Options {
     after_help = "Option --execute can be invoked many times.
 If FMT is not given, OpenFst's tropical format will be used.
 The possible values for FMT are { foma, openfst-tropical, sfst }.
-Readline library, if enabled when configuring, is used for input by default.
+On a terminal the shell reads lines with a line editor: the arrow keys move
+and recall this session's lines, Ctrl-C clears the line, Ctrl-D quits.
+With -r it reads plain lines instead.
 Input files are always treated as UTF-8.
 
 STREAM can be { input, output, both }. If not given, defaults to {both}.
@@ -172,7 +174,7 @@ struct Args {
     )]
     pipe_mode: Vec<String>,
 
-    /// Do not use readline library for input
+    /// Read the shell's lines plainly, without the line editor
     #[arg(short = 'r', long = "no-readline")]
     no_readline: bool,
 
@@ -582,8 +584,19 @@ fn run_compiler<B: hfst::backend::AlgebraBackend + hfst::hfst_transducer::FromAn
     // port, so USE_READLINE is always false here).
     else {
         verbose_print(common, "Starting interactive mode...\n");
-        if !options.no_readline && std::io::stdin().is_terminal() && std::io::stdout().is_terminal()
-        {
+        let on_terminal = std::io::stdin().is_terminal() && std::io::stdout().is_terminal();
+        if on_terminal {
+            // [spec:hfst:req:xfst-cmd.shell-session-edges]
+            // The timing line is for build logs; at a terminal it is noise.
+            skip_elapsed();
+            if !common.silent {
+                println!(
+                    "hfst xfst, {}. Type 'help' for the commands, Ctrl-D to quit.",
+                    version_line()
+                );
+            }
+        }
+        if !options.no_readline && on_terminal {
             match rustyline::DefaultEditor::new() {
                 Ok(editor) => {
                     comp.set_line_source(Box::new(LineEditor(editor)));

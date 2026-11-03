@@ -53,7 +53,15 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
                     expression.clear();
                     continue;
                 }
-                Input::End => return Ok(()),
+                Input::End => {
+                    // [spec:hfst:req:xfst-cmd.shell-session-edges]
+                    // Plain input leaves the cursor after the prompt; a
+                    // host's line source ends the line itself.
+                    if self.verbose && self.line_source.is_none() {
+                        writeln!(self.output)?;
+                    }
+                    return Ok(());
+                }
             };
             expression.push_str(&line);
             if expression_continues(&mut expression) {
@@ -249,7 +257,7 @@ mod tests {
         c.set_input_stream(std::io::Cursor::new(b"echo \xff\necho after\n".to_vec()));
         c.interact().expect("the shell runs to end of input");
         let out = String::from_utf8(c.take_output()).expect("UTF-8 output");
-        assert_eq!(out, "hfst[0]: hfst[0]: after\nhfst[0]: ");
+        assert_eq!(out, "hfst[0]: hfst[0]: after\nhfst[0]: \n");
         assert!(
             c.diagnostics()
                 .iter()
@@ -322,6 +330,32 @@ mod tests {
         let out = String::from_utf8(c.take_output()).expect("UTF-8 output");
         assert_eq!(out, "kept\n");
         assert_eq!(prompts.borrow().len(), 4, "a fresh prompt after Ctrl-C");
+    }
+
+    // [spec:hfst:req:xfst-cmd.shell-session-edges/test]
+    // Plain input ends the last prompt's line itself; a line source, such as
+    // the terminal editor, already has.
+    #[test]
+    fn end_of_input_leaves_a_fresh_line() {
+        let mut plain = session();
+        plain.set_input_stream(std::io::Cursor::new(b"echo hi\n".to_vec()));
+        plain.interact().expect("the shell runs to end of input");
+        assert_eq!(plain.take_output(), b"hfst[0]: hi\nhfst[0]: \n");
+
+        let (mut edited, _) = scripted(&["echo hi"]);
+        edited.interact().expect("the shell runs to end of input");
+        assert_eq!(edited.take_output(), b"hi\n");
+    }
+
+    // [spec:hfst:req:xfst-cmd.shell-session-edges/test]
+    // A silent session prints neither prompts nor the closing line break.
+    #[test]
+    fn a_silent_session_prints_no_prompts() {
+        let mut c = XfstCompiler::<StdVectorFst>::new();
+        c.set_verbosity(false);
+        c.set_input_stream(std::io::Cursor::new(b"echo hi\n".to_vec()));
+        c.interact().expect("the shell runs to end of input");
+        assert_eq!(c.take_output(), b"hi\n");
     }
 
     // [spec:hfst:req:xfst-cmd.shell-in-library/test]

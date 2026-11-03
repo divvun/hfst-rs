@@ -165,6 +165,12 @@ pub fn start_timing(name: &str) {
     let _ = TIMING_NAME.set(name.to_string());
 }
 
+/// Leave the timing line out of this run, as for an interactive session on
+/// a terminal, where nobody is profiling a build.
+pub fn skip_elapsed() {
+    TIMING_PRINTED.store(true, std::sync::atomic::Ordering::Relaxed);
+}
+
 /// Report wall-clock for this invocation, once.
 ///
 /// Goes out as an ordinary INFO record, so it reads like every other line the
