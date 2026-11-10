@@ -9032,6 +9032,29 @@ children (
                     }
                 )
             }
+
+            {
+                id python.wheel-contents
+                title "Keep bytecode out of the divvun-hfst wheel: maturin packs python/divvun_hfst as it finds it, so a build after a local test run carried its __pycache__; exclude it, and have the package test check the wheel holds the package's sources and nothing else"
+                kind @fix
+                deps (python.package)
+                sealed true
+                log (
+                    {
+                        at 2026-11-10T15:47:30.947374Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
+
+                    {
+                        at 2026-11-10T15:48:25.575704Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan complete)"
+                    }
+                )
+            }
         )
     }
 )

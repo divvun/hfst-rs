@@ -654,6 +654,7 @@ assertions (
     {id xfst-shell.cancel.design, kind @complete, author "brendan@necessary.nu", at 2026-11-03T11:58:35.717386Z}
     {id python.spec, kind @complete, author "brendan@necessary.nu", at 2026-11-10T15:00:49.230155Z}
     {id python.embed, kind @complete, author "brendan@necessary.nu", at 2026-11-10T15:14:12.551711Z}
+    {id python.wheel-contents, kind @complete, author "brendan@necessary.nu", at 2026-11-10T15:48:25.575704Z}
 )
 
 impl_evidence (

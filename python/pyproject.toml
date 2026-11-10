@@ -39,6 +39,9 @@ Issues = "https://github.com/divvun/hfst-rs/issues"
 manifest-path = "../crates/hfst-python/Cargo.toml"
 module-name = "divvun_hfst._divvun_hfst"
 python-source = "."
+# maturin packs the package directory as it finds it, and running the tests
+# leaves bytecode there.
+exclude = [{ path = "divvun_hfst/**/__pycache__/**", format = "wheel" }]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

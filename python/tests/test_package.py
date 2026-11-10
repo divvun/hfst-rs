@@ -130,12 +130,15 @@ def test_the_wheel_is_divvun_hfst_under_lgpl(wheel: Path) -> None:
     with zipfile.ZipFile(wheel) as built:
         files = set(built.namelist())
         texts = {name: built.read(f"{info}/licenses/{name}") for name in LICENCES}
-    assert {
+    package = {f for f in files if f.startswith("divvun_hfst/")}
+    native = {f for f in package if re.fullmatch(r"divvun_hfst/_divvun_hfst\.(abi3\.so|pyd)", f)}
+    assert len(native) == 1
+    assert package - native == {
         "divvun_hfst/__init__.py",
         "divvun_hfst/_options.py",
         "divvun_hfst/_divvun_hfst.pyi",
         "divvun_hfst/py.typed",
-    } <= files
+    }
     assert {f.split("/")[0] for f in files} == {"divvun_hfst", info}
     for name, source in LICENCES.items():
         assert texts[name].decode().strip() == source.read_text().strip(), name
