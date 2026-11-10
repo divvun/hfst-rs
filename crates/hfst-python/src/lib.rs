@@ -13,6 +13,13 @@ mod optimised;
 mod tokenise;
 mod transducer;
 
+// [spec:hfst:req:python.parity]
+// Every reader and every call reaches hfst-embed, the code @divvun/hfst runs
+// too, with the caller's arguments turned into its types and its results
+// turned back, and nothing else between: the results are the library's.
+// python/tests/test_parity.py checks them against the native library's on
+// the npm package's parity fixtures.
+
 /// What the package calls itself and its readers, for the errors hfst-embed
 /// raises that send a caller to another reader.
 const PACKAGE: hfst_embed::Package = hfst_embed::Package {

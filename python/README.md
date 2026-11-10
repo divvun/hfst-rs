@@ -181,6 +181,14 @@ import logging
 logging.getLogger("hfst").setLevel(logging.DEBUG)
 ```
 
+## How it is checked
+
+The suite runs the npm package's parity fixtures through the built package:
+every lookup, optimised lookup, token list, tokenise format, acceptor lookup
+and DHFST description in them, and compares each with what the native
+library gives, value for value, and each format with what `hfst tokenise`
+prints, byte for byte.
+
 ## Types
 
 The package ships type stubs and the `py.typed` marker, and `mypy --strict`

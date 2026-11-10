@@ -1210,4 +1210,9 @@ impl_evidence (
         {impl_name py-impl, rule python.tokenise}
         {impl_name py-impl, rule python.typed}
     )}
+    {id python.parity, covered_rules (
+        python.parity
+    ), covered_claims (
+        {impl_name target-impl, rule python.parity}
+    )}
 )

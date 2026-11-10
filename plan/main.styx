@@ -9004,6 +9004,14 @@ children (
                     target-impl ([spec:hfst:req:python.parity])
                 }
                 deps (python.package)
+                log (
+                    {
+                        at 2026-11-10T15:38:48.194359Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
+                )
             }
 
             {
