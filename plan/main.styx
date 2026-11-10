@@ -8969,6 +8969,14 @@ children (
                     )
                 }
                 deps (python.embed)
+                log (
+                    {
+                        at 2026-11-10T15:15:13.79803Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
+                )
             }
 
             {

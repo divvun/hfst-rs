@@ -1184,4 +1184,21 @@ impl_evidence (
     ), covered_claims (
         {impl_name target-impl, rule xfst-cmd.shell-cancel-foma}
     )}
+    {id python.bindings, covered_rules (
+        python.dhfst
+        python.errors
+        python.load
+        python.logging
+        python.lookup
+        python.threads
+        python.tokenise
+    ), covered_claims (
+        {impl_name target-impl, rule python.dhfst}
+        {impl_name target-impl, rule python.errors}
+        {impl_name target-impl, rule python.load}
+        {impl_name target-impl, rule python.logging}
+        {impl_name target-impl, rule python.lookup}
+        {impl_name target-impl, rule python.threads}
+        {impl_name target-impl, rule python.tokenise}
+    )}
 )

@@ -52,6 +52,13 @@ platforms (
     }
 )
 
+quality {
+    // A pyo3 extension module cannot link a Rust test binary: the interpreter
+    // supplies its Python symbols. python/tests tests it, under the python
+    // platform's checks, and no Rust ratio can count those tests.
+    exempt-paths ("crates/hfst-python/**")
+}
+
 commit {
     type-prefix "required"
 }
