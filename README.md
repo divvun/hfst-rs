@@ -22,6 +22,14 @@ This repository contains:
 - `crates/hfst-openfst/` — the adapter onto
   [`rustfst`](https://github.com/necessary-nu/rustfst) that provides the
   weighted (tropical) transducer backend.
+- `crates/hfst-embed/` — the read-only surface both packages bind: transducers,
+  pmatch tokenisers and DHFST files read from bytes, and lookup, tokenise and
+  acceptor lookup on them.
+- `crates/hfst-wasm/` and `js/hfst/` — `@divvun/hfst`, the npm package, as
+  WebAssembly; `js/hfst/README.md` gives the commands.
+- `crates/hfst-python/` and `python/` — `divvun-hfst`, the Python package, a
+  native extension module imported as `divvun_hfst`; `python/README.md` gives
+  the commands.
 - `docs/spec/port/` — the behavioral specification (per-symbol `def` / `sem`
   rules) that pins the port to the C++ behavior of
   [upstream HFST](https://github.com/hfst/hfst), which served as the porting
@@ -56,6 +64,13 @@ of scope by design: the `libhfst` C API and its Python (SWIG) bindings; the SFST
 and native-C++ OpenFST back-ends (replaced by `rustfst` and the native `foma`
 crate); and the log-semiring back-end (removed — its non-idempotent
 determinisation is intractable, leaving tropical as the one weighted backend).
+Python reaches the library through `divvun-hfst` instead, which reads and looks
+up as the npm package does, and compiles nothing.
+
+The library and the tools share the workspace's version. The two packages are
+versioned on their own, each in its binding crate (`crates/hfst-wasm`, which
+`js/hfst/package.json` repeats, and `crates/hfst-python`), and released from
+`wasm/v<version>` and `python/v<version>` tags.
 
 ## Building
 

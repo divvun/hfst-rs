@@ -30,7 +30,11 @@ export function init(source?: InitSource): Promise<void> {
   return core.init(source);
 }
 
-/** The Divvun HFST version the package was built from. */
+// [spec:hfst:req:javascript.version]
+/**
+ * The package's version. It is versioned on its own, apart from the hfst
+ * library inside it.
+ */
 export function version(): string {
   return core.call((glue) => glue.version());
 }

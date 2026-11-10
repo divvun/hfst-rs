@@ -75,6 +75,8 @@ if (args.variant === "retry") {
 }
 
 // [spec:hfst:req:javascript.init+1/test]
+// [spec:hfst:req:javascript.version/test]
+// args.version is the version js/hfst/package.json gives the package.
 test(`init from ${args.variant} starts the package`, async () => {
   started = pkg.init(await source(args.variant));
   assertEqual(thrownCode(pkg.HfstError, () => pkg.version()), "not-initialised", "a call while init runs");

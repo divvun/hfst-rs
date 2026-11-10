@@ -19,6 +19,12 @@ a host operating system, and how the API behaves.
 > Web Workers, Deno, Node 20 or later, and Bun. It declares LGPL-3.0-or-later
 > and names Divvun HFST, copyright UiT.
 
+> [spec:hfst:req:javascript.version]
+> The package MUST be published to npm at a version of its own, which
+> `crates/hfst-wasm` carries and `js/hfst/package.json` repeats, from a
+> `wasm/v<version>` tag naming that version, and `version()` MUST return it.
+> The hfst library and the tools keep the workspace's version, apart from it.
+
 > [spec:hfst:req:javascript.init+1]
 > Importing the package MUST NOT fetch or compile its `.wasm` file. The caller
 > starts the package with one async init call that accepts a URL, a `Response`,

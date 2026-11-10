@@ -1215,4 +1215,10 @@ impl_evidence (
     ), covered_claims (
         {impl_name target-impl, rule python.parity}
     )}
+    {id python.versions, covered_rules (
+        javascript.version
+    ), covered_claims (
+        {impl_name js-impl, rule javascript.version}
+        {impl_name target-impl, rule javascript.version}
+    )}
 )

@@ -148,7 +148,8 @@ which is divvunspell itself.
 and wait for it before anything else; calling it again returns the same
 promise. It also takes a URL, a `Response`, the module's bytes or a compiled
 `WebAssembly.Module`, for bundlers and for workers that are handed one.
-`version()` gives the Divvun HFST version the package was built from.
+`version()` gives the package's version. The package is versioned on its own,
+apart from the hfst library inside it.
 
 ## Memory
 
@@ -199,6 +200,10 @@ installed. The suite runs under Node, Bun, Deno and a headless Chromium, on a
 page and in a Web Worker, and compares every result with the native hfst
 library's. `node js/bench/bench.mjs` measures the package against hfst-js and
 writes BENCHMARKS.md.
+
+The package's version is the one `crates/hfst-wasm/Cargo.toml` and
+`js/hfst/package.json` both carry. A `wasm/v<version>` tag naming it releases
+the package to npm.
 
 ## Licence
 
