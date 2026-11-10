@@ -10,19 +10,20 @@ platforms (
         }
     }
 
+    // The binding is tested through Python, against the extension maturin
+    // builds into python/.venv, as pip would install it. The tests read the
+    // npm package's fixtures, which node js/test/fixtures.mjs builds, so the
+    // fixture builders are inputs too. The type check runs mypy in its own
+    // uvx environment: a uv sync there would uninstall the editable build.
     {
         platform "python"
-        files (src/**/*.py **/*.py)
+        files (crates/hfst-python/** crates/hfst-embed/** python/pyproject.toml python/COPYING python/COPYING.LESSER python/divvun_hfst/** python/tests/** js/test/*fixtures.mjs)
         checks {
-            format {
-                cmd "ruff format --check ."
-                fix "ruff format ."
-            }
-            lint {
-                cmd "ruff check ."
-            }
             test {
-                cmd "pytest"
+                cmd "cd python && uv sync --quiet --no-install-project && uv run --no-sync maturin develop --uv --quiet && uv run --no-sync pytest -q"
+            }
+            typecheck {
+                cmd "cd python && uvx --quiet --with 'pytest>=8' --from 'mypy>=1.13' mypy"
             }
         }
     }
@@ -55,8 +56,11 @@ platforms (
 quality {
     // A pyo3 extension module cannot link a Rust test binary: the interpreter
     // supplies its Python symbols. python/tests tests it, under the python
-    // platform's checks, and no Rust ratio can count those tests.
-    exempt-paths ("crates/hfst-python/**")
+    // platform's checks, and no Rust ratio can count those tests. The package
+    // it builds into, python/divvun_hfst, is tested by the same pytest suite
+    // in python/tests, which a directory-scoped ratio cannot see; tests
+    // beside it would ship in the wheel.
+    exempt-paths ("crates/hfst-python/**" "python/divvun_hfst/**")
 }
 
 commit {

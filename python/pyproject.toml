@@ -1,0 +1,52 @@
+[build-system]
+requires = ["maturin>=1.9.4,<2"]
+build-backend = "maturin"
+
+[project]
+name = "divvun-hfst"
+# maturin takes the version from crates/hfst-python, which carries the
+# package's own; a python/v<version> tag releases it.
+dynamic = ["version"]
+description = "Divvun HFST for Python: reads optimized-lookup transducers, pmatch tokenisers and DHFST spellers, and runs lookup, tokenisation and DHFST acceptor lookup natively, giving the results the hfst tools give."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "LGPL-3.0-or-later"
+# Links to the repository's licence texts, the LGPL and the GPL it builds on:
+# a licence file may not lie outside the project directory.
+license-files = ["COPYING", "COPYING.LESSER"]
+authors = [{ name = "UiT The Arctic University of Norway" }]
+keywords = ["hfst", "divvun", "finite-state", "transducer", "morphology", "tokeniser", "spelling", "linguistics"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Natural Language :: English",
+    "Operating System :: MacOS",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Rust",
+    "Topic :: Text Processing :: Linguistic",
+    "Typing :: Typed",
+]
+
+[project.urls]
+Homepage = "https://github.com/divvun/hfst-rs/tree/main/python#readme"
+Repository = "https://github.com/divvun/hfst-rs"
+Issues = "https://github.com/divvun/hfst-rs/issues"
+
+[tool.maturin]
+manifest-path = "../crates/hfst-python/Cargo.toml"
+module-name = "divvun_hfst._divvun_hfst"
+python-source = "."
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.mypy]
+strict = true
+files = ["divvun_hfst", "tests"]
+mypy_path = "tests"
+
+[dependency-groups]
+dev = ["maturin>=1.9.4,<2", "pytest>=8", "mypy>=1.13"]

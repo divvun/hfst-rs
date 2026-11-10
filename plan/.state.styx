@@ -1201,4 +1201,13 @@ impl_evidence (
         {impl_name target-impl, rule python.threads}
         {impl_name target-impl, rule python.tokenise}
     )}
+    {id python.package, covered_rules (
+        python.module
+        python.tokenise
+        python.typed
+    ), covered_claims (
+        {impl_name py-impl, rule python.module}
+        {impl_name py-impl, rule python.tokenise}
+        {impl_name py-impl, rule python.typed}
+    )}
 )

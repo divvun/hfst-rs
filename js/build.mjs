@@ -17,14 +17,16 @@
 // A test build turns on the crate's test-hooks feature and adds the testing
 // entry module. It is written to target/js-test, never to js/, so the hooks
 // cannot reach the published package. It also builds the hfst tools, writes
-// the transducer fixtures to target/js-test/fixtures, and compiles the parity
-// scenario for browsers to target/js-test/browser.
+// the transducer fixtures to target/js-test/fixtures, installs hfst-js for the
+// suite's comparison with it, and compiles the parity scenario for browsers to
+// target/js-test/browser.
 
 import { execFileSync, spawnSync } from "node:child_process";
 import { cpSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { buildFixtures, buildTools } from "./test/fixtures.mjs";
+import { installHfstJs } from "./test/hfst-js-fixtures.mjs";
 import { assertReadOnlyModule } from "./test/read-only-module.ts";
 
 const js = dirname(fileURLToPath(import.meta.url));
@@ -140,6 +142,7 @@ if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.a
   if (process.argv.includes("--test")) {
     buildTestPackage();
     buildFixtures(buildTools(root, run), join(testBuild, "fixtures"));
+    installHfstJs();
   }
   console.log(`@divvun/hfst: ${bytes} bytes of WebAssembly (${(bytes / 1024).toFixed(1)} KiB)`);
 }

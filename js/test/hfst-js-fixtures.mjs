@@ -10,8 +10,9 @@
 // - shortflag: a flag of five characters;
 // - unify: unification after a negative set.
 //
-// It also installs hfst-js in js/bench when it is not there, which needs the
-// network once. Only js/test/fixtures.mjs calls this.
+// installHfstJs installs hfst-js in js/bench when it is not there, which needs
+// the network once. Only js/build.mjs calls it, for the JS suite's comparison
+// with hfst-js; the fixtures themselves need nothing from the network.
 
 import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
@@ -31,6 +32,10 @@ export function buildHfstJsFixtures(tool, out, sources, types) {
       tool("fst2fst", "-f", type, tropical, "-o", join(out, `${source}.${type}.hfst`));
     }
   }
+}
+
+/** Installs hfst-js in js/bench, from its lock file, unless it is there. */
+export function installHfstJs() {
   if (!existsSync(join(bench, "node_modules", "hfst-js", "package.json"))) {
     console.log(`$ npm ci (in ${bench})`);
     execFileSync("npm", ["ci"], { cwd: bench, stdio: "inherit" });

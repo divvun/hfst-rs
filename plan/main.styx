@@ -8986,6 +8986,14 @@ children (
                     py-impl ([spec:hfst:req:python.module] [spec:hfst:req:python.typed] [spec:hfst:req:python.tokenise])
                 }
                 deps (python.bindings)
+                log (
+                    {
+                        at 2026-11-10T15:32:53.748159Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
+                )
             }
 
             {

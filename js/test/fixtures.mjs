@@ -2,12 +2,16 @@
 // checkout's hfst command-line tools, from the text sources in
 // js/test/fixtures. They are made at test-build time rather than committed,
 // so the bytes a test compares against are what the checkout's own native
-// library writes. Only `node js/build.mjs --test` calls this.
+// library writes. `node js/build.mjs --test` writes them to
+// target/js-test/fixtures. The Python package's tests read the same ones, and
+// build them where they want them by running this module:
+//
+//   node js/test/fixtures.mjs <out>
 
 import { execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { gunzipSync } from "node:zlib";
 import { buildDhfstFixtures } from "./dhfst-fixtures.mjs";
 import { buildHfstJsFixtures } from "./hfst-js-fixtures.mjs";
@@ -61,8 +65,33 @@ export function buildFixtures(hfst, out) {
   buildOptimisedFixtures(out);
 }
 
-/** Builds the hfst tools with cargo and returns the binary's path. */
+/**
+ * Builds the hfst tools with cargo and returns the binary's path, under the
+ * target directory cargo uses, which CARGO_TARGET_DIR or a cargo config may
+ * move out of the checkout.
+ */
 export function buildTools(root, run) {
   run("cargo", ["build", "-p", "hfst-cli"]);
-  return join(root, "target", "debug", "hfst");
+  const metadata = execFileSync("cargo", ["metadata", "--format-version=1", "--no-deps"], {
+    cwd: root,
+    encoding: "utf8",
+    maxBuffer: 64 * 1024 * 1024,
+  });
+  const suffix = process.platform === "win32" ? ".exe" : "";
+  return join(JSON.parse(metadata).target_directory, "debug", `hfst${suffix}`);
+}
+
+// The JS build imports this module for its functions, so it builds only when run.
+if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  const [out] = process.argv.slice(2);
+  if (out === undefined) {
+    console.error("usage: node js/test/fixtures.mjs <out>");
+    process.exit(2);
+  }
+  const root = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
+  const run = (command, args) => {
+    console.log(`$ ${command} ${args.join(" ")}`);
+    execFileSync(command, args, { cwd: root, stdio: "inherit" });
+  };
+  buildFixtures(buildTools(root, run), resolve(out));
 }

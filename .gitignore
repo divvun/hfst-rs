@@ -23,3 +23,12 @@
 /js/hfst/pkg/
 /js/hfst/dist/
 /js/**/node_modules/
+
+# What python/ builds and the environment uv makes for it.
+/python/.venv/
+/python/**/__pycache__/
+/python/**/*.so
+/python/**/*.pyd
+/python/.pytest_cache/
+/python/.mypy_cache/
+/python/uv.lock
