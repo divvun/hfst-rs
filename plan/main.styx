@@ -8903,4 +8903,83 @@ children (
             }
         )
     }
+
+    {
+        id python
+        title "Divvun HFST for Python: divvun-hfst, imported as divvun_hfst, a pyo3 binding over the read-only surface @divvun/hfst binds: optimized-lookup lookup, the optimised lookup, pmatch tokenise and DHFST acceptor lookup, loaded from bytes or paths, with the GIL released [docs/spec/python.md]"
+        kind @feat
+        children (
+            {
+                id python.spec
+                title "State the Python package in the spec and the AKM: rules for the module, its typed surface, loading from bytes and from paths, both lookups, tokenising, DHFST, errors, threads, logging and parity, and the python-package decision"
+                kind @docs
+                sealed true
+                log (
+                    {
+                        at 2026-11-10T14:59:14.663984Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
+
+                    {
+                        at 2026-11-10T15:00:49.230155Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan complete)"
+                    }
+                )
+            }
+
+            {
+                id python.embed
+                title "Move what @divvun/hfst reads and runs out of crates/hfst-wasm into crates/hfst-embed, a read-only crate with no wasm in it, and make hfst-wasm glue over it, so both packages bind one implementation: stream sniffing, the readers, lookup ordering, the optimised lookup, token selection with byte offsets, tokenise settings, DHFST reading and the stable error codes"
+                kind @refactor
+                deps (python.spec)
+            }
+
+            {
+                id python.bindings
+                title "Add crates/hfst-python, pyo3 glue over hfst-embed: read_* from bytes and load_* from paths read in Rust, Transducer and OptimisedTransducer lookups with keyword-only limits, Tokeniser.tokenise with code point offsets and format, DHFST acceptors and error models, HfstError with the npm codes and FormatError, the GIL released for loads, lookups and tokenising, tracing events handed to logging"
+                implements {
+                    target-impl (
+                        [spec:hfst:req:python.load]
+                        [spec:hfst:req:python.lookup]
+                        [spec:hfst:req:python.tokenise]
+                        [spec:hfst:req:python.dhfst]
+                        [spec:hfst:req:python.errors]
+                        [spec:hfst:req:python.threads]
+                        [spec:hfst:req:python.logging]
+                    )
+                }
+                deps (python.embed)
+            }
+
+            {
+                id python.package
+                title "Package the binding as divvun-hfst: python/pyproject.toml built by maturin as an abi3 wheel for CPython 3.11+, the divvun_hfst package re-exporting divvun_hfst._divvun_hfst with __version__, the TokeniseOptions and FormatOptions dataclasses, type stubs and py.typed checked by mypy --strict, both licence texts, a README, the pytest suite and the nplan python platform"
+                implements {
+                    py-impl ([spec:hfst:req:python.module] [spec:hfst:req:python.typed] [spec:hfst:req:python.tokenise])
+                }
+                deps (python.bindings)
+            }
+
+            {
+                id python.parity
+                title "Show the package gives the native library's results: a pytest check that runs every lookup, optimised lookup, token list, tokenise format, acceptor lookup and DHFST description in the JS parity fixtures' parity.json through the built package, with node js/test/fixtures.mjs building the fixtures or DIVVUN_HFST_FIXTURES naming them"
+                kind @test
+                implements {
+                    target-impl ([spec:hfst:req:python.parity])
+                }
+                deps (python.package)
+            }
+
+            {
+                id python.versions
+                title "Version @divvun/hfst and divvun-hfst on their own, each in its binding crate: crates/hfst-wasm and crates/hfst-python carry their package's version, checked against js/hfst/package.json and divvun_hfst.__version__, released from wasm/v<version> and python/v<version> tags while the library and the tools keep v<version>; the package-versions decision"
+                kind @build
+                deps (python.package)
+            }
+        )
+    }
 )
