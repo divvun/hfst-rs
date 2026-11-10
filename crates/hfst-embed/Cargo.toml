@@ -1,0 +1,24 @@
+[package]
+name = "hfst-embed"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "What @divvun/hfst and divvun-hfst read and run: transducers, pmatch tokenisers and DHFST files read from bytes, and lookup, tokenise and acceptor lookup on them"
+# It reaches users only through the two packages, whose binding crates build
+# it in, so it is never published.
+publish = false
+
+[dependencies]
+divvun-fst = { workspace = true }
+# Without default features, so nothing built over it carries the foma backend.
+hfst = { workspace = true }
+
+[dev-dependencies]
+# The tests build their transducers, tokeniser and DHFST files with the
+# library's compilers and writers, which build on the tropical backend. Tests
+# run natively, so none of it reaches a package.
+hfst-openfst = { workspace = true }
+
+[lints]
+workspace = true

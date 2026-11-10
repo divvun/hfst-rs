@@ -8936,6 +8936,22 @@ children (
                 title "Move what @divvun/hfst reads and runs out of crates/hfst-wasm into crates/hfst-embed, a read-only crate with no wasm in it, and make hfst-wasm glue over it, so both packages bind one implementation: stream sniffing, the readers, lookup ordering, the optimised lookup, token selection with byte offsets, tokenise settings, DHFST reading and the stable error codes"
                 kind @refactor
                 deps (python.spec)
+                sealed true
+                log (
+                    {
+                        at 2026-11-10T15:01:31.201936Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
+
+                    {
+                        at 2026-11-10T15:14:12.551711Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan complete)"
+                    }
+                )
             }
 
             {

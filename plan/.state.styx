@@ -653,6 +653,7 @@ assertions (
     {id xfst-shell.nfst-xfst-0-6, kind @complete, author "brendan@necessary.nu", at 2026-11-03T13:50:09.576786Z}
     {id xfst-shell.cancel.design, kind @complete, author "brendan@necessary.nu", at 2026-11-03T11:58:35.717386Z}
     {id python.spec, kind @complete, author "brendan@necessary.nu", at 2026-11-10T15:00:49.230155Z}
+    {id python.embed, kind @complete, author "brendan@necessary.nu", at 2026-11-10T15:14:12.551711Z}
 )
 
 impl_evidence (

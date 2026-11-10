@@ -36,7 +36,7 @@ pub fn install(sink: JsValue, level: u8) -> Result<(), GlueError> {
     std::panic::set_hook(Box::new(|info| sink_panic(&info.to_string())));
     let subscriber = tracing_subscriber::registry().with(SinkLayer);
     tracing::subscriber::set_global_default(subscriber)
-        .map_err(|error| GlueError::new("internal", error.to_string()))
+        .map_err(|error| GlueError::new(hfst_embed::Code::Internal, error.to_string()))
 }
 
 /// Sends tracing events at `level` and above from here on. Tracing caches

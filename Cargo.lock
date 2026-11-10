@@ -966,6 +966,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "hfst-embed"
+version = "0.1.0"
+dependencies = [
+ "divvun-fst",
+ "hfst",
+ "hfst-openfst",
+]
+
+[[package]]
 name = "hfst-openfst"
 version = "0.1.0"
 dependencies = [
@@ -979,6 +988,7 @@ version = "0.1.0"
 dependencies = [
  "divvun-fst",
  "hfst",
+ "hfst-embed",
  "hfst-openfst",
  "js-sys",
  "serde",

@@ -6,16 +6,27 @@
 
 use std::collections::BTreeMap;
 
-use hfst::error::{Error, ErrorKind};
+use hfst::error::ErrorKind;
 use hfst::transducer::{HeaderFlag, TransducerHeader};
 
-use crate::error::{GlueError, code_of};
+use crate::Package;
+use crate::error::{Code, Error, code_of};
 use crate::format::Format;
 
-const INVALID: &str = "invalid-format";
-const UNSUPPORTED: &str = "unsupported-format";
+const INVALID: Code = Code::InvalidFormat;
+const UNSUPPORTED: Code = Code::UnsupportedFormat;
 
 pub type Properties = BTreeMap<String, String>;
+
+/// A member's properties as the packages show them. `version` and `type`
+/// describe the stream rather than the transducer, and `name` has an accessor
+/// of its own, so all three are left out.
+pub fn shown(properties: &Properties) -> impl Iterator<Item = (&str, &str)> {
+    properties
+        .iter()
+        .filter(|(key, _)| !matches!(key.as_str(), "version" | "type" | "name"))
+        .map(|(key, value)| (key.as_str(), value.as_str()))
+}
 
 /// One transducer of a stream, as far as its first bytes tell.
 pub struct Member<'a> {
@@ -29,8 +40,8 @@ pub struct Member<'a> {
 }
 
 // [spec:hfst:req:javascript.load-bytes+2]
-pub fn empty() -> GlueError {
-    GlueError::new(
+pub fn empty() -> Error {
+    Error::new(
         INVALID,
         "the bytes are empty, and a transducer stream holds at least one transducer",
     )
@@ -38,9 +49,9 @@ pub fn empty() -> GlueError {
 
 /// The error for a stream whose members have different types, which the
 /// package does not read, as `HfstInputStream` does not.
-pub fn mixed(first: Format, then: Format) -> GlueError {
-    GlueError::new(
-        "type-mismatch",
+pub fn mixed(first: Format, then: Format) -> Error {
+    Error::new(
+        Code::TypeMismatch,
         format!(
             "the stream holds transducers of different types, {} and then {}; a stream holds transducers of one type",
             first.name(),
@@ -55,43 +66,48 @@ pub fn mixed(first: Format, then: Format) -> GlueError {
 /// library called it. The optimized-lookup reader reports a short read and a
 /// corrupt header as the transducer having the wrong type, so that error is
 /// told as what it means here.
-pub fn read_error(error: Error) -> GlueError {
+pub fn read_error(error: hfst::error::Error) -> Error {
     if matches!(error.kind, ErrorKind::TransducerTypeMismatch) {
-        return GlueError::new("type-mismatch", error.to_string());
+        return Error::new(Code::TypeMismatch, error.to_string());
     }
     if matches!(error.kind, ErrorKind::TransducerHasWrongType) {
-        return GlueError::new(
+        return Error::new(
             INVALID,
             "an optimized-lookup transducer in the stream ends early or has a corrupt header",
         );
     }
-    let code = match code_of(&error.kind) {
-        "unsupported-format" => UNSUPPORTED,
-        _ => INVALID,
+    let code = if code_of(&error.kind) == UNSUPPORTED {
+        UNSUPPORTED
+    } else {
+        INVALID
     };
-    GlueError::new(code, error.to_string())
+    Error::new(code, error.to_string())
 }
 
 /// Describes the member at the start of `bytes`, which are not empty. Bytes
 /// in a format [`Format`] does not name fail here, with `unsupported-format`
 /// naming the format when the bytes declare one.
 // [spec:hfst:req:javascript.load-bytes+2]
-pub fn member(bytes: &[u8]) -> Result<Member<'_>, GlueError> {
+pub fn member<'a>(bytes: &'a [u8], package: &Package) -> Result<Member<'a>, Error> {
     if let Some(rest) = bytes.strip_prefix(b"HFST\0") {
-        return hfst3(rest);
+        return hfst3(rest, package);
     }
     if let Some(rest) = bytes.strip_prefix(b"HFST3\0") {
-        return pre_release(rest);
+        return pre_release(rest, package);
     }
     if bytes.starts_with(hfst::dhfst_header::MAGIC) {
-        return Err(GlueError::new(
+        return Err(Error::new(
             UNSUPPORTED,
-            "the bytes hold DHFST, a speller format and not a transducer stream; readDhfst reads it",
+            format!(
+                "the bytes hold DHFST, a speller format and not a transducer stream; {} reads it",
+                package.read_dhfst
+            ),
         ));
     }
     if bytes.starts_with(&[0x1f, 0x8b, 0x08]) {
         return Err(unsupported(
             "gzip-compressed data, as a native foma file is",
+            package,
         ));
     }
     let headerless = |format| Member {
@@ -111,7 +127,7 @@ pub fn member(bytes: &[u8]) -> Result<Member<'_>, GlueError> {
         // "vector", then the arc type, whose first letter is at offset 18.
         return match bytes.get(18) {
             Some(b's') if bytes.len() >= 26 => Ok(headerless(Format::OpenFstTropical)),
-            Some(b'l') => Err(unsupported("a log-weight OpenFst transducer")),
+            Some(b'l') => Err(unsupported("a log-weight OpenFst transducer", package)),
             Some(_) | None => Err(not_a_stream()),
         };
     }
@@ -121,22 +137,25 @@ pub fn member(bytes: &[u8]) -> Result<Member<'_>, GlueError> {
     Err(not_a_stream())
 }
 
-fn not_a_stream() -> GlueError {
-    GlueError::new(
+fn not_a_stream() -> Error {
+    Error::new(
         INVALID,
         "the bytes are not a transducer stream: they begin with neither an HFST3 header nor an optimized-lookup, OpenFst or foma transducer",
     )
 }
 
-pub fn unsupported(what: &str) -> GlueError {
-    GlueError::new(
+pub fn unsupported(what: &str, package: &Package) -> Error {
+    Error::new(
         UNSUPPORTED,
-        format!("the bytes hold {what}, which @divvun/hfst does not read"),
+        format!(
+            "the bytes hold {what}, which {} does not read",
+            package.name
+        ),
     )
 }
 
-fn malformed_header(what: &str) -> GlueError {
-    GlueError::new(INVALID, format!("the HFST3 header is malformed: {what}"))
+fn malformed_header(what: &str) -> Error {
+    Error::new(INVALID, format!("the HFST3 header is malformed: {what}"))
 }
 
 /// The NUL-terminated string at the start of `bytes`, and the bytes after it.
@@ -149,9 +168,9 @@ fn c_string(bytes: &[u8]) -> Option<(String, &[u8])> {
 /// An HFST3 header after its "HFST\0" magic: a little-endian length, a NUL,
 /// then that many bytes of NUL-terminated key and value pairs. The first pair
 /// gives the version and the second the type, as `HfstInputStream` requires.
-fn hfst3(bytes: &[u8]) -> Result<Member<'_>, GlueError> {
+fn hfst3<'a>(bytes: &'a [u8], package: &Package) -> Result<Member<'a>, Error> {
     let [low, high, nul, rest @ ..] = bytes else {
-        return Err(GlueError::new(
+        return Err(Error::new(
             INVALID,
             "the stream ends inside an HFST3 header",
         ));
@@ -163,7 +182,7 @@ fn hfst3(bytes: &[u8]) -> Result<Member<'_>, GlueError> {
     let (mut data, payload) = match (rest.get(..size), rest.get(size..)) {
         (Some(data), Some(payload)) => (data, payload),
         (Some(_) | None, Some(_) | None) => {
-            return Err(GlueError::new(
+            return Err(Error::new(
                 INVALID,
                 format!(
                     "the stream ends inside an HFST3 header that claims {size} bytes of properties"
@@ -199,7 +218,7 @@ fn hfst3(bytes: &[u8]) -> Result<Member<'_>, GlueError> {
         "HFST_OL" => Format::OptimizedLookupUnweighted,
         "TROPICAL_OPENFST" | "TROPICAL_OFST" => Format::OpenFstTropical,
         "FOMA" => Format::Foma,
-        "SFST" => return Err(unsupported("an SFST transducer")),
+        "SFST" => return Err(unsupported("an SFST transducer", package)),
         other => {
             return Err(malformed_header(&format!(
                 "it names the type {other}, which is not a transducer type"
@@ -215,9 +234,9 @@ fn hfst3(bytes: &[u8]) -> Result<Member<'_>, GlueError> {
 
 /// The header pre-release versions of HFST 3 wrote: after "HFST3\0", the
 /// implementation type's name and a NUL, and no properties.
-fn pre_release(bytes: &[u8]) -> Result<Member<'_>, GlueError> {
+fn pre_release<'a>(bytes: &'a [u8], package: &Package) -> Result<Member<'a>, Error> {
     let Some((type_name, payload)) = c_string(bytes) else {
-        return Err(GlueError::new(
+        return Err(Error::new(
             INVALID,
             "the stream ends inside an HFST3 header",
         ));
@@ -227,7 +246,7 @@ fn pre_release(bytes: &[u8]) -> Result<Member<'_>, GlueError> {
         "HFST_OL_TYPE" => Format::OptimizedLookupUnweighted,
         "TROPICAL_OPENFST_TYPE" => Format::OpenFstTropical,
         "FOMA_TYPE" => Format::Foma,
-        "SFST_TYPE" => return Err(unsupported("an SFST transducer")),
+        "SFST_TYPE" => return Err(unsupported("an SFST transducer", package)),
         other => {
             return Err(malformed_header(&format!(
                 "it names the type {other}, which is not a transducer type"
@@ -260,11 +279,15 @@ mod tests {
         bytes
     }
 
-    fn code(result: Result<Member<'_>, GlueError>) -> &'static str {
+    fn code(result: Result<Member<'_>, Error>) -> &'static str {
         match result {
             Ok(member) => member.format.name(),
-            Err(error) => error.code(),
+            Err(error) => error.code().name(),
         }
+    }
+
+    fn member(bytes: &[u8]) -> Result<Member<'_>, Error> {
+        super::member(bytes, &crate::TEST_PACKAGE)
     }
 
     #[test]
@@ -296,7 +319,7 @@ mod tests {
             b"HFST\0\x09\x00\0version\x003.3".to_vec(),
         ];
         for bytes in cases {
-            assert_eq!(code(member(&bytes)), INVALID, "{bytes:?}");
+            assert_eq!(code(member(&bytes)), INVALID.name(), "{bytes:?}");
         }
     }
 
@@ -309,7 +332,7 @@ mod tests {
             b"HFST3\0SFST_TYPE\0".to_vec(),
         ];
         for bytes in cases {
-            assert_eq!(code(member(&bytes)), UNSUPPORTED, "{bytes:?}");
+            assert_eq!(code(member(&bytes)), UNSUPPORTED.name(), "{bytes:?}");
         }
     }
 
@@ -321,9 +344,9 @@ mod tests {
         assert_eq!(code(member(b"##foma-net 1.0##\n")), "foma");
         assert_eq!(
             code(member(&[0u8; 80])),
-            INVALID,
+            INVALID.name(),
             "zeros declare no symbols"
         );
-        assert_eq!(code(member(b"just text")), INVALID);
+        assert_eq!(code(member(b"just text")), INVALID.name());
     }
 }

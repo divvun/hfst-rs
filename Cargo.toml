@@ -47,6 +47,14 @@ hfst-openfst = { path = "crates/hfst-openfst" }
 # keep AnyTransducer::Foma while --no-default-features gated away the CLI arms
 # matching it, and the CLI stopped compiling without the backend.
 hfst = { path = "crates/hfst", default-features = false }
+# What both packages read and run; crates/hfst-wasm and crates/hfst-python are
+# glue over it.
+hfst-embed = { path = "crates/hfst-embed" }
+
+# divvunspell's lookup engine, behind the packages' optimised lookup. Without
+# its default `fs` feature it reads every format from bytes and needs no
+# memory maps or host file system, which wasm32-unknown-unknown does not have.
+divvun-fst = { git = "https://github.com/divvun/divvunspell", rev = "9b6c98cbc837db148b334314259cb60f9e87e500", default-features = false }
 
 # weighted-FST backend (our rustfst fork). Missing algos
 # (difference/intersect/prune/equivalent/eps-normalize) get added here + upstreamed.

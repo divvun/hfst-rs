@@ -13,7 +13,7 @@
  *   transducer, or the module found more than one in the bytes
  *   `readOptimisedTransducer` got.
  *
- * From the library, which `crates/hfst-wasm/src/error.rs` maps here:
+ * From the library, which `crates/hfst-embed/src/error.rs` maps here:
  * - `type-mismatch`: transducers of different implementation types, or one of
  *   the wrong type for the operation.
  * - `unsupported-format`: bytes in a format the package does not read. The

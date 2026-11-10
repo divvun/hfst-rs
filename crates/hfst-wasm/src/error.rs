@@ -1,6 +1,6 @@
 //! Errors on their way to JavaScript.
 
-use hfst::error::{Error, ErrorKind};
+use hfst_embed::Code;
 use wasm_bindgen::JsValue;
 
 // [spec:hfst:req:javascript.errors+1]
@@ -15,21 +15,28 @@ pub struct GlueError {
 
 impl GlueError {
     /// An error with one of the codes `js/hfst/errors.ts` lists.
-    pub fn new(code: &'static str, message: impl Into<String>) -> Self {
+    pub fn new(code: Code, message: impl Into<String>) -> Self {
         GlueError {
-            code,
+            code: code.name(),
             message: message.into(),
         }
     }
 
+    #[cfg(test)]
     pub fn code(&self) -> &'static str {
         self.code
     }
 }
 
-impl From<Error> for GlueError {
-    fn from(error: Error) -> Self {
-        GlueError::new(code_of(&error.kind), error.to_string())
+impl From<hfst_embed::Error> for GlueError {
+    fn from(error: hfst_embed::Error) -> Self {
+        GlueError::new(error.code(), error.into_message())
+    }
+}
+
+impl From<hfst::error::Error> for GlueError {
+    fn from(error: hfst::error::Error) -> Self {
+        hfst_embed::Error::from(error).into()
     }
 }
 
@@ -47,85 +54,9 @@ fn set(object: &js_sys::Object, key: &str, value: &JsValue) {
         .expect("a fresh plain object takes any property");
 }
 
-/// The wrapper's code for a library error. `js/hfst/errors.ts` documents
-/// each code beside `HfstErrorCode`, and a test here checks that it does.
-pub fn code_of(kind: &ErrorKind) -> &'static str {
-    match kind {
-        ErrorKind::HfstTransducerTypeMismatch
-        | ErrorKind::TransducerTypeMismatch
-        | ErrorKind::TransducerHasWrongType => "type-mismatch",
-        ErrorKind::ImplementationTypeNotAvailable(_) | ErrorKind::FileIsInGzFormat => {
-            "unsupported-format"
-        }
-        ErrorKind::NotTransducerStream
-        | ErrorKind::EmptyTransducerStream
-        | ErrorKind::EndOfStream
-        | ErrorKind::TransducerHeader
-        | ErrorKind::NotValidAttFormat
-        | ErrorKind::NotValidPrologFormat
-        | ErrorKind::NotValidLexcFormat
-        | ErrorKind::MissingOpenFstInputSymbolTable
-        | ErrorKind::Metadata
-        | ErrorKind::InvalidModelFile => "invalid-format",
-        ErrorKind::StreamNotReadable
-        | ErrorKind::StreamCannotBeWritten
-        | ErrorKind::StreamIsClosed => "io",
-        ErrorKind::ContextTransducersAreNotAutomata
-        | ErrorKind::TransducersAreNotAutomata
-        | ErrorKind::TransducerIsNotAutomaton => "not-automaton",
-        ErrorKind::TransducerIsCyclic => "cyclic",
-        ErrorKind::StateIsNotFinal
-        | ErrorKind::StateIndexOutOfBounds
-        | ErrorKind::EmptySetOfContexts
-        | ErrorKind::SpecifiedTypeRequired
-        | ErrorKind::IncorrectUtf8Coding
-        | ErrorKind::EmptyString
-        | ErrorKind::SymbolNotFound
-        | ErrorKind::FlagDiacriticsAreNotIdentities
-        | ErrorKind::AlphabetTranslation
-        | ErrorKind::EmptySymbolPairSet
-        | ErrorKind::UndefinedSymbolPairsFound
-        | ErrorKind::UnequalSetSize
-        | ErrorKind::FaultyStringInput
-        | ErrorKind::UnescapedColsFound
-        | ErrorKind::EmptyMulticharSymbol => "invalid-argument",
-        ErrorKind::Fatal | ErrorKind::StateNotDefined => "internal",
-        ErrorKind::Hfst => "failed",
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use hfst::hfst_data_types::ImplementationType;
-
-    #[test]
-    fn library_errors_map_to_their_codes() {
-        let cases = [
-            (ErrorKind::TransducerTypeMismatch, "type-mismatch"),
-            (
-                ErrorKind::ImplementationTypeNotAvailable(ImplementationType::FOMA_TYPE),
-                "unsupported-format",
-            ),
-            (ErrorKind::NotTransducerStream, "invalid-format"),
-            (ErrorKind::StreamNotReadable, "io"),
-            (ErrorKind::TransducerIsNotAutomaton, "not-automaton"),
-            (ErrorKind::TransducerIsCyclic, "cyclic"),
-            (ErrorKind::SymbolNotFound, "invalid-argument"),
-            (ErrorKind::Fatal, "internal"),
-            (ErrorKind::Hfst, "failed"),
-        ];
-        for (kind, code) in cases {
-            assert_eq!(code_of(&kind), code, "{kind:?}");
-        }
-    }
-
-    #[test]
-    fn the_message_is_the_library_message() {
-        let error = GlueError::from(Error::with_message(ErrorKind::Hfst, "no such state"));
-        assert_eq!(error.code, "failed");
-        assert_eq!(error.message, "HFST error: no such state");
-    }
 
     #[test]
     fn the_wrapper_documents_every_code() {
@@ -134,22 +65,22 @@ mod tests {
             "/../../js/hfst/errors.ts"
         ))
         .expect("js/hfst/errors.ts is in the repository");
-        let codes = [
-            "type-mismatch",
-            "unsupported-format",
-            "invalid-format",
-            "io",
-            "not-automaton",
-            "cyclic",
-            "invalid-argument",
-            "internal",
-            "failed",
-        ];
-        for code in codes {
+        for code in Code::ALL {
             assert!(
-                errors_ts.contains(&format!("\"{code}\"")),
-                "js/hfst/errors.ts lists {code}"
+                errors_ts.contains(&format!("\"{}\"", code.name())),
+                "js/hfst/errors.ts lists {}",
+                code.name()
             );
         }
+    }
+
+    #[test]
+    fn a_library_error_keeps_its_code_and_message() {
+        let error = GlueError::from(hfst::error::Error::with_message(
+            hfst::error::ErrorKind::Hfst,
+            "no such state",
+        ));
+        assert_eq!(error.code, "failed");
+        assert_eq!(error.message, "HFST error: no such state");
     }
 }

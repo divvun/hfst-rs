@@ -19,12 +19,9 @@ crate-type = ["cdylib"]
 test-hooks = []
 
 [dependencies]
-# divvunspell's lookup engine, behind the optimised lookup. Without its default
-# `fs` feature it reads every format from bytes and needs no memory maps or
-# host file system, which wasm32-unknown-unknown does not have.
-divvun-fst = { git = "https://github.com/divvun/divvunspell", rev = "9b6c98cbc837db148b334314259cb60f9e87e500", default-features = false }
 # Without default features, so the module carries no foma backend.
 hfst = { workspace = true }
+hfst-embed = { workspace = true }
 js-sys = "0.3.95"
 tracing = "0.1.44"
 tracing-core = "0.1.36"
@@ -36,9 +33,13 @@ tracing-subscriber = { version = "0.3.23", default-features = false, features = 
 wasm-bindgen = "=0.2.118"
 
 [dev-dependencies]
-# The tokeniser tests compile their pmatch fixture with the library's compiler,
-# which builds on the tropical backend. Tests run natively, so none of it
-# reaches the module.
+# The example that writes the optimised lookup's native expectations runs
+# divvun-fst itself, as divvunspell does, rather than through hfst-embed, so
+# the expectations do not come from the code they check.
+divvun-fst = { workspace = true }
+# The example's test builds its transducer with the library's compiler, which
+# builds on the tropical backend. Examples run natively, so none of it reaches
+# the module.
 hfst-openfst = { workspace = true }
 # The example that writes the optimised lookup's native expectations for the
 # JavaScript parity suite reads its request and writes its answer as JSON.
