@@ -1,60 +1,19 @@
-//! Faithful 1:1 port of tools/src/hfst-strings2fst.cc — the string compiling
-//! command-line tool.
-//!
-//! Compiles string pairs and pair-strings into transducer(s). Option handling
+//! Port of tools/src/hfst-strings2fst.cc — the string compiling command-line
+//! tool, around the library's [`hfst::tools::strings2fst`]. Option handling
 //! is clap 4 derive through [`crate::cli`].
 
 use crate::cli::{self, CommonArgs, ToolArgs, ToolResult, UnaryIo};
 use crate::globals::CommonOptions;
 use crate::hfst_commandline::{
     error, error_at_line, hfst_error, hfst_error_at_line, hfst_parse_format_name,
-    hfst_set_program_name, hfst_strtoweight, hfst_warning_at_line, redirect_converting,
-    verbose_print,
+    hfst_set_program_name, hfst_warning_at_line, last_os_error_code, verbose_print,
 };
-use crate::hfst_tool_metadata::hfst_set_name;
-use hfst::hfst_basic_transducer::HfstBasicTransducer;
-use hfst::hfst_data_types::{ImplementationType, Symbol};
+use hfst::hfst_data_types::ImplementationType;
 use hfst::hfst_output_stream::HfstOutputStream;
-use hfst::hfst_strings2_fst_tokenizer::{HfstStrings2FstTokenizer, StringPairVector};
-use hfst::hfst_transducer::HfstTransducer;
+use hfst::tools::strings2fst::{
+    LogBase, StringsCompiler, StringsError, StringsOptions, multichar_symbols, negative_weight,
+};
 use std::io::BufRead;
-
-// ---------------------------------------------------------------------------
-// Tool-global state. C: file-scope static variables.
-// ---------------------------------------------------------------------------
-
-/// hfst-strings2fst's own options (the former tool-specific `static mut`s).
-struct Options {
-    /// '-e, --epsilon': symbol interpreted as epsilon. None until set; defaults to "@0@".
-    epsilonname: Option<String>,
-    /// '-S, --has-spaces': input has spaces between symbols/symbol pairs.
-    has_spaces: bool,
-    /// '-j, --disjunct-strings': disjunct all strings into a single transducer.
-    disjunct_strings: bool,
-    /// '-p, --pairstrings': input is in pairstring format.
-    pairstrings: bool,
-    /// '-m, --multichar-symbols': file listing strings tokenized as one symbol.
-    multichar_symbol_filename: Option<String>,
-    /// Multichar symbols read from the -m file.
-    multichar_symbols: Vec<Symbol>,
-
-    /// Running sum of all path weights (used by `divide_by_sum_of_weights`).
-    sum_of_weights: f32,
-    /// '--norm': divide each weight by the sum of all weights.
-    normalize_weights: bool,
-    /// '--log': take negative natural logarithm of each weight.
-    logarithmic_weights_e: bool,
-    /// '--log10': take negative 10-based logarithm of each weight.
-    logarithmic_weights_10: bool,
-
-    /// '-Wnegative-weights': warn on negative weights (default true).
-    warn_negative_weights: bool,
-    /// '-Werror': treat warnings as errors.
-    warnings_are_errors: bool,
-
-    /// '-f, --format': output implementation format.
-    output_format: ImplementationType,
-}
 
 /// hfst-strings2fst's command line.
 //
@@ -174,280 +133,92 @@ impl ToolArgs for Args {
     }
 }
 
-// [spec:hfst:def:hfst-strings2fst.divide-by-sum-of-weights-fn]
-// [spec:hfst:sem:hfst-strings2fst.divide-by-sum-of-weights-fn]
-fn divide_by_sum_of_weights(sum_of_weights: f32, weight: f32) -> f32 {
-    if sum_of_weights == 0.0 {
-        return 0.0;
-    }
-    weight / sum_of_weights
-}
-
-// [spec:hfst:def:hfst-strings2fst.take-negative-logarithm-e-fn]
-// [spec:hfst:sem:hfst-strings2fst.take-negative-logarithm-e-fn]
-fn take_negative_logarithm_e(common: &CommonOptions, weight: f32) -> f32 {
-    let result;
-    if weight == 0.0 {
-        result = 0.0; // shoud be INFINITY, but doesn't work in transitions
-    } else {
-        result = -(weight.ln());
-        // C checked errno (EDOM/ERANGE) after log(); Rust's ln() never sets errno
-        // and yields a non-finite result on a domain/range error instead.
-        if !result.is_finite() {
-            error(common, 1, 0, "unable to take negative logarithm");
+/// Print why line `line_n` did not compile, and end the process.
+fn fail_line(common: &CommonOptions, line_n: u32, e: &StringsError) {
+    let file = &common.input_filename;
+    let message = e.to_string();
+    match e {
+        StringsError::NotAWeight(_) => hfst_error(common, 1, last_os_error_code(), &message),
+        StringsError::NegativeWeight(_) => hfst_error_at_line(common, 1, 0, file, line_n, &message),
+        StringsError::UnescapedColons { .. } | StringsError::NotUtf8(_) => {
+            error_at_line(1, last_os_error_code(), file, line_n, &message)
         }
+        StringsError::Logarithm | StringsError::Build(_) => error(common, 1, 0, &message),
     }
-    result
 }
 
-// [spec:hfst:def:hfst-strings2fst.take-negative-logarithm-10-fn]
-// [spec:hfst:sem:hfst-strings2fst.take-negative-logarithm-10-fn]
-fn take_negative_logarithm_10(common: &CommonOptions, weight: f32) -> f32 {
-    let result;
-    if weight == 0.0 {
-        result = 0.0; // shoud be INFINITY, but doesn't work in transitions
-    } else {
-        result = -(weight.log10());
-        // C checked errno (EDOM/ERANGE) after log10(); Rust's log10() never sets
-        // errno and yields a non-finite result on a domain/range error instead.
-        if !result.is_finite() {
-            error(common, 1, 0, "unable to take negative logarithm");
-        }
-    }
-    result
-}
-
-fn last_os_error_code() -> i32 {
-    std::io::Error::last_os_error().raw_os_error().unwrap_or(0)
-}
-
-// [spec:hfst:def:hfst-strings2fst.process-stream-fn]
-// [spec:hfst:sem:hfst-strings2fst.process-stream-fn]
+// [spec:hfst:req:embed.tools-in-library]
+// The compiling is the library's StringsCompiler; the tool reads the lines,
+// writes each transducer as it comes, and prints what it is told.
 fn process_stream(
     common: &CommonOptions,
-    options: &mut Options,
+    options: StringsOptions,
     outstream: &mut HfstOutputStream,
     input: &mut dyn BufRead,
 ) -> i32 {
-    // The parsed --format is matched ONCE into the backend type
-    // ([dec:hfst:monomorphic-backends]); optimized-lookup formats build
-    // at tropical and convert at each write.
-    match options.output_format {
-        ImplementationType::SFST_TYPE
-        | ImplementationType::TROPICAL_OPENFST_TYPE
-        | ImplementationType::FOMA_TYPE
-        | ImplementationType::XFSM_TYPE
-        | ImplementationType::HFST_OL_TYPE
-        | ImplementationType::HFST_OLW_TYPE
-        | ImplementationType::THFST_TYPE
-        | ImplementationType::HFST2_TYPE
-        | ImplementationType::UNSPECIFIED_TYPE
-        | ImplementationType::ERROR_TYPE => {
-            process_stream_typed::<hfst_openfst::StdVectorFst>(common, options, outstream, input)
+    // Every --format compiles at tropical; the optimized-lookup and foma
+    // formats convert at each write ([dec:hfst:monomorphic-backends]).
+    let disjunct = options.disjunct;
+    let normalize = options.normalize;
+    let log = options.log;
+    let mut compiler = match StringsCompiler::<hfst_openfst::StdVectorFst>::new(options) {
+        Ok(c) => c,
+        Err(e) => {
+            hfst_error(common, 1, 0, &format!("{e}"));
+            return 1;
         }
-    }
-}
-
-fn process_stream_typed<B: hfst::backend::AlgebraBackend>(
-    common: &CommonOptions,
-    options: &mut Options,
-    outstream: &mut HfstOutputStream,
-    input: &mut dyn BufRead,
-) -> i32 {
-    let mut transducer_n: usize = 0;
-    let mut disjunction = HfstBasicTransducer::new();
-    let mut line_n: usize = 0;
-
-    let epsilonname = options.epsilonname.clone().unwrap_or_default();
-    let multichar_symbol_tokenizer =
-        match HfstStrings2FstTokenizer::new(&options.multichar_symbols, &epsilonname) {
-            Ok(t) => t,
-            Err(e) => {
-                hfst_error(common, 1, 0, &format!("{e}"));
-                return 1;
-            }
-        };
-
-    let inputfilename = common.input_filename.clone();
-
+    };
+    let mut line_n: u32 = 0;
     let mut line = String::new();
     loop {
         line.clear();
-        // C: hfst_getline keeps the trailing newline; Ok(0) at EOF == getline's -1.
         if input.read_line(&mut line).unwrap_or(0) == 0 {
             break;
         }
-        transducer_n += 1;
-        let _ = transducer_n; // C++ counts but never reads it
         line_n += 1;
         verbose_print(common, &format!("Parsing line {}...\n", line_n));
-
-        // parse line end and weight (the C++ mutated the buffer in place,
-        // writing '\0' at the tab/newline; here we slice instead).
-        let line_bytes = line.as_bytes();
-        let tab_pos = line_bytes.iter().position(|&b| b == b'\t');
-        let mut weight: f64 = 0.0;
-        let mut weighted = false;
-
-        let string_end_idx;
-        if let Some(tab) = tab_pos {
-            // weight string is from tab+1 to the first '\n'/'\r' (the C++
-            // inserted a '\0' there).
-            let mut we = tab + 1;
-            while we < line_bytes.len() && line_bytes[we] != b'\n' && line_bytes[we] != b'\r' {
-                we += 1;
-            }
-            let weight_str = String::from_utf8_lossy(&line_bytes[tab + 1..we]).into_owned();
-            weight = hfst_strtoweight(common, &weight_str) as f64;
-            weighted = true;
-            let errm = format!(
-                "Found negative weight {:.6}; negative weights are supported but iffy, if you really need them use -Wno-negative-weights",
-                weight
-            );
-            if (weight < 0.0) && options.warn_negative_weights {
-                if options.warnings_are_errors {
-                    hfst_error_at_line(common, 1, 0, &inputfilename, line_n as u32, &errm);
-                } else {
-                    hfst_warning_at_line(common, 0, 0, &inputfilename, line_n as u32, &errm);
-                }
-            }
-            string_end_idx = tab;
-        } else {
-            // string_end walks to first '\0', '\n' or '\r'
-            let mut se = 0usize;
-            while se < line_bytes.len() && line_bytes[se] != b'\n' && line_bytes[se] != b'\r' {
-                se += 1;
-            }
-            string_end_idx = se;
-        }
-
-        // Parse the string (C: cstr(line) up to the inserted '\0').
-        let parse_line = String::from_utf8_lossy(&line_bytes[..string_end_idx]).into_owned();
-        let pairstrings = options.pairstrings;
-        let has_spaces = options.has_spaces;
-        let tok_ref = &multichar_symbol_tokenizer;
-        let pl = parse_line.clone();
-        let tok_result = if pairstrings {
-            tok_ref.tokenize_pair_string(&pl, has_spaces)
-        } else {
-            tok_ref.tokenize_string_pair(&pl, has_spaces)
+        let mut warn = |weight: f32| {
+            let file = &common.input_filename;
+            hfst_warning_at_line(common, 0, 0, file, line_n, &negative_weight(weight));
         };
-        let spv: StringPairVector = match tok_result {
-            Ok(v) => v,
+        let compiled = match compiler.compile_line(&line, &mut warn) {
+            Ok(c) => c,
             Err(e) => {
-                if e.kind == hfst::error::ErrorKind::UnescapedColsFound {
-                    if pairstrings {
-                        error_at_line(
-                            1,
-                            last_os_error_code(),
-                            &inputfilename,
-                            line_n as u32,
-                            &format!(
-                                "String `{}' contains unescaped ':'-symbols,\nwhich are not pair separators. Use `\\:' for literal `:'.",
-                                parse_line
-                            ),
-                        );
-                    } else {
-                        error_at_line(
-                            1,
-                            last_os_error_code(),
-                            &inputfilename,
-                            line_n as u32,
-                            &format!(
-                                "String `{}' contains unescaped `:'-symbols,\nwhich are not pair separators. Use `\\:\' for literal `:'.\nIf you are compiling pair strings, use option -p.",
-                                parse_line
-                            ),
-                        );
-                    }
-                } else {
-                    // IncorrectUtf8CodingException
-                    error_at_line(
-                        1,
-                        last_os_error_code(),
-                        &inputfilename,
-                        line_n as u32,
-                        &format!("Input string `{}' is not valid utf-8.", parse_line),
-                    );
-                }
-                // error_at_line with EXIT_FAILURE exits; this is unreachable.
-                StringPairVector::new()
-            }
-        };
-
-        // Handle the weight
-        let mut path_weight: f32 = 0.0;
-
-        if weighted {
-            options.sum_of_weights += weight as f32;
-            path_weight = weight as f32;
-            verbose_print(common, &format!("Using final weight {:.6}...\n", weight));
-        }
-
-        if !options.disjunct_strings {
-            // each string into a transducer
-            let mut tr = HfstBasicTransducer::new();
-
-            if options.logarithmic_weights_e {
-                path_weight = take_negative_logarithm_e(common, weight as f32);
-            } else if options.logarithmic_weights_10 {
-                path_weight = take_negative_logarithm_10(common, weight as f32);
-            }
-
-            tr.disjunct_path(&spv, path_weight);
-            let mut res: HfstTransducer<B> = match HfstTransducer::new_from_basic(&tr) {
-                Ok(v) => v,
-                Err(e) => {
-                    error(common, 1, 0, &format!("{e}"));
-                    return 1;
-                }
-            };
-            hfst_set_name(&mut res, "", "string");
-            if let Err(e) = redirect_converting(outstream, &mut res) {
-                error(common, 1, 0, &format!("{e}"));
+                fail_line(common, line_n, &e);
                 return 1;
             }
-        } else {
-            // disjunct all strings into a single transducer
-            // do not take negative logarithm yet
-            disjunction.disjunct_path(&spv, path_weight);
+        };
+        if let Some(weight) = compiled.weight {
+            verbose_print(
+                common,
+                &format!("Using final weight {:.6}...\n", weight as f64),
+            );
+        }
+        if let Some(t) = compiled.transducer
+            && let Err(e) = outstream.write_converted(&t)
+        {
+            error(common, 1, 0, &format!("{e}"));
+            return 1;
         }
     }
-    // C: free(line); -> owned String, drops at scope end.
-    if options.disjunct_strings {
-        // The C++ applied these reweightings on the built HfstTransducer via
-        // its unconditional `transform_weights(fn(f32)->f32)`. The tool options
-        // that these functions used to read from `static mut` are now closed
-        // over, so they run on the basic `disjunction` (whose symbol-aware
-        // `transform_weights` accepts capturing closures and ignores the symbol
-        // args) before the backend conversion — behaviour-identical, since the
-        // conversion preserves every arc and final weight.
-        if options.normalize_weights {
+    if disjunct {
+        if normalize {
             verbose_print(common, "Normalising weights...\n");
-            let sum_of_weights = options.sum_of_weights;
-            disjunction = disjunction
-                .transform_weights(|w, _i, _o| divide_by_sum_of_weights(sum_of_weights, w));
         }
-        if options.logarithmic_weights_e {
+        if log.is_some() {
             verbose_print(common, "Taking negative logarithm...\n");
-            disjunction =
-                disjunction.transform_weights(|w, _i, _o| take_negative_logarithm_e(common, w));
-        } else if options.logarithmic_weights_10 {
-            verbose_print(common, "Taking negative logarithm...\n");
-            disjunction =
-                disjunction.transform_weights(|w, _i, _o| take_negative_logarithm_10(common, w));
         }
-
-        let mut res: HfstTransducer<B> = match HfstTransducer::new_from_basic(&disjunction) {
-            Ok(v) => v,
-            Err(e) => {
+    }
+    match compiler.finish() {
+        Ok(Some(t)) => {
+            if let Err(e) = outstream.write_converted(&t) {
                 error(common, 1, 0, &format!("{e}"));
                 return 1;
             }
-        };
-
-        hfst_set_name(&mut res, "?", "strings");
-        if let Err(e) = redirect_converting(outstream, &mut res) {
-            error(common, 1, 0, &format!("{e}"));
+        }
+        Ok(None) => {}
+        Err(e) => {
+            error(common, 1, 0, &e.to_string());
             return 1;
         }
     }
@@ -463,48 +234,43 @@ pub(super) fn execute(args: Vec<String>) -> ToolResult {
     let (common, args) = cli::parse::<Args>(common, args)?;
 
     let (warn_negative_weights, warnings_are_errors) = args.warning_switches(&common);
-    let mut options = Options {
-        epsilonname: args.epsilon.clone(),
-        has_spaces: args.has_spaces,
-        disjunct_strings: args.disjunct_strings,
-        pairstrings: args.pairstrings,
-        multichar_symbol_filename: args.multichar_symbols.clone(),
+    let mut output_format = args.output_format(&common);
+    let mut options = StringsOptions {
+        epsilon: args.epsilon.clone().unwrap_or_else(|| "@0@".to_string()),
         multichar_symbols: Vec::new(),
-        sum_of_weights: 0.0,
-        normalize_weights: args.norm,
-        logarithmic_weights_e: args.log,
-        logarithmic_weights_10: args.log10,
+        pairstrings: args.pairstrings,
+        has_spaces: args.has_spaces,
+        disjunct: args.disjunct_strings,
+        normalize: args.norm,
+        log: if args.log {
+            Some(LogBase::E)
+        } else if args.log10 {
+            Some(LogBase::Ten)
+        } else {
+            None
+        },
         warn_negative_weights,
         warnings_are_errors,
-        output_format: args.output_format(&common),
     };
-    // The two defaults the C applied after the parameter checks.
-    if options.output_format == ImplementationType::UNSPECIFIED_TYPE {
+    // The default the C applied after the parameter checks.
+    if output_format == ImplementationType::UNSPECIFIED_TYPE {
         verbose_print(
             &common,
             "Output format not specified, defaulting to openfst tropical\n",
         );
-        options.output_format = ImplementationType::TROPICAL_OPENFST_TYPE;
-    }
-    if options.epsilonname.is_none() {
-        options.epsilonname = Some("@0@".to_string());
+        output_format = ImplementationType::TROPICAL_OPENFST_TYPE;
     }
 
-    if let Some(fname) = options.multichar_symbol_filename.clone() {
+    if let Some(fname) = &args.multichar_symbols {
         verbose_print(
             &common,
             &format!("Reading multichar symbols from {}\n", fname),
         );
-        match std::fs::read_to_string(&fname) {
+        match std::fs::read_to_string(fname) {
             Ok(contents) => {
-                for multichar_line in contents.lines() {
-                    if !multichar_line.is_empty() {
-                        verbose_print(
-                            &common,
-                            &format!("Defining multichar symbol {}\n", multichar_line),
-                        );
-                        options.multichar_symbols.push(Symbol::new(multichar_line));
-                    }
+                for symbol in multichar_symbols(&contents) {
+                    verbose_print(&common, &format!("Defining multichar symbol {}\n", symbol));
+                    options.multichar_symbols.push(symbol);
                 }
             }
             Err(_) => {
@@ -529,9 +295,9 @@ pub(super) fn execute(args: Vec<String>) -> ToolResult {
     );
     // here starts the buffer handling part
     let outstream_result = if output_opened {
-        HfstOutputStream::new_filename(&common.output_filename, options.output_format, true)
+        HfstOutputStream::new_filename(&common.output_filename, output_format, true)
     } else {
-        HfstOutputStream::new(options.output_format, true)
+        HfstOutputStream::new(output_format, true)
     };
     let mut outstream = match outstream_result {
         Ok(s) => s,
@@ -547,6 +313,6 @@ pub(super) fn execute(args: Vec<String>) -> ToolResult {
             return Err(1);
         }
     };
-    process_stream(&common, &mut options, &mut outstream, &mut *input);
+    process_stream(&common, options, &mut outstream, &mut *input);
     Ok(())
 }

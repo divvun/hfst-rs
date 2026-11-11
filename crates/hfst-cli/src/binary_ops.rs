@@ -20,10 +20,11 @@ use std::io::Write;
 use crate::IntoAny;
 use crate::globals::CommonOptions;
 use crate::hfst_commandline::{
-    conversion_type, convert_transducers, error, hfst_strformat, is_input_stream_in_ol_format,
-    verbose_print, warning,
+    convert_transducers, error, is_input_stream_in_ol_format, verbose_print, warning,
 };
-use crate::hfst_tool_metadata::{hfst_get_name, hfst_set_formula_binary, hfst_set_name_binary};
+use hfst::tools::conversion::conversion_needed;
+use hfst::tools::format::format_description;
+use hfst::tools::metadata::{hfst_get_name, hfst_set_formula_binary, hfst_set_name_binary};
 
 /// How the n-ary read loop keeps or drops the pair between rounds.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -155,55 +156,41 @@ pub fn open_two_input_streams<'a, 'b>(
 /// shared type-mismatch warning/error texts (op-name parameterized).
 pub fn resolve_output_type(
     common: &CommonOptions,
-    tool_name: &str,
     mismatch_noun: &str,
     type1: ImplementationType,
     type2: ImplementationType,
 ) -> ImplementationType {
-    let mut output_type = ImplementationType::UNSPECIFIED_TYPE;
-    if type1 != type2 {
-        if common.allow_transducer_conversion {
-            let ct = conversion_type(type1, type2);
-            let mut warnstr = format!(
-                "Transducer type mismatch in {} and {}; ",
-                common.first_filename, common.second_filename
-            );
-            if ct == 1 {
-                warnstr.push_str("using former type as output");
-                output_type = type1;
-            } else if ct == 2 {
-                warnstr.push_str("using latter type as output");
-                output_type = type2;
-            } else if ct == -1 {
-                warnstr.push_str("using former type as output, loss of information is possible");
-                output_type = type1;
-            } else {
-                /* should not happen */
-                std::panic::panic_any(format!(
-                    "Error: {}: conversion_type returned an invalid integer",
-                    tool_name
-                ));
-            }
-            warning(common, 0, 0, &warnstr);
-        } else {
-            error(
-                common,
-                1,
-                0,
-                &format!(
-                    "Transducer type mismatch in {} and {}; formats {} and {} are not compatible for {} (--do-not-convert was requested)",
-                    common.first_filename,
-                    common.second_filename,
-                    hfst_strformat(type1),
-                    hfst_strformat(type2),
-                    mismatch_noun
-                ),
-            );
-        }
-    } else {
-        output_type = type1;
+    let Some(note) = conversion_needed(type1, type2) else {
+        return type1;
+    };
+    if !common.allow_transducer_conversion {
+        error(
+            common,
+            1,
+            0,
+            &format!(
+                "Transducer type mismatch in {} and {}; formats {} and {} are not compatible for {} (--do-not-convert was requested)",
+                common.first_filename,
+                common.second_filename,
+                format_description(type1),
+                format_description(type2),
+                mismatch_noun
+            ),
+        );
+        return ImplementationType::UNSPECIFIED_TYPE;
     }
-    output_type
+    warning(
+        common,
+        0,
+        0,
+        &format!(
+            "Transducer type mismatch in {} and {}; {}",
+            common.first_filename,
+            common.second_filename,
+            note.output_choice()
+        ),
+    );
+    note.target()
 }
 
 /// Creates the output stream (named file vs stdout) with the shared error
@@ -243,8 +230,8 @@ pub fn print_do_not_convert_error(
             ctx.firstname,
             ctx.secondname,
             ctx.transducer_n_first,
-            hfst_strformat(ctx.first_type),
-            hfst_strformat(ctx.second_type),
+            format_description(ctx.first_type),
+            format_description(ctx.second_type),
             spec.could_not_noun
         ),
     );
@@ -348,7 +335,7 @@ fn binary_op_streams(
 
     let type1 = firststream.get_type();
     let type2 = secondstream.get_type();
-    let output_type = resolve_output_type(common, spec.tool_name, spec.mismatch_noun, type1, type2);
+    let output_type = resolve_output_type(common, spec.mismatch_noun, type1, type2);
 
     let mut outstream = match open_output_stream(common, output_type) {
         Ok(v) => v,

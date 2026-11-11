@@ -10,7 +10,6 @@ use crate::globals::CommonOptions;
 use crate::hfst_commandline::{
     error, hfst_set_program_name, is_input_stream_in_ol_format, verbose_print, warning,
 };
-use crate::hfst_tool_metadata::{hfst_get_name, hfst_set_formula_unary};
 use crate::memory_limit::{self, LimitSource, ResolvedMemoryLimit};
 use hfst::convert_transducer_format::ConversionFunctions;
 use hfst::hfst_input_stream::HfstInputStream;
@@ -18,6 +17,7 @@ use hfst::hfst_symbol_defs::internal_identity;
 use hfst::hfst_tokenizer::HfstTokenizer;
 use hfst::hfst_transducer::EngineConfig;
 use hfst::hfst_transducer::{HfstTransducer, HfstTransducerVector};
+use hfst::tools::metadata::{hfst_get_name, hfst_set_formula_unary};
 use std::io::Write;
 
 // static bool insert_missing_flags=false;
@@ -254,13 +254,7 @@ fn compose_streams(
     // there must be at least one transducer in both input streams
     let type1 = firststream.get_type();
     let type2 = secondstream.get_type();
-    let output_type = resolve_output_type(
-        common,
-        "hfst-compose-intersect",
-        "compose-intersect",
-        type1,
-        type2,
-    );
+    let output_type = resolve_output_type(common, "compose-intersect", type1, type2);
 
     let tropical = output_type == hfst::hfst_data_types::ImplementationType::TROPICAL_OPENFST_TYPE;
     if !tropical {

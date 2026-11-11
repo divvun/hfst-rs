@@ -190,6 +190,11 @@ impl AnyTransducer {
         any_delegate!(self, t => t.to_basic())
     }
 
+    /// The symbols of this transducer's alphabet.
+    pub fn get_alphabet(&self) -> crate::error::Result<crate::hfst_symbol_defs::StringSet> {
+        any_delegate!(self, t => t.get_alphabet())
+    }
+
     /// Write this transducer to an HFST output stream ('operator<<'); the
     /// stream's per-type logic collapses onto this single dispatch.
     pub fn write(

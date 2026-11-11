@@ -570,6 +570,7 @@ assertions (
     {id pmatch-middot-loses-punct-reading, kind @complete, author "brendan@necessary.nu", at 2026-08-15T22:43:56.279798Z}
     {id pmatch-tokenize-runtime-divergence, kind @complete, author "brendan@necessary.nu", at 2026-08-15T19:11:22.718785Z}
     {id pmatch2fst-syntax-error-exit-zero, kind @complete, author "brendan@necessary.nu", at 2026-10-28T22:35:08.097638Z}
+    {id predict.derivations, kind @complete, author "brendan@necessary.nu", at 2026-11-11T16:32:14.938372Z}
     {id predict.spec, kind @complete, author "brendan@necessary.nu", at 2026-11-11T12:36:15.313631Z}
     {id python.embed, kind @complete, author "brendan@necessary.nu", at 2026-11-10T15:14:12.551711Z}
     {id python.spec, kind @complete, author "brendan@necessary.nu", at 2026-11-10T15:00:49.230155Z}
@@ -710,10 +711,16 @@ assertions (
     {id xre-intermediate-optimization, kind @complete, author "brendan@necessary.nu", at 2026-08-19T23:55:03.286981Z}
     {id zip-upgrade.divvunspell, kind @complete, author "brendan@necessary.nu", at 2026-10-31T18:02:55.139381Z}
     {id zip-upgrade.hfst, kind @complete, author "brendan@necessary.nu", at 2026-10-31T19:37:53.145211Z}
-    {id predict.derivations, kind @complete, author "brendan@necessary.nu", at 2026-11-11T16:32:14.938372Z}
 )
 
 impl_evidence (
+    {id compile-surface.cli-logic, covered_rules (
+        embed.tools
+        embed.tools-in-library
+    ), covered_claims (
+        {impl_name target-impl, rule embed.tools}
+        {impl_name target-impl, rule embed.tools-in-library}
+    )}
     {id compile-surface.no-panic, covered_rules (
         embed.no-panic
     ), covered_claims (

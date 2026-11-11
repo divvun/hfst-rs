@@ -19,7 +19,9 @@ use hfst::backend::Backend;
 use hfst::hfst_data_types::ImplementationType;
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_output_stream::HfstOutputStream;
-use hfst::hfst_transducer::{AnyTransducer, HfstTransducer, is_safe_conversion};
+use hfst::hfst_transducer::{AnyTransducer, HfstTransducer};
+use hfst::tools::conversion::conversion_needed;
+use hfst::tools::format::{parse_format_name, parse_weight};
 use std::io::{IsTerminal, Write};
 
 // ---------------------------------------------------------------------------
@@ -199,7 +201,7 @@ pub fn print_elapsed() {
 // ---------------------------------------------------------------------------
 
 // Current value of errno, as the C read it after a failing libc call.
-fn last_os_error_code() -> i32 {
+pub fn last_os_error_code() -> i32 {
     std::io::Error::last_os_error().raw_os_error().unwrap_or(0)
 }
 
@@ -412,99 +414,21 @@ pub fn verbose_print(opts: &CommonOptions, msg: &str) {
 // format conversion helpers
 // ---------------------------------------------------------------------------
 
-// [spec:hfst:def:hfst-commandline.conversion-type-fn]
-// [spec:hfst:sem:hfst-commandline.conversion-type-fn]
-pub fn conversion_type(type1: ImplementationType, type2: ImplementationType) -> i32 {
-    if type1 == type2 {
-        return 0;
-    }
-    if is_safe_conversion(type2, type1) {
-        1
-    } else if is_safe_conversion(type1, type2) {
-        2
-    } else {
-        -1
-    }
-}
-
-// [spec:hfst:def:hfst-commandline.convert-transducers-fn]
-// [spec:hfst:sem:hfst-commandline.convert-transducers-fn]
+// [spec:hfst:req:embed.tools-in-library]
+/// Convert `first` and `second` to one type, warning first when they differ,
+/// as the binary tools do before they combine two transducers.
 pub fn convert_transducers(
     opts: &CommonOptions,
     first: AnyTransducer,
     second: AnyTransducer,
 ) -> hfst::error::Result<(AnyTransducer, AnyTransducer)> {
-    let type1 = first.get_type();
-    let type2 = second.get_type();
-    let ct = conversion_type(type1, type2);
-
-    if ct == 0 {
-        Ok((first, second))
-    } else if ct == 1 {
-        hfst_warning(
-            opts,
-            0,
-            0,
-            &format!(
-                "transducers have different types, converting to format {}\n",
-                hfst_strformat(type1)
-            ),
-        );
-        let second = second.convert(type1, "")?;
-        Ok((first, second))
-    } else if ct == 2 {
-        hfst_warning(
-            opts,
-            0,
-            0,
-            &format!(
-                "transducers have different types, converting to format {}\n",
-                hfst_strformat(type2)
-            ),
-        );
-        let first = first.convert(type2, "")?;
-        Ok((first, second))
-    } else {
-        hfst_warning(
-            opts,
-            0,
-            0,
-            &format!(
-                "transducers have different types, converting to format {}, loss of information is possible\n",
-                hfst_strformat(type1)
-            ),
-        );
-        let second = second.convert(type1, "")?;
-        Ok((first, second))
+    match conversion_needed(first.get_type(), second.get_type()) {
+        Some(note) => {
+            hfst_warning(opts, 0, 0, &note.to_string());
+            note.apply(first, second)
+        }
+        None => Ok((first, second)),
     }
-}
-
-/// Write an algebra-backend result into 'outstream', converting to
-/// optimized-lookup first when the stream was opened with an OL '--format'
-/// (the C++ facade converted inside 'operator<<' type plumbing; the typed
-/// conversion of [dec:hfst:monomorphic-backends] happens here instead).
-pub fn redirect_converting<B: hfst::backend::AlgebraBackend>(
-    outstream: &mut HfstOutputStream,
-    t: &mut HfstTransducer<B>,
-) -> hfst::error::Result<()> {
-    match outstream.get_type() {
-        ImplementationType::HFST_OL_TYPE | ImplementationType::HFST_OLW_TYPE => {
-            let ol = t.to_ol(
-                outstream.get_type() == ImplementationType::HFST_OLW_TYPE,
-                "",
-            )?;
-            outstream.write(&ol)?;
-        }
-        #[cfg(feature = "foma")]
-        ImplementationType::FOMA_TYPE => {
-            let foma = t.to_foma()?;
-            outstream.write(&foma)?;
-        }
-        _ => {
-            outstream.write(t)?;
-        }
-    }
-    Ok(())
 }
 
 // [spec:hfst:def:hfst-commandline.is-input-stream-in-ol-format-fn]
@@ -528,31 +452,17 @@ pub fn is_input_stream_in_ol_format(is: &HfstInputStream<'_>, program: &str) -> 
 // string -> number parsers
 // ---------------------------------------------------------------------------
 
-// [spec:hfst:def:hfst-commandline.hfst-strtoweight-fn]
-// [spec:hfst:sem:hfst-commandline.hfst-strtoweight-fn]
+// [spec:hfst:req:embed.tools-in-library]
+/// The weight `s` spells, fatal when it spells none.
 pub fn hfst_strtoweight(opts: &CommonOptions, s: &str) -> f32 {
-    // C++ is `strtod(s, &endptr)` accepted when `*endptr == '\0'`, which
-    // str::parse does not reproduce in two ways that reach real data:
-    //   - "" performs no conversion and leaves endptr on the NUL, so the test
-    //     passes and the weight is 0. An empty field means "no weight", not an
-    //     error — Giella's speller rules pipe through `cut -f1-2`, so a stray
-    //     second tab hands us exactly this.
-    //   - strtod skips leading whitespace. Trailing whitespace still fails,
-    //     since endptr then rests on the space rather than the NUL, and a
-    //     whitespace-only string fails too (no conversion, so endptr is left
-    //     at the start, not past the blanks).
-    if s.is_empty() {
-        return 0.0;
-    }
-    let s = s.trim_start_matches([' ', '\t', '\n', '\x0b', '\x0c', '\r']);
-    match s.parse::<f64>() {
-        Ok(rv) => rv as f32,
-        Err(_) => {
+    match parse_weight(s) {
+        Ok(weight) => weight,
+        Err(refused) => {
             hfst_error(
                 opts,
                 1,
                 last_os_error_code(),
-                &format!("{} not a weight", s),
+                &format!("{} not a weight", refused),
             );
             0.0
         }
@@ -630,95 +540,37 @@ pub fn parse_i64(opts: &CommonOptions, s: &str, base: i32) -> i64 {
 // transducer-format name parsing / printing
 // ---------------------------------------------------------------------------
 
-// [spec:hfst:def:hfst-commandline.hfst-parse-format-name-fn]
-// [spec:hfst:sem:hfst-commandline.hfst-parse-format-name-fn]
+// [spec:hfst:req:embed.tools-in-library]
+/// The format `s` names, warning when the name is ambiguous and fatal when
+/// it names none.
 pub fn hfst_parse_format_name(opts: &CommonOptions, s: &str) -> ImplementationType {
-    let lower = s.to_ascii_lowercase();
-    let rv;
-    if lower == "sfst" {
-        rv = ImplementationType::SFST_TYPE;
-    } else if lower == "openfst-tropical" || lower == "ofst-tropical" {
-        rv = ImplementationType::TROPICAL_OPENFST_TYPE;
-    } else if lower == "openfst" || lower == "ofst" {
-        rv = ImplementationType::TROPICAL_OPENFST_TYPE;
-        hfst_warning(
-            opts,
-            0,
-            0,
-            &format!("Ambiguous format name {}, guessing openfst-tropical", s),
-        );
-    } else if lower == "foma" {
-        rv = ImplementationType::FOMA_TYPE;
-    } else if lower == "xfsm" {
-        rv = ImplementationType::XFSM_TYPE;
-    } else if lower == "optimized-lookup-unweighted" || lower == "olu" {
-        rv = ImplementationType::HFST_OL_TYPE;
-    } else if lower == "optimized-lookup-weighted" || lower == "olw" {
-        rv = ImplementationType::HFST_OLW_TYPE;
-    } else if lower == "thfst" {
-        rv = ImplementationType::THFST_TYPE;
-    } else if lower == "optimized-lookup" || lower == "ol" {
-        rv = ImplementationType::HFST_OLW_TYPE;
-        hfst_warning(
-            opts,
-            0,
-            0,
-            &format!(
-                "Ambiguous format name {}, guessing optimized-lookup-weighted",
-                s
-            ),
-        );
-    } else {
-        hfst_error(
-            opts,
-            1,
-            0,
-            &format!("Could not parse format name from string {}", s),
-        );
-        return ImplementationType::UNSPECIFIED_TYPE;
+    match parse_format_name(s) {
+        Some(name) => {
+            if let Some(warning) = name.warning(s) {
+                hfst_warning(opts, 0, 0, &warning);
+            }
+            name.implementation
+        }
+        None => {
+            hfst_error(
+                opts,
+                1,
+                0,
+                &format!("Could not parse format name from string {}", s),
+            );
+            ImplementationType::UNSPECIFIED_TYPE
+        }
     }
-    rv
 }
 
-/// The vocabulary of [`hfst_parse_format_name`] minus its diagnostics, for a
-/// clap tool's post-validate second pass (which must not repeat the
-/// ambiguous-name warning). Returns UNSPECIFIED_TYPE for a name the loud
-/// parse would reject, so it is only meaningful after that parse accepted.
+/// [`hfst_parse_format_name`] without its diagnostics, for a clap tool's
+/// post-validate second pass (which must not repeat the ambiguous-name
+/// warning). UNSPECIFIED_TYPE for a name the loud parse would reject, so it is
+/// only meaningful after that parse accepted.
 pub fn parse_format_name_quiet(s: &str) -> ImplementationType {
-    match s.to_ascii_lowercase().as_str() {
-        "sfst" => ImplementationType::SFST_TYPE,
-        "openfst-tropical" | "ofst-tropical" | "openfst" | "ofst" => {
-            ImplementationType::TROPICAL_OPENFST_TYPE
-        }
-        "foma" => ImplementationType::FOMA_TYPE,
-        "xfsm" => ImplementationType::XFSM_TYPE,
-        "optimized-lookup-unweighted" | "olu" => ImplementationType::HFST_OL_TYPE,
-        "optimized-lookup-weighted" | "olw" | "optimized-lookup" | "ol" => {
-            ImplementationType::HFST_OLW_TYPE
-        }
-        "thfst" => ImplementationType::THFST_TYPE,
-        _ => ImplementationType::UNSPECIFIED_TYPE,
-    }
-}
-
-// [spec:hfst:def:hfst-commandline.hfst-strformat-fn]
-// [spec:hfst:sem:hfst-commandline.hfst-strformat-fn]
-pub fn hfst_strformat(format: ImplementationType) -> &'static str {
-    match format {
-        ImplementationType::SFST_TYPE => "SFST (1.4 compatible)",
-        ImplementationType::TROPICAL_OPENFST_TYPE => "OpenFST, std arc, tropical semiring",
-        ImplementationType::FOMA_TYPE => "foma",
-        ImplementationType::XFSM_TYPE => "xfsm",
-        ImplementationType::HFST_OL_TYPE => "Hfst's lookup optimized, unweighted",
-        ImplementationType::HFST_OLW_TYPE => "Hfst's lookup optimized, weighted",
-        ImplementationType::THFST_TYPE => {
-            "thfst (divvunspell optimized-lookup, weighted, directory format)"
-        }
-        ImplementationType::HFST2_TYPE => "Hfst 2 legacy (deprecated)",
-        ImplementationType::ERROR_TYPE | ImplementationType::UNSPECIFIED_TYPE => {
-            "ERROR (not a HFST supported transducer)"
-        }
-    }
+    parse_format_name(s).map_or(ImplementationType::UNSPECIFIED_TYPE, |name| {
+        name.implementation
+    })
 }
 
 // ---------------------------------------------------------------------------

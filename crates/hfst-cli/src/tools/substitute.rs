@@ -7,16 +7,18 @@
 use crate::cli::{self, CommonArgs, ToolArgs, ToolResult, UnaryIo};
 use crate::globals::CommonOptions;
 use crate::hfst_commandline::{
-    conversion_type, error, hfst_error, hfst_error_at_line, hfst_set_program_name, hfst_strformat,
-    hfst_warning, is_input_stream_in_ol_format, verbose_print,
+    error, hfst_error, hfst_error_at_line, hfst_set_program_name, hfst_warning,
+    is_input_stream_in_ol_format, verbose_print,
 };
-use crate::hfst_tool_metadata::{hfst_set_formula_unary, hfst_set_name_unary};
 use hfst::hfst_data_types::{ImplementationType, StringPair};
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_output_stream::HfstOutputStream;
 use hfst::hfst_symbol_defs::{internal_epsilon, label_to_stringpair};
 use hfst::hfst_transducer::HfstTransducer;
 use hfst::substitute_driver::{SubstituteEngine, SubstituteRequest};
+use hfst::tools::conversion::conversion_needed;
+use hfst::tools::format::format_description;
+use hfst::tools::metadata::{hfst_set_formula_unary, hfst_set_name_unary};
 use std::io::{BufRead, BufReader};
 
 /// hfst-substitute's own options (the former tool-specific `static mut`s). The
@@ -279,30 +281,20 @@ fn process_stream(
         tostream.close();
         let to_transducer_type = to_transducer.get_type();
         let instream_type = instream.get_type();
-        if to_transducer_type != instream_type {
+        if let Some(note) = conversion_needed(instream_type, to_transducer_type) {
             if common.allow_transducer_conversion {
-                let ct = conversion_type(instream_type, to_transducer_type);
-                let mut warnstr = format!(
-                    "Transducer type mismatch in {} and {}; ",
-                    common.input_filename, to_fname
+                hfst_warning(
+                    common,
+                    0,
+                    0,
+                    &format!(
+                        "Transducer type mismatch in {} and {}; {}",
+                        common.input_filename,
+                        to_fname,
+                        note.output_choice()
+                    ),
                 );
-                if ct == 1 {
-                    warnstr.push_str("using former type as output");
-                    output_type = instream_type;
-                } else if ct == 2 {
-                    warnstr.push_str("using latter type as output");
-                    output_type = to_transducer_type;
-                } else if ct == -1 {
-                    warnstr
-                        .push_str("using former type as output, loss of information is possible");
-                    output_type = instream_type;
-                } else {
-                    /* should not happen */
-                    std::panic::panic_any(String::from(
-                        "Error: hfst-disjunct: conversion_type returned an invalid integer",
-                    ));
-                }
-                hfst_warning(common, 0, 0, &warnstr);
+                output_type = note.target();
                 to_transducer = match to_transducer.convert(output_type, "") {
                     Ok(t) => t,
                     Err(e) => {
@@ -321,8 +313,8 @@ fn process_stream(
                          (--do-not-convert was requested)",
                         common.input_filename,
                         to_fname,
-                        hfst_strformat(instream_type),
-                        hfst_strformat(to_transducer_type)
+                        format_description(instream_type),
+                        format_description(to_transducer_type)
                     ),
                 );
             }

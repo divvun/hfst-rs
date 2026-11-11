@@ -11,9 +11,9 @@ use crate::globals::CommonOptions;
 use crate::hfst_commandline::{
     error, hfst_set_program_name, hfst_strtonumber, is_input_stream_in_ol_format, verbose_print,
 };
-use crate::hfst_tool_metadata::{hfst_get_name, hfst_set_formula_unary, hfst_set_name_unary};
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_output_stream::HfstOutputStream;
+use hfst::tools::metadata::{hfst_get_name, hfst_set_formula_unary, hfst_set_name_unary};
 use std::io::Write;
 
 /// hfst-repeat's command line.

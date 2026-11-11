@@ -290,26 +290,44 @@ fn write_transition_table(t: &Transducer<WeightedTables>, out: &mut Vec<u8>) {
 // [spec:hfst:def:thfst-backend.write-dir-fn]
 // [spec:hfst:sem:thfst-backend.write-dir-fn]
 pub fn write_dir(t: &Transducer<WeightedTables>, dir: &Path) -> crate::error::Result<()> {
-    let alphabet = build_alphabet_json(t)?;
+    let members = ThfstMembers::of(t)?;
 
     std::fs::create_dir_all(dir)
         .map_err(|e| crate::err!(Hfst, format!("THFST: cannot create dir {dir:?}: {e}")))?;
 
-    let mut transition_bytes = Vec::new();
-    write_transition_table(t, &mut transition_bytes);
-    write_file(&dir.join("transition"), &transition_bytes)?;
-
-    let mut index_bytes = Vec::new();
-    write_index_table(t, &mut index_bytes);
-    write_file(&dir.join("index"), &index_bytes)?;
-
-    // Pretty-printed JSON, matching divvunspell's `to_writer_pretty`.
-    let alphabet_path = dir.join("alphabet");
-    let json = serde_json::to_vec_pretty(&alphabet)
-        .map_err(|e| crate::err!(Hfst, format!("THFST: alphabet JSON encode failed: {e}")))?;
-    write_file(&alphabet_path, &json)?;
+    write_file(&dir.join("transition"), &members.transition)?;
+    write_file(&dir.join("index"), &members.index)?;
+    write_file(&dir.join("alphabet"), &members.alphabet)?;
 
     Ok(())
+}
+
+/// The three files of a `X.thfst/` directory, as bytes.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ThfstMembers {
+    pub alphabet: Vec<u8>,
+    pub index: Vec<u8>,
+    pub transition: Vec<u8>,
+}
+
+impl ThfstMembers {
+    // [spec:hfst:req:embed.tools-in-library]
+    /// The members `t` is written as.
+    pub fn of(t: &Transducer<WeightedTables>) -> crate::error::Result<Self> {
+        let alphabet = build_alphabet_json(t)?;
+        let mut transition = Vec::new();
+        write_transition_table(t, &mut transition);
+        let mut index = Vec::new();
+        write_index_table(t, &mut index);
+        // Pretty-printed JSON, matching divvunspell's `to_writer_pretty`.
+        let alphabet = serde_json::to_vec_pretty(&alphabet)
+            .map_err(|e| crate::err!(Hfst, format!("THFST: alphabet JSON encode failed: {e}")))?;
+        Ok(Self {
+            alphabet,
+            index,
+            transition,
+        })
+    }
 }
 
 fn write_file(path: &Path, bytes: &[u8]) -> crate::error::Result<()> {

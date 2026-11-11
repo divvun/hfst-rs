@@ -9099,6 +9099,14 @@ children (
                     target-impl ([spec:hfst:req:embed.tools-in-library] [spec:hfst:def:embed.tools])
                 }
                 deps (compile-surface.spec)
+                log (
+                    {
+                        at 2026-11-11T15:47:39.215924Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
+                )
             }
 
             {

@@ -95,6 +95,7 @@ pub mod string_manipulation;
 pub mod string_utils;
 pub mod substitute_driver;
 pub mod thfst_io;
+pub mod tools;
 pub mod transducer;
 pub mod tropical_weight_transducer;
 pub mod twolc;

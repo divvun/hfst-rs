@@ -365,11 +365,12 @@ pub mod format {
 
     use crate::cli::{self, CommonArgs, ToolArgs, ToolResult};
     use crate::globals::CommonOptions;
-    use crate::hfst_commandline::{hfst_set_program_name, hfst_strformat, verbose_print};
+    use crate::hfst_commandline::{hfst_set_program_name, verbose_print};
     use clap::CommandFactory;
     use hfst::hfst_data_types::ImplementationType;
     use hfst::hfst_input_stream::HfstInputStream;
     use hfst::hfst_transducer::is_implementation_type_available;
+    use hfst::tools::format::format_description;
     use std::io::Write;
 
     /// hfst-format's command line.
@@ -592,7 +593,7 @@ pub mod format {
             &format!(
                 "Transducers in {} are of type {}\n",
                 common.input_filename,
-                hfst_strformat(ty)
+                format_description(ty)
             ),
         );
         Ok(())
@@ -608,10 +609,8 @@ pub mod fst2fst {
     use crate::cli::{self, CommonArgs, ToolArgs, ToolResult, UnaryIo};
     use crate::globals::CommonOptions;
     use crate::hfst_commandline::{
-        error, hfst_parse_format_name, hfst_set_program_name, hfst_strformat, verbose_print,
-        warning,
+        error, hfst_parse_format_name, hfst_set_program_name, verbose_print, warning,
     };
-    use crate::hfst_tool_metadata::{hfst_get_name, hfst_set_formula_unary, hfst_set_name_unary};
     use clap::ArgAction;
     use hfst::dhfst_acceptor_writer::{AcceptorOptions, AcceptorSource, WrittenAcceptor};
     use hfst::dhfst_writer::{SourceModel, WriteOptions, Written};
@@ -619,6 +618,8 @@ pub mod fst2fst {
     use hfst::hfst_input_stream::HfstInputStream;
     use hfst::hfst_output_stream::HfstOutputStream;
     use hfst::hfst_transducer::AnyTransducer;
+    use hfst::tools::format::format_description;
+    use hfst::tools::metadata::{hfst_get_name, hfst_set_formula_unary, hfst_set_name_unary};
     use std::io::Write;
 
     /// The format name `-f` takes for DHFST. DHFST is an output mode, not an
@@ -1265,7 +1266,7 @@ pub mod fst2fst {
                 &common,
                 &format!(
                     "Writing {} format transducers with HFST3 headers\n",
-                    hfst_strformat(options.output_type)
+                    format_description(options.output_type)
                 ),
             );
         } else {
@@ -1273,7 +1274,7 @@ pub mod fst2fst {
                 &common,
                 &format!(
                     "Writing {} format transducers without HFST specific headers\n",
-                    hfst_strformat(options.output_type)
+                    format_description(options.output_type)
                 ),
             );
         }

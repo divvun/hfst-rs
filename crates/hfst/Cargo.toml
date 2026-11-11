@@ -26,9 +26,24 @@ web-time = "1"
 sha2 = { version = "0.11.1", default-features = false }
 toml = { version = "1.2.1", default-features = false, features = ["std", "serde", "parse"] }
 
+# BHFST packing (tools::bhfst). box-format is pinned to the exact git rev
+# divvunspell pins (its Cargo.lock: git+https://github.com/bbqsrc/box rev
+# 3d3818ce6251201916f2ce99a2aedfef321ba3ad), so the archives written are
+# byte-compatible with what divvunspell reads. Its `std` feature, which
+# `writer` and `reader` need, does not build for wasm32-unknown-unknown, so
+# packing is a feature of its own.
+box-format = { git = "https://github.com/bbqsrc/box", rev = "3d3818ce6251201916f2ce99a2aedfef321ba3ad", default-features = false, features = ["writer", "reader"], optional = true }
+serde-xml-rs = { version = "=0.6.0", default-features = false, optional = true }
+# Reading zhfst speller archives, with the version divvunspell reads them
+# with. Only deflate is needed (Giella zhfst members are deflated), taken
+# through flate2's zlib-rs backend rather than zip's default `deflate`, which
+# would also bring in zopfli for writing.
+zip = { version = "9.2", default-features = false, features = ["deflate-flate2-zlib-rs"], optional = true }
+
 [features]
-default = ["foma"]
+default = ["foma", "bhfst"]
 foma = ["dep:foma"]
+bhfst = ["dep:box-format", "dep:serde-xml-rs", "dep:zip"]
 
 [lints]
 workspace = true

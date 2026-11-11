@@ -924,6 +924,7 @@ name = "hfst"
 version = "0.1.0"
 dependencies = [
  "ariadne",
+ "box-format 0.4.0 (git+https://github.com/bbqsrc/box?rev=3d3818ce6251201916f2ce99a2aedfef321ba3ad)",
  "foma",
  "glob",
  "hfst-openfst",
@@ -934,6 +935,7 @@ dependencies = [
  "nfst-xfst",
  "nfst-xre",
  "serde",
+ "serde-xml-rs",
  "serde_json",
  "sha2",
  "smallvec",
@@ -942,6 +944,7 @@ dependencies = [
  "toml",
  "tracing",
  "web-time",
+ "zip",
 ]
 
 [[package]]
@@ -956,8 +959,6 @@ dependencies = [
  "mimalloc",
  "rexpect",
  "rustyline",
- "serde",
- "serde-xml-rs",
  "serde_json",
  "signal-hook",
  "sysinfo",

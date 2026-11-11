@@ -6,11 +6,9 @@
 //! case uses, the `@#@` word boundaries every pair string is wrapped in, the
 //! `__HFST_TWOLC_*` mangling a compiled rule's name carries).
 //!
-//! The tool keeps the parts that are its own: reading the pair-string or twolc
-//! source file, recognising its comment and test-case markers, rendering the
-//! `Rule X fails: ... HERE ---> ...` report, and the exit-code policy that
-//! turns per-rule verdicts into the process's status. Nothing here prints or
-//! exits — a failing rule is a returned verdict and a failing operation is a
+//! Reading the test strings and the `Rule X fails: ... HERE ---> ...` report
+//! are [`crate::tools::pair_test`]'s. Nothing here prints or exits: a failing
+//! rule is a returned verdict and a failing operation is a
 //! [`crate::error::Result`].
 
 use std::collections::BTreeSet;

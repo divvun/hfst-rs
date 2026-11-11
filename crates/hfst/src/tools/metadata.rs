@@ -1,9 +1,9 @@
-//! Faithful 1:1 port of tools/src/hfst-tool-metadata.cc — common functions for
-//! adding tool-related metadata (name, formula, commandline definition) to
-//! automata. The tools use these to edit the metadata of created automata.
+//! Port of tools/src/hfst-tool-metadata.cc — the name and formula a tool gives
+//! the transducer it writes. They are part of the bytes written, so a caller
+//! that wants what a tool writes names its result the same way.
 
-use hfst::backend::Backend;
-use hfst::hfst_transducer::{AnyTransducer, HfstTransducer};
+use crate::backend::Backend;
+use crate::hfst_transducer::{AnyTransducer, HfstTransducer};
 
 /// The metadata surface these helpers touch, implemented both for the typed
 /// facade and for the stream-boundary sum ([dec:hfst:monomorphic-backends]):
@@ -57,12 +57,23 @@ pub fn hfst_set_formula_maybe_truncate(dest: &mut impl ToolTransducer, s: &str) 
 
 // [spec:hfst:def:hfst-tool-metadata.hfst-set-name-maybe-truncate-fn]
 // [spec:hfst:sem:hfst-tool-metadata.hfst-set-name-maybe-truncate-fn]
+// [spec:hfst:req:embed.no-panic]
 pub fn hfst_set_name_maybe_truncate(dest: &mut impl ToolTransducer, s: &str) {
     if s.len() > 1024 {
-        dest.set_name(&format!("truncated({}...)", &s[0..1000]));
+        dest.set_name(&format!("truncated({}...)", prefix_within(s, 1000)));
     } else {
         dest.set_name(s);
     }
+}
+
+/// The longest prefix of `s` at most `len` bytes long that ends on a
+/// character boundary.
+fn prefix_within(s: &str, len: usize) -> &str {
+    let end = (0..=len.min(s.len()))
+        .rev()
+        .find(|i| s.is_char_boundary(*i))
+        .unwrap_or(0);
+    &s[..end]
 }
 
 pub fn hfst_set_name(dest: &mut impl ToolTransducer, src: &str, op: &str) {
@@ -94,21 +105,20 @@ pub fn hfst_set_name_binary(
         hfst_set_name_maybe_truncate(dest, &format!("{}(UNNAMED, {})", op, rhs.get_name()));
     } else if (lhs.get_name() != "") && rhs.get_name().is_empty() {
         hfst_set_name_maybe_truncate(dest, &format!("{}({}, UNNAMED)", op, lhs.get_name()));
-    } else if lhs.get_name().is_empty() && rhs.get_name().is_empty() {
-        hfst_set_name_maybe_truncate(dest, &format!("{}(UNNAMED, UNNAMED)", op));
     } else {
-        std::panic::panic_any(String::from(
-            "!(a && b) || (!a && b) || (a && !b) || (!a && !b)",
-        ));
+        hfst_set_name_maybe_truncate(dest, &format!("{}(UNNAMED, UNNAMED)", op));
     }
 }
 
+// [spec:hfst:req:embed.no-panic]
+// The C++ read the first byte unconditionally; an empty name has none, and
+// takes the same "U8" as a name that does not start with ASCII.
 pub fn hfst_set_formula(dest: &mut impl ToolTransducer, src: &str, op: &str) {
-    let c = src.as_bytes()[0] as i8 as i32;
-    if (0 < c) && (c < 128) {
-        hfst_set_formula_maybe_truncate(dest, &format!("{} {}", op, &src[0..1]));
-    } else {
-        hfst_set_formula_maybe_truncate(dest, &format!("{} U8", op));
+    match src.as_bytes().first() {
+        Some(&c) if (1..128).contains(&c) => {
+            hfst_set_formula_maybe_truncate(dest, &format!("{} {}", op, c as char));
+        }
+        Some(_) | None => hfst_set_formula_maybe_truncate(dest, &format!("{} U8", op)),
     }
 }
 

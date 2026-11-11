@@ -8,11 +8,13 @@ use crate::globals::CommonOptions;
 use crate::hfst_commandline::{
     error, hfst_set_program_name, is_input_stream_in_ol_format, verbose_print,
 };
-use crate::hfst_tool_metadata::{hfst_get_name, hfst_set_formula_unary, hfst_set_name_unary};
+use crate::unary_ops::{UnaryOpSpec, UnaryToolOp, unary_streams};
+use hfst::backend::AlgebraBackend;
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_output_stream::HfstOutputStream;
 use hfst::hfst_transducer::HfstTransducer;
-use std::io::{BufRead, BufReader, Seek, SeekFrom, Write};
+use hfst::tools::kill_paths::{kill_paths, kill_symbols};
+use std::io::{BufRead, BufReader};
 
 /// hfst-kill-paths's command line. Upstream spells the long name of -T
 /// "tsv" while its help calls it --tsv-file; the registered name is the
@@ -61,148 +63,83 @@ impl ToolArgs for Args {
 }
 
 /// The tool's option-driven state once the kill-rules file, which the C
-/// opened after the parameter checks, has been opened.
+/// opened after the parameter checks, has been read.
 struct Options {
     /// '-S, --symbol=SYM': the symbol whose arcs to kill.
     symbol: Option<String>,
-    /// '-T, --tsv-file=TFILE': the file listing kill symbols.
-    tsv_file_name: Option<String>,
-    /// The opened kill-rules file (from `tsv_file_name`).
-    tsv_file: Option<std::fs::File>,
+    /// '-T, --tsv-file=TFILE': the file listing kill symbols, and its text.
+    tsv: Option<(String, String)>,
 }
 
 impl Options {
     fn open(args: &Args, common: &CommonOptions) -> Result<Options, i32> {
-        let mut options = Options {
-            symbol: args.symbol.clone(),
-            tsv_file_name: args.tsv.clone(),
-            tsv_file: None,
-        };
-        if let Some(name) = &options.tsv_file_name {
-            match std::fs::File::open(name) {
-                Ok(f) => options.tsv_file = Some(f),
+        let tsv = match &args.tsv {
+            Some(name) => match read_lines(name) {
+                Ok(text) => Some((name.clone(), text)),
                 Err(_) => {
                     error(common, 1, 0, &format!("Could not open '{}'", name));
                     return Err(1);
                 }
-            }
-        }
-        Ok(options)
+            },
+            None => None,
+        };
+        Ok(Options {
+            symbol: args.symbol.clone(),
+            tsv,
+        })
     }
+}
+
+/// The lines of the file `name`, read up to the first that is not UTF-8.
+fn read_lines(name: &str) -> std::io::Result<String> {
+    let mut reader = BufReader::new(std::fs::File::open(name)?);
+    let mut text = String::new();
+    while reader.read_line(&mut text).unwrap_or(0) > 0 {}
+    Ok(text)
 }
 
 // [spec:hfst:def:hfst-kill-paths.original-fn]
 // [spec:hfst:sem:hfst-kill-paths.original-fn]
-fn do_killing<B: hfst::backend::AlgebraBackend>(
-    symbol: Option<&str>,
-    trans: &mut HfstTransducer<B>,
-) {
-    let symbol = symbol.unwrap_or_default();
-    *trans = trans.kill_paths(symbol);
-}
+// [spec:hfst:req:embed.tools-in-library]
+// The killing and naming are the library's; the stream loop is the shared
+// unary driver's.
+impl UnaryToolOp for Options {
+    fn verbose_begin(&self, inputname: &str) -> String {
+        format!("Path killing {}", inputname)
+    }
 
-// [spec:hfst:def:hfst-kill-paths.process-stream-fn]
-// [spec:hfst:sem:hfst-kill-paths.process-stream-fn]
-fn process_stream(
-    common: &CommonOptions,
-    options: &mut Options,
-    instream: &mut HfstInputStream<'_>,
-    outstream: &mut HfstOutputStream,
-) -> i32 {
-    let mut transducer_n: usize = 0;
-    while instream.is_good() {
-        transducer_n += 1;
-        let any = match instream.read() {
-            Ok(v) => v,
-            Err(e) => {
-                error(common, 1, 0, &format!("{e}"));
-                return 1;
+    fn apply<B: AlgebraBackend>(
+        &mut self,
+        common: &CommonOptions,
+        t: &mut HfstTransducer<B>,
+    ) -> hfst::error::Result<()> {
+        let unkilled = std::mem::replace(t, HfstTransducer::new());
+        *t = match &self.tsv {
+            None => kill_paths(
+                unkilled,
+                [self.symbol.as_deref().unwrap_or_default()],
+                &mut |_| {},
+            )?,
+            Some((name, text)) => {
+                verbose_print(common, &format!("Reading reweights from {}\n", name));
+                let symbols = kill_symbols(text);
+                kill_paths(
+                    unkilled,
+                    symbols.iter().map(String::as_str),
+                    &mut |symbol| {
+                        verbose_print(common, &format!("Killing patsh with symbol {}\n", symbol));
+                    },
+                )?
             }
         };
-        // the one runtime dispatch per stream read ([dec:hfst:monomorphic-backends])
-        crate::for_algebra!(any, trans => {
-            let mut trans = trans;
-            let inputname = hfst_get_name(&trans, &common.input_filename);
-            if transducer_n == 1 {
-                verbose_print(common, &format!("Path killing {}...\n", inputname));
-            } else {
-                verbose_print(common, &format!("Path killing {}...{}\n", inputname, transducer_n));
-            }
-            if options.tsv_file.is_none() {
-                do_killing(options.symbol.as_deref(), &mut trans);
-                // C: hfst_set_name(trans, trans, "pathkill"); dest and src are the
-                // same object, which Rust cannot alias mut+const, so the read side
-                // is taken from a copy (name/formula are unchanged by the copy).
-                let src = trans.clone();
-                hfst_set_name_unary(&mut trans, &src, "pathkill");
-                hfst_set_formula_unary(&mut trans, &src, "PK");
-            } else {
-                // C: rewind(tsv_file) — seek the std file back to the start.
-                if let Some(tsv_file) = options.tsv_file.as_mut() {
-                    let _ = tsv_file.seek(SeekFrom::Start(0));
-                }
-                options.symbol = None;
-                let mut _linen: usize = 0;
-                verbose_print(common, &format!(
-                    "Reading reweights from {}\n",
-                    options.tsv_file_name.clone().unwrap_or_default()
-                ));
-                if let Some(tsv_file) = options.tsv_file.as_mut() {
-                    let mut reader = BufReader::new(tsv_file);
-                    let mut line = String::new();
-                    loop {
-                        line.clear();
-                        // C: hfst_getline keeps the trailing newline; Ok(0) at EOF.
-                        if reader.read_line(&mut line).unwrap_or(0) == 0 {
-                            break;
-                        }
-                        _linen += 1;
-                        let bytes = line.as_bytes();
-                        if bytes.first() == Some(&b'\n') {
-                            continue;
-                        }
-                        if bytes.first() == Some(&b'#') {
-                            continue;
-                        }
-                        // const char *endptr = line; advance to '\0' or '\n'
-                        let mut endptr = 0usize;
-                        while endptr < bytes.len() && bytes[endptr] != b'\n' {
-                            endptr += 1;
-                        }
-                        let sym = String::from_utf8_lossy(&bytes[..endptr]).into_owned();
-                        verbose_print(common, &format!("Killing patsh with symbol {}\n", sym));
-                        do_killing(Some(&sym), &mut trans);
-                    } // getline
-                }
-                let src = trans.clone();
-                hfst_set_name_unary(&mut trans, &src, "pathkill");
-                hfst_set_formula_unary(&mut trans, &src, "PK");
-            } // if tsv_file
-            let reduced = match trans.remove_epsilons() {
-                Ok(t) => t,
-                Err(e) => {
-                    error(common, 1, 0, &format!("{e}"));
-                    return 1;
-                }
-            };
-            if let Err(e) = outstream.write(reduced) {
-                error(common, 1, 0, &format!("{e}"));
-                return 1;
-            }
-        }, else => {
-            // Unreachable: the optimized-lookup stream rejection already
-            // returned before the loop; keep its text for safety.
-            let _ = writeln!(
-                std::io::stderr(),
-                "Error: hfst-kill-paths cannot process transducers that are in optimized lookup format."
-            );
-            return 1;
-        });
-    } // foreach transducer
-    instream.close();
-    outstream.close();
-    0
+        Ok(())
+    }
 }
+
+const SPEC: UnaryOpSpec = UnaryOpSpec {
+    tool_name: "hfst-kill-paths",
+    reject_ol: true,
+};
 
 // [spec:hfst:def:hfst-kill-paths.main-fn]
 // [spec:hfst:sem:hfst-kill-paths.main-fn]
@@ -261,8 +198,9 @@ pub(in crate::tools) fn execute(args: Vec<String>) -> ToolResult {
         return Err(1);
     }
 
-    cli::from_code(process_stream(
+    cli::from_code(unary_streams(
         &common,
+        &SPEC,
         &mut options,
         &mut instream,
         &mut outstream,

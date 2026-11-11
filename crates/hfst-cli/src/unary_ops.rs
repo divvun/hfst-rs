@@ -16,7 +16,7 @@ use std::io::Write;
 
 use crate::globals::CommonOptions;
 use crate::hfst_commandline::{error, is_input_stream_in_ol_format, verbose_print};
-use crate::hfst_tool_metadata::{hfst_get_name, hfst_set_formula_unary, hfst_set_name_unary};
+use hfst::tools::metadata::{hfst_get_name, hfst_set_formula_unary, hfst_set_name_unary};
 
 /// The per-tool constants of the shared scaffolding.
 pub struct UnaryOpSpec {

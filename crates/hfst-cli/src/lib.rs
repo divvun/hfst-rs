@@ -14,11 +14,13 @@
 //! permutation, '-'/'--'), operand resolution, data output, exit codes, and
 //! HFST's own argument-error shape. Help text is clap's, rendered from the
 //! derive structs' doc comments, not the C's hand-written print_usage blocks.
-//! The rest of the shared infrastructure (hfst-commandline,
-//! hfst-tool-metadata) remains a close port; each tool lives as a module under
-//! src/tools/ with an execute(args) -> ToolResult entry point, and the single
-//! 'hfst' multiplexer binary (src/bin/hfst.rs) dispatches to them by invoked
-//! basename or subcommand.
+//! The rest of the shared infrastructure (hfst-commandline) remains a close
+//! port; each tool lives as a module under src/tools/ with an
+//! execute(args) -> ToolResult entry point, and the single 'hfst' multiplexer
+//! binary (src/bin/hfst.rs) dispatches to them by invoked basename or
+//! subcommand. What a tool decides about what it writes is the library's
+//! (`hfst::tools`, and the name and formula `hfst::tools::metadata` gives a
+//! result); a tool keeps its arguments, files, streams and exit status.
 
 // -----------------------------------------------------------------------------
 // The one-per-stream-read dispatch of [dec:hfst:monomorphic-backends] step 5:
@@ -161,7 +163,6 @@ pub mod cli;
 
 pub mod globals;
 pub mod hfst_commandline;
-pub mod hfst_tool_metadata;
 pub(crate) mod memory_limit;
 
 // The shared main/<op>_streams scaffolding of the two-input-stream (BINARY)

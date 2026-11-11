@@ -11,12 +11,12 @@ use crate::cli::{self, CommonArgs, ToolArgs, ToolResult};
 use crate::globals::CommonOptions;
 use crate::hfst_commandline::{
     error, hfst_parse_format_name, hfst_set_program_name, hfst_warning, parse_format_name_quiet,
-    redirect_converting, verbose_print,
+    verbose_print,
 };
-use crate::hfst_tool_metadata::{hfst_set_formula, hfst_set_name};
 use hfst::hfst_data_types::ImplementationType;
 use hfst::hfst_output_stream::HfstOutputStream;
 use hfst::lexc::LexcCompiler;
+use hfst::tools::lexc::LexcSourcesError;
 use std::io::Write;
 
 /// hfst-lexc-compiler's own options (the former tool-specific `static mut`s).
@@ -362,81 +362,56 @@ impl ToolArgs for Args {
     }
 }
 
-// [spec:hfst:def:hfst-lexc-compiler.lexc-streams-fn]
-// [spec:hfst:sem:hfst-lexc-compiler.lexc-streams-fn]
+// [spec:hfst:req:embed.tools-in-library]
+// Parsing the sources and compiling them is the library's; the tool reads
+// each source and writes the result.
 fn lexc_streams<B: hfst::backend::AlgebraBackend>(
     common: &CommonOptions,
     options: &Options,
     lexc: &mut LexcCompiler<B>,
     outstream: &mut HfstOutputStream,
 ) -> i32 {
-    let lexcfilenames = &options.lexcfilenames;
-    for name in &lexcfilenames[..options.lexccount as usize] {
+    let names = &options.lexcfilenames[..options.lexccount as usize];
+    for name in names {
         verbose_print(common, &format!("Parsing lexc file {}\n", name));
-        if name == "<stdin>" {
-            // The new Rust LexcCompiler::parse takes the source text, so we
-            // read the whole of standard input into a string (mirroring the
-            // C++ 'lexc.parse(stdin)').
+        let source = if name == "<stdin>" {
             let mut source = String::new();
             use std::io::Read;
             let _ = std::io::stdin().read_to_string(&mut source);
-            lexc.set_source_name(name);
-            if let Err(e) = lexc.parse(&source) {
-                error(common, 1, 0, &format!("{e}"));
-                return 1;
-            }
+            source
         } else {
-            // Read the named file's contents into a string (mirroring the
-            // C++ 'lexc.parse(filename)').
-            let source = std::fs::read_to_string(name).unwrap_or_default();
-            lexc.set_source_name(name);
-            if let Err(e) = lexc.parse(&source) {
-                error(common, 1, 0, &format!("{e}"));
-                return 1;
-            }
+            std::fs::read_to_string(name).unwrap_or_default()
+        };
+        if let Err(e) = lexc.parse_source(name, &source) {
+            error(common, 1, 0, &format!("{e}"));
+            return 1;
         }
     }
     verbose_print(common, "Compiling... ");
-    let compiled = match lexc.compile_lexical() {
-        Ok(c) => c,
+    let res = match lexc.compile_sources(names) {
+        Ok(res) => res,
+        Err(e @ LexcSourcesError::NotCompiled { .. }) => {
+            error(
+                common,
+                1,
+                0,
+                &format!(
+                    "{e}\n(if there are no error messages above, try -v or -d to get more info)"
+                ),
+            );
+            return 1;
+        }
         Err(e) => {
             error(common, 1, 0, &format!("{e}"));
             return 1;
         }
     };
-    let Some(mut res) = compiled else {
-        if options.lexccount == 1 {
-            error(
-                common,
-                1,
-                0,
-                &format!(
-                    "The file {} did not compile cleanly.\n(if there are no error messages above, try -v or -d to get more info)",
-                    lexcfilenames[0]
-                ),
-            );
-        } else {
-            error(
-                common,
-                1,
-                0,
-                &format!(
-                    "The files {}... did not compile cleanly.\n(if there are no error messages above, try -v or -d to get more info)",
-                    lexcfilenames[0]
-                ),
-            );
-        }
-        return 1;
-    };
-    hfst_set_name(&mut res, &lexcfilenames[0], "lexc");
-    hfst_set_formula(&mut res, &lexcfilenames[0], "L");
     verbose_print(common, "\nWriting... ");
-    if let Err(e) = redirect_converting(outstream, &mut res) {
+    if let Err(e) = outstream.write_converted(&res) {
         error(common, 1, 0, &format!("{e}"));
         return 1;
     }
     verbose_print(common, "done\n");
-    // C++ 'delete res' — owned value drops at end of scope.
     outstream.close();
 
     0

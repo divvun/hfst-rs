@@ -7,15 +7,14 @@
 use crate::cli::{self, CommonArgs, ToolArgs, ToolResult, UnaryIo};
 use crate::globals::CommonOptions;
 use crate::hfst_commandline::{
-    hfst_error, hfst_parse_format_name, hfst_set_program_name, hfst_warning, redirect_converting,
-    verbose_print,
+    hfst_error, hfst_parse_format_name, hfst_set_program_name, hfst_warning, verbose_print,
 };
-use crate::hfst_tool_metadata::{hfst_set_formula, hfst_set_name};
 use hfst::convert_transducer_format::ConversionFunctions;
 use hfst::hfst_basic_transducer::HfstBasicTransducer;
 use hfst::hfst_data_types::ImplementationType;
 use hfst::hfst_output_stream::HfstOutputStream;
 use hfst::hfst_transducer::HfstTransducer;
+use hfst::tools::metadata::{hfst_set_formula, hfst_set_name};
 use std::io::BufRead;
 
 /// hfst-txt2fst's command line.
@@ -240,7 +239,7 @@ fn process_stream_typed<B: hfst::backend::AlgebraBackend>(
             };
             hfst_set_name(&mut t, &inputfilename, "text");
             hfst_set_formula(&mut t, &inputfilename, "T");
-            if let Err(e) = redirect_converting(outstream, &mut t) {
+            if let Err(e) = outstream.write_converted(&t) {
                 hfst_error(common, 1, 0, &format!("{}", e));
                 return 1;
             }
@@ -282,7 +281,7 @@ fn process_stream_typed<B: hfst::backend::AlgebraBackend>(
             }
             // joined.remove_epsilons(); // remove epsilons from the unioned
             // transducers
-            if let Err(e) = redirect_converting(outstream, &mut joined) {
+            if let Err(e) = outstream.write_converted(&joined) {
                 hfst_error(common, 1, 0, &format!("{}", e));
                 return 1;
             }
@@ -335,7 +334,7 @@ fn process_stream_typed<B: hfst::backend::AlgebraBackend>(
                     );
                 }
             }
-            if let Err(e) = redirect_converting(outstream, &mut t) {
+            if let Err(e) = outstream.write_converted(&t) {
                 hfst_error(common, 1, 0, &format!("{}", e));
                 return 1;
             }

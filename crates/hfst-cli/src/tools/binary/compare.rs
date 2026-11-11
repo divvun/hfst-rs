@@ -11,10 +11,11 @@ use crate::binary_ops::open_two_input_streams;
 use crate::cli::{self, BinaryIo, CommonArgs, ToolArgs, ToolResult};
 use crate::globals::CommonOptions;
 use crate::hfst_commandline::{
-    error, hfst_set_program_name, hfst_strformat, is_input_stream_in_ol_format, verbose_print,
+    error, hfst_set_program_name, is_input_stream_in_ol_format, verbose_print,
 };
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_transducer::{AnyTransducer, HfstTransducer};
+use hfst::tools::format::format_description;
 use std::io::Write;
 
 /// hfst-compare's command line (the C's 'static bool harmonize=true;
@@ -189,8 +190,8 @@ fn compare_streams(
                         firstname,
                         secondname,
                         transducer_n_first,
-                        hfst_strformat(firststream.get_type()),
-                        hfst_strformat(secondstream.get_type())
+                        format_description(firststream.get_type()),
+                        format_description(secondstream.get_type())
                     ),
                 );
             }

@@ -10,12 +10,9 @@
 use crate::cli::{self, BinaryIo, CommonArgs, ToolArgs, ToolResult};
 use crate::globals::CommonOptions;
 use crate::hfst_commandline::{error, hfst_set_program_name, verbose_print};
-use hfst::convert_transducer_format::ConversionFunctions;
-use hfst::hfst_basic_transducer::HfstBasicTransducer;
 use hfst::hfst_input_stream::HfstInputStream;
-use hfst::hfst_symbol_defs::StringSet;
-
-use std::io::Write;
+use hfst::tools::check_alpha::AlphabetComparison;
+use hfst::tools::summarize::write_total;
 
 /// hfst-check-alpha's command line. The tool declares no options of its own
 /// (its C usage printed an empty "Check alpha options:" heading).
@@ -40,21 +37,9 @@ impl ToolArgs for Args {
     }
 }
 
-// [spec:hfst:def:hfst-check-alpha.fprint-stringset-fn]
-// [spec:hfst:sem:hfst-check-alpha.fprint-stringset-fn]
-fn fprint_stringset(outfile: &mut dyn Write, strings: &StringSet) {
-    let mut first = true;
-    for s in strings {
-        if !first {
-            let _ = write!(outfile, ", ");
-        }
-        let _ = write!(outfile, "{}", s);
-        first = false;
-    }
-}
-
-// [spec:hfst:def:hfst-check-alpha.process-stream-fn]
-// [spec:hfst:sem:hfst-check-alpha.process-stream-fn]
+// [spec:hfst:req:embed.tools-in-library]
+// The comparison and its report are the library's; the tool reads the two
+// streams pair by pair and writes the reports.
 fn process_stream(
     common: &CommonOptions,
     firststream: &mut HfstInputStream<'_>,
@@ -67,187 +52,33 @@ fn process_stream(
             return 1;
         }
     };
-    let mut continue_reading = firststream.is_good() && secondstream.is_good();
     let mut transducer_n: usize = 0;
     let mut mismatch = 0;
-    while continue_reading {
+    while firststream.is_good() && secondstream.is_good() {
         transducer_n += 1;
-
         if transducer_n < 2 {
             verbose_print(common, "Checking alphas...\n");
         } else {
             verbose_print(common, &format!("Checking alphas... {}\n", transducer_n));
         }
-        // read first alphas
-        let first = match firststream.read() {
-            Ok(t) => t,
+        let compared = firststream.read().and_then(|first| {
+            let second = secondstream.read()?;
+            AlphabetComparison::of(&first, &second)
+        });
+        match compared {
+            Ok(comparison) => {
+                if comparison.mismatch() {
+                    mismatch = 1;
+                }
+                let _ = comparison.write_report(&mut *out, common.verbose);
+            }
             Err(e) => {
                 error(common, 1, 0, &format!("{e}"));
                 return 1;
             }
-        };
-        // one dispatch per read ([dec:hfst:monomorphic-backends]); the
-        // alphabet queries are backend-independent values.
-        let (mutt, first_transducer_alphabet): (HfstBasicTransducer, StringSet) = crate::for_any!(&first, t => {
-            let mutt = match ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(t) {
-                Ok(m) => m,
-                Err(e) => {
-                    error(common, 1, 0, &format!("{e}"));
-                    return 1;
-                }
-            };
-            let alpha = match t.get_alphabet() {
-                Ok(a) => a,
-                Err(e) => {
-                    error(common, 1, 0, &format!("{e}"));
-                    return 1;
-                }
-            };
-            (mutt, alpha)
-        });
-        let transducer_knows_alphabet = true;
-        let first_found_alphabet: StringSet = mutt.symbols_used();
-        // read second alphas
-        let second = match secondstream.read() {
-            Ok(t) => t,
-            Err(e) => {
-                error(common, 1, 0, &format!("{e}"));
-                return 1;
-            }
-        };
-        let (secondmutt, second_transducer_alphabet): (HfstBasicTransducer, StringSet) = crate::for_any!(&second, t => {
-            let mutt = match ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(t) {
-                Ok(m) => m,
-                Err(e) => {
-                    error(common, 1, 0, &format!("{e}"));
-                    return 1;
-                }
-            };
-            let alpha = match t.get_alphabet() {
-                Ok(a) => a,
-                Err(e) => {
-                    error(common, 1, 0, &format!("{e}"));
-                    return 1;
-                }
-            };
-            (mutt, alpha)
-        });
-        let second_found_alphabet: StringSet = secondmutt.symbols_used();
-        // match
-        let _ = writeln!(out, "Actual alphabet differences:");
-        let first_minus_second: StringSet = first_found_alphabet
-            .difference(&second_found_alphabet)
-            .cloned()
-            .collect();
-        if !first_minus_second.is_empty() {
-            mismatch = 1;
-            let _ = write!(
-                out,
-                "In first {} but not in second {}:",
-                first.get_name(),
-                second.get_name()
-            );
-            fprint_stringset(&mut *out, &first_minus_second);
-        } else {
-            let _ = write!(
-                out,
-                "First {} alpha is superset of second {}.",
-                first.get_name(),
-                second.get_name()
-            );
         }
-        let _ = writeln!(out);
-        let second_minus_first: StringSet = second_found_alphabet
-            .difference(&first_found_alphabet)
-            .cloned()
-            .collect();
-        if !second_minus_first.is_empty() {
-            mismatch = 1;
-            let _ = write!(
-                out,
-                "In second {} but not in first {}:",
-                second.get_name(),
-                second.get_name()
-            );
-            fprint_stringset(&mut *out, &second_minus_first);
-        } else {
-            let _ = write!(
-                out,
-                "Second {} alpha is superset of second {}.",
-                second.get_name(),
-                second.get_name()
-            );
-        }
-        let _ = writeln!(out);
-        if common.verbose {
-            let _ = write!(out, "{} alphabet:", first.get_name());
-            fprint_stringset(&mut *out, &first_found_alphabet);
-            let _ = writeln!(out);
-            let _ = write!(out, "{} alphabet:", second.get_name());
-            fprint_stringset(&mut *out, &second_found_alphabet);
-            let _ = writeln!(out);
-        }
-        if transducer_knows_alphabet {
-            let _ = writeln!(out, "sigma set difference:");
-            let first_minus_second: StringSet = first_transducer_alphabet
-                .difference(&second_transducer_alphabet)
-                .cloned()
-                .collect();
-            let second_minus_first: StringSet = second_transducer_alphabet
-                .difference(&first_transducer_alphabet)
-                .cloned()
-                .collect();
-            if !first_minus_second.is_empty() {
-                mismatch = 1;
-                let _ = write!(
-                    out,
-                    "First {} has but second {} does not: ",
-                    first.get_name(),
-                    second.get_name()
-                );
-                fprint_stringset(&mut *out, &first_minus_second);
-            } else {
-                let _ = write!(
-                    out,
-                    "First {} alpha is superset of second {}.",
-                    first.get_name(),
-                    second.get_name()
-                );
-            }
-            let _ = writeln!(out);
-            if !second_minus_first.is_empty() {
-                mismatch = 1;
-                let _ = write!(
-                    out,
-                    "Second {} has but first {} does not: ",
-                    second.get_name(),
-                    first.get_name()
-                );
-                fprint_stringset(&mut *out, &second_minus_first);
-            } else {
-                let _ = write!(
-                    out,
-                    "Second {} alpha is superset of first {}.",
-                    second.get_name(),
-                    first.get_name()
-                );
-            }
-            let _ = writeln!(out);
-            if common.verbose {
-                let _ = write!(out, "First ({}):", first.get_name());
-                fprint_stringset(&mut *out, &first_transducer_alphabet);
-                let _ = writeln!(out);
-                let _ = write!(out, "Second ({}):", second.get_name());
-                fprint_stringset(&mut *out, &second_transducer_alphabet);
-                let _ = writeln!(out);
-            }
-        } else {
-            let _ = writeln!(out, "No internal alphabets to compare in this format");
-        } // FSTs know their alphas
-        continue_reading = firststream.is_good() && secondstream.is_good();
     }
-
-    let _ = write!(out, "\nRead {} transducers in total.\n", transducer_n);
+    let _ = write_total(&mut *out, transducer_n);
     mismatch
 }
 

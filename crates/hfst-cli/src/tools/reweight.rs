@@ -9,21 +9,22 @@ use crate::cli::{self, CommonArgs, ToolArgs, ToolResult, UnaryIo};
 use crate::globals::CommonOptions;
 use crate::hfst_commandline::{
     error, hfst_error, hfst_error_at_line, hfst_set_program_name, hfst_strtoweight, hfst_warning,
-    is_input_stream_in_ol_format, verbose_print,
+    is_input_stream_in_ol_format, last_os_error_code, verbose_print,
 };
-use crate::hfst_tool_metadata::{hfst_get_name, hfst_set_formula_unary, hfst_set_name_unary};
-use hfst::convert_transducer_format::ConversionFunctions;
 use hfst::hfst_data_types::ImplementationType;
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_output_stream::HfstOutputStream;
 use hfst::hfst_transducer::HfstTransducer;
-use std::io::{BufRead, BufReader, Seek, SeekFrom, Write};
+use hfst::tools::metadata::hfst_get_name;
+use hfst::tools::reweight::{Reweighting, TsvError, name_reweighted, weight_function};
+use std::io::{BufRead, BufReader, Write};
 
-// add tools-specific variables here
-// [spec:hfst:def:hfst-reweight.id-fn]
-// [spec:hfst:sem:hfst-reweight.id-fn]
-fn id(w: f32) -> f32 {
-    w
+/// The lines of the file `name`, read up to the first that is not UTF-8.
+fn read_lines(name: &str) -> std::io::Result<String> {
+    let mut reader = BufReader::new(std::fs::File::open(name)?);
+    let mut text = String::new();
+    while reader.read_line(&mut text).unwrap_or(0) > 0 {}
+    Ok(text)
 }
 
 /// hfst-reweight's command line.
@@ -126,40 +127,21 @@ struct Args {
 }
 
 impl Args {
-    /// Case 'F': the <cmath> function names the C's else-if chain accepted;
+    /// Case 'F': the function names the C's else-if chain accepted;
     /// anything else is fatal inside the getopt loop.
-    // [spec:hfst:def:hfst-reweight.func-fn]
-    // [spec:hfst:sem:hfst-reweight.func-fn]
     fn func(&self, common: &CommonOptions) -> fn(f32) -> f32 {
         let Some(name) = self.function.as_deref() else {
-            return id;
+            return Reweighting::default().function;
         };
-        match name {
-            "cos" => f32::cos,
-            "sin" => f32::sin,
-            "tan" => f32::tan,
-            "acos" => f32::acos,
-            "asin" => f32::asin,
-            "atan" => f32::atan,
-            "cosh" => f32::cosh,
-            "sinh" => f32::sinh,
-            "tanh" => f32::tanh,
-            "exp" => f32::exp,
-            "log" => f32::ln,
-            "log10" => f32::log10,
-            "sqrt" => f32::sqrt,
-            "floor" => f32::floor,
-            "ceil" => f32::ceil,
-            _ => {
-                hfst_error(
-                    common,
-                    1,
-                    0,
-                    &format!("Cannot parse {} as function name", name),
-                );
-                id
-            }
-        }
+        weight_function(name).unwrap_or_else(|| {
+            hfst_error(
+                common,
+                1,
+                0,
+                &format!("Cannot parse {} as function name", name),
+            );
+            Reweighting::default().function
+        })
     }
 
     fn weight(&self, common: &CommonOptions, given: &Option<String>, default: f32) -> f32 {
@@ -171,21 +153,22 @@ impl Args {
 
     fn resolve(&self, common: &CommonOptions) -> Options {
         Options {
-            addition: self.weight(common, &self.addition, 0.0),
-            multiplier: self.weight(common, &self.multiplier, 1.0),
+            rule: Reweighting {
+                addition: self.weight(common, &self.addition, 0.0),
+                multiplier: self.weight(common, &self.multiplier, 1.0),
+                function: self.func(common),
+                upper_bound: self.weight(common, &self.upper_bound, f32::MAX),
+                lower_bound: self.weight(common, &self.lower_bound, 0.0),
+                symbol: self.symbol.clone(),
+                input_symbol: self.input_symbol.clone(),
+                output_symbol: self.output_symbol.clone(),
+                ends_only: self.end_states_only,
+                arcs_only: self.arcs_only,
+            },
             // The C left funcname NULL until after the parameter checks, then
             // defaulted it to "id" — the name the -v trace prints.
-            funcname: Some(self.function.clone().unwrap_or_else(|| "id".to_string())),
-            func: self.func(common),
-            upper_bound: self.weight(common, &self.upper_bound, f32::MAX),
-            lower_bound: self.weight(common, &self.lower_bound, 0.0),
-            input_symbol: self.input_symbol.clone(),
-            output_symbol: self.output_symbol.clone(),
-            symbol: self.symbol.clone(),
-            ends_only: self.end_states_only,
-            arcs_only: self.arcs_only,
-            tsv_file_name: self.tsv.clone(),
-            tsv_file: None,
+            funcname: self.function.clone().unwrap_or_else(|| "id".to_string()),
+            tsv: None,
         }
     }
 }
@@ -218,86 +201,64 @@ at the same time",
     }
 }
 
-/// hfst-reweight's resolved tool state (the former tool-specific `static mut`s).
+/// hfst-reweight's resolved tool state.
 struct Options {
-    addition: f32,
-    multiplier: f32,
-    funcname: Option<String>,
-    func: fn(f32) -> f32,
-    upper_bound: f32,
-    lower_bound: f32,
-    input_symbol: Option<String>,
-    output_symbol: Option<String>,
-    symbol: Option<String>,
-    ends_only: bool,
-    arcs_only: bool,
-    tsv_file_name: Option<String>,
-    tsv_file: Option<std::fs::File>,
+    rule: Reweighting,
+    funcname: String,
+    /// '-T': the rules file's name and text.
+    tsv: Option<(String, String)>,
 }
 
-// [spec:hfst:def:hfst-reweight.reweight-fn]
-// [spec:hfst:sem:hfst-reweight.reweight-fn]
-fn reweight(options: &Options, w: f32, i: Option<&str>, o: Option<&str>) -> f32 {
-    if (w < options.lower_bound) || (w > options.upper_bound) {
-        // not within weight bounds, don't apply
-        return w;
-    }
-    if i.is_none() && o.is_none() {
-        if options.arcs_only {
-            return w;
-        }
-    } else if i.is_some() && o.is_some() {
-        let i = i.unwrap();
-        let o = o.unwrap();
-        if options.ends_only {
-            return w;
-        }
-        if let Some(symbol) = options.symbol.clone()
-            && i != symbol
-            && o != symbol
-        {
-            // symbol doesn't match, don't apply
-            return w;
-        }
-        if let (Some(isym), Some(osym)) =
-            (options.input_symbol.clone(), options.output_symbol.clone())
-        {
-            if i != isym && o != osym {
-                // input doesn't match, don't apply
-                return w;
-            }
-        } else if let Some(isym) = options.input_symbol.clone() {
-            if i != isym {
-                // input doesn't match, don't apply
-                return w;
-            }
-        } else if let Some(osym) = options.output_symbol.clone()
-            && o != osym
-        {
-            // output doesn't match, don't apply
-            return w;
-        }
-    }
-    options.multiplier * (options.func)(w) + options.addition
-}
-
-fn do_reweight<B: hfst::backend::AlgebraBackend>(
+/// Reweight `trans` by each rule of the TSV file `name`, whose text is
+/// `text`, starting from `base` with no symbol, addition or multiplier.
+fn reweight_by_tsv<B: hfst::backend::AlgebraBackend>(
+    common: &CommonOptions,
     options: &Options,
+    (name, text): (&str, &str),
     trans: &mut HfstTransducer<B>,
 ) -> hfst::error::Result<()> {
-    // [spec:hfst:def:hfst-reweight.original-fn]
-    // [spec:hfst:sem:hfst-reweight.original-fn]
-    let original = ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(trans)?;
-    let replication = original.transform_weights(|w, i, o| reweight(options, w, i, o));
-    *trans = HfstTransducer::new_from_basic(&replication)?;
+    verbose_print(common, &format!("Reading reweights from {}\n", name));
+    let mut rule = Reweighting {
+        symbol: None,
+        addition: 0.0,
+        multiplier: 1.0,
+        ..options.rule.clone()
+    };
+    for (index, line) in text.split_inclusive('\n').enumerate() {
+        match rule.next_tsv_rule(line) {
+            Ok(None) => {}
+            Ok(Some(rule)) => {
+                verbose_print(
+                    common,
+                    &format!(
+                        "Modifying weights {} < w < {} as {} * {}(w) + {} for symbol {}\n",
+                        rule.lower_bound,
+                        rule.upper_bound,
+                        rule.multiplier,
+                        options.funcname,
+                        rule.addition,
+                        rule.symbol.clone().unwrap_or_default()
+                    ),
+                );
+                rule.apply(trans)?;
+            }
+            Err(e @ TsvError::NoTab) => {
+                hfst_error_at_line(common, 1, 0, name, index as u32 + 1, &e.to_string());
+            }
+            Err(e @ TsvError::NotAWeight(_)) => {
+                hfst_error(common, 1, last_os_error_code(), &e.to_string());
+            }
+        }
+    }
     Ok(())
 }
 
-// [spec:hfst:def:hfst-reweight.process-stream-fn]
-// [spec:hfst:sem:hfst-reweight.process-stream-fn]
+// [spec:hfst:req:embed.tools-in-library]
+// The rules and the reweighting are the library's; the tool reads the stream
+// and the TSV file and writes the result.
 fn process_stream(
     common: &CommonOptions,
-    options: &mut Options,
+    options: &Options,
     instream: &mut HfstInputStream<'_>,
     outstream: &mut HfstOutputStream,
 ) -> i32 {
@@ -329,112 +290,16 @@ fn process_stream(
             } else {
                 verbose_print(common, &format!("Reweighting {}...{}\n", inputname, transducer_n));
             }
-            if options.tsv_file.is_none() {
-                if let Err(e) = do_reweight(options, &mut trans) {
-                    hfst_error(common, 1, 0, &format!("{e}"));
-                    return 1;
-                }
-                let src = trans.clone();
-                hfst_set_name_unary(&mut trans, &src, "reweight");
-                hfst_set_formula_unary(&mut trans, &src, "W");
-            } else {
-                // C: rewind(tsv_file) — seek the std file back to the start.
-                options.symbol = None;
-                options.addition = 0.0;
-                options.multiplier = 1.0;
-                let mut linen: usize = 0;
-                verbose_print(common, &format!(
-                    "Reading reweights from {}\n",
-                    options.tsv_file_name.clone().unwrap_or_default()
-                ));
-                // Read the file's lines up front so the per-line body can keep
-                // mutating `options` (the C code kept the file handle open and
-                // rewound it; the borrow checker forbids holding a reader over
-                // `options.tsv_file` while the loop mutates other `options`
-                // fields, so we snapshot the lines instead). Each line keeps its
-                // trailing newline, matching hfst_getline.
-                let lines: Vec<String> = if let Some(tsv_file) = options.tsv_file.as_mut() {
-                    let _ = tsv_file.seek(SeekFrom::Start(0));
-                    let mut reader = BufReader::new(tsv_file);
-                    let mut acc: Vec<String> = Vec::new();
-                    let mut line = String::new();
-                    loop {
-                        line.clear();
-                        // C: hfst_getline keeps the trailing newline; Ok(0) at EOF.
-                        if reader.read_line(&mut line).unwrap_or(0) == 0 {
-                            break;
-                        }
-                        acc.push(line.clone());
-                    }
-                    acc
-                } else {
-                    Vec::new()
-                };
-                for line in &lines {
-                    linen += 1;
-                    let line_str = line.as_bytes();
-                    if line_str.first() == Some(&b'\n') {
-                        continue;
-                    }
-                    if line_str.first() == Some(&b'#') {
-                        continue;
-                    }
-                    let tab_pos = line_str.iter().position(|&b| b == b'\t');
-                    let tab = match tab_pos {
-                        None => {
-                            hfst_error_at_line(
-                                common,
-                                1,
-                                0,
-                                &options.tsv_file_name.clone().unwrap_or_default(),
-                                linen as u32,
-                                "at least one tab required per line",
-                            );
-                            continue;
-                        }
-                        Some(p) => p,
-                    };
-                    // endstr advances from tab+1 to first '\0' or '\n'
-                    let mut endstr = tab + 1;
-                    while endstr < line_str.len() && line_str[endstr] != b'\n' {
-                        endstr += 1;
-                    }
-                    // SYMBOL = strndup(line, tab); kept as the substring before the tab.
-                    let sym = String::from_utf8_lossy(&line_str[..tab]).into_owned();
-                    options.symbol = Some(sym);
-                    let weightspec =
-                        String::from_utf8_lossy(&line_str[tab + 1..endstr]).into_owned();
-                    if weightspec.as_bytes().first() == Some(&b'+') {
-                        options.addition = hfst_strtoweight(common, &weightspec[1..]);
-                    } else {
-                        options.multiplier = hfst_strtoweight(common, &weightspec);
-                    }
-                    verbose_print(common, &format!(
-                        "Modifying weights {} < w < {} as {} * {}(w) + {} for symbol {}\n",
-                        options.lower_bound,
-                        options.upper_bound,
-                        options.multiplier,
-                        options.funcname.clone().unwrap_or_default(),
-                        options.addition,
-                        options.symbol.clone().unwrap_or_default()
-                    ));
-                    if let Err(e) = do_reweight(options, &mut trans) {
-                        hfst_error(common, 1, 0, &format!("{e}"));
-                        return 1;
-                    }
-                } // getline
-                let src = trans.clone();
-                hfst_set_name_unary(&mut trans, &src, "reweight");
-                hfst_set_formula_unary(&mut trans, &src, "W");
-            } // if tsv_file
-            let reduced = match trans.remove_epsilons() {
-                Ok(t) => t,
-                Err(e) => {
-                    hfst_error(common, 1, 0, &format!("{e}"));
-                    return 1;
-                }
+            let reweighted = match &options.tsv {
+                None => options.rule.apply(&mut trans),
+                Some((name, text)) => reweight_by_tsv(common, options, (name, text), &mut trans),
             };
-            if let Err(e) = outstream.write(reduced) {
+            let written = reweighted.and_then(|()| {
+                name_reweighted(&mut trans);
+                outstream.write(trans.remove_epsilons()?)?;
+                Ok(())
+            });
+            if let Err(e) = written {
                 hfst_error(common, 1, 0, &format!("{e}"));
                 return 1;
             }
@@ -463,7 +328,7 @@ pub(super) fn execute(args: Vec<String>) -> ToolResult {
     let mut options = args.resolve(&common);
 
     // The bound-order warning and the TSV open ran after the parameter checks.
-    if options.upper_bound < options.lower_bound {
+    if options.rule.upper_bound < options.rule.lower_bound {
         hfst_warning(
             &common,
             0,
@@ -471,13 +336,13 @@ pub(super) fn execute(args: Vec<String>) -> ToolResult {
             &format!(
                 "Lower bound {} exceeds upper bound {} so reweight will \
 never apply",
-                options.lower_bound, options.upper_bound
+                options.rule.lower_bound, options.rule.upper_bound
             ),
         );
     }
-    if let Some(name) = options.tsv_file_name.clone() {
-        match std::fs::File::open(&name) {
-            Ok(f) => options.tsv_file = Some(f),
+    if let Some(name) = &args.tsv {
+        match read_lines(name) {
+            Ok(text) => options.tsv = Some((name.clone(), text)),
             Err(_) => {
                 error(&common, 1, 0, &format!("Could not open '{}'", name));
                 return Err(1);
@@ -499,26 +364,26 @@ never apply",
         &common,
         &format!(
             "Modifying weights {} < w < {} as {} * {}(w) + {}\n",
-            options.lower_bound,
-            options.upper_bound,
-            options.multiplier,
-            options.funcname.clone().unwrap_or_default(),
-            options.addition
+            options.rule.lower_bound,
+            options.rule.upper_bound,
+            options.rule.multiplier,
+            options.funcname,
+            options.rule.addition
         ),
     );
-    if let Some(symbol) = options.symbol.clone() {
+    if let Some(symbol) = &options.rule.symbol {
         verbose_print(&common, &format!("only if arc has symbol {}\n", symbol));
     }
-    if let Some(isym) = options.input_symbol.clone() {
+    if let Some(isym) = &options.rule.input_symbol {
         verbose_print(&common, &format!("only if input symbol is {}\n", isym));
     }
-    if let Some(osym) = options.output_symbol.clone() {
+    if let Some(osym) = &options.rule.output_symbol {
         verbose_print(&common, &format!("only if output symbol is {}\n", osym));
     }
-    if options.ends_only {
+    if options.rule.ends_only {
         verbose_print(&common, "only on final weights, no arcs\n");
     }
-    if options.arcs_only {
+    if options.rule.arcs_only {
         verbose_print(&common, "only on arc weights, no end states\n");
     }
 
@@ -557,7 +422,7 @@ never apply",
 
     cli::from_code(process_stream(
         &common,
-        &mut options,
+        &options,
         &mut instream,
         &mut outstream,
     ))

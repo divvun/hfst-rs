@@ -1,12 +1,8 @@
 //! Faithful 1:1 port of tools/src/hfst-grep.cc — the Hfst-based grep clone.
 //! Bug-for-bug translation of the C++ tool.
 //!
-//! As in the C++, the optimised-lookup match path is gated behind
-//! HFST_OPTIMISED_LOOKUP_CAN_IDENTITY, which is not defined; the active path
-//! uses compose/output_project/compare on tropical automata. The functions
-//! behind that gate (string_to_utf8, optimise_matcher, the optimised half of
-//! match_lines, print_match_line) are still ported faithfully but are never
-//! reached at runtime.
+//! Building the matcher and matching each line are the library's
+//! [`hfst::tools::grep`]; this tool reads the files and prints what matches.
 //!
 //! Option handling is clap 4 derive through [`crate::cli`]; the tool's state
 //! lives in [`CommonOptions`] (the shared `-v/-q/-o/…` fields) and a
@@ -21,14 +17,11 @@ use crate::cli::{self, CommonArgs, ToolArgs, ToolResult};
 use crate::globals::ColourTristate;
 use crate::globals::CommonOptions;
 use crate::hfst_commandline::{
-    error, error_at_line, hfst_parse_format_name, hfst_set_program_name, parse_format_name_quiet,
-    parse_u64, print_short_help, verbose_print, warning,
+    error, hfst_parse_format_name, hfst_set_program_name, parse_format_name_quiet, parse_u64,
+    print_short_help, verbose_print, warning,
 };
-use hfst::hfst_data_types::{HfstOneLevelPath, HfstTwoLevelPaths, ImplementationType};
-use hfst::hfst_input_stream::HfstInputStream;
-use hfst::hfst_symbol_defs::is_epsilon;
-use hfst::hfst_tokenizer::HfstTokenizer;
-use hfst::hfst_transducer::HfstTransducer;
+use hfst::hfst_data_types::ImplementationType;
+use hfst::tools::grep::{Dialect, GrepOptions, Matcher};
 use hfst::xre::XreCompiler;
 use std::io::{BufRead, Write};
 
@@ -122,18 +115,6 @@ impl Default for Options {
             format: ImplementationType::UNSPECIFIED_TYPE,
         }
     }
-}
-
-/// The matcher pipeline is pinned to the tropical backend
-/// ([dec:hfst:monomorphic-backends]): grep's output is the matched lines, so
-/// the -f format (kept for option compatibility) never changes what is
-/// printed. The C kept `matcher` (+ the gated `optimised_matcher`) as
-/// file-scope pointers; here the built matcher is threaded through the pipeline.
-struct MatcherState {
-    matcher: HfstTransducer<hfst_openfst::StdVectorFst>,
-    // The filename of the file currently being matched (the C kept a char*).
-    inputfilename: String,
-    linen: u64,
 }
 
 /// hfst-grep's command line.
@@ -502,500 +483,67 @@ impl ToolArgs for Args {
     }
 }
 
-// [spec:hfst:def:hfst-grep.string-to-utf8-fn]
-// [spec:hfst:sem:hfst-grep.string-to-utf8-fn]
-#[allow(dead_code)]
-fn string_to_utf8(state: &MatcherState, p: &str) -> Vec<String> {
-    let mut path: Vec<String> = Vec::new();
-    let bytes = p.as_bytes();
-    let mut idx = 0usize;
-    while idx < bytes.len() {
-        let c = bytes[idx];
-        let u8len: usize = if c <= 127 {
-            1
-        } else if (c & (128 + 64 + 32 + 16)) == (128 + 64 + 32 + 16) {
-            4
-        } else if (c & (128 + 64 + 32)) == (128 + 64 + 32) {
-            3
-        } else if (c & (128 + 64)) == (128 + 64) {
-            2
-        } else {
-            error_at_line(
-                1,
-                0,
-                &state.inputfilename,
-                state.linen as u32,
-                &format!("{} not valid UTF-8\n", &p[idx..]),
-            );
-            1
-        };
-        let end = (idx + u8len).min(bytes.len());
-        path.push(String::from_utf8_lossy(&bytes[idx..end]).into_owned());
-        idx += u8len;
+impl Options {
+    /// What the options decide about matching and printing.
+    fn grep_options(&self, common: &CommonOptions) -> GrepOptions {
+        GrepOptions {
+            dialect: if self.dialect_xerox {
+                Dialect::Xerox
+            } else {
+                Dialect::FixedStrings
+            },
+            colour: common.colour == ColourTristate::COLOUR_ALWAYS,
+            match_word: self.match_word,
+            match_full_line: self.match_full_line,
+            invert: self.invert_matches,
+            max_count: self.max_count,
+            print_filenames: self.print_filenames,
+            filename_null: self.print_filename_null,
+            print_line_numbers: self.print_linenumbers,
+            only_filenames: self.print_only_matching_filenames
+                || self.print_only_unmatching_filenames,
+            flush_lines: self.flush_newlines,
+        }
     }
-    path
 }
 
-// [spec:hfst:def:hfst-grep.read-matcher-fn]
-// [spec:hfst:sem:hfst-grep.read-matcher-fn]
-#[allow(dead_code)]
-fn read_matcher_stream(
-    common: &CommonOptions,
-    state: &mut MatcherState,
-    instream: &mut HfstInputStream<'_>,
-) -> i32 {
-    let mut transducer_n: usize = 0;
-    state.matcher = HfstTransducer::new();
-    while instream.is_good() {
-        transducer_n += 1;
-        // one dispatch per read: everything joins the tropical matcher
-        let mut trans: HfstTransducer<hfst_openfst::StdVectorFst> =
-            match instream.read().and_then(|any| any.into_typed()) {
-                Ok(t) => t,
-                Err(e) => {
-                    error(common, 1, 0, &format!("{e}"));
-                    return 1;
-                }
-            };
-        let mut inputname = trans.get_name();
-        if inputname.is_empty() {
-            inputname = state.inputfilename.clone();
-        }
-        if transducer_n == 1 {
-            verbose_print(common, &format!("Reading matcher {}...\n", inputname));
-        } else {
-            verbose_print(
-                common,
-                &format!("Reading matcher {}...{}\n", inputname, transducer_n),
-            );
-        }
-        if transducer_n > 1 {
-            verbose_print(common, "and disjuncting...\n");
-        }
-        if let Err(e) = trans.input_project() {
-            error(common, 1, 0, &format!("{e}"));
-            return 1;
-        }
-        if let Err(e) = state.matcher.disjunct(&trans, true) {
-            error(common, 1, 0, &format!("{e}"));
-            return 1;
-        }
+/// Print the matcher in AT&T format when verbose.
+fn show_matcher(common: &CommonOptions, matcher: &Matcher) {
+    if common.verbose {
+        verbose_print(common, "Resulting FSM:\n");
+        hfst::hfst_transducer::write_to(&mut std::io::stderr(), matcher.transducer());
     }
-    verbose_print(common, "minimising matchers...\n");
-    if let Err(e) = state.matcher.minimize() {
-        error(common, 1, 0, &format!("{e}"));
-        return 1;
-    }
-    instream.close();
-    0
 }
 
-fn read_matcher(
-    common: &CommonOptions,
-    options: &Options,
-    state: &mut MatcherState,
-    expression: &str,
-) {
-    // Accepted for option compatibility only. Matching is weight-independent
-    // and grep emits text, so the answers do not depend on the backend, but a
-    // flag that quietly does nothing is worth saying out loud.
+// [spec:hfst:req:embed.tools-in-library]
+fn build_matcher(common: &CommonOptions, options: &Options, grep: &GrepOptions) -> Matcher {
+    // Accepted for option compatibility only: matching does not depend on
+    // the backend, but a flag that quietly does nothing is worth saying out
+    // loud.
     if options.format != ImplementationType::UNSPECIFIED_TYPE {
         verbose_print(
             common,
             "--format does not affect matching; grep always matches on the tropical backend\n",
         );
     }
-    state.matcher = HfstTransducer::new();
-    if options.dialect_xerox {
-        let mut comp = XreCompiler::<hfst_openfst::StdVectorFst>::new();
-        comp.set_diagnostic_sink(crate::hfst_commandline::stderr_sink());
-        verbose_print(
-            common,
-            &format!(
-                "parsing {} as Xerox style regular expression...\n",
-                expression
-            ),
-        );
-        // C: comp.compile returned NULL on a parse failure (an empty pattern
-        // included) and the next line dereferenced it — a crash upstream. Fail
-        // cleanly instead: XRE has no empty expression, so nothing sound can
-        // be built from one.
-        let Some(mut trans) = comp.compile(expression) else {
-            if expression.is_empty() {
-                error(
-                    common,
-                    1,
-                    0,
-                    "empty pattern: XRE parsing failed (an empty Xerox regular expression is not valid)",
-                );
-            } else {
-                error(common, 1, 0, &format!("XRE parsing failed: {}", expression));
-            }
-            return;
-        };
-        if let Err(e) = trans.input_project() {
-            error(common, 1, 0, &format!("{e}"));
-            return;
+    let mut progress = |message: &str| verbose_print(common, message);
+    let mut comp = XreCompiler::<hfst_openfst::StdVectorFst>::new();
+    comp.set_diagnostic_sink(crate::hfst_commandline::stderr_sink());
+    let pattern = options.regexp.clone().unwrap_or_default();
+    let compiled = Matcher::compile(&pattern, grep.dialect, &mut comp, &mut progress)
+        .inspect(|matcher| show_matcher(common, matcher))
+        .and_then(|mut matcher| {
+            matcher.extend(grep, &mut progress)?;
+            Ok(matcher)
+        });
+    match compiled {
+        Ok(matcher) => {
+            show_matcher(common, &matcher);
+            matcher
         }
-        if let Err(e) = state.matcher.disjunct(&trans, true) {
-            error(common, 1, 0, &format!("{e}"));
-            return;
-        }
-    } else if options.dialect_fixed_strings {
-        verbose_print(
-            common,
-            &format!(
-                "parsing {} as fixed string of UTF-8 symbols...\n",
-                expression
-            ),
-        );
-        let t = HfstTokenizer::new();
-        let trans = match HfstTransducer::new_tokenized_pair(expression, expression, &t) {
-            Ok(t) => t,
-            Err(e) => {
-                error(common, 1, 0, &format!("{e}"));
-                return;
-            }
-        };
-        if let Err(e) = state.matcher.disjunct(&trans, true) {
-            error(common, 1, 0, &format!("{e}"));
-            return;
-        }
-    } else {
-        error(common, 1, 0, "dialect unsupported");
-    }
-    verbose_print(common, "minimizing...\n");
-    if let Err(e) = state.matcher.minimize() {
-        error(common, 1, 0, &format!("{e}"));
-        return;
-    }
-    if common.verbose {
-        verbose_print(common, "Resulting FSM:\n");
-        // C: std::cerr << *matcher;
-        hfst::hfst_transducer::write_to(&mut std::io::stderr(), &state.matcher);
-    }
-}
-
-// [spec:hfst:def:hfst-grep.extend-matcher-with-options-fn]
-// [spec:hfst:sem:hfst-grep.extend-matcher-with-options-fn]
-fn extend_matcher_with_options(
-    common: &CommonOptions,
-    options: &Options,
-    state: &mut MatcherState,
-) {
-    if common.colour == ColourTristate::COLOUR_ALWAYS {
-        verbose_print(common, "Adding color codes to match boundaries...\n");
-        let color_start = match HfstTransducer::new_symbol_pair("@_EPSILON_SYMBOL_@", "[31m") {
-            Ok(t) => t,
-            Err(e) => {
-                error(common, 1, 0, &format!("{e}"));
-                return;
-            }
-        };
-        let color_end = match HfstTransducer::new_symbol_pair("@_EPSILON_SYMBOL_@", "[00m") {
-            Ok(t) => t,
-            Err(e) => {
-                error(common, 1, 0, &format!("{e}"));
-                return;
-            }
-        };
-        let mut coloured = color_start;
-        if let Err(e) = coloured.concatenate(&state.matcher, true) {
-            error(common, 1, 0, &format!("{e}"));
-            return;
-        }
-        if let Err(e) = coloured.concatenate(&color_end, true) {
-            error(common, 1, 0, &format!("{e}"));
-            return;
-        }
-        state.matcher = coloured;
-    } else {
-        // bracket matches for now
-        verbose_print(common, "Adding brackets to match boundaries...\n");
-        let color_start = match HfstTransducer::new_symbol_pair("@_EPSILON_SYMBOL_@", "{{{") {
-            Ok(t) => t,
-            Err(e) => {
-                error(common, 1, 0, &format!("{e}"));
-                return;
-            }
-        };
-        let color_end = match HfstTransducer::new_symbol_pair("@_EPSILON_SYMBOL_@", "}}}") {
-            Ok(t) => t,
-            Err(e) => {
-                error(common, 1, 0, &format!("{e}"));
-                return;
-            }
-        };
-        let mut coloured = color_start;
-        if let Err(e) = coloured.concatenate(&state.matcher, true) {
-            error(common, 1, 0, &format!("{e}"));
-            return;
-        }
-        if let Err(e) = coloured.concatenate(&color_end, true) {
-            error(common, 1, 0, &format!("{e}"));
-            return;
-        }
-        state.matcher = coloured;
-    }
-    if options.match_word {
-        verbose_print(
-            common,
-            "Delimiting matcher to word boundaries (currently space)...\n",
-        );
-        let non_word_char_left = match HfstTransducer::new_symbol(" ") {
-            Ok(t) => t,
-            Err(e) => {
-                error(common, 1, 0, &format!("{e}"));
-                return;
-            }
-        };
-        let non_word_char_right = match HfstTransducer::new_symbol(" ") {
-            Ok(t) => t,
-            Err(e) => {
-                error(common, 1, 0, &format!("{e}"));
-                return;
-            }
-        };
-        let mut word_bounded = non_word_char_left;
-        if let Err(e) = word_bounded.concatenate(&state.matcher, true) {
-            error(common, 1, 0, &format!("{e}"));
-            return;
-        }
-        if let Err(e) = word_bounded.concatenate(&non_word_char_right, true) {
-            error(common, 1, 0, &format!("{e}"));
-            return;
-        }
-        state.matcher = word_bounded;
-    }
-    if !options.match_full_line {
-        verbose_print(common, "Extending matcher for repetitions and rest...\n");
-        let mut left_any = match HfstTransducer::new_symbol("@_IDENTITY_SYMBOL_@") {
-            Ok(t) => t,
-            Err(e) => {
-                error(common, 1, 0, &format!("{e}"));
-                return;
-            }
-        };
-        let mut right_any = match HfstTransducer::new_symbol("@_IDENTITY_SYMBOL_@") {
-            Ok(t) => t,
-            Err(e) => {
-                error(common, 1, 0, &format!("{e}"));
-                return;
-            }
-        };
-        if let Err(e) = left_any.repeat_star() {
-            error(common, 1, 0, &format!("{e}"));
-            return;
-        }
-        if let Err(e) = right_any.repeat_star() {
-            error(common, 1, 0, &format!("{e}"));
-            return;
-        }
-        let mut one_match = left_any;
-        if let Err(e) = one_match.concatenate(&state.matcher, true) {
-            error(common, 1, 0, &format!("{e}"));
-            return;
-        }
-        if let Err(e) = one_match.concatenate(&right_any, true) {
-            error(common, 1, 0, &format!("{e}"));
-            return;
-        }
-        state.matcher = one_match;
-        if let Err(e) = state.matcher.repeat_plus() {
-            error(common, 1, 0, &format!("{e}"));
-            return;
-        }
-    }
-    verbose_print(common, "Minimising extended matcher...\n");
-    if let Err(e) = state.matcher.minimize() {
-        error(common, 1, 0, &format!("{e}"));
-        return;
-    }
-    if common.verbose {
-        verbose_print(common, "Resulting FSM:\n");
-        hfst::hfst_transducer::write_to(&mut std::io::stderr(), &state.matcher);
-    }
-}
-
-// [spec:hfst:def:hfst-grep.print-match-line-fn]
-// [spec:hfst:sem:hfst-grep.print-match-line-fn]
-#[allow(dead_code)]
-fn print_match_line(
-    options: &Options,
-    state: &MatcherState,
-    path: &HfstOneLevelPath,
-    out: &mut dyn Write,
-) {
-    if options.print_only_matching_filenames || options.print_only_unmatching_filenames {
-        return;
-    }
-    if options.print_filenames {
-        let _ = out.write_all(state.inputfilename.as_bytes());
-        if options.print_filename_null {
-            let _ = out.write_all(&[0u8]);
-        } else {
-            let _ = out.write_all(b": ");
-        }
-    }
-    if options.print_linenumbers {
-        let _ = write!(out, "{}: ", state.linen);
-    }
-    for s in &path.second {
-        let _ = out.write_all(s.as_bytes());
-    }
-    let _ = out.write_all(b"\n");
-}
-
-// [spec:hfst:def:hfst-grep.print-match-transducer-fn]
-// [spec:hfst:sem:hfst-grep.print-match-transducer-fn]
-fn print_match_transducer(
-    common: &CommonOptions,
-    options: &Options,
-    state: &MatcherState,
-    path: &HfstTransducer<hfst_openfst::StdVectorFst>,
-    out: &mut dyn Write,
-) {
-    let mut p: HfstTwoLevelPaths = HfstTwoLevelPaths::new();
-    if let Err(e) = path.extract_paths(&mut p, 1, -1) {
-        error(common, 1, 0, &format!("{e}"));
-        return;
-    }
-    if options.print_only_matching_filenames || options.print_only_unmatching_filenames {
-        return;
-    }
-    if options.print_filenames {
-        let _ = out.write_all(state.inputfilename.as_bytes());
-        if options.print_filename_null {
-            let _ = out.write_all(&[0u8]);
-        } else {
-            let _ = out.write_all(b": ");
-        }
-    }
-    if options.print_linenumbers {
-        let _ = write!(out, "{}: ", state.linen);
-    }
-    if let Some(first) = p.iter().next() {
-        for s in &first.second {
-            if !is_epsilon(&s.0) {
-                let _ = out.write_all(s.0.as_bytes());
-            }
-        }
-    }
-    let _ = out.write_all(b"\n");
-}
-
-/// @return true if matches in @a infile
-// [spec:hfst:def:hfst-grep.match-lines-fn]
-// [spec:hfst:sem:hfst-grep.match-lines-fn]
-fn match_lines(
-    common: &CommonOptions,
-    options: &Options,
-    state: &mut MatcherState,
-    infile: &mut dyn BufRead,
-    infilename: &str,
-    out: &mut dyn Write,
-) -> bool {
-    verbose_print(common, &format!("matching against {}...\n", infilename));
-    let mut matched = false;
-    let mut matches_n: usize = 0;
-    // #ifndef HFST_OPTIMISED_LOOKUP_CAN_IDENTITY
-    let tokeniser = HfstTokenizer::new();
-    loop {
-        // C: hfst_getline reads a raw line (bytes); cstr does a lossy UTF-8
-        // conversion. read_until(b'\n') mirrors getline's byte semantics.
-        let mut raw_bytes: Vec<u8> = Vec::new();
-        match infile.read_until(b'\n', &mut raw_bytes) {
-            Ok(0) => break,
-            Ok(_) => {}
-            Err(_) => break,
-        }
-        state.linen += 1;
-        let mut line = String::from_utf8_lossy(&raw_bytes).into_owned();
-        // C: scan to the first '\n' and replace it with '\0' (truncate there).
-        if let Some(pos) = line.find('\n') {
-            line.truncate(pos);
-        }
-        verbose_print(common, &format!("matching {}...\n", line));
-        // #else branch (active: HFST_OPTIMISED_LOOKUP_CAN_IDENTITY undefined)
-        if line.is_empty() {
-            continue;
-        }
-        let line_str = line;
-        let mut line_trans: HfstTransducer<hfst_openfst::StdVectorFst> =
-            match HfstTransducer::new_tokenized_pair(&line_str, &line_str, &tokeniser) {
-                Ok(t) => t,
-                Err(e) => {
-                    error(common, 1, 0, &format!("{e}"));
-                    return false;
-                }
-            };
-        verbose_print(common, "composing...\n");
-        let mut results_t = match HfstTransducer::new_copy(&line_trans) {
-            Ok(t) => t,
-            Err(e) => {
-                error(common, 1, 0, &format!("{e}"));
-                return false;
-            }
-        };
-        if let Err(e) = results_t.compose(&state.matcher, true) {
-            error(common, 1, 0, &format!("{e}"));
-            return false;
-        }
-        if let Err(e) = results_t.output_project() {
-            error(common, 1, 0, &format!("{e}"));
-            return false;
-        }
-        let empty: HfstTransducer<hfst_openfst::StdVectorFst> = HfstTransducer::new();
-        let is_empty = match results_t.compare_default(&empty) {
-            Ok(b) => b,
-            Err(e) => {
-                error(common, 1, 0, &format!("{e}"));
-                return false;
-            }
-        };
-        if is_empty {
-            verbose_print(common, "no matches\n");
-            if options.invert_matches {
-                print_match_transducer(common, options, state, &line_trans, &mut *out);
-            }
-        } else {
-            verbose_print(common, "matches\n");
-            if !options.invert_matches {
-                print_match_transducer(common, options, state, &results_t, &mut *out);
-            }
-            matched = true;
-            matches_n += 1;
-        }
-        let _ = &mut line_trans;
-        if options.flush_newlines {
-            let _ = out.flush();
-        }
-        if (options.max_count > 0) && (matches_n as u64 >= options.max_count) {
-            break;
-        }
-    }
-    if options.invert_matches {
-        !matched
-    } else {
-        matched
-    }
-}
-
-// [spec:hfst:def:hfst-grep.optimise-matcher-fn]
-// [spec:hfst:sem:hfst-grep.optimise-matcher-fn]
-#[allow(dead_code)]
-fn optimise_matcher(
-    common: &CommonOptions,
-    state: &MatcherState,
-) -> Option<HfstTransducer<hfst::transducer::Transducer>> {
-    verbose_print(common, "Optimising...\n");
-    // C: HfstTransducer(*matcher).convert(HFST_OL_TYPE) — the typed
-    // algebra->OL conversion now.
-    match state.matcher.to_ol(false, "") {
-        Ok(t) => Some(t),
         Err(e) => {
             error(common, 1, 0, &format!("{e}"));
-            None
+            unreachable!("error(1, ...) ends the process")
         }
     }
 }
@@ -1009,18 +557,8 @@ pub(super) fn execute(args: Vec<String>) -> ToolResult {
     let (common, args) = cli::parse::<Args>(common, args)?;
     let options = args.resolve(&common, false)?;
     verbose_print(&common, &format!("Writing to {}\n", common.output_filename));
-    let mut state = MatcherState {
-        matcher: HfstTransducer::new(),
-        inputfilename: String::new(),
-        linen: 0,
-    };
-    read_matcher(
-        &common,
-        &options,
-        &mut state,
-        &options.regexp.clone().unwrap_or_default(),
-    );
-    extend_matcher_with_options(&common, &options, &mut state);
+    let grep = options.grep_options(&common);
+    let matcher = build_matcher(&common, &options, &grep);
     let mut out = match common.output_writer() {
         Ok(w) => w,
         Err(e) => {
@@ -1028,25 +566,59 @@ pub(super) fn execute(args: Vec<String>) -> ToolResult {
             return Err(1);
         }
     };
-    // #if HFST_OPTIMISED_LOOKUP_CAN_IDENTITY_SYMBOL: optimise_matcher();
     let mut options = options;
     for i in 0..options.infilenames.len() {
-        state.inputfilename = options.infilenames[i].clone();
-        state.linen = 0;
         let name = options.infilenames[i].clone();
         let mut reader =
             std::mem::replace(&mut options.infile_readers[i], Box::new(std::io::empty()));
-        match_lines(
-            &common,
-            &options,
-            &mut state,
-            reader.as_mut(),
-            &name,
-            &mut *out,
-        );
+        let matched =
+            matcher.match_lines(reader.as_mut(), &name, &grep, &mut *out, &mut |message| {
+                verbose_print(&common, message)
+            });
+        if let Err(e) = matched {
+            error(&common, 1, 0, &format!("{e}"));
+        }
     }
     let _ = out.flush();
 
     // The former EXIT_CONTINUE return value: success once processing is done.
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Options;
+    use crate::globals::{ColourTristate, CommonOptions};
+    use hfst::tools::grep::Dialect;
+
+    fn common(colour: ColourTristate) -> CommonOptions {
+        let mut common =
+            crate::hfst_commandline::hfst_set_program_name("hfst-grep", "0.1", "HfstGrep");
+        common.colour = colour;
+        common
+    }
+
+    // [spec:hfst:req:embed.tools-in-library/test]
+    #[test]
+    fn options_decide_how_lines_match_and_print() {
+        let options = Options {
+            dialect_fixed_strings: true,
+            invert_matches: true,
+            print_only_unmatching_filenames: true,
+            max_count: 3,
+            ..Options::default()
+        };
+        let grep = options.grep_options(&common(ColourTristate::COLOUR_ALWAYS));
+        assert_eq!(grep.dialect, Dialect::FixedStrings);
+        assert!(grep.colour && grep.invert && grep.only_filenames);
+        assert_eq!(grep.max_count, 3);
+        let xerox = Options {
+            dialect_xerox: true,
+            dialect_fixed_strings: true,
+            ..Options::default()
+        };
+        let grep = xerox.grep_options(&common(ColourTristate::COLOUR_NEVER));
+        assert_eq!(grep.dialect, Dialect::Xerox);
+        assert!(!grep.colour && !grep.only_filenames);
+    }
 }

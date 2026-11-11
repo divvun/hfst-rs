@@ -19,8 +19,7 @@ use crate::CliLookupReporter;
 use crate::cli::{self, CommonArgs, ToolArgs, ToolResult, UnaryIo};
 use crate::globals::CommonOptions;
 use crate::hfst_commandline::{
-    hfst_error, hfst_error_at_line, hfst_set_program_name, hfst_strformat, hfst_warning,
-    verbose_print,
+    hfst_error, hfst_error_at_line, hfst_set_program_name, hfst_warning, verbose_print,
 };
 use hfst::error::ErrorKind;
 use hfst::hfst_input_stream::HfstInputStream;
@@ -33,6 +32,7 @@ use hfst::lookup_driver::{
     AmbiguityLimit, FlagPolicy, LookupCascade, LookupEngineOptions, PairPrintStyle,
     is_optimized_lookup_type,
 };
+use hfst::tools::format::format_description;
 use std::io::{BufRead, Write};
 
 // ---------------------------------------------------------------------------
@@ -654,7 +654,7 @@ fn process_stream(
             &format!(
                 "It is not possible to perform fast lookups with {} format automata.\n\
                  Using HFST basic transducer format and performing slow lookups",
-                hfst_strformat(cascade.first_type())
+                format_description(cascade.first_type())
             ),
         );
     }

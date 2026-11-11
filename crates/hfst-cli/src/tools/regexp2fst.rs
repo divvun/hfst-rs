@@ -1,17 +1,15 @@
-//! Faithful 1:1 port of tools/src/hfst-regexp2fst.cc — the regular expression
-//! compiling command-line tool, driving the hfst XreCompiler. Option handling
-//! is clap 4 derive through [`crate::cli`].
+//! Port of tools/src/hfst-regexp2fst.cc — the regular expression compiling
+//! command-line tool, around the library's [`hfst::tools::regexp2fst`].
+//! Option handling is clap 4 derive through [`crate::cli`].
 
 use crate::cli::{self, CommonArgs, ToolArgs, ToolResult, UnaryIo};
 use crate::globals::CommonOptions;
 use crate::hfst_commandline::{
-    error, hfst_error_at_line, hfst_parse_format_name, hfst_set_program_name, redirect_converting,
-    verbose_print,
+    error, hfst_error_at_line, hfst_parse_format_name, hfst_set_program_name, verbose_print,
 };
-use crate::hfst_tool_metadata::hfst_set_name;
 use hfst::hfst_data_types::ImplementationType;
 use hfst::hfst_output_stream::HfstOutputStream;
-use hfst::hfst_transducer::HfstTransducer;
+use hfst::tools::regexp2fst::{RegexpError, RegexpEvent, Separation, compile_regexps};
 use hfst::xre::XreCompiler;
 use std::io::BufRead;
 
@@ -157,8 +155,6 @@ impl ToolArgs for Args {
 
 /// hfst-regexp2fst's resolved tool state (the former tool-specific `static mut`s).
 struct Options {
-    /// '-e, --epsilon=EPS': map EPS as zero, i.e. epsilon.
-    epsilonname: Option<String>,
     /// '-j, --disjunct': disjunct all regexps into a single transducer.
     disjunct_expressions: bool,
     /// '-l, --line' / '-S, --semicolon': input is line separated (default).
@@ -211,14 +207,16 @@ fn process_stream(
     }
 }
 
+// [spec:hfst:req:embed.tools-in-library]
+// The splitting and compiling is the library's compile_regexps; the tool
+// sets the compiler up, writes each transducer as it comes, and prints what
+// it is told.
 fn process_stream_typed<B: hfst::backend::AlgebraBackend>(
     common: &CommonOptions,
     options: &Options,
     outstream: &mut HfstOutputStream,
     input: &mut dyn BufRead,
 ) -> i32 {
-    let mut transducer_n: usize = 0;
-    let mut line_count: u32 = 0;
     let mut comp = XreCompiler::<B>::new();
     comp.set_source_name(&common.input_filename);
     comp.set_diagnostic_sink(crate::hfst_commandline::stderr_sink());
@@ -231,160 +229,36 @@ fn process_stream_typed<B: hfst::backend::AlgebraBackend>(
     comp.set_xerox_composition(options.xerox_composition);
     comp.set_encode_weights(options.encode_weights);
     comp.set_replace_pass(options.replace_pass);
-    let _ = &options.epsilonname;
-    let mut disjunction: HfstTransducer<B> = HfstTransducer::new();
-
-    let mut first_line: Option<String> = None;
-
-    if !options.line_separated {
-        // C: read the whole input into a NUL-terminated buffer and walk it
-        // with a char* cursor. Here we read it into a String and track a byte
-        // offset; compile_first reports how many bytes it consumed.
-        let mut content = String::new();
-        let _ = input.read_to_string(&mut content);
-        let mut offset: usize = 0;
-        let mut chars_read: u32 = 0;
-
-        loop {
-            transducer_n += 1;
-            verbose_print(
-                common,
-                &format!("Compiling expression #{}\n", transducer_n as i32),
-            );
-            let compiled = comp.compile_first_at(&content, offset, &mut chars_read);
-            // (the C wraps compile_first in try/catch on HfstException; the
-            // Rust path currently panics rather than throwing, so the catch
-            // arm that calls hfst_error is not reproduced here.)
-            if compiled.is_none() {
-                if comp.contained_only_comments() {
-                    if transducer_n == 1 {
-                        error(
-                            common,
-                            1,
-                            0,
-                            &format!(
-                                "{}: XRE parsing failed: expression #{} \
-                                 contains only whitespace or comments",
-                                common.input_filename, transducer_n as u32
-                            ),
-                        );
-                    }
-                    break;
-                } else {
-                    error(
-                        common,
-                        1,
-                        0,
-                        &format!(
-                            "{}: XRE parsing failed \
-                             in expression #{} separated by semicolons",
-                            common.input_filename, transducer_n as u32
-                        ),
-                    );
-                }
-            }
-            offset += chars_read as usize;
-            if let Some(mut compiled) = compiled {
-                if options.disjunct_expressions {
-                    if let Err(e) = disjunction.disjunct(&compiled, options.harmonize) {
-                        error(common, 1, 0, &format!("{e}"));
-                        return 1;
-                    }
-                } else {
-                    hfst_set_name(&mut compiled, "?", "xre");
-                    if let Err(e) = redirect_converting(outstream, &mut compiled) {
-                        error(common, 1, 0, &format!("{e}"));
-                        return 1;
-                    }
-                }
-                // C: delete compiled; -> owned, drops here.
-            }
-            if offset >= content.len() {
-                break;
-            }
-        }
+    let separation = if options.line_separated {
+        Separation::Lines
     } else {
-        let mut input_contains_only_whitespace_or_comments = true;
-        let mut line = String::new();
-        loop {
-            line.clear();
-            if input.read_line(&mut line).unwrap_or(0) == 0 {
-                if input_contains_only_whitespace_or_comments {
-                    error(
-                        common,
-                        1,
-                        0,
-                        &format!(
-                            "{}: XRE parsing failed: \
-                             input contains only whitespace or comments",
-                            common.input_filename
-                        ),
-                    );
-                }
-                break;
-            }
-            if first_line.is_none() {
-                first_line = Some(line.clone());
-            }
-            // Skip leading '\n', '\r' and ' ' (C: pointer-walk over exp).
-            let exp = line.trim_start_matches(['\n', '\r', ' ']).to_string();
-            line_count += 1;
-            if exp.is_empty() {
-                verbose_print(
-                    common,
-                    &format!("Skipping whitespace expression #{}", line_count),
-                );
-                continue;
-            }
-            transducer_n += 1;
-            let _ = transducer_n; // C++ counts but never reads it
-            verbose_print(common, &format!("Compiling expression {}\n", line_count));
-            let compiled = comp.compile(&exp);
-            // (the C wraps compile in try/catch on HfstException calling
-            // hfst_error_at_line; the Rust path panics rather than throwing,
-            // so the catch arm is not reproduced here.)
-            let Some(mut compiled) = compiled else {
-                if !comp.contained_only_comments() {
-                    hfst_error_at_line(
-                        common,
-                        1,
-                        0,
-                        &common.input_filename,
-                        line_count,
-                        "XRE parsing failed\n",
-                    );
-                }
-                continue;
-            };
-            input_contains_only_whitespace_or_comments = false;
-
-            if options.disjunct_expressions {
-                if let Err(e) = disjunction.disjunct(&compiled, options.harmonize) {
-                    error(common, 1, 0, &format!("{e}"));
-                    return 1;
-                }
-            } else {
-                hfst_set_name(&mut compiled, "?", "xre");
-                if let Err(e) = redirect_converting(outstream, &mut compiled) {
-                    error(common, 1, 0, &format!("{e}"));
-                    return 1;
-                }
-            }
-            // C: delete compiled; -> owned, drops here.
+        Separation::Semicolons
+    };
+    let mut each = |event: RegexpEvent<B>| match event {
+        RegexpEvent::Progress(message) => {
+            verbose_print(common, &message);
+            Ok(())
+        }
+        RegexpEvent::Compiled(t) => outstream.write_converted(&t),
+    };
+    let compiled = compile_regexps(
+        &mut comp,
+        input,
+        separation,
+        (options.disjunct_expressions, options.harmonize),
+        &mut each,
+    );
+    match compiled {
+        Ok(()) => 0,
+        Err(e @ RegexpError::LineFailed { line }) => {
+            hfst_error_at_line(common, 1, 0, &common.input_filename, line, &e.to_string());
+            1
+        }
+        Err(e) => {
+            error(common, 1, 0, &e.to_string());
+            1
         }
     }
-
-    if options.disjunct_expressions {
-        // Both branches of the C++ if/else set the same name.
-        hfst_set_name(&mut disjunction, "?", "xre");
-        if let Err(e) = redirect_converting(outstream, &mut disjunction) {
-            error(common, 1, 0, &format!("{e}"));
-            return 1;
-        }
-    }
-    // C: free(line); free(first_line); -> owned String/Option, drop here.
-    drop(first_line);
-    0
 }
 
 // [spec:hfst:def:hfst-regexp2fst.main-fn]
@@ -395,7 +269,6 @@ pub(super) fn execute(args: Vec<String>) -> ToolResult {
     let common = hfst_set_program_name(&argv0, "0.2", "Regexp2Fst");
     let (common, args) = cli::parse::<Args>(common, args)?;
     let mut options = Options {
-        epsilonname: args.epsilon.clone(),
         disjunct_expressions: args.disjunct,
         // Line separation is the default; only '-S' as the last of the pair
         // turns it off.

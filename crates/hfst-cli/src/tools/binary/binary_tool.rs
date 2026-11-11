@@ -5,10 +5,11 @@
 
 use crate::cli::{self, BinaryIo, CommonArgs, ToolArgs, ToolResult};
 use crate::globals::CommonOptions;
-use crate::hfst_commandline::{hfst_set_program_name, hfst_strformat, verbose_print, warning};
+use crate::hfst_commandline::{hfst_set_program_name, verbose_print, warning};
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_output_stream::HfstOutputStream;
 use hfst::hfst_transducer::HfstTransducer;
+use hfst::tools::format::format_description;
 
 /// hfst-binary-tool's command line. The skeleton tool adds nothing to the
 /// shared common + binary option groups.
@@ -113,8 +114,8 @@ fn binaryoperate_streams(
             (f, s) => {
                 eprintln!(
                     "hfst-binary-tool: the formats {} and {} are not compatible",
-                    hfst_strformat(f.get_type()),
-                    hfst_strformat(s.get_type())
+                    format_description(f.get_type()),
+                    format_description(s.get_type())
                 );
                 return 1;
             }
