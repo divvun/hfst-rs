@@ -945,6 +945,33 @@ impl_evidence (
         {impl_name target-impl, rule prediction-units.prefix}
         {impl_name target-impl, rule prediction-units.stem}
     )}
+    {id predict.walk, covered_rules (
+        prediction.bounded
+        prediction.complete
+        prediction.entry
+        prediction.flags
+        prediction.generator-decides
+        prediction.preview
+        prediction.realise
+        prediction.script-edges
+        prediction.session
+        prediction.state
+        prediction.unit
+        prediction.views
+    ), covered_claims (
+        {impl_name target-impl, rule prediction.bounded}
+        {impl_name target-impl, rule prediction.complete}
+        {impl_name target-impl, rule prediction.entry}
+        {impl_name target-impl, rule prediction.flags}
+        {impl_name target-impl, rule prediction.generator-decides}
+        {impl_name target-impl, rule prediction.preview}
+        {impl_name target-impl, rule prediction.realise}
+        {impl_name target-impl, rule prediction.script-edges}
+        {impl_name target-impl, rule prediction.session}
+        {impl_name target-impl, rule prediction.state}
+        {impl_name target-impl, rule prediction.unit}
+        {impl_name target-impl, rule prediction.views}
+    )}
     {id python.bindings, covered_rules (
         python.dhfst
         python.errors
