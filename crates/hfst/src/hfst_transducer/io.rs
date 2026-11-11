@@ -2,6 +2,8 @@
 
 use super::*;
 use crate::convert_transducer_format::ConversionFunctions;
+use crate::file_resolver::FileResolver;
+use std::sync::Arc;
 
 impl<B: Backend> HfstTransducer<B> {
     // -------------------------------------------------------------------------
@@ -133,27 +135,31 @@ impl<B: Backend> HfstTransducer<B> {
     // ([dec:hfst:monomorphic-backends]); its availability check was pure
     // capability gating and is a static fact of the instantiation.
     // [spec:hfst:req:javascript.diagnostics-as-data]
-    /// Compile the lexc file `filename`. What the compile reports is appended
-    /// to `diagnostics`; a file that does not compile is an error.
+    /// Compile the lexc file `filename`, which `files` supplies along with
+    /// any file its regexes name. What the compile reports is appended to
+    /// `diagnostics`; a file that does not compile is an error.
     pub fn read_lexc(
         filename: &str,
         verbose: bool,
+        files: Arc<dyn FileResolver>,
         diagnostics: &mut Vec<crate::diag::Diagnostic>,
     ) -> crate::error::Result<HfstTransducer<B>>
     where
         B: AlgebraBackend,
     {
-        HfstTransducer::read_lexc_ptr(filename, verbose, diagnostics)?
+        HfstTransducer::read_lexc_ptr(filename, verbose, files, diagnostics)?
             .ok_or_else(|| crate::err!(NotValidLexcFormat, filename))
     }
 
     // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.read-lexc-ptr-fn]
     // [spec:hfst:sem:hfst-transducer.hfst.hfst-transducer.read-lexc-ptr-fn]
     // [spec:hfst:req:javascript.diagnostics-as-data]
+    // [spec:hfst:req:embed.compile-files]
     /// As [`Self::read_lexc`], with `None` for a file that does not compile.
     pub fn read_lexc_ptr(
         filename: &str,
         verbose: bool,
+        files: Arc<dyn FileResolver>,
         diagnostics: &mut Vec<crate::diag::Diagnostic>,
     ) -> crate::error::Result<Option<HfstTransducer<B>>>
     where
@@ -162,12 +168,12 @@ impl<B: Backend> HfstTransducer<B> {
         // The C++ 'compiler.parse(filename.c_str())' reads the file via the
         // Flex/Bison lexer; the ported LexcCompiler walks an AST built from
         // source text instead, so read the file here and feed 'compile'.
-        // (The C++ 'new HfstTransducer()' placeholder that it then leaks was a
-        // raw-pointer artifact and is gone with the owned return.)
+        let source = files
+            .read_to_string(filename)
+            .map_err(|e| crate::err!(StreamNotReadable, format!("{filename}: {e}")))?;
         let mut compiler = crate::lexc::LexcCompiler::<B>::new();
         compiler.set_verbosity(verbose as u32);
-        let source = std::fs::read_to_string(filename)
-            .map_err(|_| crate::err!(StreamNotReadable, filename))?;
+        compiler.set_file_resolver(files);
         compiler.set_source_name(filename);
         let compiled = compiler.compile(&source);
         diagnostics.extend(compiler.take_diagnostics());

@@ -718,6 +718,11 @@ impl_evidence (
     ), covered_claims (
         {impl_name target-impl, rule embed.no-panic}
     )}
+    {id compile-surface.xfst-files, covered_rules (
+        embed.compile-files
+    ), covered_claims (
+        {impl_name target-impl, rule embed.compile-files}
+    )}
     {id dead-not-implemented-surface, covered_rules (
         xfst-cmd.no-dead-surface
     ), covered_claims (

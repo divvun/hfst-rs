@@ -4,6 +4,10 @@ use super::*;
 use crate::convert_transducer_format::ConversionFunctions;
 use crate::file_resolver::{TransducerFile, open_transducer_file};
 
+/// The name a binary save with no file name is held under before it joins
+/// the session output.
+const SESSION_OUTPUT: &str = "session output";
+
 impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     // [spec:hfst:def:xfst-compiler.hfst.xfst.xfst-compiler.convert-to-common-format-fn]
     // [spec:hfst:sem:xfst-compiler.hfst.xfst.xfst-compiler.convert-to-common-format-fn]
@@ -89,24 +93,33 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     }
 
     // [spec:hfst:req:javascript.named-file-resolver]
-    /// A binary transducer stream into the file `outfilename`, created
-    /// through the file resolver, or to standard output when no name is given.
-    fn open_output_stream(
-        &self,
+    // [spec:hfst:req:embed.compile-files]
+    /// Have `write` write a binary transducer stream of type `ty` into the
+    /// file `outfilename`, created through the file resolver, or into the
+    /// session output when no name is given.
+    fn save_binary(
+        &mut self,
         outfilename: &str,
         ty: ImplementationType,
-    ) -> CmdResult<HfstOutputStream> {
-        if outfilename.is_empty() {
-            return Ok(HfstOutputStream::new(ty, true)?);
-        }
-        let out = self.open_output_file(outfilename, false)?;
+        write: impl FnOnce(&Self, &mut HfstOutputStream) -> CmdResult,
+    ) -> CmdResult {
+        let held = crate::file_resolver::MemoryFiles::default();
+        let out = if outfilename.is_empty() {
+            held.create(SESSION_OUTPUT)?
+        } else {
+            self.open_output_file(outfilename, false)?
+        };
         // The stream writes a byte at a time, so it needs a buffer in front
         // of a file.
-        Ok(HfstOutputStream::from_writer(
-            Box::new(std::io::BufWriter::new(out)),
-            ty,
-            true,
-        )?)
+        let mut outstream =
+            HfstOutputStream::from_writer(Box::new(std::io::BufWriter::new(out)), ty, true)?;
+        write(self, &mut outstream)?;
+        outstream.close();
+        if let Some(bytes) = held.get(SESSION_OUTPUT) {
+            self.output.write_all(&bytes)?;
+            self.output.flush()?;
+        }
+        Ok(())
     }
 
     // @brief Read transducers from file \a infilename and either push
@@ -299,13 +312,14 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             return Err(self.unknown_definition(name));
         };
 
-        let mut outstream = self.open_output_stream(outfilename, B::TYPE)?;
-        let mut tmp = HfstTransducer::new_copy(self.net(def_ptr))?;
-        if self.variables["name-nets"] == "ON" {
-            tmp.set_name(name);
-        }
-        outstream.write(&tmp)?;
-        outstream.close();
+        self.save_binary(outfilename, B::TYPE, |c, outstream| {
+            let mut tmp = HfstTransducer::new_copy(c.net(def_ptr))?;
+            if c.variables["name-nets"] == "ON" {
+                tmp.set_name(name);
+            }
+            outstream.write(&tmp)?;
+            Ok(())
+        })?;
         self.prompt();
         Ok(())
     }
@@ -318,18 +332,14 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
             ));
         }
 
-        let mut outstream = self.open_output_stream(outfilename, B::TYPE)?;
-        let defs: Vec<(String, NetId)> = self
-            .definitions
-            .iter()
-            .map(|(k, v)| (k.to_string(), *v))
-            .collect();
-        for (name, def) in defs.iter() {
-            let mut tmp = HfstTransducer::new_copy(self.net(*def))?;
-            tmp.set_name(name);
-            outstream.write(&tmp)?;
-        }
-        outstream.close();
+        self.save_binary(outfilename, B::TYPE, |c, outstream| {
+            for (name, def) in &c.definitions {
+                let mut tmp = HfstTransducer::new_copy(c.net(*def))?;
+                tmp.set_name(name);
+                outstream.write(&tmp)?;
+            }
+            Ok(())
+        })?;
         self.prompt();
         Ok(())
     }
@@ -339,12 +349,12 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         let top = self.top()?;
 
         let top_type = self.net(top).get_type();
-        let mut outstream = self.open_output_stream(outfilename, top_type)?;
-        let ids: Vec<NetId> = self.stack.clone();
-        for t in ids.iter() {
-            outstream.write(self.net(*t))?;
-        }
-        outstream.close();
+        self.save_binary(outfilename, top_type, |c, outstream| {
+            for t in &c.stack {
+                outstream.write(c.net(*t))?;
+            }
+            Ok(())
+        })?;
         self.prompt();
         Ok(())
     }

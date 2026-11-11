@@ -101,8 +101,12 @@ fn valid_file_parse<B: AlgebraBackend>() -> Result<(), hfst::error::Error> {
 fn valid_file_read_lexc<B: AlgebraBackend>() -> Result<(), hfst::error::Error> {
     let animals = build_animals::<B>()?;
     let mut diagnostics = Vec::new();
-    let rlexc =
-        HfstTransducer::<B>::read_lexc(&fixture_path("test_lexc.lexc"), false, &mut diagnostics)?;
+    let rlexc = HfstTransducer::<B>::read_lexc(
+        &fixture_path("test_lexc.lexc"),
+        false,
+        hfst::file_resolver::default_resolver(),
+        &mut diagnostics,
+    )?;
     assert!(animals.compare_default(&rlexc)?);
     assert!(
         !diagnostics.iter().any(|d| d.is_error()),

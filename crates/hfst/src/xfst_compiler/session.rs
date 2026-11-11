@@ -97,7 +97,9 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
                 "system calls are disabled by restricted mode (--restricted-mode)",
             ));
         }
-        let rv = run_shell(command);
+        // [spec:hfst:req:embed.compile-files]
+        let (rv, printed) = run_shell_capturing(command);
+        self.output.write_all(&printed)?;
         if rv != 0 {
             return Err(CommandError::new(format!(
                 "system '{}' returned {}",
@@ -226,14 +228,31 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
 
 // Replacement for C system(3): run `command` through the shell and return its
 // exit code (or -1 if it could not be launched), so the callers' `!= 0` checks
-// keep working without libc.
+// keep working without libc. What it prints is discarded: a session writes
+// nothing to the process's standard output.
 pub(super) fn run_shell(command: &str) -> i32 {
     match std::process::Command::new("sh")
         .arg("-c")
         .arg(command)
+        .stdout(std::process::Stdio::null())
         .status()
     {
         Ok(status) => status.code().unwrap_or(-1),
         Err(_) => -1,
+    }
+}
+
+/// As [`run_shell`], returning what the command printed for the session
+/// output instead.
+fn run_shell_capturing(command: &str) -> (i32, Vec<u8>) {
+    match std::process::Command::new("sh")
+        .arg("-c")
+        .arg(command)
+        .stdin(std::process::Stdio::inherit())
+        .stderr(std::process::Stdio::inherit())
+        .output()
+    {
+        Ok(output) => (output.status.code().unwrap_or(-1), output.stdout),
+        Err(_) => (-1, Vec::new()),
     }
 }

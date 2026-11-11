@@ -115,6 +115,7 @@ fn read_lexc_returns_its_diagnostics() {
     let read = hfst::hfst_transducer::HfstTransducer::<StdVectorFst>::read_lexc(
         &path,
         false,
+        hfst::file_resolver::default_resolver(),
         &mut diagnostics,
     );
     assert!(read.is_err());
