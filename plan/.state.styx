@@ -1,6 +1,6 @@
 schema_version 7
 
-last_sync_at 2026-11-03T14:40:56.449371Z
+last_sync_at 2026-11-11T11:38:42.455952Z
 
 rule_versions (
     {id determinize-envelope.bounded-strategies, version 0}
@@ -26,6 +26,15 @@ rule_versions (
     {id dhfst.self-check, version 0}
     {id dhfst.source-model, version 0}
     {id dhfst.write, version 1}
+    {id embed.compile, version 0}
+    {id embed.compile-diagnostics, version 0}
+    {id embed.compile-files, version 0}
+    {id embed.no-panic, version 0}
+    {id embed.operations, version 0}
+    {id embed.tools, version 0}
+    {id embed.tools-in-library, version 0}
+    {id embed.transducer, version 0}
+    {id embed.writers, version 0}
     {id flag-elimination.reachable-product, version 0}
     {id flag-elimination.relation, version 0}
     {id flag-encode-symbol-tables.table-parity, version 0}
@@ -34,6 +43,10 @@ rule_versions (
     {id general-lookup-termination.no-cycle-count-termination, version 0}
     {id general-lookup-termination.non-progressing-cycle, version 0}
     {id general-lookup-termination.progress-resets-the-trap, version 0}
+    {id javascript.compile-errors, version 0}
+    {id javascript.compile-files, version 0}
+    {id javascript.compile-module, version 0}
+    {id javascript.compile-parity, version 0}
     {id javascript.dhfst, version 2}
     {id javascript.diagnostics-as-data, version 0}
     {id javascript.errors, version 1}
@@ -47,11 +60,12 @@ rule_versions (
     {id javascript.native-parity, version 2}
     {id javascript.no-host-traps, version 0}
     {id javascript.optimised-lookup, version 2}
-    {id javascript.packages, version 2}
+    {id javascript.packages, version 3}
     {id javascript.portable-build, version 1}
     {id javascript.read-only-module, version 0}
     {id javascript.tokenise, version 0}
     {id javascript.typed-surface, version 1}
+    {id javascript.version, version 0}
     {id javascript.xfst-output-sink, version 0}
     {id lookup-run-state.caller-owned-scratch, version 0}
     {id lookup-run-state.immutable-core, version 0}
@@ -62,6 +76,22 @@ rule_versions (
     {id ol-lookup-enumeration.no-internal-work-cap, version 0}
     {id ol-lookup-enumeration.out-of-alphabet-input, version 0}
     {id ol-lookup-enumeration.representation-independence, version 0}
+    {id python.compile, version 0}
+    {id python.compile-errors, version 0}
+    {id python.compile-parity, version 0}
+    {id python.dhfst, version 0}
+    {id python.errors, version 0}
+    {id python.load, version 1}
+    {id python.logging, version 0}
+    {id python.lookup, version 0}
+    {id python.module, version 0}
+    {id python.operations, version 0}
+    {id python.parity, version 0}
+    {id python.threads, version 0}
+    {id python.tokenise, version 0}
+    {id python.transducer, version 0}
+    {id python.typed, version 0}
+    {id python.writers, version 0}
     {id table-residency.single-copy-load, version 0}
     {id table-residency.untrusted-size-fields, version 0}
     {id table-residency.views-not-copies, version 0}
@@ -90,6 +120,7 @@ rule_versions (
     {id xfst-cmd.read-word-lists, version 0}
     {id xfst-cmd.replace-context-symbol, version 0}
     {id xfst-cmd.shell-cancel, version 0}
+    {id xfst-cmd.shell-cancel-foma, version 0}
     {id xfst-cmd.shell-complete-commands, version 0}
     {id xfst-cmd.shell-completion, version 0}
     {id xfst-cmd.shell-in-library, version 0}
@@ -122,6 +153,20 @@ derived_priorities (
     {id cli-residual-fixes, priority 0, derived_at 2026-08-21T21:18:14.374864Z}
     {id cli-timing-as-info, priority 0, derived_at 2026-09-15T19:46:58.963189Z}
     {id clippy-deny-gate, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
+    {id compile-surface.cli-logic, priority 1, derived_at 2026-11-11T11:38:42.455952Z}
+    {id compile-surface.embed-compile, priority 3, derived_at 2026-11-11T11:38:42.455952Z}
+    {id compile-surface.embed-transducer, priority 2, derived_at 2026-11-11T11:38:42.455952Z}
+    {id compile-surface.embed-writers, priority 3, derived_at 2026-11-11T11:38:42.455952Z}
+    {id compile-surface.no-panic, priority 1, derived_at 2026-11-11T11:38:42.455952Z}
+    {id compile-surface.python-compile, priority 3, derived_at 2026-11-11T11:38:42.455952Z}
+    {id compile-surface.python-parity, priority 3, derived_at 2026-11-11T11:38:42.455952Z}
+    {id compile-surface.python-transducer, priority 3, derived_at 2026-11-11T11:38:42.455952Z}
+    {id compile-surface.python-writers, priority 3, derived_at 2026-11-11T11:38:42.455952Z}
+    {id compile-surface.release, priority 3, derived_at 2026-11-11T11:38:42.455952Z}
+    {id compile-surface.spec, priority 0, derived_at 2026-11-11T11:38:42.455952Z}
+    {id compile-surface.wasm-compile, priority 3, derived_at 2026-11-11T11:38:42.455952Z}
+    {id compile-surface.wasm-parity, priority 3, derived_at 2026-11-11T11:38:42.455952Z}
+    {id compile-surface.xfst-files, priority 1, derived_at 2026-11-11T11:38:42.455952Z}
     {id compose-facade-nativize, priority 3, derived_at 2026-08-18T11:19:03.814367Z}
     {id compose-intersect-product-memory, priority 2, derived_at 2026-08-21T21:18:14.374864Z}
     {id conversion-churn, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
@@ -220,6 +265,13 @@ derived_priorities (
     {id pmatch-quotient-subtract, priority 0, derived_at 2026-10-06T21:03:19.004443Z}
     {id pmatch-shared-core, priority 2, derived_at 2026-09-15T19:46:58.963189Z}
     {id pmatch2fst-syntax-error-exit-zero, priority 0, derived_at 2026-10-06T21:03:19.004443Z}
+    {id python.bindings, priority 2, derived_at 2026-11-11T11:38:42.455952Z}
+    {id python.embed, priority 1, derived_at 2026-11-11T11:38:42.455952Z}
+    {id python.package, priority 3, derived_at 2026-11-11T11:38:42.455952Z}
+    {id python.parity, priority 3, derived_at 2026-11-11T11:38:42.455952Z}
+    {id python.spec, priority 0, derived_at 2026-11-11T11:38:42.455952Z}
+    {id python.versions, priority 3, derived_at 2026-11-11T11:38:42.455952Z}
+    {id python.wheel-contents, priority 3, derived_at 2026-11-11T11:38:42.455952Z}
     {id quality-burndown.alias-sweep, priority 2, derived_at 2026-10-06T21:03:19.004443Z}
     {id quality-burndown.cli-api, priority 0, derived_at 2026-10-06T21:03:19.004443Z}
     {id quality-burndown.lib-api, priority 0, derived_at 2026-10-06T21:03:19.004443Z}
@@ -312,6 +364,7 @@ derived_priorities (
     {id xfst-result-flow, priority 0, derived_at 2026-10-06T21:03:19.004443Z}
     {id xfst-shell.alias, priority 1, derived_at 2026-11-03T11:26:50.047582Z}
     {id xfst-shell.cancel.design, priority 0, derived_at 2026-11-03T11:26:50.047582Z}
+    {id xfst-shell.cancel.foma, priority 3, derived_at 2026-11-11T11:38:42.455952Z}
     {id xfst-shell.cancel.interrupt, priority 2, derived_at 2026-11-03T11:26:50.047582Z}
     {id xfst-shell.cancel.transactional, priority 0, derived_at 2026-11-03T11:26:50.047582Z}
     {id xfst-shell.complete-commands, priority 1, derived_at 2026-11-03T11:26:50.047582Z}
@@ -837,6 +890,43 @@ impl_evidence (
     ), rule_versions_seen (
         {id lookup-run-state.pmatch-shared-core, version 0}
     )}
+    {id python.bindings, covered_rules (
+        python.dhfst
+        python.errors
+        python.load
+        python.logging
+        python.lookup
+        python.threads
+        python.tokenise
+    ), covered_claims (
+        {impl_name target-impl, rule python.dhfst}
+        {impl_name target-impl, rule python.errors}
+        {impl_name target-impl, rule python.load}
+        {impl_name target-impl, rule python.logging}
+        {impl_name target-impl, rule python.lookup}
+        {impl_name target-impl, rule python.threads}
+        {impl_name target-impl, rule python.tokenise}
+    )}
+    {id python.package, covered_rules (
+        python.module
+        python.tokenise
+        python.typed
+    ), covered_claims (
+        {impl_name py-impl, rule python.module}
+        {impl_name py-impl, rule python.tokenise}
+        {impl_name py-impl, rule python.typed}
+    )}
+    {id python.parity, covered_rules (
+        python.parity
+    ), covered_claims (
+        {impl_name target-impl, rule python.parity}
+    )}
+    {id python.versions, covered_rules (
+        javascript.version
+    ), covered_claims (
+        {impl_name js-impl, rule javascript.version}
+        {impl_name target-impl, rule javascript.version}
+    )}
     {id replace-context-any-symbol, covered_rules (
         xfst-cmd.replace-context-symbol
     ), covered_claims (
@@ -912,7 +1002,6 @@ impl_evidence (
         {impl_name target-impl, rule javascript.portable-build}
     ), rule_versions_seen (
         {id javascript.init, version 1}
-        {id javascript.packages, version 2}
         {id javascript.portable-build, version 1}
         {id javascript.typed-surface, version 1}
     )}
@@ -1064,6 +1153,11 @@ impl_evidence (
     ), rule_versions_seen (
         {id xfst-cmd.alias, version 0}
     )}
+    {id xfst-shell.cancel.foma, covered_rules (
+        xfst-cmd.shell-cancel-foma
+    ), covered_claims (
+        {impl_name target-impl, rule xfst-cmd.shell-cancel-foma}
+    )}
     {id xfst-shell.cancel.interrupt, covered_rules (
         xfst-cmd.shell-cancel
     ), covered_claims (
@@ -1180,47 +1274,5 @@ impl_evidence (
         {impl_name target-impl, rule xre-finalization.root-optimize}
     ), rule_versions_seen (
         {id xre-finalization.root-optimize, version 0}
-    )}
-    {id xfst-shell.cancel.foma, covered_rules (
-        xfst-cmd.shell-cancel-foma
-    ), covered_claims (
-        {impl_name target-impl, rule xfst-cmd.shell-cancel-foma}
-    )}
-    {id python.bindings, covered_rules (
-        python.dhfst
-        python.errors
-        python.load
-        python.logging
-        python.lookup
-        python.threads
-        python.tokenise
-    ), covered_claims (
-        {impl_name target-impl, rule python.dhfst}
-        {impl_name target-impl, rule python.errors}
-        {impl_name target-impl, rule python.load}
-        {impl_name target-impl, rule python.logging}
-        {impl_name target-impl, rule python.lookup}
-        {impl_name target-impl, rule python.threads}
-        {impl_name target-impl, rule python.tokenise}
-    )}
-    {id python.package, covered_rules (
-        python.module
-        python.tokenise
-        python.typed
-    ), covered_claims (
-        {impl_name py-impl, rule python.module}
-        {impl_name py-impl, rule python.tokenise}
-        {impl_name py-impl, rule python.typed}
-    )}
-    {id python.parity, covered_rules (
-        python.parity
-    ), covered_claims (
-        {impl_name target-impl, rule python.parity}
-    )}
-    {id python.versions, covered_rules (
-        javascript.version
-    ), covered_claims (
-        {impl_name js-impl, rule javascript.version}
-        {impl_name target-impl, rule javascript.version}
     )}
 )
