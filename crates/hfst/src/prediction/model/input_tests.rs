@@ -67,3 +67,14 @@ fn a_block_of_two_surface_forms_is_refused() {
     assert!(error.to_string().contains("line 2"), "{error}");
     assert!(error.to_string().contains("blank line"), "{error}");
 }
+
+// [spec:hfst:req:prediction-model.input/test]
+#[test]
+fn readings_outside_the_alphabet_fall_back_to_lookup() {
+    let generator = crate::prediction::walk::fixtures_test::regex("a ?");
+    let accepts = super::generator_accepts(&generator);
+    assert!(accepts("aa"));
+    assert!(accepts("ax"));
+    assert!(!accepts("a"));
+    assert!(!accepts("aax"));
+}

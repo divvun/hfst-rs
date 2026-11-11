@@ -3,6 +3,7 @@ use std::collections::HashMap;
 
 use crate::error::Result;
 use crate::lookup_state::LookupState;
+use crate::prediction::walk::Acceptor;
 use crate::transducer::{Transducer, TransducerTablesInterface};
 
 /// One token's block of hfst-lookup output.
@@ -74,23 +75,32 @@ fn reading(number: usize, line: &str) -> Result<(&str, &str)> {
 }
 
 /// The most answers [`generator_accepts`] keeps. Analysed text repeats its
-/// readings, and a lookup on a large generator can take milliseconds.
+/// readings.
 const ANSWERS_KEPT: usize = 1 << 20;
 
 /// Whether `generator` generates something from an analysis, for
-/// [`super::ModelBuilder::new`].
+/// [`super::ModelBuilder::new`]. The generator is walked over the
+/// analysis's symbols, which stops at the first final configuration. A
+/// lookup decides only what the walk cannot: an analysis with a character
+/// that begins none of the generator's input symbols, which lookup may
+/// still read through an identity or unknown arc, and a generator with a
+/// default symbol.
 // [spec:hfst:req:prediction-model.input]
 pub fn generator_accepts<'g, T>(generator: &'g Transducer<T>) -> Box<dyn Fn(&str) -> bool + 'g>
 where
     T: TransducerTablesInterface + 'g,
 {
+    let acceptor = Acceptor::new(generator);
     let state = RefCell::new(LookupState::new(generator));
     let answers: RefCell<HashMap<String, bool>> = RefCell::new(HashMap::new());
     Box::new(move |analysis| {
         if let Some(&accepted) = answers.borrow().get(analysis) {
             return accepted;
         }
-        let accepted = !state.borrow_mut().lookup_fd(analysis, 1, 0.0).is_empty();
+        let accepted = match acceptor.tokenize(analysis) {
+            Some(symbols) if acceptor.reads_like_lookup() => acceptor.accepts(&symbols),
+            Some(_) | None => !state.borrow_mut().lookup_fd(analysis, 1, 0.0).is_empty(),
+        };
         let mut answers = answers.borrow_mut();
         if answers.len() < ANSWERS_KEPT {
             answers.insert(analysis.to_owned(), accepted);

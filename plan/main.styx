@@ -9451,6 +9451,22 @@ children (
                 title "Check that the generator accepts a reading with a walk that stops at the first final configuration, in place of a full lookup that enumerates every surface form: the model builder spends about 10 ms per reading on lang-kal's generator, too slow for corpora of millions of words"
                 kind @perf
                 deps (predict.walk predict.model)
+                sealed true
+                log (
+                    {
+                        at 2026-11-11T16:41:19.690838Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
+
+                    {
+                        at 2026-11-11T21:30:15.94195Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan complete)"
+                    }
+                )
             }
 
             {

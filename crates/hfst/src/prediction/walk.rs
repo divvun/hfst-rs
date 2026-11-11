@@ -2,6 +2,7 @@
 //! progress, drawn by the language's unit grammar, and the surface forms of a
 //! complete word (`docs/spec/prediction.md`).
 
+mod accept;
 mod hash;
 mod machine;
 mod pass;
@@ -9,12 +10,15 @@ mod reach;
 mod runs;
 
 #[cfg(test)]
+mod accept_tests;
+#[cfg(test)]
 pub(super) mod fixtures_test;
 #[cfg(test)]
 mod tests;
 
 use std::collections::{BTreeMap, HashMap};
 
+pub use accept::Acceptor;
 pub use machine::Configuration;
 pub(super) use machine::Machine;
 pub(super) use pass::{Live, Pass};

@@ -21,7 +21,7 @@ use super::reach::{Reach, Reaches, Role, Want};
 use crate::hfst_flag_diacritics::{FdOperation, FdValue};
 use crate::transducer::{SymbolNumber, TransducerTablesInterface, TransitionTableIndex, Weight};
 
-type FlagsId = usize;
+pub(in crate::prediction) type FlagsId = usize;
 type OutputId = usize;
 
 const EMPTY_OUTPUT: OutputId = 0;
@@ -164,14 +164,14 @@ impl Outputs {
 /// Flag values, each set of them interned once, and the result of each flag
 /// diacritic on each.
 #[derive(Default)]
-struct Flags {
+pub(in crate::prediction) struct Flags {
     values: Vec<Box<[FdValue]>>,
     ids: IdMap<Box<[FdValue]>, FlagsId>,
     applied: IdMap<(FlagsId, SymbolNumber), Option<FlagsId>>,
 }
 
 impl Flags {
-    fn intern(&mut self, values: Box<[FdValue]>) -> FlagsId {
+    pub(in crate::prediction) fn intern(&mut self, values: Box<[FdValue]>) -> FlagsId {
         if let Some(&id) = self.ids.get(&values) {
             return id;
         }
@@ -183,7 +183,7 @@ impl Flags {
     /// The flags after reading `input`: unchanged for epsilon, and for a
     /// flag diacritic its result, nothing when it fails.
     // [spec:hfst:req:prediction.flags]
-    fn after<T: TransducerTablesInterface>(
+    pub(in crate::prediction) fn after<T: TransducerTablesInterface>(
         &mut self,
         machine: &Machine<'_, T>,
         flags: FlagsId,

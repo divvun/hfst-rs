@@ -87,6 +87,29 @@ pub(in crate::prediction) fn final_weights() -> Transducer {
         .expect("the transducer converts")
 }
 
+/// A transducer from arcs given as source, target, input and output, and
+/// the states that are final.
+pub(in crate::prediction) fn arcs(arcs: &[(u32, u32, &str, &str)], finals: &[u32]) -> Transducer {
+    let _turn = compiling();
+    let mut net = HfstBasicTransducer::new();
+    net.add_state(0);
+    for &(source, target, input, output) in arcs {
+        let arc = HfstBasicTransition::new_symbols(
+            target,
+            input.into(),
+            output.into(),
+            0.0,
+            net.coder_mut(),
+        );
+        net.add_transition(source, &arc, true);
+    }
+    for &state in finals {
+        net.set_final_weight(state, &0.0);
+    }
+    ConversionFunctions::hfst_basic_transducer_to_hfst_ol(&net, true, "", None)
+        .expect("the transducer converts")
+}
+
 pub(in crate::prediction) fn grammar(text: &str) -> UnitGrammar {
     UnitGrammar::from_toml(text.as_bytes()).expect("the test grammar reads")
 }
