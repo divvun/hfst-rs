@@ -7,9 +7,8 @@ use crate::globals::CommonOptions;
 use crate::hfst_commandline::{error, hfst_set_program_name};
 use crate::unary_ops::{UnaryOpSpec, UnaryToolOp, run_unary_tool};
 use hfst::backend::AlgebraBackend;
-use hfst::hfst_data_types::PushType;
 use hfst::hfst_transducer::HfstTransducer;
-use std::borrow::Cow;
+use hfst::tools::operations::{self, PushDirection};
 
 /// hfst-push-weights's command line.
 // [spec:hfst:def:hfst-push-weights.parse-options-fn]
@@ -112,28 +111,17 @@ impl UnaryToolOp for PushWeightsOp {
         " "
     }
 
-    fn name_op(&self) -> Option<Cow<'_, str>> {
-        Some(Cow::Borrowed(if self.push_initial {
-            "push-weights-i"
-        } else {
-            "push-weights-f"
-        }))
-    }
-
-    fn formula(&self) -> Option<Cow<'_, str>> {
-        Some(Cow::Borrowed("Id"))
-    }
-
     fn apply<B: AlgebraBackend>(
         &mut self,
         _common: &CommonOptions,
         t: &mut HfstTransducer<B>,
     ) -> hfst::error::Result<()> {
-        if self.push_initial {
-            t.push_weights(PushType::TO_INITIAL_STATE).map(|_| ())
+        let direction = if self.push_initial {
+            PushDirection::Initial
         } else {
-            t.push_weights(PushType::TO_FINAL_STATE).map(|_| ())
-        }
+            PushDirection::Final
+        };
+        operations::push_weights(t, direction)
     }
 }
 

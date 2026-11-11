@@ -11,8 +11,21 @@ publish = false
 
 [dependencies]
 divvun-fst = { workspace = true }
-# Without default features, so nothing built over it carries the foma backend.
+# Without default features, so the read-only surface carries no foma backend.
 hfst = { workspace = true }
+# The tropical backend's type, which the compile feature names.
+hfst-openfst = { workspace = true, optional = true }
+tracing = { version = "0.1.44", optional = true }
+
+[features]
+# Compiling, transforming, inspecting and writing transducers of every type
+# the library reads, foma included. Off by default, so a binding that only
+# reads and runs, as crates/hfst-wasm does, links none of it.
+compile = ["hfst/foma", "dep:hfst-openfst", "dep:tracing"]
+# Packing a BHFST speller. The library's packer needs box-format's writer,
+# which does not build for wasm32-unknown-unknown at the revision pinned, so
+# it is a feature of its own.
+bhfst = ["compile", "hfst/bhfst"]
 
 [dev-dependencies]
 # The tests build their transducers, tokeniser and DHFST files with the

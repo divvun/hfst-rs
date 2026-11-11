@@ -4,13 +4,13 @@
 //! crate::binary_ops and the option layer in crate::cli.
 
 use crate::binary_ops::{
-    BinaryOpSpec, BinaryToolOp, LoopStyle, PairContext, RetryPolicy, run_binary_streams_tool,
+    BinaryOpSpec, FlagHarmonizing, FlagHarmonizingOp, LoopStyle, RetryPolicy,
+    run_binary_streams_tool,
 };
 use crate::cli::{self, BinaryIo, CommonArgs, ToolArgs, ToolResult};
 use crate::globals::CommonOptions;
-use crate::hfst_commandline::{error, hfst_set_program_name, warning};
-use hfst::backend::AlgebraBackend;
-use hfst::hfst_transducer::{FlagDiacriticOverlay, HfstTransducer};
+use crate::hfst_commandline::hfst_set_program_name;
+use hfst::tools::operations::BinaryOptions;
 
 /// hfst-conjunct's command line.
 // [spec:hfst:req:cli.arg-parse]
@@ -56,8 +56,6 @@ const SPEC: BinaryOpSpec = BinaryOpSpec {
     mismatch_noun: "conjunction",
     could_not_verb: "conjunct",
     could_not_noun: "conjunction",
-    name_op: "intersect",
-    formula: "\u{2229}",
     verbose_begin: |firstname, secondname| format!("Intersecting {} and {}", firstname, secondname),
     loop_style: LoopStyle::Standard,
     retry: RetryPolicy::AnyError,
@@ -72,67 +70,12 @@ pub(in crate::tools) fn execute(args: Vec<String>) -> ToolResult {
 
     let common = hfst_set_program_name(&argv0, "0.1", "HfstConjunct");
     let (common, args) = cli::parse::<Args>(common, args)?;
-    let mut op = ConjunctOp {
-        harmonize: !args.do_not_harmonize,
-        harmonize_flags: args.harmonize_flags,
-        flag_overlay: None,
+    let mut op = FlagHarmonizingOp {
+        kind: FlagHarmonizing::Conjunct,
+        options: BinaryOptions {
+            harmonize: !args.do_not_harmonize,
+            harmonize_flags: args.harmonize_flags,
+        },
     };
     cli::from_code(run_binary_streams_tool(&common, &SPEC, &mut op))
-}
-
-struct ConjunctOp {
-    harmonize: bool,
-    harmonize_flags: bool,
-    flag_overlay: Option<FlagDiacriticOverlay>,
-}
-
-impl BinaryToolOp for ConjunctOp {
-    // [spec:hfst:req:virtual-flag-algebra.intersection]
-    fn pre_apply<B: AlgebraBackend>(
-        &mut self,
-        common: &CommonOptions,
-        first: &mut HfstTransducer<B>,
-        second: &mut HfstTransducer<B>,
-        _ctx: &PairContext<'_>,
-    ) -> Result<(), i32> {
-        self.flag_overlay = None;
-        if first.has_flag_diacritics() || second.has_flag_diacritics() {
-            if !self.harmonize_flags {
-                if !common.silent {
-                    warning(
-                        common,
-                        0,
-                        0,
-                        "At least one of the argumentes contains flag diacritics. Use -F to harmonize them.",
-                    );
-                }
-            } else {
-                let prepared = if B::SUPPORTS_VIRTUAL_FLAG_INTERSECTION {
-                    first
-                        .prepare_flag_diacritics_for_operation(second)
-                        .map(Some)
-                } else {
-                    first.harmonize_flag_diacritics(second, true).map(|()| None)
-                };
-                match prepared {
-                    Ok(overlay) => self.flag_overlay = overlay,
-                    Err(e) => {
-                        error(common, 1, 0, &format!("{e}"));
-                        return Err(1);
-                    }
-                }
-            }
-        }
-        Ok(())
-    }
-
-    fn apply<B: AlgebraBackend>(
-        &mut self,
-        first: &mut HfstTransducer<B>,
-        second: &HfstTransducer<B>,
-    ) -> hfst::error::Result<()> {
-        first
-            .intersect_with_flag_overlay(second, self.harmonize, self.flag_overlay.as_ref())
-            .map(|_| ())
-    }
 }

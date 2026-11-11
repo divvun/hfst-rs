@@ -5,6 +5,12 @@ use std::process::{Command, Stdio};
 
 /// Run `hfst <args>` with `stdin`, returning (success, stdout).
 pub fn run(args: &[&str], stdin: &[u8]) -> (bool, String) {
+    let (ok, out) = run_bytes(args, stdin);
+    (ok, String::from_utf8_lossy(&out).into_owned())
+}
+
+/// Run `hfst <args>` with `stdin`, returning (success, the bytes of stdout).
+pub fn run_bytes(args: &[&str], stdin: &[u8]) -> (bool, Vec<u8>) {
     let mut child = Command::new(env!("CARGO_BIN_EXE_hfst"))
         .args(args)
         .stdin(Stdio::piped())
@@ -19,8 +25,5 @@ pub fn run(args: &[&str], stdin: &[u8]) -> (bool, String) {
         .write_all(stdin)
         .expect("write stdin");
     let out = child.wait_with_output().expect("wait for hfst");
-    (
-        out.status.success(),
-        String::from_utf8_lossy(&out.stdout).into_owned(),
-    )
+    (out.status.success(), out.stdout)
 }

@@ -4,7 +4,8 @@
 //! crate::binary_ops and the option layer in crate::cli.
 
 use crate::binary_ops::{
-    BinaryOpSpec, BinaryToolOp, LoopStyle, PairContext, RetryPolicy, run_binary_streams_tool,
+    ApplyError, BinaryOpSpec, BinaryToolOp, LoopStyle, RetryPolicy, print_binary_warning,
+    run_binary_streams_tool,
 };
 use crate::cli::{self, BinaryIo, CommonArgs, ToolArgs, ToolResult};
 use crate::globals::CommonOptions;
@@ -12,7 +13,8 @@ use crate::hfst_commandline::{error, hfst_set_program_name, warning};
 use crate::memory_limit::{self, LimitSource, ResolvedMemoryLimit};
 use hfst::backend::AlgebraBackend;
 use hfst::hfst_data_types::ImplementationType;
-use hfst::hfst_transducer::{EngineConfig, FlagDiacriticComposeOverlay, HfstTransducer};
+use hfst::hfst_transducer::HfstTransducer;
+use hfst::tools::operations::{self, BinaryOptions, ComposeOptions, Operand};
 use std::io::Write;
 
 /// hfst-compose's command line.
@@ -147,8 +149,6 @@ const SPEC: BinaryOpSpec = BinaryOpSpec {
     mismatch_noun: "composition",
     could_not_verb: "compose",
     could_not_noun: "composition",
-    name_op: "compose",
-    formula: "\u{2218}",
     verbose_begin: |firstname, secondname| format!("Composing {} and {}", firstname, secondname),
     loop_style: LoopStyle::Compose,
     retry: RetryPolicy::TypeMismatchOnly,
@@ -175,28 +175,24 @@ pub(in crate::tools) fn execute(args: Vec<String>) -> ToolResult {
         }
     };
     let mut op = ComposeOp {
-        harmonize: !args.do_not_harmonize,
-        harmonize_flags: args.harmonize_flags,
-        flag_overlay: None,
+        options: ComposeOptions {
+            binary: BinaryOptions {
+                harmonize: !args.do_not_harmonize,
+                harmonize_flags: args.harmonize_flags,
+            },
+            xerox_composition: args.xerox()?,
+            flag_is_epsilon: args.flag_is_epsilon()?,
+        },
         memory_limit,
         memory_policy_reported: false,
-        cfg: EngineConfig {
-            flag_is_epsilon_in_composition: args.flag_is_epsilon()?,
-            xerox_composition: args.xerox()?,
-            compose_memory_limit_bytes: Some(memory_limit.allowance_bytes),
-            ..EngineConfig::default()
-        },
     };
     cli::from_code(run_binary_streams_tool(&common, &SPEC, &mut op))
 }
 
 struct ComposeOp {
-    harmonize: bool,
-    harmonize_flags: bool,
-    flag_overlay: Option<FlagDiacriticComposeOverlay>,
+    options: ComposeOptions,
     memory_limit: ResolvedMemoryLimit,
     memory_policy_reported: bool,
-    cfg: EngineConfig,
 }
 
 fn supports_compose_memory_limit(implementation: ImplementationType) -> bool {
@@ -267,62 +263,22 @@ impl ComposeOp {
 }
 
 impl BinaryToolOp for ComposeOp {
-    // The harmonize-flags gate. (The C's catch-TransducerTypeMismatch,
-    // convert-and-retry arm is gone: operands share a backend by construction
-    // at this point — the driver converted at the stream boundary.)
-    fn pre_apply<B: AlgebraBackend>(
+    fn apply<B: AlgebraBackend>(
         &mut self,
         common: &CommonOptions,
         first: &mut HfstTransducer<B>,
-        second: &mut HfstTransducer<B>,
-        _ctx: &PairContext<'_>,
-    ) -> Result<(), i32> {
-        self.flag_overlay = None;
-        self.validate_and_report_memory_policy(common, <B as hfst::backend::Backend>::TYPE)?;
-        let has_flags = first.has_flag_diacritics() || second.has_flag_diacritics();
-        if has_flags {
-            if !self.harmonize_flags {
-                if !common.silent {
-                    warning(
-                        common,
-                        0,
-                        0,
-                        "At least one of the arguments contains flag diacritics. Use -F to harmonize them.",
-                    );
-                }
-            } else {
-                let prepared = if B::SUPPORTS_VIRTUAL_FLAG_COMPOSE {
-                    first
-                        .prepare_flag_diacritics_for_operation(second)
-                        .map(Some)
-                } else {
-                    first.harmonize_flag_diacritics(second, true).map(|()| None)
-                };
-                match prepared {
-                    Ok(overlay) => self.flag_overlay = overlay,
-                    Err(e) => {
-                        error(common, 1, 0, &format!("{e}"));
-                        return Err(1);
-                    }
-                }
-            }
-        }
+        second: &mut Operand<'_, B>,
+    ) -> Result<(), ApplyError> {
+        self.validate_and_report_memory_policy(common, <B as hfst::backend::Backend>::TYPE)
+            .map_err(ApplyError::Reported)?;
+        operations::compose(
+            first,
+            second,
+            &self.options,
+            Some(self.memory_limit.allowance_bytes),
+            &mut |w| print_binary_warning(common, w),
+        )?;
         Ok(())
-    }
-
-    fn apply<B: AlgebraBackend>(
-        &mut self,
-        first: &mut HfstTransducer<B>,
-        second: &HfstTransducer<B>,
-    ) -> hfst::error::Result<()> {
-        first
-            .compose_with_config_and_flag_overlay(
-                second,
-                self.harmonize,
-                &self.cfg,
-                self.flag_overlay.as_ref(),
-            )
-            .map(|_| ())
     }
 }
 

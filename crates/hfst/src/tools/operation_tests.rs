@@ -4,7 +4,7 @@
 use super::conversion::{ConversionNote, conversion_needed, convert_to_common_type};
 use super::kill_paths::{kill_paths, kill_symbols};
 use super::metadata::{hfst_set_formula, hfst_set_name, hfst_set_name_maybe_truncate};
-use super::reweight::{Reweighting, TsvError, name_reweighted, weight_function};
+use super::reweight::{Reweighting, TsvError, finish_reweighted, weight_function};
 use super::test_support::{is_language, paths_of, read_all, regex, stream_bytes};
 use crate::hfst_data_types::ImplementationType::{
     FOMA_TYPE, HFST_OL_TYPE, HFST_OLW_TYPE, TROPICAL_OPENFST_TYPE,
@@ -146,6 +146,6 @@ fn reweight_tsv_rules_carry_over() {
     only_a.apply(&mut t).expect("reweighted");
     // A symbol selects arcs only: every final weight is reweighted too.
     assert_eq!(paths_of(&t), ["a:a 21", "b:b 12"]);
-    name_reweighted(&mut t);
+    finish_reweighted(&mut t).expect("finished");
     assert_eq!(t.get_name(), "reweight(UNNAMED)");
 }

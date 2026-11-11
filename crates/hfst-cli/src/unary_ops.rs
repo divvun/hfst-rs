@@ -11,12 +11,11 @@ use hfst::backend::AlgebraBackend;
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_output_stream::HfstOutputStream;
 use hfst::hfst_transducer::HfstTransducer;
-use std::borrow::Cow;
 use std::io::Write;
 
 use crate::globals::CommonOptions;
 use crate::hfst_commandline::{error, is_input_stream_in_ol_format, verbose_print};
-use hfst::tools::metadata::{hfst_get_name, hfst_set_formula_unary, hfst_set_name_unary};
+use hfst::tools::metadata::hfst_get_name;
 
 /// The per-tool constants of the shared scaffolding.
 pub struct UnaryOpSpec {
@@ -29,10 +28,10 @@ pub struct UnaryOpSpec {
 
 /// The tool's operation, generic over the algebra backend: the driver
 /// dispatches ONCE per stream read ([dec:hfst:monomorphic-backends]) and runs
-/// 'apply' inside the monomorphic body. The message/metadata methods have
-/// access to the op's parsed-option state because several upstream tools
-/// derive their verbose verb and name stamp from options (push-weights'
-/// initial/final, repeat's bounds, ...).
+/// 'apply' inside the monomorphic body. 'apply' calls the library's operation
+/// (`hfst::tools::operations`), which also names the result. The message
+/// methods have the op's parsed-option state because several upstream tools
+/// derive their verbose verb from options (push-weights' initial/final, ...).
 pub trait UnaryToolOp {
     /// Start of the per-transducer verbose line, e.g. "Minimizing cat.hfst";
     /// the driver appends "...\n" for the first transducer and
@@ -43,16 +42,6 @@ pub trait UnaryToolOp {
     /// verbose line. Upstream drifts between "...2" and "... 2" per tool.
     fn verbose_sep(&self) -> &'static str {
         ""
-    }
-
-    /// Op string for hfst_set_name_unary; None skips the name stamp.
-    fn name_op(&self) -> Option<Cow<'_, str>> {
-        None
-    }
-
-    /// Symbol for hfst_set_formula_unary; None skips the formula stamp.
-    fn formula(&self) -> Option<Cow<'_, str>> {
-        None
     }
 
     fn apply<B: AlgebraBackend>(
@@ -138,20 +127,6 @@ pub fn unary_streams(
                 return 1;
             }
 
-            // C: hfst_set_name(trans, trans, op); the dest and src are the
-            // same object, which Rust cannot alias mut+const, so the read
-            // side is taken from a copy (name/formula unchanged by the copy).
-            let name_op = op.name_op().map(Cow::into_owned);
-            let formula = op.formula().map(Cow::into_owned);
-            if name_op.is_some() || formula.is_some() {
-                let src = trans.clone();
-                if let Some(op_name) = name_op {
-                    hfst_set_name_unary(&mut trans, &src, &op_name);
-                }
-                if let Some(formula) = formula {
-                    hfst_set_formula_unary(&mut trans, &src, &formula);
-                }
-            }
             if let Err(e) = outstream.write(&trans) {
                 error(common, 1, 0, &format!("{e}"));
                 return 1;

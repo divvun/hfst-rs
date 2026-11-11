@@ -725,6 +725,13 @@ impl_evidence (
         {impl_name target-impl, rule embed.tools}
         {impl_name target-impl, rule embed.tools-in-library}
     )}
+    {id compile-surface.embed-transducer, covered_rules (
+        embed.operations
+        embed.transducer
+    ), covered_claims (
+        {impl_name target-impl, rule embed.operations}
+        {impl_name target-impl, rule embed.transducer}
+    )}
     {id compile-surface.no-panic, covered_rules (
         embed.no-panic
     ), covered_claims (

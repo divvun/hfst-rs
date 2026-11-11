@@ -17,7 +17,7 @@ use crate::hfst_transducer::HfstTransducer;
 // Which level(s) of the FSA the equivalence extensions apply to. Lifted verbatim
 // from the tool-local enum.
 // [spec:hfst:def:hfst-expand-equivalences.fsa-level-t]
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FsaLevel {
     First,
     Second,

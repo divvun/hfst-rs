@@ -28,11 +28,10 @@ pub fn kill_paths<'s, B: AlgebraBackend>(
 ) -> crate::error::Result<HfstTransducer<B>> {
     for symbol in symbols {
         each(symbol);
-        t = t.kill_paths(symbol);
+        t = t.kill_paths(symbol)?;
     }
-    let unnamed = t.clone();
-    hfst_set_name_unary(&mut t, &unnamed, "pathkill");
-    hfst_set_formula_unary(&mut t, &unnamed, "PK");
+    hfst_set_name_unary(&mut t, "pathkill");
+    hfst_set_formula_unary(&mut t, "PK");
     t.remove_epsilons()?;
     Ok(t)
 }

@@ -203,6 +203,22 @@ impl<'g> PairTester<'g> {
         out: &mut dyn Write,
         progress: &mut dyn FnMut(&str),
     ) -> Result<Option<Verdict>, PairTestError> {
+        let Some(outcome) = self.check_pair_string(line, positive, progress)? else {
+            return Ok(None);
+        };
+        self.write_outcome(&outcome, line, positive, out);
+        Ok(Some(outcome.verdict()))
+    }
+
+    // [spec:hfst:req:embed.tools-in-library]
+    /// The outcome of testing the pair string `line`; `None` for a blank or
+    /// comment line, which is not a test.
+    pub fn check_pair_string(
+        &self,
+        line: &str,
+        positive: bool,
+        progress: &mut dyn FnMut(&str),
+    ) -> Result<Option<PairTestOutcome>, PairTestError> {
         if is_empty_or_comment(line) {
             return Ok(None);
         }
@@ -218,7 +234,7 @@ impl<'g> PairTester<'g> {
                 }
             })?;
         add_word_boundaries(&mut pairs);
-        self.test(&pairs, line, positive, out).map(Some)
+        self.check(pairs, positive).map(Some)
     }
 
     // [spec:hfst:req:embed.tools-in-library]
@@ -226,10 +242,22 @@ impl<'g> PairTester<'g> {
     /// report to `out`.
     pub fn test_case(
         &self,
-        (input, output): &(String, String),
+        case: &(String, String),
         positive: bool,
         out: &mut dyn Write,
     ) -> Result<Verdict, PairTestError> {
+        let outcome = self.check_case(case, positive)?;
+        self.write_outcome(&outcome, &format!("{} : {}", case.0, case.1), positive, out);
+        Ok(outcome.verdict())
+    }
+
+    // [spec:hfst:req:embed.tools-in-library]
+    /// The outcome of testing the test case of `input` and `output`.
+    pub fn check_case(
+        &self,
+        (input, output): &(String, String),
+        positive: bool,
+    ) -> Result<PairTestOutcome, PairTestError> {
         let spelled = format!(
             "{}:{}",
             backslash_escape(input.clone()),
@@ -250,24 +278,28 @@ impl<'g> PairTester<'g> {
                 }
             })?;
         add_word_boundaries(&mut pairs);
-        self.test(&pairs, &format!("{} : {}", input, output), positive, out)
+        self.check(pairs, positive)
     }
 
     // [spec:hfst:def:hfst-pair-test.test-fn]
     // [spec:hfst:sem:hfst-pair-test.test-fn]
-    fn test(
+    fn check(
         &self,
-        pairs: &StringPairVector,
-        shown: &str,
+        pairs: StringPairVector,
         positive: bool,
-        out: &mut dyn Write,
-    ) -> Result<Verdict, PairTestError> {
+    ) -> Result<PairTestOutcome, PairTestError> {
         let mut positive_verdict: Verdict = 0;
         let mut negative_verdict: Verdict = 1;
+        let mut failures = Vec::new();
         for rule in 0..self.grammar.len() {
-            let verdict = self.grammar.test_rule(rule, pairs, positive);
+            let verdict = self.grammar.test_rule(rule, &pairs, positive);
             if positive && verdict == 1 {
-                self.write_failure(pairs, rule, out)?;
+                // The prefix is worked out even when silent, as the C++ tool
+                // did, so a failure working it out is an error either way.
+                failures.push(RuleFailure {
+                    rule: self.grammar.name(rule).to_string(),
+                    recognized_prefix: self.grammar.recognized_prefix_length(rule, &pairs)?,
+                });
             }
             if positive && positive_verdict == 0 {
                 positive_verdict = verdict;
@@ -276,55 +308,90 @@ impl<'g> PairTester<'g> {
                 negative_verdict = verdict;
             }
         }
-        let (verdict, failed, passed) = if positive {
-            (positive_verdict, "REJECTED", "PASSED")
+        let verdict = if positive {
+            positive_verdict
         } else {
-            (negative_verdict, "PASSED", "REJECTED")
+            negative_verdict
         };
-        // As in the C++ tool, a report that fails to write does not fail the
-        // test.
-        if verdict == 1 && !self.report.silent {
-            let _ = write!(out, "FAIL: {} {}\n\n", shown, failed);
-        }
-        if verdict == 0 && self.report.verbose {
-            let _ = write!(out, "{} {}\n\n", shown, passed);
-        }
-        Ok(verdict)
+        Ok(PairTestOutcome {
+            pairs,
+            failed: verdict == 1,
+            failures,
+        })
     }
 
     // [spec:hfst:def:hfst-pair-test.print-failure-info-fn]
     // [spec:hfst:sem:hfst-pair-test.print-failure-info-fn]
     // [spec:hfst:def:hfst-pair-test.print-recognized-prefix-fn]
     // [spec:hfst:sem:hfst-pair-test.print-recognized-prefix-fn]
-    /// Report where `rule` stopped accepting `pairs`. The prefix is worked
-    /// out even when silent, as the C++ tool did, so a failure working it
-    /// out is an error either way.
-    fn write_failure(
+    /// Write the report on `outcome`, the test shown as `shown`: where each
+    /// rule stopped accepting the pairs, and the verdict. As in the C++ tool,
+    /// a report that fails to write does not fail the test.
+    pub fn write_outcome(
         &self,
-        pairs: &StringPairVector,
-        rule: usize,
+        outcome: &PairTestOutcome,
+        shown: &str,
+        positive: bool,
         out: &mut dyn Write,
-    ) -> Result<(), PairTestError> {
-        let prefix_len = self.grammar.recognized_prefix_length(rule, pairs)?;
+    ) {
         if self.report.silent {
-            return Ok(());
+            return;
         }
-        let mut text = format!("Rule {} fails:\n", self.grammar.name(rule));
-        for (i, (input, output)) in pairs.iter().enumerate() {
-            if i == prefix_len {
+        for failure in &outcome.failures {
+            let mut text = format!("Rule {} fails:\n", failure.rule);
+            for (i, (input, output)) in outcome.pairs.iter().enumerate() {
+                if i == failure.recognized_prefix {
+                    text.push_str("HERE ---> ");
+                }
+                if input == output {
+                    text.push_str(&format!("{} ", unescape(input)));
+                } else {
+                    text.push_str(&format!("{}:{} ", unescape(input), unescape(output)));
+                }
+            }
+            if failure.recognized_prefix >= outcome.pairs.len() {
                 text.push_str("HERE ---> ");
             }
-            if input == output {
-                text.push_str(&format!("{} ", unescape(input)));
-            } else {
-                text.push_str(&format!("{}:{} ", unescape(input), unescape(output)));
-            }
+            text.push_str("\n\n");
+            let _ = out.write_all(text.as_bytes());
         }
-        if prefix_len >= pairs.len() {
-            text.push_str("HERE ---> ");
+        let (failed, passed) = if positive {
+            ("REJECTED", "PASSED")
+        } else {
+            ("PASSED", "REJECTED")
+        };
+        if outcome.failed {
+            let _ = write!(out, "FAIL: {} {}\n\n", shown, failed);
         }
-        text.push_str("\n\n");
-        let _ = out.write_all(text.as_bytes());
-        Ok(())
+        if !outcome.failed && self.report.verbose {
+            let _ = write!(out, "{} {}\n\n", shown, passed);
+        }
+    }
+}
+
+/// Where a rule stopped accepting a test's pairs.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RuleFailure {
+    /// The rule's name, as the grammar gives it.
+    pub rule: String,
+    /// How many of the pairs the rule accepted before it stopped.
+    pub recognized_prefix: usize,
+}
+
+/// The outcome of one test.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PairTestOutcome {
+    /// The test's pairs, word boundaries included.
+    pub pairs: StringPairVector,
+    /// The test failed: a positive test some rule rejected, or a negative
+    /// test every rule accepted.
+    pub failed: bool,
+    /// For a positive test, each rule that rejected it.
+    pub failures: Vec<RuleFailure>,
+}
+
+impl PairTestOutcome {
+    pub fn verdict(&self) -> Verdict {
+        if self.failed { 1 } else { 0 }
     }
 }

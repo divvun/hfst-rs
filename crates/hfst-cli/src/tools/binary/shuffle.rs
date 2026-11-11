@@ -4,13 +4,14 @@
 //! crate::binary_ops and the option layer in crate::cli.
 
 use crate::binary_ops::{
-    BinaryOpSpec, BinaryToolOp, LoopStyle, RetryPolicy, run_binary_streams_tool,
+    ApplyError, BinaryOpSpec, BinaryToolOp, LoopStyle, RetryPolicy, run_binary_streams_tool,
 };
 use crate::cli::{self, BinaryIo, CommonArgs, ToolArgs, ToolResult};
 use crate::globals::CommonOptions;
 use crate::hfst_commandline::hfst_set_program_name;
 use hfst::backend::AlgebraBackend;
 use hfst::hfst_transducer::HfstTransducer;
+use hfst::tools::operations::{self, Operand};
 
 /// hfst-shuffle's command line. The tool declares no options of its own.
 // [spec:hfst:req:cli.arg-parse]
@@ -50,8 +51,6 @@ const SPEC: BinaryOpSpec = BinaryOpSpec {
     mismatch_noun: "shuffle",
     could_not_verb: "shuffle",
     could_not_noun: "shuffling",
-    name_op: "shuffle",
-    formula: "shuffle",
     verbose_begin: |firstname, secondname| format!("Shuffling {} and {}", firstname, secondname),
     loop_style: LoopStyle::Standard,
     retry: RetryPolicy::ShuffleAutomata,
@@ -75,9 +74,12 @@ struct ShuffleOp;
 impl BinaryToolOp for ShuffleOp {
     fn apply<B: AlgebraBackend>(
         &mut self,
+        common: &CommonOptions,
         first: &mut HfstTransducer<B>,
-        second: &HfstTransducer<B>,
-    ) -> hfst::error::Result<()> {
-        first.shuffle(second, true).map(|_| ())
+        second: &mut Operand<'_, B>,
+    ) -> Result<(), ApplyError> {
+        let _ = common;
+        operations::shuffle(first, second.get())?;
+        Ok(())
     }
 }

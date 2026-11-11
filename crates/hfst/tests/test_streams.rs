@@ -259,7 +259,7 @@ fn sparse_symtable_round_trip<B: AlgebraBackend + FromAnyTransducer>()
     let mut t = HfstTransducer::<B>::new_symbol_pair("a", "a")?;
     let tx = HfstTransducer::<B>::new_symbol_pair("x", "x")?;
     t.disjunct(&tx, true)?;
-    let killed = t.kill_paths("x");
+    let killed = t.kill_paths("x")?;
 
     let path = temp_path(&format!("hfst_sparse_symt{:?}.hfst", B::TYPE));
     {

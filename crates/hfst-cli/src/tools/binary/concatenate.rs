@@ -7,13 +7,13 @@
 //! crate::cli.
 
 use crate::binary_ops::{
-    BinaryOpSpec, BinaryToolOp, LoopStyle, PairContext, RetryPolicy, run_binary_streams_tool,
+    BinaryOpSpec, FlagHarmonizing, FlagHarmonizingOp, LoopStyle, RetryPolicy,
+    run_binary_streams_tool,
 };
 use crate::cli::{self, BinaryIo, CommonArgs, ToolArgs, ToolResult};
 use crate::globals::CommonOptions;
-use crate::hfst_commandline::{error, hfst_set_program_name, warning};
-use hfst::backend::AlgebraBackend;
-use hfst::hfst_transducer::HfstTransducer;
+use crate::hfst_commandline::hfst_set_program_name;
+use hfst::tools::operations::BinaryOptions;
 
 /// hfst-concatenate's command line.
 // [spec:hfst:req:cli.arg-parse]
@@ -60,8 +60,6 @@ const SPEC: BinaryOpSpec = BinaryOpSpec {
     mismatch_noun: "concatenation",
     could_not_verb: "concatenate",
     could_not_noun: "concatenation",
-    name_op: "concatenate",
-    formula: "\u{22c5}",
     verbose_begin: |firstname, secondname| {
         format!("Concatenating {} and {}", firstname, secondname)
     },
@@ -79,50 +77,12 @@ pub(in crate::tools) fn execute(args: Vec<String>) -> ToolResult {
     let common = hfst_set_program_name(&argv0, "0.1", "HfstConcatenate");
     let (common, args) = cli::parse::<Args>(common, args)?;
 
-    let mut op = ConcatenateOp {
-        harmonize: !args.do_not_harmonize,
-        harmonize_flags: args.harmonize_flags,
+    let mut op = FlagHarmonizingOp {
+        kind: FlagHarmonizing::Concatenate,
+        options: BinaryOptions {
+            harmonize: !args.do_not_harmonize,
+            harmonize_flags: args.harmonize_flags,
+        },
     };
     cli::from_code(run_binary_streams_tool(&common, &SPEC, &mut op))
-}
-
-struct ConcatenateOp {
-    harmonize: bool,
-    harmonize_flags: bool,
-}
-
-impl BinaryToolOp for ConcatenateOp {
-    fn pre_apply<B: AlgebraBackend>(
-        &mut self,
-        common: &CommonOptions,
-        first: &mut HfstTransducer<B>,
-        second: &mut HfstTransducer<B>,
-        _ctx: &PairContext<'_>,
-    ) -> Result<(), i32> {
-        let both_have_flags = first.has_flag_diacritics() && second.has_flag_diacritics();
-        if both_have_flags {
-            if !self.harmonize_flags {
-                if !common.silent {
-                    warning(
-                        common,
-                        0,
-                        0,
-                        "The arguments contain flag diacritics. Use -F to harmonize them.",
-                    );
-                }
-            } else if let Err(e) = first.harmonize_flag_diacritics(second, false) {
-                error(common, 1, 0, &format!("{e}"));
-                return Err(1);
-            }
-        }
-        Ok(())
-    }
-
-    fn apply<B: AlgebraBackend>(
-        &mut self,
-        first: &mut HfstTransducer<B>,
-        second: &HfstTransducer<B>,
-    ) -> hfst::error::Result<()> {
-        first.concatenate(second, self.harmonize).map(|_| ())
-    }
 }

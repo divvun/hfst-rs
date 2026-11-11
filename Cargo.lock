@@ -955,6 +955,7 @@ dependencies = [
  "clap",
  "dhat",
  "hfst",
+ "hfst-embed",
  "hfst-openfst",
  "mimalloc",
  "rexpect",
@@ -975,6 +976,7 @@ dependencies = [
  "divvun-fst",
  "hfst",
  "hfst-openfst",
+ "tracing",
 ]
 
 [[package]]

@@ -11,6 +11,7 @@ use crate::globals::CommonOptions;
 use crate::hfst_commandline::{hfst_set_program_name, parse_u64, verbose_print};
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_output_stream::HfstOutputStream;
+use hfst::tools::operations;
 
 /// hfst-name's resolved options (the former tool-specific `static mut`s).
 #[derive(Default)]
@@ -134,15 +135,11 @@ fn process_stream(
         crate::for_any!(any, trans => {
             let mut trans = trans;
             if !options.print_name {
-                let name = options.transducer_name.clone();
-                if options.truncate_length > 0 {
-                    // C: hfst_strndup copies at most TRUNCATE_LENGTH bytes.
-                    let n = (options.truncate_length as usize).min(name.len());
-                    let truncated = String::from_utf8_lossy(&name.as_bytes()[..n]).into_owned();
-                    trans.set_name(&truncated);
-                } else {
-                    trans.set_name(&name);
-                }
+                operations::name(
+                    &mut trans,
+                    &options.transducer_name,
+                    options.truncate_length as usize,
+                );
                 if let Err(e) = outstream.write(&trans) {
                     eprintln!("hfst-name: {e}");
                     return 1;

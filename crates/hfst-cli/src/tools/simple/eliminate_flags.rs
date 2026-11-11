@@ -12,7 +12,7 @@ use crate::hfst_commandline::{error, hfst_set_program_name};
 use crate::unary_ops::{UnaryOpSpec, UnaryToolOp, run_unary_tool};
 use hfst::backend::AlgebraBackend;
 use hfst::hfst_transducer::HfstTransducer;
-use std::borrow::Cow;
+use hfst::tools::operations::{self, EliminateFlagsError};
 
 /// hfst-eliminate-flags's command line.
 // [spec:hfst:req:cli.arg-parse]
@@ -63,40 +63,22 @@ impl UnaryToolOp for EliminateFlagsOp {
         format!("Eliminating {} {}", self.flags, inputname)
     }
 
-    fn name_op(&self) -> Option<Cow<'_, str>> {
-        Some(Cow::Borrowed("eliminate-flags"))
-    }
-
-    fn formula(&self) -> Option<Cow<'_, str>> {
-        Some(Cow::Borrowed("Id"))
-    }
-
     fn apply<B: AlgebraBackend>(
         &mut self,
         common: &CommonOptions,
         t: &mut HfstTransducer<B>,
     ) -> hfst::error::Result<()> {
-        match &self.flag {
-            None => t.eliminate_flags().map(|_| ()),
-            Some(f) => {
-                if t.eliminate_flag(f).is_err() {
-                    // The single-flag failure substitutes the tool's own text
-                    // for the error value's, so it is reported here rather than
-                    // through the driver's '{e}' path. `error` with a non-zero
-                    // status exits the process, so the Err below is never
-                    // observed; it stands for the C's `return 1`.
-                    error(
-                        common,
-                        1,
-                        0,
-                        &format!(
-                            "flag feature {} does not occur in the transducer\nonly the flag feature must be given, no value or operator",
-                            f
-                        ),
-                    );
-                    return Err(hfst::error::Error::new(hfst::error::ErrorKind::Fatal));
-                }
-                Ok(())
+        match operations::eliminate_flags(t, self.flag.as_deref()) {
+            Ok(()) => Ok(()),
+            Err(EliminateFlagsError::Operation(e)) => Err(e),
+            Err(e @ EliminateFlagsError::NoSuchFeature(_)) => {
+                // The single-flag failure prints the tool's own text rather
+                // than the error value's, so it is reported here rather than
+                // through the driver's '{e}' path. `error` with a non-zero
+                // status exits the process, so the Err below is never
+                // observed; it stands for the C's `return 1`.
+                error(common, 1, 0, &e.to_string());
+                Err(hfst::error::Error::new(hfst::error::ErrorKind::Fatal))
             }
         }
     }

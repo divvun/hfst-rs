@@ -18,7 +18,9 @@ use hfst::hfst_transducer::HfstTransducer;
 use hfst::substitute_driver::{SubstituteEngine, SubstituteRequest};
 use hfst::tools::conversion::conversion_needed;
 use hfst::tools::format::format_description;
-use hfst::tools::metadata::{hfst_set_formula_unary, hfst_set_name_unary};
+use hfst::tools::substitute::{
+    RelabelError, SubstitutionName, name_substituted, relabel_entries, substitute_label,
+};
 use std::io::{BufRead, BufReader};
 
 /// hfst-substitute's own options (the former tool-specific `static mut`s). The
@@ -28,7 +30,9 @@ struct Options {
     from_label: Option<String>,
     from_pair: Option<StringPair>,
     from_file_name: Option<String>,
-    from_file: Option<BufReader<std::fs::File>>,
+    /// '-F': the relabel file's text, until its first line that is not
+    /// UTF-8, taken by the first transducer read.
+    from_file: Option<String>,
     to_label: Option<String>,
     to_pair: Option<StringPair>,
     to_transducer_filename: Option<String>,
@@ -49,15 +53,13 @@ fn substitute_request(options: &Options) -> SubstituteRequest {
     }
 }
 
-// Reads one line from a buffered reader the way 'hfst_getline' does: the
-// returned string keeps its trailing newline; 'None' marks end of input.
-fn read_line(f: &mut dyn BufRead) -> Option<String> {
-    let mut s = String::new();
-    match f.read_line(&mut s) {
-        Ok(0) => None,
-        Ok(_) => Some(s),
-        Err(_) => None,
-    }
+// The lines of the file `name`, read up to the first that is not UTF-8, as
+// 'hfst_getline' read them.
+fn read_lines(name: &str) -> std::io::Result<String> {
+    let mut reader = BufReader::new(std::fs::File::open(name)?);
+    let mut text = String::new();
+    while reader.read_line(&mut text).unwrap_or(0) > 0 {}
+    Ok(text)
 }
 
 /// hfst-substitute's command line.
@@ -149,11 +151,7 @@ impl Args {
         let Some(label) = given else {
             return Ok(None);
         };
-        let label = if label == "@0@" {
-            internal_epsilon.to_string()
-        } else {
-            label.clone()
-        };
+        let label = substitute_label(label);
         if label.is_empty() {
             let message = if source {
                 format!(
@@ -228,8 +226,8 @@ fn resolve_options(common: &CommonOptions, args: &Args) -> Result<Options, i32> 
     let from_label = args.resolve_label(common, &args.from_label, true)?;
     let to_label = args.resolve_label(common, &args.to_label, false)?;
     let from_file = match &args.from_file {
-        Some(fname) => match std::fs::File::open(fname) {
-            Ok(f) => Some(BufReader::new(f)),
+        Some(fname) => match read_lines(fname) {
+            Ok(text) => Some(text),
             Err(_) => {
                 error(common, 1, 0, &format!("Could not open '{}'", fname));
                 return Err(1);
@@ -416,73 +414,25 @@ fn process_loop<B: hfst::backend::AlgebraBackend + hfst::hfst_transducer::FromAn
         }
         // initialize delayed substitutor automaton
         engine.begin_transducer();
-        if let Some(mut from_file) = options.from_file.take() {
+        if let Some(from_file) = options.from_file.as_mut() {
+            let text = std::mem::take(from_file);
             let from_file_name = options.from_file_name.clone().unwrap_or_default();
-            let mut line_n: u32 = 0;
             verbose_print(
                 common,
                 &format!("reading substitutions from {}...\n", from_file_name),
             );
-            while let Some(line) = read_line(&mut from_file) {
-                line_n += 1;
-                if line.starts_with('\n') {
-                    continue;
+            let entries = match relabel_entries(&text) {
+                Ok(entries) => entries,
+                Err(RelabelError { line, error }) => {
+                    hfst_error_at_line(common, 1, 0, &from_file_name, line, &error.to_string());
+                    return 1;
                 }
-                let tab = match line.find('\t') {
-                    None => {
-                        if line.starts_with('#') {
-                            continue;
-                        } else {
-                            hfst_error_at_line(
-                                common,
-                                1,
-                                0,
-                                &from_file_name,
-                                line_n,
-                                "At least one tab required per line",
-                            );
-                            continue;
-                        }
-                    }
-                    Some(t) => t,
-                };
-                // 'endstr' advances from the tab to the end of line or newline.
-                let rest = &line[tab + 1..];
-                let end = rest.find('\n').unwrap_or(rest.len());
-                let fl = line[0..tab].to_string();
-                let tl = rest[0..end].to_string();
+            };
+            for (fl, tl) in entries {
                 options.from_pair = label_to_stringpair(&fl);
                 options.to_pair = label_to_stringpair(&tl);
-                if fl.is_empty() {
-                    hfst_error_at_line(
-                        common,
-                        1,
-                        0,
-                        &from_file_name,
-                        line_n,
-                        &format!(
-                            "First field is empty;\n\
-                             if you REALLY want to replace epsilons withsomething, use @0@ or {}",
-                            internal_epsilon
-                        ),
-                    );
-                }
-                if tl.is_empty() {
-                    hfst_error_at_line(
-                        common,
-                        1,
-                        0,
-                        &from_file_name,
-                        line_n,
-                        &format!(
-                            "Second field seems empty;\n\
-                             if you want to substitute something with epsilons, use @0@ or {}",
-                            internal_epsilon
-                        ),
-                    );
-                }
-                options.from_label = Some(fl.clone());
-                options.to_label = Some(tl.clone());
+                options.from_label = Some(fl);
+                options.to_label = Some(tl);
 
                 if let Err(e) = engine.apply_relabel_entry(
                     &substitute_request(options),
@@ -494,13 +444,12 @@ fn process_loop<B: hfst::backend::AlgebraBackend + hfst::hfst_transducer::FromAn
                     hfst_error(common, 1, 0, &format!("{e}"));
                     return 1;
                 }
-            } // while getline
+            }
 
             if let Err(e) = engine.flush_batched(&mut trans, options.in_order) {
                 hfst_error(common, 1, 0, &format!("{e}"));
                 return 1;
             }
-            options.from_file = Some(from_file);
         }
         // if not from file
         else if let Err(e) = engine.do_substitute(
@@ -518,38 +467,21 @@ fn process_loop<B: hfst::backend::AlgebraBackend + hfst::hfst_transducer::FromAn
             hfst_error(common, 1, 0, &format!("{e}"));
             return 1;
         }
-        if options.from_file.is_some() {
-            let from_file_name = options.from_file_name.clone().unwrap();
-            let src = trans.clone();
-            hfst_set_name_unary(
-                &mut trans,
-                &src,
-                &format!("substitute-from-{}", from_file_name),
-            );
-            let src = trans.clone();
-            hfst_set_formula_unary(&mut trans, &src, &format!("♲{}", from_file_name));
-        } else if options.from_label.is_some() && options.to_label.is_some() {
-            let fl = options.from_label.clone().unwrap();
-            let tl = options.to_label.clone().unwrap();
-            let src = trans.clone();
-            hfst_set_name_unary(&mut trans, &src, &format!("substitute-{}-with-{}", fl, tl));
-            let src = trans.clone();
-            hfst_set_formula_unary(&mut trans, &src, &format!("{} ♲ {}", fl, tl));
-        } else if options.to_transducer_filename.is_some() {
-            if options.from_label.is_none() {
-                // make scan-build happy, this should not happen
-                std::panic::panic_any(String::from("Error: from_label has a NULL value."));
-            }
-            let fl = options.from_label.clone().unwrap();
-            let tf = options.to_transducer_filename.clone().unwrap();
-            let src = trans.clone();
-            hfst_set_name_unary(
-                &mut trans,
-                &src,
-                &format!("substitute-{}-with-net-{}", fl, tf),
-            );
-            let src = trans.clone();
-            hfst_set_formula_unary(&mut trans, &src, &format!("{} ♲ {}", fl, tf));
+        let naming = if options.from_file.is_some() {
+            Some(SubstitutionName::Relabel {
+                file_name: options.from_file_name.as_deref().unwrap_or_default(),
+            })
+        } else if let (Some(from), Some(to)) = (&options.from_label, &options.to_label) {
+            Some(SubstitutionName::Label { from, to })
+        } else if let (Some(from), Some(file_name)) =
+            (&options.from_label, &options.to_transducer_filename)
+        {
+            Some(SubstitutionName::Transducer { from, file_name })
+        } else {
+            None
+        };
+        if let Some(naming) = naming {
+            name_substituted(&mut trans, naming);
         }
         if let Err(e) = outstream.write(&trans) {
             hfst_error(common, 1, 0, &format!("{e}"));

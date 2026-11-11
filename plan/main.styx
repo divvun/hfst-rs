@@ -9152,6 +9152,14 @@ children (
                     target-impl ([spec:hfst:req:embed.transducer] [spec:hfst:req:embed.operations])
                 }
                 deps (compile-surface.cli-logic compile-surface.no-panic)
+                log (
+                    {
+                        at 2026-11-11T21:22:34.609352Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
+                )
             }
 
             {

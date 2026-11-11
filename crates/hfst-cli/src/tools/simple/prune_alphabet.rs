@@ -8,7 +8,7 @@ use crate::hfst_commandline::hfst_set_program_name;
 use crate::unary_ops::{UnaryOpSpec, UnaryToolOp, run_unary_tool};
 use hfst::backend::AlgebraBackend;
 use hfst::hfst_transducer::HfstTransducer;
-use std::borrow::Cow;
+use hfst::tools::operations;
 
 /// hfst-prune-alphabet's command line.
 //
@@ -64,16 +64,12 @@ impl UnaryToolOp for PruneAlphabetOp {
         " "
     }
 
-    fn name_op(&self) -> Option<Cow<'_, str>> {
-        Some(Cow::Borrowed("prune-alphabet"))
-    }
-
     fn apply<B: AlgebraBackend>(
         &mut self,
         _common: &CommonOptions,
         t: &mut HfstTransducer<B>,
     ) -> hfst::error::Result<()> {
-        t.prune_alphabet(self.force_pruning).map(|_| ())
+        operations::prune_alphabet(t, self.force_pruning)
     }
 }
 

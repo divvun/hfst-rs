@@ -5,12 +5,11 @@
 use crate::cli::{self, CommonArgs, ToolArgs, ToolResult, UnaryIo};
 use crate::globals::CommonOptions;
 use crate::hfst_commandline::{error, hfst_set_program_name, verbose_print};
-use hfst::convert_transducer_format::ConversionFunctions;
-use hfst::hfst_basic_transducer::HfstBasicTransducer;
+
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_output_stream::HfstOutputStream;
-use hfst::hfst_transducer::HfstTransducer;
-use hfst::tools::metadata::{hfst_get_name, hfst_set_formula_unary, hfst_set_name_unary};
+use hfst::tools::metadata::hfst_get_name;
+use hfst::tools::operations;
 use std::io::Write;
 
 /// hfst-preprocess-for-optimized-lookup-format's command line: the common
@@ -65,43 +64,17 @@ fn process_stream(
                 inputname, transducer_n
             ));
         }
-        if let Err(e) = trans.remove_epsilons() {
-            error(common, 1, 0, &format!("{e}"));
-            return 1;
-        }
-        if transducer_n == 1 {
-            verbose_print(common, &format!("Rebuilding and fixing {}...\n", inputname));
-        } else {
-            verbose_print(common, &format!(
-                "Rebuilding and fisting {}...{}\n",
-                inputname, transducer_n
-            ));
-        }
-        // C++: HfstBasicTransducer original(trans); — the
-        // HfstBasicTransducer(const HfstTransducer&) conversion constructor.
-        let original: HfstBasicTransducer =
-            match ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(&trans) {
-                Ok(v) => v,
-                Err(e) => {
-                    error(common, 1, 0, &format!("{e}"));
-                    return 1;
-                }
-            };
-        let replication = original.renumber_states();
-        trans = match HfstTransducer::new_from_basic(&replication) {
-            Ok(v) => v,
-            Err(e) => {
-                error(common, 1, 0, &format!("{e}"));
-                return 1;
+        let rebuilt = operations::preprocess_for_optimized_lookup_format(&mut trans, &mut || {
+            if transducer_n == 1 {
+                verbose_print(common, &format!("Rebuilding and fixing {}...\n", inputname));
+            } else {
+                verbose_print(common, &format!(
+                    "Rebuilding and fisting {}...{}\n",
+                    inputname, transducer_n
+                ));
             }
-        };
-        // C: hfst_set_name(trans, trans, "fu"); the dest and src are the same
-        // object, which Rust cannot alias mut+const, so the read side is taken
-        // from a copy (name/formula are unchanged by the copy).
-        let src = trans.clone();
-        hfst_set_name_unary(&mut trans, &src, "fu");
-        hfst_set_formula_unary(&mut trans, &src, "FU");
-        if let Err(e) = trans.remove_epsilons() {
+        });
+        if let Err(e) = rebuilt {
             error(common, 1, 0, &format!("{e}"));
             return 1;
         }

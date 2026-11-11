@@ -13,7 +13,8 @@ use crate::hfst_commandline::{
 };
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_output_stream::HfstOutputStream;
-use hfst::tools::metadata::{hfst_get_name, hfst_set_formula_unary, hfst_set_name_unary};
+use hfst::tools::metadata::hfst_get_name;
+use hfst::tools::operations::{self, Repetition};
 use std::io::Write;
 
 /// hfst-repeat's command line.
@@ -189,39 +190,19 @@ fn process_stream(
                 error(common, 1, 0, &format!("Repeating *..{}?", options.at_most));
             }
 
-            if !options.from_infinity && !options.to_infinity {
-                if let Err(e) = trans.repeat_n_to_k(options.at_least as u32, options.at_most as u32) {
-                    error(common, 1, 0, &format!("{e}"));
+            let repetition = match Repetition::from_bounds(
+                (!options.from_infinity).then_some(options.at_least),
+                (!options.to_infinity).then_some(options.at_most),
+            ) {
+                Ok(repetition) => repetition,
+                Err(_) => {
+                    error(common, 1, 0, &format!("Repeating *..{}?", options.at_most));
                     return 1;
                 }
-                let composed_name = format!("repeat-{}-to-{}", options.at_least, options.at_most);
-                let src = trans.clone();
-                hfst_set_name_unary(&mut trans, &src, &composed_name);
-                let composed_name = format!("_{}^{}", options.at_least, options.at_most);
-                let src = trans.clone();
-                hfst_set_formula_unary(&mut trans, &src, &composed_name);
-            } else if options.from_infinity && options.to_infinity {
-                if let Err(e) = trans.repeat_star() {
-                    error(common, 1, 0, &format!("{e}"));
-                    return 1;
-                }
-                let src = trans.clone();
-                hfst_set_name_unary(&mut trans, &src, "repeat-star");
-                let src = trans.clone();
-                hfst_set_formula_unary(&mut trans, &src, "\u{22c6}");
-            } else if !options.from_infinity && options.to_infinity {
-                if let Err(e) = trans.repeat_n_plus(options.at_least as u32) {
-                    error(common, 1, 0, &format!("{e}"));
-                    return 1;
-                }
-                let composed_name = format!("repeat-{}-plus", options.at_least);
-                let src = trans.clone();
-                hfst_set_name_unary(&mut trans, &src, &composed_name);
-                let composed_name = format!("_{}^\u{221e}", options.at_least);
-                let src = trans.clone();
-                hfst_set_formula_unary(&mut trans, &src, &composed_name);
-            } else if options.from_infinity && !options.to_infinity {
-                error(common, 1, 0, &format!("Repeating *..{}?", options.at_most));
+            };
+            if let Err(e) = operations::repeat(&mut trans, repetition) {
+                error(common, 1, 0, &format!("{e}"));
+                return 1;
             }
             if let Err(e) = outstream.write(&trans) {
                 error(common, 1, 0, &format!("{e}"));

@@ -328,8 +328,6 @@ pub fn print_lookups(
     stats: &mut LookupStats,
     ofile: &mut dyn Write,
 ) -> std::io::Result<()> {
-    let mut lowest_weight: f32 = -1.0;
-
     if outside_sigma {
         print_lookup_template(
             &formats.unknown_begin_setf,
@@ -378,23 +376,16 @@ pub fn print_lookups(
             opts,
             ofile,
         )?;
-        let mut first = true;
-        for lkv in kvs.iter() {
-            if first {
-                lowest_weight = lkv.first;
-            }
-            first = false;
-            if opts.beam < 0.0 || lkv.first <= (lowest_weight + opts.beam) {
-                print_lookup_template(
-                    &formats.infinite_lookupf,
-                    Some(kv),
-                    Some(lkv),
-                    markup,
-                    opts,
-                    ofile,
-                )?;
-                stats.analyses += 1;
-            }
+        for lkv in reported_paths(kvs, opts.beam) {
+            print_lookup_template(
+                &formats.infinite_lookupf,
+                Some(kv),
+                Some(lkv),
+                markup,
+                opts,
+                ofile,
+            )?;
+            stats.analyses += 1;
         }
         print_lookup_template(
             &formats.infinite_end_setf,
@@ -407,20 +398,37 @@ pub fn print_lookups(
     } else {
         stats.analysed += 1;
         print_lookup_template(&formats.begin_setf, Some(kv), None, markup, opts, ofile)?;
-        let mut first = true;
-        for lkv in kvs.iter() {
-            if first {
-                lowest_weight = lkv.first;
-            }
-            first = false;
-            if opts.beam < 0.0 || lkv.first <= (lowest_weight + opts.beam) {
-                print_lookup_template(&formats.lookupf, Some(kv), Some(lkv), markup, opts, ofile)?;
-                stats.analyses += 1;
-            }
+        for lkv in reported_paths(kvs, opts.beam) {
+            print_lookup_template(&formats.lookupf, Some(kv), Some(lkv), markup, opts, ofile)?;
+            stats.analyses += 1;
         }
         print_lookup_template(&formats.end_setf, Some(kv), None, markup, opts, ofile)?;
     }
     Ok(())
+}
+
+// [spec:hfst:req:embed.tools-in-library]
+/// The results of a lookup the lookup tools report: those whose weight is
+/// within `beam` of the first result's, all of them when `beam` is negative.
+/// The results are in weight order, so the first is the lightest.
+pub fn reported_paths(
+    kvs: &HfstOneLevelPaths,
+    beam: f32,
+) -> impl Iterator<Item = &HfstOneLevelPath> {
+    let lowest_weight = kvs.iter().next().map_or(-1.0, |first| first.first);
+    kvs.iter()
+        .filter(move |lkv| beam < 0.0 || lkv.first <= (lowest_weight + beam))
+}
+
+// [spec:hfst:req:embed.tools-in-library]
+/// The symbols of a lookup result the lookup tools print: its epsilons left
+/// out, and its flag diacritics too unless `show_flags`.
+pub fn reported_symbols(path: &HfstOneLevelPath, show_flags: bool) -> Vec<String> {
+    path.second
+        .iter()
+        .filter(|s| !is_epsilon(s) && (show_flags || !FdOperation::is_diacritic(s)))
+        .map(|s| s.to_string())
+        .collect()
 }
 
 /* Add a '\' in front of ':', ' ' and '\'. */
@@ -624,9 +632,15 @@ pub fn apply_cascade(
         &HfstOneLevelPath,
         &CascadeStep<'_>,
         &mut dyn Write,
-    ) -> HfstOneLevelPaths,
+    ) -> Result<HfstOneLevelPaths>,
     out: &mut dyn Write,
-) -> std::io::Result<HfstOneLevelPaths> {
+) -> Result<HfstOneLevelPaths> {
+    let io = |e: std::io::Error| {
+        crate::error::Error::with_message(
+            crate::error::ErrorKind::StreamCannotBeWritten,
+            e.to_string(),
+        )
+    };
     let mut results: HfstOneLevelPaths = HfstOneLevelPaths::new();
 
     // go through all transducers in the cascade
@@ -647,7 +661,7 @@ pub fn apply_cascade(
                         composed_from: Some(s),
                     },
                     out,
-                );
+                )?;
                 for inner in one_result.iter() {
                     // add the weights
                     composed.insert(HfstOneLevelPath {
@@ -666,11 +680,11 @@ pub fn apply_cascade(
                     for it in s.second.iter() {
                         input += it;
                     }
-                    write!(out, "{}\t{}+?\tinf\n\n", input, input)?;
+                    write!(out, "{}\t{}+?\tinf\n\n", input, input).map_err(io)?;
                 } else {
-                    out.write_all(b"\n")?;
+                    out.write_all(b"\n").map_err(io)?;
                 }
-                out.flush()?;
+                out.flush().map_err(io)?;
             }
             composed
         } else {
@@ -682,7 +696,7 @@ pub fn apply_cascade(
                     composed_from: None,
                 },
                 out,
-            )
+            )?
         };
 
         // (C++ tests 'if (infinity)' on the pointer — always true here.)

@@ -10,9 +10,8 @@ use crate::unary_ops::{
     UnaryOpSpec, UnaryToolOp, open_input_stream, open_output_stream_like, unary_streams,
 };
 use hfst::backend::AlgebraBackend;
-use hfst::hfst_data_types::PushType;
 use hfst::hfst_transducer::HfstTransducer;
-use std::borrow::Cow;
+use hfst::tools::operations::{self, PushDirection};
 
 /// hfst-push-labels's command line.
 // [spec:hfst:def:hfst-push-labels.parse-options-fn]
@@ -99,28 +98,17 @@ impl UnaryToolOp for PushLabelsOp {
         " "
     }
 
-    fn name_op(&self) -> Option<Cow<'_, str>> {
-        Some(Cow::Borrowed(if self.push_initial {
-            "push-labels-i"
-        } else {
-            "push-labels-f"
-        }))
-    }
-
-    fn formula(&self) -> Option<Cow<'_, str>> {
-        Some(Cow::Borrowed("Id"))
-    }
-
     fn apply<B: AlgebraBackend>(
         &mut self,
         _common: &CommonOptions,
         t: &mut HfstTransducer<B>,
     ) -> hfst::error::Result<()> {
-        if self.push_initial {
-            t.push_labels(PushType::TO_INITIAL_STATE).map(|_| ())
+        let direction = if self.push_initial {
+            PushDirection::Initial
         } else {
-            t.push_labels(PushType::TO_FINAL_STATE).map(|_| ())
-        }
+            PushDirection::Final
+        };
+        operations::push_labels(t, direction)
     }
 }
 

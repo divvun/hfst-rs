@@ -22,22 +22,19 @@
 use crate::CliLookupReporter;
 use crate::cli::{self, CommonArgs, ToolArgs, ToolResult, UnaryIo};
 use crate::globals::CommonOptions;
-use crate::hfst_commandline::{
-    hfst_error, hfst_error_at_line, hfst_set_program_name, hfst_warning, verbose_print,
-};
-use hfst::error::ErrorKind;
+use crate::hfst_commandline::{hfst_error, hfst_set_program_name, hfst_warning, verbose_print};
 use hfst::hfst_data_types::ImplementationType;
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_lookup_format::{
     CascadeVariant, LookupFormats, LookupInputFormat, LookupOutputFormat, LookupRenderOptions,
-    LookupStats, parse_lookup_line, print_lookups,
+    LookupStats, print_lookups,
 };
-use hfst::hfst_strings2_fst_tokenizer::HfstStrings2FstTokenizer;
 use hfst::lookup_driver::{
     AmbiguityLimit, FlagPolicy, LookupCascade, LookupEngineOptions, PairPrintStyle,
     is_optimized_lookup_type,
 };
 use hfst::tools::format::format_description;
+use hfst::tools::lookup::{LineLookup, Lookup};
 use std::io::{BufRead, Write};
 
 // ---------------------------------------------------------------------------
@@ -645,19 +642,7 @@ fn process_stream(
 
     let mut line: String;
 
-    let input_tokenizer = match HfstStrings2FstTokenizer::new(
-        cascade.multichar_symbols(),
-        &options.epsilon_format.clone(),
-    ) {
-        Ok(t) => t,
-        Err(e) => {
-            hfst_error(common, 1, 0, &format!("{e}"));
-            return 1;
-        }
-    };
-
-    let only_optimized_lookup = cascade.only_optimized_lookup();
-    if !only_optimized_lookup && !common.silent {
+    if !cascade.only_optimized_lookup() && !common.silent {
         hfst_warning(
             common,
             0,
@@ -670,7 +655,13 @@ fn process_stream(
         );
     }
 
-    let engine = engine_opts(options);
+    let lookup = match Lookup::new(cascade, engine_opts(options), options.input_format) {
+        Ok(lookup) => lookup,
+        Err(e) => {
+            hfst_error(common, 1, 0, &format!("{e}"));
+            return 1;
+        }
+    };
 
     let mut filesize: i64 = -1;
     if options.show_progress_bar {
@@ -721,53 +712,24 @@ fn process_stream(
             }
         }
 
-        let mut markup = String::new();
-        let mut unknown = false;
-
         options.stats.inputs += 1;
-        let kv = match parse_lookup_line(
-            &mut line,
-            &input_tokenizer,
-            &mut markup,
-            &mut unknown,
-            only_optimized_lookup,
-            options.input_format,
-        ) {
-            Ok(kv) => kv,
-            Err(e) => {
-                if e.kind == ErrorKind::IncorrectUtf8Coding {
-                    hfst_error_at_line(
-                        common,
-                        1,
-                        0,
-                        &common.input_filename,
-                        options.linen as u32,
-                        e.message.as_deref().unwrap_or(""),
-                    );
-                }
-                hfst_error(common, 1, 0, &format!("{e}"));
-                return 1;
-            }
-        };
-
-        if common.verbose {
-            verbose_print(common, "Tokenized to: ");
-            for s in kv.second.iter() {
-                verbose_print(common, &format!("{} ", s));
-            }
-            verbose_print(common, "\n");
-        }
-
-        // hfst-flookup echoes a print-pairs input form on the message stream
-        // while the pairs go to the result stream.
-        let (kvs, infinite) = cascade.perform_lookups(
-            &kv,
-            unknown,
-            &engine,
-            &reporter,
+        let LineLookup {
+            input: kv,
+            markup,
+            outside_alphabet: unknown,
+            results: kvs,
+            infinite,
+            ..
+        } = match crate::look_up_line(
+            common,
+            &lookup,
+            (&line, options.linen),
             &mut *outstream,
             &mut std::io::stderr(),
-        );
+        ) {
+            Ok(looked_up) => looked_up,
+            Err(code) => return code,
+        };
 
         if !options.print_pairs {
             // printing was already done in function lookup_fd

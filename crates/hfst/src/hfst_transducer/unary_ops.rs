@@ -8,13 +8,10 @@ impl<B: Backend> HfstTransducer<B> {
     /// input or output side) removed, surviving states renumbered. Converts to a
     /// basic transducer, applies [`HfstBasicTransducer::kill_paths`], and
     /// converts back to this transducer's type. Lifted from hfst-kill-paths.
-    pub fn kill_paths(&self, symbol: &str) -> HfstTransducer<B> {
-        let killed = self
-            .to_basic()
-            .expect("to_basic on a valid transducer cannot fail")
-            .kill_paths(symbol);
+    // [spec:hfst:req:embed.no-panic]
+    pub fn kill_paths(&self, symbol: &str) -> crate::error::Result<HfstTransducer<B>> {
+        let killed = self.to_basic()?.kill_paths(symbol);
         HfstTransducer::new_from_basic(&killed)
-            .expect("converting a basic transducer to an available backend type cannot fail")
     }
 }
 

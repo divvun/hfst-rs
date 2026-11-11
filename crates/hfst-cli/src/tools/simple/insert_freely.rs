@@ -14,8 +14,8 @@ use crate::hfst_commandline::{
 use hfst::hfst_data_types::StringPair;
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_output_stream::HfstOutputStream;
-use hfst::hfst_symbol_defs::{internal_epsilon, label_to_stringpair};
-use hfst::tools::metadata::{hfst_get_name, hfst_set_formula_unary, hfst_set_name_unary};
+use hfst::tools::metadata::hfst_get_name;
+use hfst::tools::operations::{self, SymbolPairError, insert_freely_pair};
 use std::io::Write;
 
 /// hfst-insert-freely's command line.
@@ -58,29 +58,18 @@ impl Args {
 }
 
 impl Args {
-    /// Case 'a': "@0@" stands for the internal epsilon, and an empty label
-    /// is fatal (the C checks AFTER building the pair from it).
+    /// Case 'a': the library reads the pair, and an empty label is fatal
+    /// at once, as the C checked it inside its getopt loop.
     fn label(&self, common: &CommonOptions) -> Option<StringPair> {
-        let lbl = self.symbol_pair.as_deref()?;
-        // This will probably break for unicode
-        let lbl = if lbl == "@0@" {
-            internal_epsilon.to_string()
-        } else {
-            lbl.to_string()
-        };
-        let pair = label_to_stringpair(&lbl);
-        if lbl.is_empty() {
-            error(
-                common,
-                1,
-                0,
-                &format!(
-                    "argument of source label option is empty;\nif you REALLY want to replace epsilons with something, use @0@ or {}",
-                    internal_epsilon
-                ),
-            );
+        let label = self.symbol_pair.as_deref()?;
+        match insert_freely_pair(label) {
+            Ok(pair) => Some(pair),
+            Err(e @ SymbolPairError::Empty) => {
+                error(common, 1, 0, &e.to_string());
+                None
+            }
+            Err(SymbolPairError::NoColon(_)) => None,
         }
-        pair
     }
 }
 
@@ -128,16 +117,10 @@ fn process_stream(
                 // If harmonize is true, then identity and unknown symbols in the
                 // transducer will be expanded by the symbols in symbol pair.
                 // Otherwise they aren't.
-                if let Err(e) = trans.insert_freely_pair(symbol_pair, harmonise_flags) {
+                if let Err(e) = operations::insert_freely(&mut trans, symbol_pair, harmonise_flags) {
                     error(common, 1, 0, &format!("{e}"));
                     return 1;
                 }
-                // C: hfst_set_name(trans, trans, "insert-freely") and
-                // hfst_set_formula(trans, trans, "Id"); dest and src are the
-                // same object, so the read side is taken from a copy.
-                let src = trans.clone();
-                hfst_set_name_unary(&mut trans, &src, "insert-freely");
-                hfst_set_formula_unary(&mut trans, &src, "Id");
             }
             if let Err(e) = outstream.write(&trans) {
                 error(common, 1, 0, &format!("{e}"));
@@ -170,9 +153,7 @@ pub(in crate::tools) fn execute(args: Vec<String>) -> ToolResult {
     let Some(symbol_pair) = args.label(&common) else {
         let msg = match args.symbol_pair.as_deref() {
             None => String::from("no symbol pair given; use -a SYM:SYM"),
-            Some(label) => {
-                format!("symbol pair '{label}' has no colon; give it as SYM:SYM")
-            }
+            Some(label) => SymbolPairError::NoColon(label.to_string()).to_string(),
         };
         error(&common, 1, 0, &msg);
         return Err(1);

@@ -231,6 +231,38 @@ impl Matcher {
         progress: Progress<'_>,
     ) -> crate::error::Result<bool> {
         progress(&format!("matching against {}...\n", file_name));
+        self.select_lines(
+            input,
+            options,
+            &mut |line_number, printed| {
+                // As in the C++ tool, a write that fails does not stop
+                // matching.
+                if let Some(text) = printed
+                    && !options.only_filenames
+                {
+                    let _ = write_line(out, options, file_name, line_number, text);
+                }
+                if options.flush_lines {
+                    let _ = out.flush();
+                }
+            },
+            progress,
+        )
+    }
+
+    // [spec:hfst:req:embed.tools-in-library]
+    /// Each line of `input` `hfst grep` tests, with its number from 1, to
+    /// `each`, and the text the tool prints for it: the lines that match,
+    /// with their matches marked, or with `invert` the lines that do not.
+    /// Empty lines are passed over, and after `max_count` matching lines the
+    /// rest are too. True when some line matched, or with `invert`, none did.
+    pub fn select_lines(
+        &self,
+        input: &mut dyn BufRead,
+        options: &GrepOptions,
+        each: &mut dyn FnMut(u64, Option<&str>),
+        progress: Progress<'_>,
+    ) -> crate::error::Result<bool> {
         let mut matches: u64 = 0;
         let mut line_number: u64 = 0;
         let mut raw: Vec<u8> = Vec::new();
@@ -260,15 +292,7 @@ impl Matcher {
                     (!options.invert).then_some(marked)
                 }
             };
-            // As in the C++ tool, a write that fails does not stop matching.
-            if let Some(text) = printed
-                && !options.only_filenames
-            {
-                let _ = write_line(out, options, file_name, line_number, &text);
-            }
-            if options.flush_lines {
-                let _ = out.flush();
-            }
+            each(line_number, printed.as_deref());
             if options.max_count > 0 && matches >= options.max_count {
                 break;
             }

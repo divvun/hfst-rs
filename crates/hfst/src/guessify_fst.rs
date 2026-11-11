@@ -297,10 +297,31 @@ pub fn store_guesser<B: AlgebraBackend>(
     out: &mut HfstOutputStream,
     compile_generator: bool,
 ) -> crate::error::Result<()> {
-    let mut generator: HfstTransducer<B> = HfstTransducer::new();
-    if compile_generator {
-        generator = HfstTransducer::new_copy(guesser)?;
+    let (guesser, generator) = guesser_transducers(guesser, compile_generator)?;
+    out.write(&guesser)?;
+    if let Some(generator) = generator {
+        out.write(&generator)?;
     }
+    Ok(())
+}
+
+// [spec:hfst:req:embed.tools-in-library]
+/// The transducers `hfst guessify` writes for `guesser`, in weighted
+/// optimized lookup: the guesser, and with `compile_generator` the model form
+/// generator. `guesser` keeps its type; its default symbol is renamed on the
+/// way.
+pub fn guesser_transducers<B: AlgebraBackend>(
+    guesser: &mut HfstTransducer<B>,
+    compile_generator: bool,
+) -> crate::error::Result<(
+    HfstTransducer<crate::transducer::Transducer>,
+    Option<HfstTransducer<crate::transducer::Transducer>>,
+)> {
+    let mut generator = if compile_generator {
+        Some(HfstTransducer::new_copy(guesser)?)
+    } else {
+        None
+    };
 
     guesser.substitute_string(my_default(), internal_default, true, true)?;
     // The C++ 'convert(HFST_OLW_TYPE)' mutated the facade in place, keeping
@@ -317,31 +338,33 @@ pub fn store_guesser<B: AlgebraBackend>(
     for (property, value) in guesser.get_properties() {
         guesser_olw.set_property(property, value);
     }
-    out.write(&guesser_olw)?;
 
-    if compile_generator {
-        generator.invert()?;
-        generator.set_name(&format!("inverted({})", guesser.get_name()));
-        generator.substitute_string(my_default(), internal_default, true, true)?;
-        let mut generator_olw: HfstTransducer<crate::transducer::Transducer> =
-            crate::convert_transducer_format::ConversionFunctions::hfst_ol_to_hfst_transducer(
-                &crate::convert_transducer_format::ConversionFunctions::hfst_transducer_to_hfst_ol(
-                    &generator,
-                )?,
-            )?;
-        for (property, value) in generator.get_properties() {
-            generator_olw.set_property(property, value);
+    let generator_olw = match generator.as_mut() {
+        Some(generator) => {
+            generator.invert()?;
+            generator.set_name(&format!("inverted({})", guesser.get_name()));
+            generator.substitute_string(my_default(), internal_default, true, true)?;
+            let mut generator_olw: HfstTransducer<crate::transducer::Transducer> =
+                crate::convert_transducer_format::ConversionFunctions::hfst_ol_to_hfst_transducer(
+                    &crate::convert_transducer_format::ConversionFunctions::hfst_transducer_to_hfst_ol(
+                        generator,
+                    )?,
+                )?;
+            for (property, value) in generator.get_properties() {
+                generator_olw.set_property(property, value);
+            }
+            Some(generator_olw)
         }
-        out.write(&generator_olw)?;
-    }
-    Ok(())
+        None => None,
+    };
+    Ok((guesser_olw, generator_olw))
 }
 
 // Direction of guessing for `affix_guessify`. Lifted verbatim from
 // hfst-affix-guessify's tool-local enum so the affix-guesser construction can
 // live in the library.
 // [spec:hfst:def:hfst-affix-guessify.guess-direction]
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum GuessDirection {
     GuessPrefix,
     GuessSuffix,

@@ -24,7 +24,8 @@ use crate::hfst_commandline::{
 };
 use hfst::tools::conversion::conversion_needed;
 use hfst::tools::format::format_description;
-use hfst::tools::metadata::{hfst_get_name, hfst_set_formula_binary, hfst_set_name_binary};
+use hfst::tools::metadata::hfst_get_name;
+use hfst::tools::operations::{self, BinaryOptions, BinaryWarning, Operand};
 
 /// How the n-ary read loop keeps or drops the pair between rounds.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -67,10 +68,6 @@ pub struct BinaryOpSpec {
     /// Noun in the per-pair could-not error, e.g. "disjunction" (shuffle
     /// alone uses a different noun here than in the up-front error).
     pub could_not_noun: &'static str,
-    /// Op string for hfst_set_name_binary, e.g. "union".
-    pub name_op: &'static str,
-    /// Symbol for hfst_set_formula_binary, e.g. "\u{222a}".
-    pub formula: &'static str,
     /// Start of the per-pair verbose line, e.g. "Disjuncting A and B"; the
     /// driver appends "...\n" or "... N\n".
     pub verbose_begin: fn(firstname: &str, secondname: &str) -> String,
@@ -82,8 +79,7 @@ pub struct BinaryOpSpec {
     pub flush_at_end: bool,
 }
 
-/// Per-pair context handed to the pre-apply hook (and used for the could-not
-/// error texts).
+/// Per-pair context (used for the could-not error texts).
 pub struct PairContext<'a> {
     pub firstname: &'a str,
     pub secondname: &'a str,
@@ -92,28 +88,86 @@ pub struct PairContext<'a> {
     pub second_type: ImplementationType,
 }
 
+/// Why a tool's operation did not give a result.
+pub enum ApplyError {
+    /// The tool has reported the failure itself; exit with this code.
+    Reported(i32),
+    /// The library's operation failed.
+    Operation(hfst::error::Error),
+}
+
+impl From<hfst::error::Error> for ApplyError {
+    fn from(e: hfst::error::Error) -> Self {
+        ApplyError::Operation(e)
+    }
+}
+
 /// The tool's operation, generic over the algebra backend: the driver
 /// dispatches ONCE per stream-read pair ([dec:hfst:monomorphic-backends]) and
-/// runs 'pre_apply' (the flag-diacritics gates; an Err(code) aborts the
-/// streams function with that exit code) then 'apply' (dest op= src) inside
-/// the monomorphic body.
+/// runs 'apply' (dest op= src) inside the monomorphic body. 'apply' calls the
+/// library's operation (`hfst::tools::operations`), which harmonizes flags
+/// when asked, changing the second operand too, and names the result.
 pub trait BinaryToolOp {
-    fn pre_apply<B: AlgebraBackend>(
+    fn apply<B: AlgebraBackend>(
         &mut self,
         common: &CommonOptions,
         first: &mut HfstTransducer<B>,
-        second: &mut HfstTransducer<B>,
-        ctx: &PairContext<'_>,
-    ) -> Result<(), i32> {
-        let _ = (common, first, second, ctx);
-        Ok(())
-    }
+        second: &mut Operand<'_, B>,
+    ) -> Result<(), ApplyError>;
+}
 
+/// Which of the binary operations that take `--harmonize-flags` a tool runs.
+#[derive(Clone, Copy)]
+pub enum FlagHarmonizing {
+    Concatenate,
+    Conjunct,
+    Subtract,
+}
+
+/// The op of `hfst concatenate`, `hfst conjunct` and `hfst subtract`, which
+/// differ only in the library operation they run.
+pub struct FlagHarmonizingOp {
+    pub kind: FlagHarmonizing,
+    pub options: BinaryOptions,
+}
+
+impl BinaryToolOp for FlagHarmonizingOp {
     fn apply<B: AlgebraBackend>(
         &mut self,
+        common: &CommonOptions,
         first: &mut HfstTransducer<B>,
-        second: &HfstTransducer<B>,
-    ) -> hfst::error::Result<()>;
+        second: &mut Operand<'_, B>,
+    ) -> Result<(), ApplyError> {
+        let run = match self.kind {
+            FlagHarmonizing::Concatenate => operations::concatenate,
+            FlagHarmonizing::Conjunct => operations::conjunct,
+            FlagHarmonizing::Subtract => operations::subtract,
+        };
+        run(first, second, &self.options, &mut |w| {
+            print_binary_warning(common, w)
+        })?;
+        Ok(())
+    }
+}
+
+/// Print what a binary operation warns of, as the tools print it.
+pub fn print_binary_warning(common: &CommonOptions, warning_given: BinaryWarning) {
+    match warning_given {
+        BinaryWarning::FlagsNotHarmonized(text) => {
+            if !common.silent {
+                warning(common, 0, 0, text);
+            }
+        }
+        BinaryWarning::SubtrahendHasFlags => warning(
+            common,
+            0,
+            0,
+            &format!(
+                "Warning: {} contains flag diacritics. The result of subtraction may be incorrect.",
+                common.second_filename
+            ),
+        ),
+    }
 }
 
 /// Opens the two input streams (named file vs stdin), reporting failures the
@@ -268,8 +322,8 @@ pub fn run_binary_streams_tool(
     binary_op_streams(common, spec, &mut firststream, &mut secondstream, op)
 }
 
-/// The monomorphic per-pair body: pre-apply hook, the operation with its
-/// error policy, tool metadata, and the stream write. Returns both operands
+/// The monomorphic per-pair body: the operation with its error policy (the
+/// library names the result) and the stream write. Returns both operands
 /// (the loop may reuse either, per its LoopStyle) or the exit code.
 #[allow(clippy::type_complexity)]
 fn process_pair<B: AlgebraBackend>(
@@ -277,42 +331,44 @@ fn process_pair<B: AlgebraBackend>(
     spec: &BinaryOpSpec,
     op: &mut impl BinaryToolOp,
     mut first: HfstTransducer<B>,
-    mut second: HfstTransducer<B>,
+    second: HfstTransducer<B>,
     ctx: &PairContext<'_>,
     outstream: &mut HfstOutputStream,
 ) -> Result<(HfstTransducer<B>, HfstTransducer<B>), i32> {
-    op.pre_apply(common, &mut first, &mut second, ctx)?;
-
+    let mut operand = Operand::Owned(second);
     // The C caught the op's TransducerTypeMismatch here and converted-and-
     // retried; same-backend operands are now a compile-time property (the
     // driver converted at the boundary), so only the ops' real failures
     // remain.
-    if let Err(e) = op.apply(&mut first, &second) {
-        if spec.retry == RetryPolicy::ShuffleAutomata
-            && matches!(e.kind, ErrorKind::TransducersAreNotAutomata)
-        {
-            error(
-                common,
-                1,
-                0,
-                &format!(
-                    "Could not {} {} and {} [{}]\nat least one of the input arguments is not an automaton",
-                    spec.could_not_verb, ctx.firstname, ctx.secondname, ctx.transducer_n_first
-                ),
-            );
-        } else {
-            error(common, 1, 0, &format!("{e}"));
+    match op.apply(common, &mut first, &mut operand) {
+        Ok(()) => {}
+        Err(ApplyError::Reported(code)) => return Err(code),
+        Err(ApplyError::Operation(e)) => {
+            if spec.retry == RetryPolicy::ShuffleAutomata
+                && matches!(e.kind, ErrorKind::TransducersAreNotAutomata)
+            {
+                error(
+                    common,
+                    1,
+                    0,
+                    &format!(
+                        "Could not {} {} and {} [{}]\nat least one of the input arguments is not an automaton",
+                        spec.could_not_verb, ctx.firstname, ctx.secondname, ctx.transducer_n_first
+                    ),
+                );
+            } else {
+                error(common, 1, 0, &format!("{e}"));
+            }
+            return Err(1);
         }
-        return Err(1);
     }
-
-    // C: hfst_set_name(*first, *first, *second, op); the dest and
-    // first src are the same object, which Rust cannot alias
-    // mut+const, so the read side is taken from a copy (name/formula
-    // are unchanged by the copy).
-    let first_src = first.clone();
-    hfst_set_name_binary(&mut first, &first_src, &second, spec.name_op);
-    hfst_set_formula_binary(&mut first, &first_src, &second, spec.formula);
+    let second = match operand.into_owned() {
+        Ok(second) => second,
+        Err(e) => {
+            error(common, 1, 0, &format!("{e}"));
+            return Err(1);
+        }
+    };
     if let Err(e) = outstream.write(&first) {
         error(common, 1, 0, &format!("{e}"));
         return Err(1);
@@ -561,4 +617,79 @@ fn binary_op_streams(
     }
     outstream.close();
     0
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use hfst::xre::XreCompiler;
+    use hfst_openfst::StdVectorFst;
+
+    fn regex(src: &str) -> HfstTransducer<StdVectorFst> {
+        XreCompiler::<StdVectorFst>::new()
+            .compile(src)
+            .unwrap_or_else(|| panic!("{src} compiles"))
+    }
+
+    /// The input sides of the paths of `t`, sorted.
+    fn words(t: &HfstTransducer<StdVectorFst>) -> Vec<String> {
+        let mut paths = hfst::hfst_data_types::HfstTwoLevelPaths::new();
+        t.extract_paths(&mut paths, -1, -1).expect("paths");
+        let mut words: Vec<String> = paths
+            .iter()
+            .map(|p| {
+                p.second
+                    .iter()
+                    .filter(|(i, _)| !hfst::hfst_symbol_defs::is_epsilon(i))
+                    .map(|(i, _)| i.as_str())
+                    .collect()
+            })
+            .collect();
+        words.sort();
+        words
+    }
+
+    // [spec:hfst:req:embed.tools-in-library/test]
+    // Each flag-harmonizing tool runs its own library operation, which names
+    // the result, and leaves an operand without flags as it was.
+    #[test]
+    fn each_kind_runs_its_operation() {
+        let common = CommonOptions::default();
+        for (kind, expected, name) in [
+            (FlagHarmonizing::Concatenate, vec!["ab"], "concatenate"),
+            (FlagHarmonizing::Conjunct, vec![], "intersect"),
+            (FlagHarmonizing::Subtract, vec!["a"], "subtract"),
+        ] {
+            let mut op = FlagHarmonizingOp {
+                kind,
+                options: BinaryOptions::default(),
+            };
+            let mut first = regex("a");
+            let second = regex("b");
+            let mut operand = Operand::Borrowed(&second);
+            assert!(op.apply(&common, &mut first, &mut operand).is_ok());
+            assert_eq!(words(&first), expected);
+            assert_eq!(first.get_name(), format!("{name}(UNNAMED, UNNAMED)"));
+            assert!(matches!(operand, Operand::Borrowed(_)));
+        }
+    }
+
+    // [spec:hfst:req:embed.tools-in-library/test]
+    // A failing operation comes back as the library's error for the driver
+    // to report, not as an exit code the op printed itself.
+    #[test]
+    fn a_failure_is_the_library_error() {
+        let common = CommonOptions::default();
+        let mut op = FlagHarmonizingOp {
+            kind: FlagHarmonizing::Concatenate,
+            options: BinaryOptions::default(),
+        };
+        let mut first = regex("a");
+        let second = regex("b");
+        let mut operand = Operand::Borrowed(&second);
+        let applied = op.apply(&common, &mut first, &mut operand);
+        assert!(!matches!(applied, Err(ApplyError::Reported(_))));
+        let error = ApplyError::from(hfst::error::Error::new(hfst::error::ErrorKind::Fatal));
+        assert!(matches!(error, ApplyError::Operation(_)));
+    }
 }

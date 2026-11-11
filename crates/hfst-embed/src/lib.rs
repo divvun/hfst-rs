@@ -8,10 +8,14 @@
 //!
 //! It reads optimized-lookup transducers, pmatch containers and DHFST files
 //! from bytes, and predicts words a unit at a time from a language's
-//! generator, unit grammar and prediction model. Nothing in it reaches a
-//! compiler, the foma backend, the tropical OpenFst backend or the transducer
-//! algebra, so a module built over it links none of them.
+//! generator, unit grammar and prediction model. Without the `compile`
+//! feature nothing in it reaches a compiler, the foma backend, the tropical
+//! OpenFst backend or the transducer algebra, so a module built over it links
+//! none of them. With it, [`compile`] does what the `hfst` tools do to a
+//! transducer.
 
+#[cfg(feature = "compile")]
+pub mod compile;
 pub mod dhfst;
 pub mod error;
 pub mod format;

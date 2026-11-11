@@ -11,13 +11,12 @@ use crate::hfst_commandline::{
     error, hfst_set_program_name, is_input_stream_in_ol_format, verbose_print, warning,
 };
 use crate::memory_limit::{self, LimitSource, ResolvedMemoryLimit};
-use hfst::convert_transducer_format::ConversionFunctions;
 use hfst::hfst_input_stream::HfstInputStream;
-use hfst::hfst_symbol_defs::internal_identity;
-use hfst::hfst_tokenizer::HfstTokenizer;
-use hfst::hfst_transducer::EngineConfig;
 use hfst::hfst_transducer::{HfstTransducer, HfstTransducerVector};
-use hfst::tools::metadata::{hfst_get_name, hfst_set_formula_unary};
+use hfst::tools::compose_intersect::{
+    ComposeIntersectOptions, ComposeIntersectWarning, compose_intersect, prepare_rule,
+};
+use hfst::tools::metadata::hfst_get_name;
 use std::io::Write;
 
 // static bool insert_missing_flags=false;
@@ -124,88 +123,19 @@ struct Options {
     harmonize: bool,
 }
 
+impl Options {
+    fn library(&self) -> ComposeIntersectOptions {
+        ComposeIntersectOptions {
+            invert: self.invert,
+            fast: self.fast_ci,
+            encode_weights: self.encode_weights,
+            harmonize: self.harmonize,
+        }
+    }
+}
+
 // [spec:hfst:def:hfst-compose-intersect.string-set]
 // (typedef std::set<std::string> StringSet → std::collections::BTreeSet<String>)
-
-// [spec:hfst:def:hfst-compose-intersect.is-special-symbol-fn]
-// [spec:hfst:sem:hfst-compose-intersect.is-special-symbol-fn]
-fn is_special_symbol(symbol: &str) -> bool {
-    let bytes = symbol.as_bytes();
-    symbol.len() > 2 && bytes[0] == b'@' && bytes[symbol.len() - 1] == b'@'
-}
-
-// [spec:hfst:def:hfst-compose-intersect.check-all-symbols-fn]
-// [spec:hfst:sem:hfst-compose-intersect.check-all-symbols-fn]
-fn check_all_symbols<B: hfst::backend::AlgebraBackend>(
-    lexicon: &HfstTransducer<B>,
-    rule: &HfstTransducer<B>,
-) -> hfst::error::Result<String> {
-    let rule_b = ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(rule)?;
-
-    let rule_input_symbols = rule_b.input_symbols_used();
-
-    if rule_input_symbols.contains(internal_identity) {
-        return Ok(String::new());
-    }
-
-    let lexicon_b = ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(lexicon)?;
-
-    for s in 0..=lexicon_b.get_max_state() {
-        for it in lexicon_b.index(s)?.iter() {
-            let output_symbol = it.get_output_symbol(lexicon_b.coder());
-
-            if !rule_input_symbols.contains(&output_symbol) {
-                return Ok(output_symbol.to_string());
-            }
-        }
-    }
-
-    Ok(String::new())
-}
-
-// [spec:hfst:def:hfst-compose-intersect.check-multi-char-symbols-fn]
-// [spec:hfst:sem:hfst-compose-intersect.check-multi-char-symbols-fn]
-fn check_multi_char_symbols<B: hfst::backend::AlgebraBackend>(
-    lexicon: &HfstTransducer<B>,
-    rule: &HfstTransducer<B>,
-) -> hfst::error::Result<String> {
-    let lexicon_b = ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(lexicon)?;
-    let rule_b = ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(rule)?;
-
-    let tokenizer = HfstTokenizer::new();
-
-    let rule_input_symbols = rule_b.input_symbols_used();
-
-    for s in 0..=lexicon_b.get_max_state() {
-        for it in lexicon_b.index(s)?.iter() {
-            let output_symbol = it.get_output_symbol(lexicon_b.coder());
-
-            if !rule_input_symbols.contains(&output_symbol) {
-                if is_special_symbol(&output_symbol) {
-                    continue;
-                }
-
-                if tokenizer.tokenize_one_level(&output_symbol, false).len() > 1 {
-                    return Ok(output_symbol.to_string());
-                }
-            }
-        }
-    }
-
-    Ok(String::new())
-}
-
-// [spec:hfst:def:hfst-compose-intersect.harmonize-rules-fn]
-// [spec:hfst:sem:hfst-compose-intersect.harmonize-rules-fn]
-fn harmonize_rules<B: hfst::backend::AlgebraBackend>(
-    lexicon: &mut HfstTransducer<B>,
-    rules: &mut [HfstTransducer<B>],
-) -> hfst::error::Result<()> {
-    for it in rules.iter_mut() {
-        it.harmonize(lexicon, false)?;
-    }
-    Ok(())
-}
 
 fn explicit_memory_limit_name(source: LimitSource) -> Option<&'static str> {
     match source {
@@ -344,10 +274,7 @@ fn compose_streams_typed<
                 &format!("Reading and minimizing rule {}...\n", rule_n),
             );
         }
-        if let Err(e) = rule.minimize_with_config(&EngineConfig {
-            encode_weights: options.encode_weights,
-            ..EngineConfig::default()
-        }) {
+        if let Err(e) = prepare_rule(&mut rule, &options.library()) {
             error(common, 1, 0, &format!("{e}"));
             return 1;
         }
@@ -368,12 +295,7 @@ fn compose_streams_typed<
         return 1;
     }
 
-    let engine_config = EngineConfig {
-        encode_weights: options.encode_weights,
-        compose_memory_limit_bytes: B::SUPPORTS_COMPOSE_LOOKAHEAD
-            .then_some(memory_limit.allowance_bytes),
-        ..EngineConfig::default()
-    };
+    let memory_limit = B::SUPPORTS_COMPOSE_LOOKAHEAD.then_some(memory_limit.allowance_bytes);
 
     while firststream.is_good() {
         verbose_print(common, "Reading lexicon...");
@@ -390,16 +312,14 @@ fn compose_streams_typed<
 
         verbose_print(common, "Computing intersecting composition...\n");
 
-        if !rules.is_empty() {
-            let symbol = match check_all_symbols(&lexicon, &rules[0]) {
-                Ok(s) => s,
-                Err(e) => {
-                    error(common, 1, 0, &format!("{e}"));
-                    return 1;
-                }
-            };
-            if !symbol.is_empty() {
-                warning(
+        if let Err(e) = compose_intersect(
+            &mut lexicon,
+            &mut rules,
+            &options.library(),
+            (&lexiconname, &common.second_filename),
+            memory_limit,
+            &mut |w| match w {
+                ComposeIntersectWarning::FilteredOutputSymbol(symbol) => warning(
                     common,
                     0,
                     0,
@@ -410,105 +330,23 @@ fn compose_streams_typed<
                          {}.",
                         symbol, common.first_filename, common.second_filename
                     ),
-                );
-            } else {
-                let symbol = match check_multi_char_symbols(&lexicon, &rules[0]) {
-                    Ok(s) => s,
-                    Err(e) => {
-                        error(common, 1, 0, &format!("{e}"));
-                        return 1;
-                    }
-                };
-                if !symbol.is_empty() {
-                    warning(
-                        common,
-                        0,
-                        0,
-                        &format!(
-                            "\nFound output multi-char symbols (\"{}\") in \n\
-                             transducer in file {} which are not found on the\n\
-                             input tapes of transducers in file {}.",
-                            symbol, common.first_filename, common.second_filename
-                        ),
-                    );
-                }
-            }
-        }
-
-        if options.harmonize
-            && let Err(e) = harmonize_rules(&mut lexicon, &mut rules)
-        {
+                ),
+                ComposeIntersectWarning::MultiCharOutputSymbol(symbol) => warning(
+                    common,
+                    0,
+                    0,
+                    &format!(
+                        "\nFound output multi-char symbols (\"{}\") in \n\
+                         transducer in file {} which are not found on the\n\
+                         input tapes of transducers in file {}.",
+                        symbol, common.first_filename, common.second_filename
+                    ),
+                ),
+            },
+        ) {
             error(common, 1, 0, &format!("{e}"));
             return 1;
         }
-
-        if options.fast_ci {
-            // To hopefully speed up stuff: Compose intersect the output
-            // of the lexicon with the rules and then compose the original
-            // lexicon with the result.
-
-            if options.invert {
-                let mut lexicon_input = lexicon.clone();
-                if let Err(e) = lexicon_input.input_project() {
-                    error(common, 1, 0, &format!("{e}"));
-                    return 1;
-                }
-                if let Err(e) = lexicon_input.minimize() {
-                    error(common, 1, 0, &format!("{e}"));
-                    return 1;
-                }
-                if let Err(e) =
-                    lexicon_input.compose_intersect_with_config(&rules, true, true, &engine_config)
-                {
-                    error(common, 1, 0, &format!("{e}"));
-                    return 1;
-                }
-
-                if let Err(e) = lexicon_input.compose_with_config(&lexicon, true, &engine_config) {
-                    error(common, 1, 0, &format!("{e}"));
-                    return 1;
-                }
-                lexicon = lexicon_input;
-            } else {
-                let mut lexicon_output = lexicon.clone();
-                if let Err(e) = lexicon_output.output_project() {
-                    error(common, 1, 0, &format!("{e}"));
-                    return 1;
-                }
-                if let Err(e) = lexicon_output.minimize() {
-                    error(common, 1, 0, &format!("{e}"));
-                    return 1;
-                }
-                if let Err(e) = lexicon_output.compose_intersect_with_config(
-                    &rules,
-                    false,
-                    true,
-                    &engine_config,
-                ) {
-                    error(common, 1, 0, &format!("{e}"));
-                    return 1;
-                }
-                if let Err(e) = lexicon.compose_with_config(&lexicon_output, true, &engine_config) {
-                    error(common, 1, 0, &format!("{e}"));
-                    return 1;
-                }
-            }
-        } else {
-            if let Err(e) =
-                lexicon.compose_intersect_with_config(&rules, options.invert, true, &engine_config)
-            {
-                error(common, 1, 0, &format!("{e}"));
-                return 1;
-            }
-        }
-
-        let composed_name = format!(
-            "compose({}, intersect({}))",
-            lexiconname, common.second_filename
-        );
-        lexicon.set_name(&composed_name);
-        let src = lexicon.clone();
-        hfst_set_formula_unary(&mut lexicon, &src, " \u{2218} \u{22c2}R");
 
         verbose_print(
             common,

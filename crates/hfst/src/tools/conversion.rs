@@ -7,6 +7,7 @@ use crate::hfst_data_types::ImplementationType;
 use crate::hfst_output_stream::HfstOutputStream;
 use crate::hfst_transducer::{AnyTransducer, HfstTransducer, is_safe_conversion};
 use crate::tools::format::format_description;
+use crate::tools::metadata::{hfst_set_formula_unary, hfst_set_name_unary};
 
 /// Which of two transducers converts to the other's type, without loss
 /// unless the variant says otherwise, before an operation combines them.
@@ -133,4 +134,25 @@ impl HfstOutputStream {
         }
         Ok(())
     }
+}
+
+// [spec:hfst:req:embed.tools-in-library]
+/// `t` converted to `ty` as `hfst fst2fst` converts it, and named as it
+/// names what it writes. `quick` relaxes the optimized-lookup table packing,
+/// as `--quick` does.
+pub fn fst2fst(
+    t: AnyTransducer,
+    ty: ImplementationType,
+    quick: bool,
+) -> crate::error::Result<AnyTransducer> {
+    let mut converted = t.convert(ty, if quick { "quick" } else { "" })?;
+    name_converted(&mut converted);
+    Ok(converted)
+}
+
+// [spec:hfst:req:embed.tools-in-library]
+/// Name `t` as `hfst fst2fst` names what it converted.
+pub fn name_converted(t: &mut AnyTransducer) {
+    hfst_set_name_unary(t, "convert");
+    hfst_set_formula_unary(t, "Id");
 }

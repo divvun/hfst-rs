@@ -84,7 +84,7 @@ fn is_cathegory_symbol(symbol: &str) -> bool {
 // [spec:hfst:def:generate-model-forms.get-alphabet-string-tokenizer-fn]
 // [spec:hfst:sem:generate-model-forms.get-alphabet-string-tokenizer-fn]
 pub fn get_alphabet_string_tokenizer<B: Backend>(
-    fst: &mut HfstTransducer<B>,
+    fst: &HfstTransducer<B>,
 ) -> crate::error::Result<HfstTokenizer> {
     // The C++ FIXME round-trip through TROPICAL existed only because the OL
     // backends lacked get_alphabet; 'Backend::get_alphabet' covers every
@@ -145,7 +145,7 @@ fn contains_analysis_symbols(word_form: &StringVector) -> bool {
 // [spec:hfst:sem:generate-model-forms.generate-word-forms-fn]
 fn generate_word_forms(
     analysis: &StringVector,
-    form_generator: &mut HfstTransducer<Transducer>,
+    form_generator: &HfstTransducer<Transducer>,
     max_generated_forms: usize,
     generate_threshold: f32,
 ) -> crate::error::Result<StringVector> {
@@ -209,7 +209,7 @@ fn generate_word_forms(
 fn get_model_forms(
     reversed_analysis: &StringVector,
     model_forms: &StringVectorVector,
-    form_generator: &mut HfstTransducer<Transducer>,
+    form_generator: &HfstTransducer<Transducer>,
     max_generated_forms: usize,
     generate_threshold: f32,
 ) -> crate::error::Result<StringVectorVector> {
@@ -248,7 +248,7 @@ fn split(line: &str, separator: &str) -> crate::hfst_symbol_defs::StringPair {
 // [spec:hfst:sem:generate-model-forms.read-model-form-fn]
 fn read_model_form(
     line: &str,
-    tokenizer: &mut HfstTokenizer,
+    tokenizer: &HfstTokenizer,
 ) -> Result<StringVector, InvalidModelLine> {
     if line.find(MODEL_FORM_PREFIX) != Some(0) {
         return Err(InvalidModelLine::new(line.to_string()));
@@ -266,19 +266,26 @@ fn read_model_form(
 // [spec:hfst:sem:generate-model-forms.read-model-forms-fn]
 pub fn read_model_forms(
     model_form_filename: &str,
-    tokenizer: &mut HfstTokenizer,
+    tokenizer: &HfstTokenizer,
 ) -> crate::error::Result<StringVectorVector> {
     // A failed open behaves like an empty stream ('peek() == EOF').
     let content = std::fs::read(model_form_filename).unwrap_or_default();
+    model_forms(&String::from_utf8_lossy(&content), tokenizer)
+}
 
+// [spec:hfst:req:embed.tools-in-library]
+/// The model forms of a model form file's text `content`, one a line.
+pub fn model_forms(
+    content: &str,
+    tokenizer: &HfstTokenizer,
+) -> crate::error::Result<StringVectorVector> {
     if content.is_empty() {
         crate::bail!(InvalidModelFile);
     }
 
-    let content = String::from_utf8_lossy(&content);
     // 'std::getline' consumes a trailing final newline without yielding an
     // extra empty line after it.
-    let body = content.strip_suffix('\n').unwrap_or(&content);
+    let body = content.strip_suffix('\n').unwrap_or(content);
 
     let mut results: StringVectorVector = StringVectorVector::new();
 
@@ -298,9 +305,9 @@ pub fn read_model_forms(
 // [spec:hfst:sem:generate-model-forms.get-guesses-fn]
 pub fn get_guesses(
     word_form: &str,
-    guesser: &mut HfstTransducer<Transducer>,
+    guesser: &HfstTransducer<Transducer>,
     number_of_guesses: usize,
-    tokenizer: &mut HfstTokenizer,
+    tokenizer: &HfstTokenizer,
 ) -> crate::error::Result<StringVectorVector> {
     let mut tokenized_line = tokenizer.tokenize_one_level(word_form, false);
     tokenized_line.reverse();
@@ -324,7 +331,7 @@ pub fn get_guesses(
 pub fn get_paradigms(
     word_form: &str,
     guesses: &StringVectorVector,
-    generator: &mut HfstTransducer<Transducer>,
+    generator: &HfstTransducer<Transducer>,
     model_forms: &StringVectorVector,
     number_of_generated_forms: usize,
     generate_threshold: f32,

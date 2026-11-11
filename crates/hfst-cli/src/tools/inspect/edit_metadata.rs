@@ -11,6 +11,7 @@ use crate::globals::CommonOptions;
 use crate::hfst_commandline::{error, hfst_set_program_name, parse_u64, verbose_print, warning};
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_output_stream::HfstOutputStream;
+use hfst::tools::operations;
 use std::collections::BTreeMap;
 use std::io::Write;
 
@@ -209,42 +210,14 @@ fn process_stream(
         crate::for_any!(any, trans => {
             let mut trans = trans;
             if !options.print_all_properties && options.print_property.is_none() {
-                for (key, val) in options.properties.iter() {
-                    if key == "type" {
-                        warning(
-                            common,
-                            0,
-                            0,
-                            "Changing `type' metadata will not change type of transducer in file;\n\
-                             having wrong type may cause breakage, use with caution",
-                        );
-                    } else if key == "version" {
-                        warning(
-                            common,
-                            0,
-                            0,
-                            "Changing `version' changes parsing semantics for header;\n\
-                             use with caution",
-                        );
-                    } else if key == "character-encoding" && !(val == "utf-8" || val == "UTF-8") {
-                        error(
-                            common,
-                            1,
-                            0,
-                            "Cannot set `character-encoding' to unsupported value;\n\
-                             consider recoding sources of automaton",
-                        );
-                    }
-                    if options.truncate_length > 0 {
-                        // C: hfst_strndup(value.c_str(), truncate_length) — copy
-                        // up to truncate_length bytes (NUL-terminating early).
-                        let bytes = val.as_bytes();
-                        let n = (options.truncate_length as usize).min(bytes.len());
-                        let truncated = String::from_utf8_lossy(&bytes[..n]).into_owned();
-                        trans.set_property(key, &truncated);
-                    } else {
-                        trans.set_property(key, val);
-                    }
+                let edited = operations::edit_metadata(
+                    &mut trans,
+                    options.properties.iter().map(|(k, v)| (k.as_str(), v.as_str())),
+                    options.truncate_length as usize,
+                    &mut |w| warning(common, 0, 0, &w.to_string()),
+                );
+                if let Err(e) = edited {
+                    error(common, 1, 0, &e.to_string());
                 }
                 if let Err(e) = outstream.write(&trans) {
                     error(common, 1, 0, &format!("{e}"));
@@ -258,7 +231,7 @@ fn process_stream(
                     }
                 } else {
                     let pp = options.print_property.clone().unwrap_or_default();
-                    let _ = writeln!(out, "{}", props.get(&pp).unwrap());
+                    let _ = writeln!(out, "{}", props.get(&pp).map_or("", String::as_str));
                 }
             }
         });

@@ -15,12 +15,11 @@ pub mod guess {
     use crate::cli::{self, CommonArgs, ToolArgs, ToolResult, UnaryIo};
     use crate::globals::CommonOptions;
     use crate::hfst_commandline::{error, hfst_set_program_name, verbose_print};
-    use hfst::generate_model_forms::{
-        StringVectorVector, compile_generator_from_guesser, get_alphabet_string_tokenizer,
-        get_guesses, get_paradigms, is_guesser, read_model_forms,
-    };
+    use hfst::generate_model_forms::is_guesser;
     use hfst::hfst_input_stream::HfstInputStream;
     use hfst::hfst_transducer::HfstTransducer;
+    use hfst::tools::guess::{GuessError, GuessOptions, GuessProgress, Guesser, write_guess};
+    use std::borrow::Cow;
     use std::io::{BufRead, Write};
 
     /// hfst-guess's command line.
@@ -262,7 +261,7 @@ pub mod guess {
         // weighted optimized-lookup backend; any other input converts here at
         // the stream boundary ([dec:hfst:monomorphic-backends]), as the C++
         // guesser lookup path did through its own conversions.
-        let mut guesser: HfstTransducer<hfst::transducer::Transducer> =
+        let guesser: HfstTransducer<hfst::transducer::Transducer> =
             match instream.read().and_then(|any| any.into_typed()) {
                 Ok(t) => t,
                 Err(e) => {
@@ -284,63 +283,77 @@ pub mod guess {
             return Err(1);
         }
 
-        let mut generator: Option<HfstTransducer<hfst::transducer::Transducer>> = None;
-
-        if options.generate_model_forms {
-            if !instream.is_good() {
-                verbose_print(
+        let generator = if options.generate_model_forms && instream.is_good() {
+            match instream.read().and_then(|any| any.into_typed()) {
+                Ok(g) => Some(Cow::Owned(g)),
+                Err(e) => {
+                    error(&common, 1, 0, &format!("{e}"));
+                    return Err(1);
+                }
+            }
+        } else {
+            None
+        };
+        let model_form_text = if options.generate_model_forms {
+            // A file that does not open reads as empty, which the library
+            // refuses as an invalid model file.
+            Some(
+                String::from_utf8_lossy(
+                    &std::fs::read(&options.model_form_filename).unwrap_or_default(),
+                )
+                .into_owned(),
+            )
+        } else {
+            None
+        };
+        let guesser = match Guesser::new(
+            Cow::Owned(guesser),
+            generator,
+            model_form_text.as_deref(),
+            &mut |progress| match progress {
+                GuessProgress::CompilingGenerator => verbose_print(
                     &common,
                     &format!(
                         "No generator found in {}. Compiling generator from guesser.\n",
                         common.input_filename
                     ),
+                ),
+                GuessProgress::ReadingModelForms => verbose_print(
+                    &common,
+                    &format!(
+                        "Reading inflectional information for model forms\nfrom {}.\n",
+                        options.model_form_filename
+                    ),
+                ),
+            },
+        ) {
+            Ok(guesser) => guesser,
+            Err(GuessError::NotAGuesser) => {
+                error(
+                    &common,
+                    1,
+                    0,
+                    &format!(
+                        "The transducer in {} is not a guesser.",
+                        common.input_filename
+                    ),
                 );
-
-                generator = Some(match compile_generator_from_guesser(&guesser) {
-                    Ok(g) => g,
-                    Err(e) => {
-                        error(&common, 1, 0, &format!("{e}"));
-                        return Err(1);
-                    }
-                });
-            } else {
-                generator = Some(match instream.read().and_then(|any| any.into_typed()) {
-                    Ok(g) => g,
-                    Err(e) => {
-                        error(&common, 1, 0, &format!("{e}"));
-                        return Err(1);
-                    }
-                });
+                return Err(1);
             }
-        }
-
-        let mut tokenizer = match get_alphabet_string_tokenizer(&mut guesser) {
-            Ok(t) => t,
-            Err(e) => {
+            Err(GuessError::ModelForms(e)) => {
+                eprintln!("{e}");
+                return Err(1);
+            }
+            Err(GuessError::Operation(e)) => {
                 error(&common, 1, 0, &format!("{e}"));
                 return Err(1);
             }
         };
-
-        let mut model_forms: StringVectorVector = StringVectorVector::new();
-
-        if options.generate_model_forms {
-            verbose_print(
-                &common,
-                &format!(
-                    "Reading inflectional information for model forms\nfrom {}.\n",
-                    options.model_form_filename
-                ),
-            );
-
-            match read_model_forms(options.model_form_filename.as_str(), &mut tokenizer) {
-                Ok(mf) => model_forms = mf,
-                Err(e) => {
-                    eprintln!("{e}");
-                    return Err(1);
-                }
-            }
-        }
+        let guess_options = GuessOptions {
+            max_number_of_guesses: options.max_number_of_guesses,
+            max_number_of_forms: options.max_number_of_forms,
+            generate_threshold: options.generate_threshold,
+        };
 
         let stdin = std::io::stdin();
         for line_result in stdin.lock().lines() {
@@ -349,63 +362,20 @@ pub mod guess {
                 Ok(l) => l,
                 Err(_) => break,
             };
-
-            let mut guesses = match get_guesses(
-                &line,
-                &mut guesser,
-                options.max_number_of_guesses,
-                &mut tokenizer,
-            ) {
-                Ok(g) => g,
+            match guesser.guess(&line, &guess_options) {
+                Ok(report) => {
+                    let _ = write_guess(&mut out, &line, &report);
+                }
                 Err(e) => {
                     error(&common, 1, 0, &format!("{e}"));
                     return Err(1);
                 }
-            };
-
-            // 'std::ostream << StringVector' concatenates the symbols with no
-            // separator (generate_model_forms.cc 'operator<<').
-            if options.generate_model_forms {
-                // make scan-build happy, this should not happen
-                let gen_tr = generator
-                    .as_mut()
-                    .unwrap_or_else(|| panic!("Error: generator has a NULL value."));
-                let paradigms = match get_paradigms(
-                    &line,
-                    &guesses,
-                    gen_tr,
-                    &model_forms,
-                    options.max_number_of_forms,
-                    options.generate_threshold,
-                ) {
-                    Ok(p) => p,
-                    Err(e) => {
-                        error(&common, 1, 0, &format!("{e}"));
-                        return Err(1);
-                    }
-                };
-
-                for it in &paradigms {
-                    let _ = writeln!(out, "{}", it.concat());
-                }
-            } else {
-                for it in guesses.iter_mut() {
-                    it.reverse();
-
-                    let _ = writeln!(out, "{}\t{}", line, it.concat());
-                }
             }
-            let _ = writeln!(out);
         }
 
         // The C deletes/flushes the output ofstream when it is a file; flush the
         // std::io::Write to mirror it.
         let _ = out.flush();
-
-        // free(inputfilename); free(outfilename); delete guesser; delete
-        // generator — handled by the foundation/Drop in Rust.
-        drop(guesser);
-        drop(generator);
 
         Ok(())
     }
@@ -427,6 +397,7 @@ pub mod pmatch {
     use crate::globals::CommonOptions;
     use crate::hfst_commandline::hfst_set_program_name;
     use hfst::pmatch::{PmatchContainer, print_locate_matches};
+    use hfst::tools::pmatch::InputSplitter;
     use hfst::transducer::{INFINITE_WEIGHT, Weight};
     use std::io::{BufRead, Write};
 
@@ -737,7 +708,7 @@ pub mod pmatch {
         container: &mut PmatchContainer,
         outstream: &mut dyn Write,
     ) -> i32 {
-        let mut input_text = String::new();
+        let mut splitter = InputSplitter::new(options.blankline_separated);
         let stdin = std::io::stdin();
         let mut input = stdin.lock();
         loop {
@@ -749,23 +720,12 @@ pub mod pmatch {
             if read == 0 {
                 break;
             }
-
-            let line_str = String::from_utf8_lossy(&raw_bytes).into_owned();
-            let line_bytes = line_str.as_bytes();
-            if !options.blankline_separated {
-                // newline separated
-                input_text = line_str.clone();
-                match_and_print(options, container, &mut *outstream, &mut input_text);
-            } else if line_bytes.is_empty() || line_bytes[0] == b'\n' {
-                match_and_print(options, container, &mut *outstream, &mut input_text);
-                input_text.clear();
-            } else {
-                input_text.push_str(&line_str);
+            if let Some(mut piece) = splitter.push_line(&String::from_utf8_lossy(&raw_bytes)) {
+                match_and_print(options, container, &mut *outstream, &mut piece);
             }
         }
-
-        if options.blankline_separated && !input_text.is_empty() {
-            match_and_print(options, container, &mut *outstream, &mut input_text);
+        if let Some(mut piece) = splitter.finish() {
+            match_and_print(options, container, &mut *outstream, &mut piece);
         }
         if options.count_patterns == VarVal::On {
             let _ = write!(outstream, "\n{}\n", container.get_pattern_count_info());

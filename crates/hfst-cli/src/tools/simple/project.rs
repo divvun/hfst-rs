@@ -7,7 +7,7 @@ use crate::hfst_commandline::{error, hfst_set_program_name};
 use crate::unary_ops::{UnaryOpSpec, UnaryToolOp, run_unary_tool};
 use hfst::backend::AlgebraBackend;
 use hfst::hfst_transducer::HfstTransducer;
-use std::borrow::Cow;
+use hfst::tools::operations::{self, Tape};
 
 /// hfst-project's command line.
 // [spec:hfst:def:hfst-project.parse-options-fn]
@@ -112,32 +112,17 @@ impl UnaryToolOp for ProjectOp {
         " "
     }
 
-    fn name_op(&self) -> Option<Cow<'_, str>> {
-        Some(Cow::Borrowed(if self.project_input {
-            "project-1st"
-        } else {
-            "project-2nd"
-        }))
-    }
-
-    fn formula(&self) -> Option<Cow<'_, str>> {
-        Some(Cow::Borrowed(if self.project_input {
-            "\u{00b9}"
-        } else {
-            "\u{00b2}"
-        }))
-    }
-
     fn apply<B: AlgebraBackend>(
         &mut self,
         _common: &CommonOptions,
         t: &mut HfstTransducer<B>,
     ) -> hfst::error::Result<()> {
-        if self.project_input {
-            t.input_project().map(|_| ())
+        let tape = if self.project_input {
+            Tape::Input
         } else {
-            t.output_project().map(|_| ())
-        }
+            Tape::Output
+        };
+        operations::project(t, tape)
     }
 }
 

@@ -618,8 +618,9 @@ pub mod fst2fst {
     use hfst::hfst_input_stream::HfstInputStream;
     use hfst::hfst_output_stream::HfstOutputStream;
     use hfst::hfst_transducer::AnyTransducer;
+    use hfst::tools::conversion::fst2fst;
     use hfst::tools::format::format_description;
-    use hfst::tools::metadata::{hfst_get_name, hfst_set_formula_unary, hfst_set_name_unary};
+    use hfst::tools::metadata::hfst_get_name;
     use std::io::Write;
 
     /// The format name `-f` takes for DHFST. DHFST is an output mode, not an
@@ -917,7 +918,7 @@ pub mod fst2fst {
         /// wrappers (default: true, i.e. write HFST3 headers).
         hfst_format: bool,
         /// '-Q/--quick': relax optimized-lookup table packing.
-        options: String,
+        quick: bool,
         /// '-f dhfst --dhfst-type': write DHFST of this type from the weighted
         /// optimized lookup the transducer converts to.
         dhfst: Option<DhfstKind>,
@@ -968,33 +969,22 @@ pub mod fst2fst {
                     &format!("Converting {}...{}\n", inputname, transducer_n),
                 );
             }
-            // The typed cross-format conversion at the stream boundary
-            // ([dec:hfst:monomorphic-backends]): to_basic/from_basic between
-            // the algebra backends, to_ol(weighted, options) for OL output.
-            // C wraps the conversion in try/catch on HfstException; the Rust
-            // conversion currently panics rather than throwing, so the catch arm
-            // is not reproduced here.
-            let converted = match orig.convert(options.output_type, &options.options) {
+            // The conversion and the name it gives the result are the
+            // library's.
+            let mut converted = match fst2fst(orig, options.output_type, options.quick) {
                 Ok(v) => v,
                 Err(e) => {
                     error(common, 1, 0, &format!("{e}"));
                     return 1;
                 }
             };
-            // C: hfst_set_name(orig, orig, "convert"); the dest and src are the
-            // same object, which Rust cannot alias mut+const, so the read side is
-            // taken from a copy (name/formula are unchanged by the copy).
-            let code = crate::for_any!(converted, orig => {
-                let mut orig = orig;
-                let src = orig.clone();
-                hfst_set_name_unary(&mut orig, &src, "convert");
-                hfst_set_formula_unary(&mut orig, &src, "Id");
-                if let Err(e) = outstream.write(&orig) {
+            let code = match converted.write(outstream) {
+                Ok(()) => 0,
+                Err(e) => {
                     error(common, 1, 0, &format!("{e}"));
-                    return 1;
+                    1
                 }
-                0
-            });
+            };
             if code != 0 {
                 return code;
             }
@@ -1044,7 +1034,10 @@ pub mod fst2fst {
         );
         // Conversion to HFST_OLW_TYPE always yields the OlW variant; any other
         // would be a bug in the conversion path.
-        let olw = match orig.convert(options.output_type, &options.options) {
+        let olw = match orig.convert(
+            options.output_type,
+            if options.quick { "quick" } else { "" },
+        ) {
             Ok(AnyTransducer::OlW(t)) => t,
             Ok(AnyTransducer::Tropical(_) | AnyTransducer::OlU(_) | AnyTransducer::Thfst(_)) => {
                 error(
@@ -1235,11 +1228,7 @@ pub mod fst2fst {
         let options = Options {
             output_type: args.output_type(&common),
             hfst_format: !args.use_backend_format,
-            options: if args.quick {
-                "quick".to_string()
-            } else {
-                String::new()
-            },
+            quick: args.quick,
             dhfst: args.dhfst_kind().filter(|_| args.writes_dhfst()),
             dhfst_depth: args.dhfst_depth(),
         };

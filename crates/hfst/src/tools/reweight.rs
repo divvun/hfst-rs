@@ -169,10 +169,72 @@ impl Reweighting {
     }
 }
 
+/// Why reweighting failed.
+#[derive(Debug)]
+pub enum ReweightError {
+    /// A line of the rules file, numbered from 1, was refused.
+    Tsv {
+        line: u32,
+        error: TsvError,
+    },
+    Operation(crate::error::Error),
+}
+
+impl std::fmt::Display for ReweightError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ReweightError::Tsv { error, .. } => write!(f, "{}", error),
+            ReweightError::Operation(e) => write!(f, "{}", e),
+        }
+    }
+}
+
+impl From<crate::error::Error> for ReweightError {
+    fn from(e: crate::error::Error) -> Self {
+        ReweightError::Operation(e)
+    }
+}
+
 // [spec:hfst:req:embed.tools-in-library]
-/// Name `t` as `hfst reweight` names what it reweighted.
-pub fn name_reweighted<B: AlgebraBackend>(t: &mut HfstTransducer<B>) {
-    let unnamed = t.clone();
-    hfst_set_name_unary(t, &unnamed, "reweight");
-    hfst_set_formula_unary(t, &unnamed, "W");
+/// Reweight `t` by each rule of the rules file `tsv`, starting from `base`
+/// with no symbol, addition or multiplier. `each` hears each rule before it
+/// is applied.
+pub fn reweight_by_tsv<B: AlgebraBackend>(
+    t: &mut HfstTransducer<B>,
+    base: &Reweighting,
+    tsv: &str,
+    each: &mut dyn FnMut(&Reweighting),
+) -> Result<(), ReweightError> {
+    let mut rule = Reweighting {
+        symbol: None,
+        addition: 0.0,
+        multiplier: 1.0,
+        ..base.clone()
+    };
+    for (index, line) in tsv.split_inclusive('\n').enumerate() {
+        match rule.next_tsv_rule(line) {
+            Ok(None) => {}
+            Ok(Some(rule)) => {
+                each(rule);
+                rule.apply(t)?;
+            }
+            Err(error) => {
+                return Err(ReweightError::Tsv {
+                    line: index as u32 + 1,
+                    error,
+                });
+            }
+        }
+    }
+    Ok(())
+}
+
+// [spec:hfst:req:embed.tools-in-library]
+/// Name `t` as `hfst reweight` names what it reweighted, and remove its
+/// epsilons, as the tool does before it writes it.
+pub fn finish_reweighted<B: AlgebraBackend>(t: &mut HfstTransducer<B>) -> crate::error::Result<()> {
+    hfst_set_name_unary(t, "reweight");
+    hfst_set_formula_unary(t, "W");
+    t.remove_epsilons()?;
+    Ok(())
 }

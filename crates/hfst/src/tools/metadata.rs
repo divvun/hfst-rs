@@ -80,34 +80,30 @@ pub fn hfst_set_name(dest: &mut impl ToolTransducer, src: &str, op: &str) {
     hfst_set_name_maybe_truncate(dest, &format!("{}({})", op, src));
 }
 
-pub fn hfst_set_name_unary(dest: &mut impl ToolTransducer, src: &impl ToolTransducer, op: &str) {
-    if src.get_name() != "" {
-        hfst_set_name_maybe_truncate(dest, &format!("{}({})", op, src.get_name()));
+/// Name `t` `op(NAME)` after its own name, or `op(UNNAMED)` without one.
+pub fn hfst_set_name_unary(t: &mut impl ToolTransducer, op: &str) {
+    let name = t.get_name();
+    if !name.is_empty() {
+        hfst_set_name_maybe_truncate(t, &format!("{}({})", op, name));
     } else {
-        hfst_set_name_maybe_truncate(dest, &format!("{}(UNNAMED)", op));
+        hfst_set_name_maybe_truncate(t, &format!("{}(UNNAMED)", op));
     }
 }
 
 // [spec:hfst:def:hfst-tool-metadata.hfst-set-name-fn]
 // [spec:hfst:sem:hfst-tool-metadata.hfst-set-name-fn]
-pub fn hfst_set_name_binary(
-    dest: &mut impl ToolTransducer,
-    lhs: &impl ToolTransducer,
-    rhs: &impl ToolTransducer,
-    op: &str,
-) {
-    if (lhs.get_name() != "") && (rhs.get_name() != "") {
-        hfst_set_name_maybe_truncate(
-            dest,
-            &format!("{}({}, {})", op, lhs.get_name(), rhs.get_name()),
-        );
-    } else if lhs.get_name().is_empty() && (rhs.get_name() != "") {
-        hfst_set_name_maybe_truncate(dest, &format!("{}(UNNAMED, {})", op, rhs.get_name()));
-    } else if (lhs.get_name() != "") && rhs.get_name().is_empty() {
-        hfst_set_name_maybe_truncate(dest, &format!("{}({}, UNNAMED)", op, lhs.get_name()));
-    } else {
-        hfst_set_name_maybe_truncate(dest, &format!("{}(UNNAMED, UNNAMED)", op));
-    }
+/// Name `t`, the left operand of `op` and its result, `op(LEFT, RIGHT)`
+/// after its own name and `rhs`'s, with `UNNAMED` for a missing one.
+pub fn hfst_set_name_binary(t: &mut impl ToolTransducer, rhs: &impl ToolTransducer, op: &str) {
+    let (lhs, rhs) = (t.get_name(), rhs.get_name());
+    let shown = |name: &str| {
+        if name.is_empty() {
+            "UNNAMED".to_string()
+        } else {
+            name.to_string()
+        }
+    };
+    hfst_set_name_maybe_truncate(t, &format!("{}({}, {})", op, shown(&lhs), shown(&rhs)));
 }
 
 // [spec:hfst:req:embed.no-panic]
@@ -122,54 +118,32 @@ pub fn hfst_set_formula(dest: &mut impl ToolTransducer, src: &str, op: &str) {
     }
 }
 
-pub fn hfst_set_formula_unary(dest: &mut impl ToolTransducer, src: &impl ToolTransducer, op: &str) {
-    if !src.get_property("formulaic-definition").is_empty() {
-        hfst_set_formula_maybe_truncate(
-            dest,
-            &format!("{} {}", op, src.get_property("formulaic-definition")),
-        );
+/// Give `t` the formula `op F` after its own formula F, or `op .` without
+/// one.
+pub fn hfst_set_formula_unary(t: &mut impl ToolTransducer, op: &str) {
+    let formula = t.get_property("formulaic-definition");
+    if !formula.is_empty() {
+        hfst_set_formula_maybe_truncate(t, &format!("{} {}", op, formula));
     } else {
-        hfst_set_formula_maybe_truncate(dest, &format!("{} .", op));
+        hfst_set_formula_maybe_truncate(t, &format!("{} .", op));
     }
 }
 
 // [spec:hfst:def:hfst-tool-metadata.hfst-set-formula-fn]
 // [spec:hfst:sem:hfst-tool-metadata.hfst-set-formula-fn]
-pub fn hfst_set_formula_binary(
-    dest: &mut impl ToolTransducer,
-    lhs: &impl ToolTransducer,
-    rhs: &impl ToolTransducer,
-    op: &str,
-) {
-    if (!lhs.get_property("formulaic-definition").is_empty())
-        && (!rhs.get_property("formulaic-definition").is_empty())
-    {
-        hfst_set_formula_maybe_truncate(
-            dest,
-            &format!(
-                "{} {} {}",
-                lhs.get_property("formulaic-definition"),
-                op,
-                rhs.get_property("formulaic-definition")
-            ),
-        );
-    } else if lhs.get_property("formulaic-definition").is_empty()
-        && (!rhs.get_property("formulaic-definition").is_empty())
-    {
-        hfst_set_formula_maybe_truncate(
-            dest,
-            &format!(". {} {}", op, rhs.get_property("formulaic-definition")),
-        );
-    } else if (!lhs.get_property("formulaic-definition").is_empty())
-        && rhs.get_property("formulaic-definition").is_empty()
-    {
-        hfst_set_formula_maybe_truncate(
-            dest,
-            &format!("{} {} .", lhs.get_property("formulaic-definition"), op),
-        );
-    } else {
-        hfst_set_formula_maybe_truncate(dest, &format!(". {} .", op));
-    }
+/// Give `t`, the left operand of `op` and its result, the formula `L op R`
+/// after its own formula and `rhs`'s, with `.` for a missing one.
+pub fn hfst_set_formula_binary(t: &mut impl ToolTransducer, rhs: &impl ToolTransducer, op: &str) {
+    let lhs = t.get_property("formulaic-definition");
+    let rhs = rhs.get_property("formulaic-definition");
+    let shown = |formula: &str| {
+        if formula.is_empty() {
+            ".".to_string()
+        } else {
+            formula.to_string()
+        }
+    };
+    hfst_set_formula_maybe_truncate(t, &format!("{} {} {}", shown(&lhs), op, shown(&rhs)));
 }
 
 // [spec:hfst:def:hfst-tool-metadata.hfst-get-name-fn]

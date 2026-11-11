@@ -297,19 +297,17 @@ pub fn print_locate_matches(
     print_weights: bool,
 ) -> bool {
     let mut printed_something = false;
-    for it in locations.iter() {
-        if it[0].output != "@_NONMATCHING_@" {
-            printed_something = true;
-            let _ = write!(
-                outstream,
-                "{}|{}|{}|{}",
-                it[0].start, it[0].length, it[0].output, it[0].tag
-            );
-            if print_weights {
-                let _ = write!(outstream, "|{}", it[0].weight);
-            }
-            let _ = writeln!(outstream);
+    for first in crate::tools::pmatch::reported_locations(locations) {
+        printed_something = true;
+        let _ = write!(
+            outstream,
+            "{}|{}|{}|{}",
+            first.start, first.length, first.output, first.tag
+        );
+        if print_weights {
+            let _ = write!(outstream, "|{}", first.weight);
         }
+        let _ = writeln!(outstream);
     }
     printed_something
 }

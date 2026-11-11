@@ -12,7 +12,7 @@ use crate::hfst_commandline::hfst_set_program_name;
 use crate::unary_ops::{UnaryOpSpec, UnaryToolOp, run_unary_tool};
 use hfst::backend::AlgebraBackend;
 use hfst::hfst_transducer::HfstTransducer;
-use std::borrow::Cow;
+use hfst::tools::operations;
 
 /// hfst-reverse's command line: the common and unary options only.
 // [spec:hfst:req:cli.arg-parse]
@@ -48,20 +48,12 @@ impl UnaryToolOp for ReverseOp {
         format!("Reversing {}", inputname)
     }
 
-    fn name_op(&self) -> Option<Cow<'_, str>> {
-        Some(Cow::Borrowed("reverse"))
-    }
-
-    fn formula(&self) -> Option<Cow<'_, str>> {
-        Some(Cow::Borrowed("\u{21c6}"))
-    }
-
     fn apply<B: AlgebraBackend>(
         &mut self,
         _common: &CommonOptions,
         t: &mut HfstTransducer<B>,
     ) -> hfst::error::Result<()> {
-        t.reverse().map(|_| ())
+        operations::reverse(t)
     }
 }
 

@@ -15,7 +15,9 @@ use crate::hfst_commandline::{
 };
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_transducer::{AnyTransducer, HfstTransducer};
+use hfst::tools::compare::{CompareOptions, compare, write_comparison};
 use hfst::tools::format::format_description;
+use hfst::tools::operations::Operand;
 use std::io::Write;
 
 /// hfst-compare's command line (the C's 'static bool harmonize=true;
@@ -56,19 +58,11 @@ impl ToolArgs for Args {
     }
 }
 
-/// The per-pair knobs `compare_pair` reads.
-struct Options {
-    /// '-H, --do-not-harmonize' clears this: harmonize symbols before comparing.
-    harmonize: bool,
-    /// '-e, --eliminate-flags': eliminate flag diacritics before comparing.
-    eliminate_flags: bool,
-}
-
 // [spec:hfst:def:hfst-compare.compare-streams-fn]
 // [spec:hfst:sem:hfst-compare.compare-streams-fn]
 fn compare_streams(
     common: &CommonOptions,
-    options: &Options,
+    options: &CompareOptions,
     firststream: &mut HfstInputStream<'_>,
     secondstream: &mut HfstInputStream<'_>,
 ) -> i32 {
@@ -148,30 +142,15 @@ fn compare_streams(
         };
         match outcome {
             Some(Ok(equal)) => {
-                if equal {
-                    if transducer_n_first == 1 {
-                        if !common.silent {
-                            let _ = writeln!(out, "{} == {}", firstname, secondname);
-                        }
-                    } else if !common.silent {
-                        let _ = writeln!(
-                            out,
-                            "{}[{}] == {}[{}]",
-                            firstname, transducer_n_first, secondname, transducer_n_second
-                        );
-                    }
-                } else {
-                    if transducer_n_first == 1 {
-                        if !common.silent {
-                            let _ = writeln!(out, "{} != {}", firstname, secondname);
-                        }
-                    } else if !common.silent {
-                        let _ = writeln!(
-                            out,
-                            "{}[{}] != {}[{}]",
-                            firstname, transducer_n_first, secondname, transducer_n_second
-                        );
-                    }
+                if !common.silent {
+                    let _ = write_comparison(
+                        &mut out,
+                        (&firstname, &secondname),
+                        (transducer_n_first, transducer_n_second),
+                        equal,
+                    );
+                }
+                if !equal {
                     mismatches += 1;
                 }
             }
@@ -247,19 +226,20 @@ fn compare_streams(
     }
 }
 
-// The monomorphic per-pair comparison body (flag elimination + compare).
+// The monomorphic per-pair comparison body: the library's comparison, with
+// the second transducer changed in place as the stream loop keeps it.
 fn compare_pair<B: hfst::backend::AlgebraBackend>(
     common: &CommonOptions,
-    options: &Options,
+    options: &CompareOptions,
     first: &mut HfstTransducer<B>,
     second: &mut HfstTransducer<B>,
 ) -> hfst::error::Result<bool> {
-    if options.eliminate_flags {
+    let mut operand = Operand::Owned(std::mem::replace(second, HfstTransducer::new()));
+    let equal = compare(first, &mut operand, options, &mut || {
         verbose_print(common, "Eliminating flags...\n");
-        first.eliminate_flags()?;
-        second.eliminate_flags()?;
-    }
-    first.compare(second, options.harmonize)
+    });
+    *second = operand.into_owned()?;
+    equal
 }
 
 // [spec:hfst:def:hfst-compare.main-fn]
@@ -269,7 +249,7 @@ pub(in crate::tools) fn execute(args: Vec<String>) -> ToolResult {
 
     let common = hfst_set_program_name(&argv0, "0.1", "HfstCompare");
     let (common, args) = cli::parse::<Args>(common, args)?;
-    let options = Options {
+    let options = CompareOptions {
         harmonize: !args.do_not_harmonize,
         eliminate_flags: args.eliminate_flags,
     };

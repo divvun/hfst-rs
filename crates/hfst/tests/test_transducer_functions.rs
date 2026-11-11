@@ -885,7 +885,7 @@ fn kill_paths_facade_tropical() -> Result<(), hfst::error::Error> {
     let tx = HfstTransducer::<StdVectorFst>::new_symbol_pair("x", "x")?;
     t.disjunct(&tx, true)?;
 
-    let killed_basic = t.kill_paths("x").to_basic()?;
+    let killed_basic = t.kill_paths("x")?.to_basic()?;
 
     let mut has_a = false;
     for transitions in killed_basic.iter() {

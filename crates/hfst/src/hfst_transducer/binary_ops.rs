@@ -505,7 +505,7 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
 
     pub fn compose_intersect(
         &mut self,
-        v: &HfstTransducerVector<B>,
+        v: &[HfstTransducer<B>],
         invert: bool,
         b: bool,
     ) -> crate::error::Result<&mut HfstTransducer<B>> {
@@ -517,7 +517,7 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
     /// them; other modes retain the legacy lazy rule-intersection engine.
     pub fn compose_intersect_with_config(
         &mut self,
-        v: &HfstTransducerVector<B>,
+        v: &[HfstTransducer<B>],
         invert: bool,
         _b: bool,
         config: &EngineConfig,

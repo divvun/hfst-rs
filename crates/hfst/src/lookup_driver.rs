@@ -21,6 +21,7 @@
 //! `&mut dyn Write`, and the tool's message printers arrive as a
 //! [`LookupReporter`].
 
+use std::borrow::Cow;
 use std::io::Write;
 
 use crate::convert_transducer_format::ConversionFunctions;
@@ -50,9 +51,6 @@ pub trait LookupReporter {
     /// A warning. Implementations drop it when the tool is silent, which is
     /// the `if (!silent)` guard both tools wrap their warnings in.
     fn warning(&self, msg: &str);
-    /// An unrecoverable error. Both tools print it and exit, so it never
-    /// returns.
-    fn fatal(&self, msg: &str) -> !;
 }
 
 // ---------------------------------------------------------------------------
@@ -255,14 +253,14 @@ impl LookupEngineOptions {
 
 /// The two optimized-lookup table shapes a lookup stream can produce; the fast
 /// lookup path runs on either ([dec:hfst:monomorphic-backends]).
-pub enum OlLookup {
-    W(HfstTransducer<Transducer<WeightedTables>>),
-    U(HfstTransducer<Transducer<UnweightedTables>>),
+pub enum OlLookup<'a> {
+    W(Cow<'a, HfstTransducer<Transducer<WeightedTables>>>),
+    U(Cow<'a, HfstTransducer<Transducer<UnweightedTables>>>),
 }
 
-impl OlLookup {
+impl OlLookup<'_> {
     fn lookup_fd_string_vector(
-        &mut self,
+        &self,
         s: &StringVector,
         limit: isize,
         time_cutoff: f64,
@@ -273,14 +271,14 @@ impl OlLookup {
         }
     }
 
-    fn lookup_pairs(&mut self, s: &str, limit: isize, time_cutoff: f64) -> HfstTwoLevelPaths {
+    fn lookup_pairs(&self, s: &str, limit: isize, time_cutoff: f64) -> HfstTwoLevelPaths {
         match self {
             OlLookup::W(t) => t.lookup_pairs(s, limit, time_cutoff),
             OlLookup::U(t) => t.lookup_pairs(s, limit, time_cutoff),
         }
     }
 
-    fn is_lookup_infinitely_ambiguous_string_vector(&mut self, s: &StringVector) -> bool {
+    fn is_lookup_infinitely_ambiguous_string_vector(&self, s: &StringVector) -> bool {
         match self {
             OlLookup::W(t) => t.is_lookup_infinitely_ambiguous_string_vector(s),
             OlLookup::U(t) => t.is_lookup_infinitely_ambiguous_string_vector(s),
@@ -382,7 +380,7 @@ impl PairPrintContext<'static> {
 fn lookup_fd_and_print(
     opts: &LookupEngineOptions,
     basic: Option<BasicTarget<'_>>,
-    transducer: Option<&mut OlLookup>,
+    transducer: Option<&OlLookup<'_>>,
     results: &mut HfstOneLevelPaths,
     s: &HfstOneLevelPath,
     limit: Option<isize>,
@@ -565,13 +563,13 @@ fn print_pairs_flookup(
 fn lookup_simple_ol(
     opts: &LookupEngineOptions,
     s: &HfstOneLevelPath,
-    t: &mut OlLookup,
+    t: &OlLookup<'_>,
     infinity: &mut bool,
     print: PairPrintContext<'_>,
     reporter: &dyn LookupReporter,
     out: &mut dyn Write,
     echo: &mut dyn Write,
-) -> HfstOneLevelPaths {
+) -> Result<HfstOneLevelPaths> {
     let mut results: HfstOneLevelPaths = HfstOneLevelPaths::new();
     let infinite =
         opts.time_cutoff == 0.0 && t.is_lookup_infinitely_ambiguous_string_vector(&s.second);
@@ -584,7 +582,7 @@ fn lookup_simple_ol(
         lookup_fd_and_print(
             opts,
             None,
-            Some(&mut *t),
+            Some(t),
             &mut results,
             s,
             Some(limit),
@@ -594,10 +592,7 @@ fn lookup_simple_ol(
             echo,
         );
     } else {
-        results = match t.lookup_fd_string_vector(&s.second, limit, opts.time_cutoff) {
-            Ok(r) => r,
-            Err(e) => reporter.fatal(&format!("{e}")),
-        };
+        results = t.lookup_fd_string_vector(&s.second, limit, opts.time_cutoff)?;
     }
     if infinite {
         *infinity = true;
@@ -606,7 +601,7 @@ fn lookup_simple_ol(
     if results.is_empty() {
         reporter.verbose("Got no results\n");
     }
-    results
+    Ok(results)
 }
 
 // The basic-transducer single-transducer lookup.
@@ -620,7 +615,7 @@ fn lookup_simple_basic(
     reporter: &dyn LookupReporter,
     out: &mut dyn Write,
     echo: &mut dyn Write,
-) -> HfstOneLevelPaths {
+) -> Result<HfstOneLevelPaths> {
     let mut results: HfstOneLevelPaths = HfstOneLevelPaths::new();
 
     let possible = is_possible_to_get_result(s, t.symbols_seen, t.unknown_or_identity_seen);
@@ -668,7 +663,7 @@ fn lookup_simple_basic(
     if results.is_empty() {
         reporter.verbose("Got no results\n");
     }
-    results
+    Ok(results)
 }
 
 // The optimized-lookup cascade: the library cascade combinator driving the
@@ -676,13 +671,13 @@ fn lookup_simple_basic(
 fn lookup_cascading_ol(
     opts: &LookupEngineOptions,
     s: &HfstOneLevelPath,
-    cascade: &mut [OlLookup],
+    cascade: &[OlLookup<'_>],
     infinity: &mut bool,
     reporter: &dyn LookupReporter,
     out: &mut dyn Write,
     echo: &mut dyn Write,
-) -> HfstOneLevelPaths {
-    let result = apply_cascade(
+) -> Result<HfstOneLevelPaths> {
+    apply_cascade(
         s,
         cascade.len(),
         opts.cascade,
@@ -700,7 +695,7 @@ fn lookup_cascading_ol(
             lookup_simple_ol(
                 opts,
                 input,
-                &mut cascade[step.index],
+                &cascade[step.index],
                 infinity,
                 print,
                 reporter,
@@ -709,11 +704,7 @@ fn lookup_cascading_ol(
             )
         },
         out,
-    );
-    match result {
-        Ok(r) => r,
-        Err(e) => reporter.fatal(&format!("{e}")),
-    }
+    )
 }
 
 // The basic-transducer cascade: the library cascade combinator driving the
@@ -721,13 +712,13 @@ fn lookup_cascading_ol(
 fn lookup_cascading_basic(
     opts: &LookupEngineOptions,
     s: &HfstOneLevelPath,
-    cascade: &LookupCascade,
+    cascade: &LookupCascade<'_>,
     infinity: &mut bool,
     reporter: &dyn LookupReporter,
     out: &mut dyn Write,
     echo: &mut dyn Write,
-) -> HfstOneLevelPaths {
-    let result = apply_cascade(
+) -> Result<HfstOneLevelPaths> {
+    apply_cascade(
         s,
         cascade.basic.len(),
         opts.cascade,
@@ -762,11 +753,7 @@ fn lookup_cascading_basic(
             )
         },
         out,
-    );
-    match result {
-        Ok(r) => r,
-        Err(e) => reporter.fatal(&format!("{e}")),
-    }
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -779,8 +766,8 @@ fn lookup_cascading_basic(
 /// also accumulates what the tools need afterwards — the multicharacter
 /// symbols their input tokenizer must know, and the per-transducer symbol sets
 /// that let an impossible lookup be skipped.
-pub struct LookupCascade {
-    ol: Vec<OlLookup>,
+pub struct LookupCascade<'a> {
+    ol: Vec<OlLookup<'a>>,
     basic: Vec<HfstBasicTransducer>,
     // symbols actually seen in (non-ol) transducers
     symbols_seen: Vec<StringSet>,
@@ -792,14 +779,14 @@ pub struct LookupCascade {
     transducer_n: usize,
 }
 
-impl Default for LookupCascade {
-    fn default() -> LookupCascade {
+impl Default for LookupCascade<'_> {
+    fn default() -> Self {
         LookupCascade::new()
     }
 }
 
-impl LookupCascade {
-    pub fn new() -> LookupCascade {
+impl<'a> LookupCascade<'a> {
+    pub fn new() -> Self {
         LookupCascade {
             ol: Vec::new(),
             basic: Vec::new(),
@@ -882,6 +869,50 @@ impl LookupCascade {
         trans: AnyTransducer,
         reporter: &dyn LookupReporter,
     ) -> Result<()> {
+        self.push_basic(&trans, reporter)?;
+        // one dispatch per read ([dec:hfst:monomorphic-backends]): the OL
+        // variants carry the fast lookup path; the algebra variants were
+        // already flattened into the basic cascade above.
+        match trans {
+            AnyTransducer::OlW(t) => self.ol.push(OlLookup::W(Cow::Owned(t))),
+            AnyTransducer::OlU(t) => self.ol.push(OlLookup::U(Cow::Owned(t))),
+            // THFST is the weighted OL engine under a distinct tag; recover it
+            // as the weighted lookup handle (O(1) table move).
+            AnyTransducer::Thfst(t) => self.ol.push(OlLookup::W(Cow::Owned(t.into_olw()))),
+            AnyTransducer::Tropical(_) => {}
+            // Foma is an algebra backend, already flattened into the basic
+            // cascade above, like Tropical.
+            #[cfg(feature = "foma")]
+            AnyTransducer::Foma(_) => {}
+        }
+        Ok(())
+    }
+
+    /// [`Self::push_transducer`] for a transducer the caller keeps: an
+    /// optimized-lookup table is looked up in where it is, and a THFST one,
+    /// whose tables are held under another tag, is copied.
+    pub fn push_borrowed(
+        &mut self,
+        trans: &'a AnyTransducer,
+        reporter: &dyn LookupReporter,
+    ) -> Result<()> {
+        self.push_basic(trans, reporter)?;
+        match trans {
+            AnyTransducer::OlW(t) => self.ol.push(OlLookup::W(Cow::Borrowed(t))),
+            AnyTransducer::OlU(t) => self.ol.push(OlLookup::U(Cow::Borrowed(t))),
+            AnyTransducer::Thfst(t) => self.ol.push(OlLookup::W(Cow::Owned(
+                HfstTransducer::new_copy(t)?.into_olw(),
+            ))),
+            AnyTransducer::Tropical(_) => {}
+            #[cfg(feature = "foma")]
+            AnyTransducer::Foma(_) => {}
+        }
+        Ok(())
+    }
+
+    /// Flatten an algebra transducer into the basic cascade, harvesting its
+    /// multicharacter symbols and its symbol set on the way.
+    fn push_basic(&mut self, trans: &AnyTransducer, reporter: &dyn LookupReporter) -> Result<()> {
         let ty = trans.get_type();
         let mut symbols_seen: StringSet = StringSet::new();
         let mut id_or_unk_seen = false;
@@ -891,7 +922,7 @@ impl LookupCascade {
             || ty == ImplementationType::TROPICAL_OPENFST_TYPE
             || ty == ImplementationType::FOMA_TYPE
         {
-            let basic = to_basic(&trans)?;
+            let basic = to_basic(trans)?;
             for it in basic.iter() {
                 for tr_it in it.iter() {
                     let mcs = tr_it.get_input_symbol(basic.coder());
@@ -909,22 +940,6 @@ impl LookupCascade {
             self.symbols_seen.push(symbols_seen);
             self.unknown_or_identity_seen.push(id_or_unk_seen);
         }
-
-        // one dispatch per read ([dec:hfst:monomorphic-backends]): the OL
-        // variants carry the fast lookup path; the algebra variants were
-        // already flattened into the basic cascade above.
-        match trans {
-            AnyTransducer::OlW(t) => self.ol.push(OlLookup::W(t)),
-            AnyTransducer::OlU(t) => self.ol.push(OlLookup::U(t)),
-            // THFST is the weighted OL engine under a distinct tag; recover it
-            // as the weighted lookup handle (O(1) table move).
-            AnyTransducer::Thfst(t) => self.ol.push(OlLookup::W(t.into_olw())),
-            AnyTransducer::Tropical(_) => {}
-            // Foma is an algebra backend, already flattened into the basic
-            // cascade above, like Tropical.
-            #[cfg(feature = "foma")]
-            AnyTransducer::Foma(_) => {}
-        }
         Ok(())
     }
 
@@ -937,24 +952,24 @@ impl LookupCascade {
     // [spec:hfst:def:hfst-flookup.perform-lookups-fn]
     // [spec:hfst:sem:hfst-flookup.perform-lookups-fn]
     pub fn perform_lookups(
-        &mut self,
+        &self,
         origin: &HfstOneLevelPath,
         unknown: bool,
         opts: &LookupEngineOptions,
         reporter: &dyn LookupReporter,
         out: &mut dyn Write,
         echo: &mut dyn Write,
-    ) -> (HfstOneLevelPaths, bool) {
+    ) -> Result<(HfstOneLevelPaths, bool)> {
         let mut infinite = false;
         if unknown {
-            return (HfstOneLevelPaths::new(), infinite);
+            return Ok((HfstOneLevelPaths::new(), infinite));
         }
         let results = if self.only_optimized_lookup {
             if self.ol.len() == 1 {
                 lookup_simple_ol(
                     opts,
                     origin,
-                    &mut self.ol[0],
+                    &self.ol[0],
                     &mut infinite,
                     PairPrintContext::whole_lookup(),
                     reporter,
@@ -962,15 +977,7 @@ impl LookupCascade {
                     echo,
                 )
             } else {
-                lookup_cascading_ol(
-                    opts,
-                    origin,
-                    &mut self.ol,
-                    &mut infinite,
-                    reporter,
-                    out,
-                    echo,
-                )
+                lookup_cascading_ol(opts, origin, &self.ol, &mut infinite, reporter, out, echo)
             }
         } else if self.basic.len() == 1 {
             lookup_simple_basic(
@@ -985,8 +992,8 @@ impl LookupCascade {
             )
         } else {
             lookup_cascading_basic(opts, origin, self, &mut infinite, reporter, out, echo)
-        };
-        (results, infinite)
+        }?;
+        Ok((results, infinite))
     }
 }
 

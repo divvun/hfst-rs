@@ -12,7 +12,7 @@ use crate::hfst_commandline::hfst_set_program_name;
 use crate::unary_ops::{UnaryOpSpec, UnaryToolOp, run_unary_tool};
 use hfst::backend::AlgebraBackend;
 use hfst::hfst_transducer::HfstTransducer;
-use std::borrow::Cow;
+use hfst::tools::operations;
 
 /// hfst-remove-epsilons's command line: the common and unary options only.
 // [spec:hfst:req:cli.arg-parse]
@@ -48,20 +48,12 @@ impl UnaryToolOp for RemoveEpsilonsOp {
         format!("Removing epsilons {}", inputname)
     }
 
-    fn name_op(&self) -> Option<Cow<'_, str>> {
-        Some(Cow::Borrowed("remove-epsilons"))
-    }
-
-    fn formula(&self) -> Option<Cow<'_, str>> {
-        Some(Cow::Borrowed("Id"))
-    }
-
     fn apply<B: AlgebraBackend>(
         &mut self,
         _common: &CommonOptions,
         t: &mut HfstTransducer<B>,
     ) -> hfst::error::Result<()> {
-        t.remove_epsilons().map(|_| ())
+        operations::remove_epsilons(t)
     }
 }
 

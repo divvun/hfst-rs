@@ -16,7 +16,9 @@ use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_output_stream::HfstOutputStream;
 use hfst::hfst_transducer::HfstTransducer;
 use hfst::tools::metadata::hfst_get_name;
-use hfst::tools::reweight::{Reweighting, TsvError, name_reweighted, weight_function};
+use hfst::tools::reweight::{
+    ReweightError, Reweighting, TsvError, finish_reweighted, reweight_by_tsv, weight_function,
+};
 use std::io::{BufRead, BufReader, Write};
 
 /// The lines of the file `name`, read up to the first that is not UTF-8.
@@ -210,47 +212,46 @@ struct Options {
 }
 
 /// Reweight `trans` by each rule of the TSV file `name`, whose text is
-/// `text`, starting from `base` with no symbol, addition or multiplier.
-fn reweight_by_tsv<B: hfst::backend::AlgebraBackend>(
+/// `text`, reporting a refused line as the tool reports it.
+fn reweight_by_tsv_file<B: hfst::backend::AlgebraBackend>(
     common: &CommonOptions,
     options: &Options,
     (name, text): (&str, &str),
     trans: &mut HfstTransducer<B>,
 ) -> hfst::error::Result<()> {
     verbose_print(common, &format!("Reading reweights from {}\n", name));
-    let mut rule = Reweighting {
-        symbol: None,
-        addition: 0.0,
-        multiplier: 1.0,
-        ..options.rule.clone()
-    };
-    for (index, line) in text.split_inclusive('\n').enumerate() {
-        match rule.next_tsv_rule(line) {
-            Ok(None) => {}
-            Ok(Some(rule)) => {
-                verbose_print(
-                    common,
-                    &format!(
-                        "Modifying weights {} < w < {} as {} * {}(w) + {} for symbol {}\n",
-                        rule.lower_bound,
-                        rule.upper_bound,
-                        rule.multiplier,
-                        options.funcname,
-                        rule.addition,
-                        rule.symbol.clone().unwrap_or_default()
-                    ),
-                );
-                rule.apply(trans)?;
-            }
-            Err(e @ TsvError::NoTab) => {
-                hfst_error_at_line(common, 1, 0, name, index as u32 + 1, &e.to_string());
-            }
-            Err(e @ TsvError::NotAWeight(_)) => {
-                hfst_error(common, 1, last_os_error_code(), &e.to_string());
-            }
+    let reweighted = reweight_by_tsv(trans, &options.rule, text, &mut |rule| {
+        verbose_print(
+            common,
+            &format!(
+                "Modifying weights {} < w < {} as {} * {}(w) + {} for symbol {}\n",
+                rule.lower_bound,
+                rule.upper_bound,
+                rule.multiplier,
+                options.funcname,
+                rule.addition,
+                rule.symbol.clone().unwrap_or_default()
+            ),
+        );
+    });
+    match reweighted {
+        Ok(()) => Ok(()),
+        Err(ReweightError::Operation(e)) => Err(e),
+        Err(ReweightError::Tsv {
+            line,
+            error: error @ TsvError::NoTab,
+        }) => {
+            hfst_error_at_line(common, 1, 0, name, line, &error.to_string());
+            Ok(())
+        }
+        Err(ReweightError::Tsv {
+            error: error @ TsvError::NotAWeight(_),
+            ..
+        }) => {
+            hfst_error(common, 1, last_os_error_code(), &error.to_string());
+            Ok(())
         }
     }
-    Ok(())
 }
 
 // [spec:hfst:req:embed.tools-in-library]
@@ -292,11 +293,11 @@ fn process_stream(
             }
             let reweighted = match &options.tsv {
                 None => options.rule.apply(&mut trans),
-                Some((name, text)) => reweight_by_tsv(common, options, (name, text), &mut trans),
+                Some((name, text)) => reweight_by_tsv_file(common, options, (name, text), &mut trans),
             };
             let written = reweighted.and_then(|()| {
-                name_reweighted(&mut trans);
-                outstream.write(trans.remove_epsilons()?)?;
+                finish_reweighted(&mut trans)?;
+                outstream.write(&trans)?;
                 Ok(())
             });
             if let Err(e) = written {

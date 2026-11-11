@@ -12,7 +12,7 @@ use crate::hfst_commandline::{error, hfst_set_program_name, print_short_help};
 use crate::unary_ops::{UnaryOpSpec, UnaryToolOp, run_unary_tool};
 use hfst::backend::AlgebraBackend;
 use hfst::hfst_transducer::HfstTransducer;
-use std::borrow::Cow;
+use hfst::tools::operations;
 
 /// The boundary symbol the C initialises and never changes; see
 /// [`Args::validate`] for why -b cannot change it.
@@ -84,20 +84,12 @@ impl UnaryToolOp for RealignOp {
         " "
     }
 
-    fn name_op(&self) -> Option<Cow<'_, str>> {
-        Some(Cow::Borrowed("realign"))
-    }
-
-    fn formula(&self) -> Option<Cow<'_, str>> {
-        Some(Cow::Borrowed("Id"))
-    }
-
     fn apply<B: AlgebraBackend>(
         &mut self,
         _common: &CommonOptions,
         t: &mut HfstTransducer<B>,
     ) -> hfst::error::Result<()> {
-        t.realign().map(|_| ())
+        operations::realign(t)
     }
 }
 

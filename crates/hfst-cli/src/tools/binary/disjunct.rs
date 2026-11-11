@@ -4,13 +4,14 @@
 //! scaffolding lives in crate::binary_ops and the option layer in crate::cli.
 
 use crate::binary_ops::{
-    BinaryOpSpec, BinaryToolOp, LoopStyle, RetryPolicy, run_binary_streams_tool,
+    ApplyError, BinaryOpSpec, BinaryToolOp, LoopStyle, RetryPolicy, run_binary_streams_tool,
 };
 use crate::cli::{self, BinaryIo, CommonArgs, ToolArgs, ToolResult};
 use crate::globals::CommonOptions;
 use crate::hfst_commandline::hfst_set_program_name;
 use hfst::backend::AlgebraBackend;
 use hfst::hfst_transducer::HfstTransducer;
+use hfst::tools::operations::{self, BinaryOptions, Operand};
 
 /// hfst-disjunct's command line.
 //
@@ -59,8 +60,6 @@ const SPEC: BinaryOpSpec = BinaryOpSpec {
     mismatch_noun: "disjunction",
     could_not_verb: "disjunct",
     could_not_noun: "disjunction",
-    name_op: "union",
-    formula: "\u{222a}",
     verbose_begin: |firstname, secondname| format!("Disjuncting {} and {}", firstname, secondname),
     loop_style: LoopStyle::Standard,
     retry: RetryPolicy::AnyError,
@@ -89,9 +88,16 @@ struct DisjunctOp {
 impl BinaryToolOp for DisjunctOp {
     fn apply<B: AlgebraBackend>(
         &mut self,
+        common: &CommonOptions,
         first: &mut HfstTransducer<B>,
-        second: &HfstTransducer<B>,
-    ) -> hfst::error::Result<()> {
-        first.disjunct(second, self.harmonize).map(|_| ())
+        second: &mut Operand<'_, B>,
+    ) -> Result<(), ApplyError> {
+        let _ = common;
+        let options = BinaryOptions {
+            harmonize: self.harmonize,
+            harmonize_flags: false,
+        };
+        operations::disjunct(first, second.get(), &options)?;
+        Ok(())
     }
 }

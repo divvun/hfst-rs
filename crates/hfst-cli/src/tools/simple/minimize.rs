@@ -12,8 +12,8 @@ use crate::globals::CommonOptions;
 use crate::hfst_commandline::hfst_set_program_name;
 use crate::unary_ops::{UnaryOpSpec, UnaryToolOp, run_unary_tool};
 use hfst::backend::AlgebraBackend;
-use hfst::hfst_transducer::{EngineConfig, HfstTransducer};
-use std::borrow::Cow;
+use hfst::hfst_transducer::HfstTransducer;
+use hfst::tools::operations;
 
 /// hfst-minimize's command line.
 // [spec:hfst:req:cli.arg-parse]
@@ -55,24 +55,12 @@ impl UnaryToolOp for MinimizeOp {
         format!("Minimizing {}", inputname)
     }
 
-    fn name_op(&self) -> Option<Cow<'_, str>> {
-        Some(Cow::Borrowed("minimize"))
-    }
-
-    fn formula(&self) -> Option<Cow<'_, str>> {
-        Some(Cow::Borrowed("M"))
-    }
-
     fn apply<B: AlgebraBackend>(
         &mut self,
         _common: &CommonOptions,
         t: &mut HfstTransducer<B>,
     ) -> hfst::error::Result<()> {
-        t.minimize_with_config(&EngineConfig {
-            encode_weights: self.encode_weights,
-            ..EngineConfig::default()
-        })
-        .map(|_| ())
+        operations::minimize(t, self.encode_weights)
     }
 }
 
