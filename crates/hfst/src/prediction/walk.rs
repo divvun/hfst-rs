@@ -18,6 +18,7 @@ use std::collections::{BTreeMap, HashMap};
 pub use machine::Configuration;
 pub(super) use machine::Machine;
 pub(super) use pass::{Live, Pass};
+use reach::Role;
 pub(super) use runs::Offers;
 
 use super::units::{SymbolClass, Unit, UnitGrammar, UnitKey, UnitKind};
@@ -41,7 +42,7 @@ impl Default for WalkLimits {
     fn default() -> Self {
         WalkLimits {
             max_unit_symbols: 48,
-            max_configurations: 200_000,
+            max_configurations: 1_000_000,
         }
     }
 }
@@ -196,7 +197,22 @@ struct SymbolInfo {
     class: SymbolClass,
     boundary: bool,
     prefix: bool,
+    derivation: bool,
     enclitic: bool,
+    hidden: bool,
+}
+
+impl SymbolInfo {
+    /// A derivation tag can only begin a run, so a run that only a boundary
+    /// tag can still end never goes through one.
+    fn role(&self) -> Role {
+        match self.class {
+            SymbolClass::Tag if self.derivation => Role::Stop,
+            SymbolClass::Tag if self.boundary => Role::Boundary,
+            SymbolClass::Tag => Role::Through,
+            SymbolClass::Letter | SymbolClass::Flag | SymbolClass::Reserved => Role::Stop,
+        }
+    }
 }
 
 /// Walks one generator's analysis side with one unit grammar. The generator
@@ -207,6 +223,7 @@ pub struct Walker<'a, T: TransducerTablesInterface> {
     grammar: &'a UnitGrammar,
     limits: WalkLimits,
     symbols: Vec<SymbolInfo>,
+    roles: Vec<Role>,
     letters: HashMap<char, SymbolNumber>,
     filters: Vec<(Unit, Vec<FdOperation>)>,
 }
@@ -239,9 +256,12 @@ impl<'a, T: TransducerTablesInterface> Walker<'a, T> {
                 class: grammar.classify(name),
                 boundary: grammar.is_boundary(name),
                 prefix: grammar.is_prefix(name),
+                derivation: grammar.is_derivation(name),
                 enclitic: grammar.is_enclitic(name),
+                hidden: grammar.is_hidden(name),
             })
             .collect();
+        let roles = symbols.iter().map(SymbolInfo::role).collect();
         let letters = inputs
             .iter()
             .zip(&symbols)
@@ -272,6 +292,7 @@ impl<'a, T: TransducerTablesInterface> Walker<'a, T> {
             grammar,
             limits,
             symbols,
+            roles,
             letters,
             filters,
         })
@@ -291,7 +312,7 @@ impl<'a, T: TransducerTablesInterface> Walker<'a, T> {
     }
 
     pub(super) fn pass(&self) -> Pass<'_, 'a, T> {
-        Pass::new(&self.machine, self.limits.max_configurations)
+        Pass::new(&self.machine, &self.roles, self.limits.max_configurations)
     }
 
     pub(super) fn seeds(&self, pass: &mut Pass<'_, 'a, T>, word: &Word) -> Vec<Live> {

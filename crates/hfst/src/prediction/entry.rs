@@ -54,7 +54,7 @@ impl<R: TransducerTablesInterface> Relaxation for Transducer<R> {
         keep: &mut dyn FnMut(&str) -> bool,
     ) -> Spellings {
         let machine = Machine::new(self);
-        let mut pass = Pass::new(&machine, limits.max_configurations);
+        let mut pass = Pass::new(&machine, &[], limits.max_configurations);
         let mut verdicts: HashMap<String, bool> = HashMap::new();
         let mut lives = vec![pass.start()];
         for letter in typed.chars() {

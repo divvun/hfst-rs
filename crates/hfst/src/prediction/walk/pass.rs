@@ -17,7 +17,7 @@ use smallvec::SmallVec;
 
 use super::hash::{IdHasher, IdMap};
 use super::machine::{Budget, Configuration, Edge, Machine};
-use super::reach::{Reach, Reaches, Want};
+use super::reach::{Reach, Reaches, Role, Want};
 use crate::hfst_flag_diacritics::{FdOperation, FdValue};
 use crate::transducer::{SymbolNumber, TransducerTablesInterface, TransitionTableIndex, Weight};
 
@@ -209,6 +209,8 @@ impl Flags {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(in crate::prediction) enum Purpose {
     Tags,
+    /// Tags of a run that only a boundary tag can end.
+    Bounded,
     Prefixes,
     Letters,
 }
@@ -247,6 +249,8 @@ impl Readers {
 
 pub(in crate::prediction) struct Pass<'m, 'a, T: TransducerTablesInterface> {
     machine: &'m Machine<'a, T>,
+    /// What each input symbol does to a run only a boundary tag can end.
+    roles: &'m [Role],
     pub(in crate::prediction) budget: Budget,
     outputs: Outputs,
     flags: Flags,
@@ -255,9 +259,14 @@ pub(in crate::prediction) struct Pass<'m, 'a, T: TransducerTablesInterface> {
 }
 
 impl<'m, 'a, T: TransducerTablesInterface> Pass<'m, 'a, T> {
-    pub(in crate::prediction) fn new(machine: &'m Machine<'a, T>, configurations: usize) -> Self {
+    pub(in crate::prediction) fn new(
+        machine: &'m Machine<'a, T>,
+        roles: &'m [Role],
+        configurations: usize,
+    ) -> Self {
         Pass {
             machine,
+            roles,
             budget: Budget::new(configurations),
             outputs: Outputs::new(),
             flags: Flags::default(),
@@ -325,6 +334,24 @@ impl<'m, 'a, T: TransducerTablesInterface> Pass<'m, 'a, T> {
         self.reaches.of(self.machine, state)
     }
 
+    fn met(&mut self, want: Want<'_>, state: TransitionTableIndex) -> bool {
+        match want {
+            Want::Everything => true,
+            Want::Final => self.reach(state).can_end(),
+            Want::Symbol(symbol) => self.reach(state).reads(symbol),
+            Want::Reading(wanted) => self.reach(state).reads_any(wanted),
+            Want::Boundary => self.reaches.bounded(self.machine, self.roles, state),
+        }
+    }
+
+    /// True when a run of tags from some of `seeds` can still end at a
+    /// boundary tag.
+    pub(in crate::prediction) fn bounded(&mut self, seeds: &[Live]) -> bool {
+        seeds
+            .iter()
+            .any(|seed| self.met(Want::Boundary, seed.here.state))
+    }
+
     fn along(&mut self, live: &Live, arc: &Edge, flags: FlagsId) -> Live {
         let output = match arc.output {
             Some(output) => self.outputs.push(live.here.output, output),
@@ -351,14 +378,14 @@ impl<'m, 'a, T: TransducerTablesInterface> Pass<'m, 'a, T> {
         let mut set = LiveSet::default();
         let mut agenda: Vec<Live> = Vec::new();
         for seed in seeds {
-            if want.met_by(&self.reach(seed.here.state)) && set.insert(*seed, &self.outputs) {
+            if self.met(want, seed.here.state) && set.insert(*seed, &self.outputs) {
                 agenda.push(*seed);
             }
         }
         'agenda: while let Some(live) = agenda.pop() {
             for arc in machine.epsilon_arcs(live.here.state) {
                 let arc = machine.arc(arc);
-                if !want.met_by(&self.reach(arc.target)) {
+                if !self.met(want, arc.target) {
                     continue;
                 }
                 let Some(flags) = self.flags.after(machine, live.here.flags, arc.input) else {
@@ -408,7 +435,11 @@ impl<'m, 'a, T: TransducerTablesInterface> Pass<'m, 'a, T> {
         };
         let mut entries = Vec::new();
         let mut by_symbol: BTreeMap<SymbolNumber, Vec<usize>> = BTreeMap::new();
-        for live in self.explore(&[root], Want::Reading(wanted)) {
+        let want = match purpose {
+            Purpose::Bounded => Want::Boundary,
+            Purpose::Tags | Purpose::Prefixes | Purpose::Letters => Want::Reading(wanted),
+        };
+        for live in self.explore(&[root], want) {
             let symbols: Vec<SymbolNumber> = self
                 .outgoing(live.here.state)
                 .iter()
@@ -533,7 +564,7 @@ impl<'m, 'a, T: TransducerTablesInterface> Pass<'m, 'a, T> {
         let mut seen = LiveSet::default();
         let mut agenda: Vec<Live> = seeds.to_vec();
         while let Some(live) = agenda.pop() {
-            if !seen.insert(live, &self.outputs) || !want.met_by(&self.reach(live.here.state)) {
+            if !seen.insert(live, &self.outputs) || !self.met(want, live.here.state) {
                 continue;
             }
             if self

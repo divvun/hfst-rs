@@ -4,6 +4,7 @@
 use std::collections::{HashMap, VecDeque};
 
 use super::pass::{Live, LiveSet, Pass, Purpose};
+use super::reach::Role;
 use super::{Candidate, Place, SymbolInfo, Walker};
 use crate::prediction::units::{SymbolClass, Unit, UnitKey, UnitKind};
 use crate::transducer::{SymbolNumber, TransducerTablesInterface, Weight};
@@ -109,10 +110,14 @@ impl Offers {
 struct TagRun {
     symbols: Vec<SymbolNumber>,
     seeds: Vec<Live>,
-    /// No enclitic or boundary tag yet, after a stem or a boundary unit.
+    /// No enclitic, boundary or derivation tag yet, after a stem or a
+    /// boundary unit.
     ending: bool,
     /// After a complete word: starts with an enclitic tag and has no other.
     enclitic: bool,
+    /// Every tag so far is hidden, so a derivation tag may still begin the
+    /// unit.
+    leading: bool,
 }
 
 /// What a run of tags becomes with one more tag.
@@ -120,6 +125,7 @@ struct Extension {
     boundary: bool,
     ending: bool,
     enclitic: bool,
+    leading: bool,
 }
 
 impl<'a, T: TransducerTablesInterface> Walker<'a, T> {
@@ -227,14 +233,17 @@ impl<'a, T: TransducerTablesInterface> Walker<'a, T> {
 
     /// The runs of tags after a stem or a boundary unit, or after a
     /// complete word. A run ends at its first boundary tag, as a boundary
-    /// unit. A run with no boundary or enclitic tag after which some
-    /// configuration is final is an ending, and goes on, since a longer
+    /// unit. A run with no boundary, derivation or enclitic tag after which
+    /// some configuration is final is an ending, and goes on, since a longer
     /// ending or a boundary unit may extend it. After a complete word a run
     /// that starts with an enclitic tag, has no other and after which some
-    /// configuration is final is an enclitic.
+    /// configuration is final is an enclitic. A run that only a boundary
+    /// tag can still make a unit goes on only while one is in reach, so a
+    /// generator that lets a Der tag be left out does not send the walk
+    /// through every ending after every morpheme name.
     // [spec:hfst:req:prediction.generator-decides]
-    // [spec:hfst:sem:prediction-units.boundary+1]
-    // [spec:hfst:sem:prediction-units.ending]
+    // [spec:hfst:sem:prediction-units.boundary+2]
+    // [spec:hfst:sem:prediction-units.ending+1]
     // [spec:hfst:sem:prediction-units.enclitic]
     pub(in crate::prediction) fn tag_runs(
         &self,
@@ -246,14 +255,24 @@ impl<'a, T: TransducerTablesInterface> Walker<'a, T> {
     ) {
         let after_stem = matches!(place, Place::AfterStem { .. });
         let is_tag = |symbol: SymbolNumber| self.class(symbol) == SymbolClass::Tag;
+        let goes_on = |symbol: SymbolNumber| {
+            self.roles
+                .get(symbol as usize)
+                .is_some_and(|&role| role != Role::Stop)
+        };
         let mut queue = VecDeque::from([TagRun {
             symbols: Vec::new(),
             seeds: seeds.to_vec(),
             ending: after_stem,
             enclitic: complete,
+            leading: true,
         }]);
         while let Some(run) = queue.pop_front() {
-            let readers = pass.readers(&run.seeds, Purpose::Tags, &is_tag);
+            let readers = if run.ending || run.enclitic {
+                pass.readers(&run.seeds, Purpose::Tags, &is_tag)
+            } else {
+                pass.readers(&run.seeds, Purpose::Bounded, &goes_on)
+            };
             for symbol in readers.symbols() {
                 let Some(extension) = self.extend(&run, symbol, after_stem) else {
                     continue;
@@ -280,11 +299,15 @@ impl<'a, T: TransducerTablesInterface> Walker<'a, T> {
                     };
                     self.offer(pass, offers, kind, &symbols, reached.clone());
                 }
+                if !extension.ending && !extension.enclitic && !pass.bounded(&reached) {
+                    continue;
+                }
                 queue.push_back(TagRun {
                     symbols,
                     seeds: reached,
                     ending: extension.ending,
                     enclitic: extension.enclitic,
+                    leading: extension.leading,
                 });
             }
             if pass.budget.configurations_cut {
@@ -295,9 +318,14 @@ impl<'a, T: TransducerTablesInterface> Walker<'a, T> {
 
     /// What `run` can become with `symbol` after it, or nothing when the
     /// symbol is not a tag or the run could become no unit with it.
+    /// A derivation tag after anything but hidden tags ends the search
+    /// there, so chains of derivation tags are never walked. A run with a
+    /// derivation tag in it is never an ending: only a boundary tag can end
+    /// it.
+    // [spec:hfst:sem:prediction-units.boundary+2]
     fn extend(&self, run: &TagRun, symbol: SymbolNumber, after_stem: bool) -> Option<Extension> {
         let info = self.info(symbol)?;
-        if info.class != SymbolClass::Tag {
+        if info.class != SymbolClass::Tag || (info.derivation && !run.leading) {
             return None;
         }
         let enclitic = if run.symbols.is_empty() {
@@ -307,8 +335,9 @@ impl<'a, T: TransducerTablesInterface> Walker<'a, T> {
         };
         let extension = Extension {
             boundary: after_stem && info.boundary,
-            ending: run.ending && !info.enclitic && !info.boundary,
+            ending: run.ending && !info.enclitic && !info.boundary && !info.derivation,
             enclitic,
+            leading: run.leading && info.hidden,
         };
         (after_stem || extension.enclitic).then_some(extension)
     }

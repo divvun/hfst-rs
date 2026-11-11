@@ -106,7 +106,7 @@ impl<'g> Cutter<'g> {
     /// After a stem or a boundary unit, a boundary tag before the next letter
     /// ends a boundary unit, and letters after it start a stem. With no
     /// boundary tag left, the rest is an ending and enclitics.
-    // [spec:hfst:sem:prediction-units.boundary+1]
+    // [spec:hfst:sem:prediction-units.boundary+2]
     fn after_stem(&mut self) -> Result<()> {
         loop {
             let letter = self.next(SymbolClass::Letter);
@@ -115,6 +115,7 @@ impl<'g> Cutter<'g> {
             else {
                 return self.ending_and_enclitics();
             };
+            self.derivation_begins(boundary + 1)?;
             self.take(UnitKind::Boundary, boundary + 1);
             if self.classes.get(self.at) == Some(&SymbolClass::Letter) {
                 self.stem()?;
@@ -122,7 +123,10 @@ impl<'g> Cutter<'g> {
         }
     }
 
-    // [spec:hfst:sem:prediction-units.ending]
+    /// A derivation tag in an ending is refused, since no boundary tag ends
+    /// the run. An enclitic may begin with a tag that also names a
+    /// derivation, as Greenlandic's `+LI` does, but holds no other.
+    // [spec:hfst:sem:prediction-units.ending+1]
     // [spec:hfst:sem:prediction-units.enclitic]
     fn ending_and_enclitics(&mut self) -> Result<()> {
         let letter = self.next(SymbolClass::Letter);
@@ -132,12 +136,46 @@ impl<'g> Cutter<'g> {
             ));
         }
         let first_enclitic = self.next_enclitic(self.at);
+        if let Some(at) = (self.at..first_enclitic).find(|&i| self.is_derivation(i)) {
+            return self.refuse(format!(
+                "derivation tag {:?} at symbol {at} is in a run that no boundary tag ends",
+                self.symbols[at]
+            ));
+        }
         if first_enclitic > self.at {
             self.take(UnitKind::Ending, first_enclitic);
         }
         while self.at < self.symbols.len() {
             let end = self.next_enclitic(self.at + 1);
+            if let Some(at) = (self.at + 1..end).find(|&i| self.is_derivation(i)) {
+                return self.refuse(format!(
+                    "derivation tag {:?} at symbol {at} is inside an enclitic",
+                    self.symbols[at]
+                ));
+            }
             self.take(UnitKind::Enclitic, end);
+        }
+        Ok(())
+    }
+
+    fn is_derivation(&self, at: usize) -> bool {
+        self.grammar.is_derivation(&self.symbols[at])
+    }
+
+    /// Refuse a derivation tag that does not begin the run from here to
+    /// `end`. Hidden tags before it do not count, since they are left out
+    /// of the unit's key.
+    // [spec:hfst:sem:prediction-units.boundary+2]
+    fn derivation_begins(&self, end: usize) -> Result<()> {
+        let mut leading = true;
+        for at in self.at..end {
+            let tag = &self.symbols[at];
+            if self.is_derivation(at) && !leading {
+                return self.refuse(format!(
+                    "derivation tag {tag:?} at symbol {at} does not begin its unit"
+                ));
+            }
+            leading = leading && self.grammar.is_hidden(tag);
         }
         Ok(())
     }

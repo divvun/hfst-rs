@@ -48,7 +48,7 @@ fn units(expected: &[(UnitKind, &str)]) -> Vec<(UnitKind, String)> {
 }
 
 // [spec:hfst:sem:prediction-units.stem/test]
-// [spec:hfst:sem:prediction-units.ending/test]
+// [spec:hfst:sem:prediction-units.ending+1/test]
 #[test]
 fn stem_and_ending_split_at_the_first_tag() {
     assert_eq!(
@@ -94,7 +94,7 @@ fn a_prefix_tag_after_the_stem_is_ordinary() {
     );
 }
 
-// [spec:hfst:sem:prediction-units.boundary+1/test]
+// [spec:hfst:sem:prediction-units.boundary+2/test]
 // [spec:hfst:sem:prediction-units.stem/test]
 #[test]
 fn boundary_units_end_at_the_first_boundary_tag() {
@@ -108,7 +108,7 @@ fn boundary_units_end_at_the_first_boundary_tag() {
     );
 }
 
-// [spec:hfst:sem:prediction-units.boundary+1/test]
+// [spec:hfst:sem:prediction-units.boundary+2/test]
 #[test]
 fn boundary_units_follow_one_another() {
     assert_eq!(
@@ -122,7 +122,7 @@ fn boundary_units_follow_one_another() {
     );
 }
 
-// [spec:hfst:sem:prediction-units.boundary+1/test]
+// [spec:hfst:sem:prediction-units.boundary+2/test]
 // [spec:hfst:sem:prediction-units.enclitic/test]
 #[test]
 fn an_enclitic_name_before_der_is_derivation() {
@@ -181,7 +181,7 @@ fn an_enclitic_can_follow_a_bare_stem() {
     );
 }
 
-// [spec:hfst:sem:prediction-units.ending/test]
+// [spec:hfst:sem:prediction-units.ending+1/test]
 #[test]
 fn letters_after_an_ending_are_refused() {
     let message = refusal("oqar+V+Ind+3Sgilu");
@@ -236,7 +236,7 @@ fn the_tokenizer_never_reads_flags_or_reserved_symbols() {
     assert!(tokenizer.tokenize("@_EPSILON_SYMBOL_@").is_err());
 }
 
-// [spec:hfst:sem:prediction-units.boundary+1/test]
+// [spec:hfst:sem:prediction-units.boundary+2/test]
 // [spec:hfst:sem:prediction-units.stem/test]
 #[test]
 fn a_listed_character_closes_a_compound_join() {
@@ -269,4 +269,91 @@ fn a_listed_character_closes_a_compound_join() {
         .map(|unit| unit.symbols.concat())
         .collect();
     assert_eq!(stems, ["guolli", "#bivdu"]);
+}
+
+const DERIVING: &str = r#"
+boundary = ["+Der/*"]
+derivation = ["+NIQ", "+KIP", "+LI"]
+enclitic = ["+LI", "+LU"]
+hidden = ["+Gram/*"]
+"#;
+
+fn derived(analysis: &str) -> crate::error::Result<Vec<(UnitKind, String)>> {
+    let grammar = UnitGrammar::from_toml(DERIVING.as_bytes()).expect("test grammar reads");
+    let symbols = tokenizer().tokenize(analysis).expect("analysis tokenizes");
+    Ok(grammar
+        .segment(&symbols)?
+        .into_iter()
+        .map(|unit| (unit.kind, unit.symbols.concat()))
+        .collect())
+}
+
+// [spec:hfst:sem:prediction-units.boundary+2/test]
+#[test]
+fn derivation_tags_begin_units_boundaries_end() {
+    assert_eq!(
+        derived("oqar+NIQ+Der/vn+N+Abs+Sg").expect("segments"),
+        units(&[
+            (UnitKind::Stem, "oqar"),
+            (UnitKind::Boundary, "+NIQ+Der/vn"),
+            (UnitKind::Ending, "+N+Abs+Sg"),
+        ])
+    );
+    assert_eq!(
+        derived("oqar+Gram/IV+NIQ+Der/vn+KIP+Der/nv+V+Ind+3Sg").expect("segments"),
+        units(&[
+            (UnitKind::Stem, "oqar"),
+            (UnitKind::Boundary, "+Gram/IV+NIQ+Der/vn"),
+            (UnitKind::Boundary, "+KIP+Der/nv"),
+            (UnitKind::Ending, "+V+Ind+3Sg"),
+        ])
+    );
+}
+
+// [spec:hfst:sem:prediction-units.boundary+2/test]
+#[test]
+fn a_chain_of_derivation_tags_is_refused() {
+    let message = derived("oqar+NIQ+KIP+Der/nv+V+Ind+3Sg")
+        .expect_err("+KIP does not begin its unit")
+        .to_string();
+    assert!(
+        message.contains("\"+KIP\" at symbol 5 does not begin"),
+        "{message}"
+    );
+    let message = derived("oqar+N+NIQ+Der/vn+N+Abs+Sg")
+        .expect_err("+N comes before +NIQ")
+        .to_string();
+    assert!(message.contains("\"+NIQ\""), "{message}");
+}
+
+// [spec:hfst:sem:prediction-units.ending+1/test]
+#[test]
+fn a_derivation_tag_no_boundary_ends_is_refused() {
+    let message = derived("oqar+NIQ+N+Abs+Sg")
+        .expect_err("no Der tag ends +NIQ")
+        .to_string();
+    assert!(message.contains("no boundary tag ends"), "{message}");
+    let message = derived("oqar+V+Ind+NIQ+3Sg")
+        .expect_err("+NIQ is in an ending")
+        .to_string();
+    assert!(message.contains("\"+NIQ\""), "{message}");
+}
+
+// [spec:hfst:sem:prediction-units.enclitic/test]
+// [spec:hfst:sem:prediction-units.boundary+2/test]
+#[test]
+fn derivation_tags_may_begin_enclitics_only() {
+    assert_eq!(
+        derived("oqar+LI+Der/vv+V+Ind+3Sg+LI").expect("segments"),
+        units(&[
+            (UnitKind::Stem, "oqar"),
+            (UnitKind::Boundary, "+LI+Der/vv"),
+            (UnitKind::Ending, "+V+Ind+3Sg"),
+            (UnitKind::Enclitic, "+LI"),
+        ])
+    );
+    let message = derived("oqar+V+Ind+3Sg+LU+KIP")
+        .expect_err("+KIP inside an enclitic")
+        .to_string();
+    assert!(message.contains("inside an enclitic"), "{message}");
 }

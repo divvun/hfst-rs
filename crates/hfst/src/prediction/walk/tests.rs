@@ -77,8 +77,8 @@ fn configurations_keep_what_each_path_wrote_and_weighed() {
 }
 
 // [spec:hfst:req:prediction.generator-decides/test]
-// [spec:hfst:sem:prediction-units.ending/test]
-// [spec:hfst:sem:prediction-units.boundary+1/test]
+// [spec:hfst:sem:prediction-units.ending+1/test]
+// [spec:hfst:sem:prediction-units.boundary+2/test]
 #[test]
 fn the_units_offered_are_those_the_generator_accepts() {
     let generator = lexc(NOUNS);
@@ -306,7 +306,7 @@ fn a_walk_within_its_bounds_is_not_truncated() {
     assert!(!walker.next(&word).truncated);
 }
 
-// [spec:hfst:sem:prediction-units.boundary+1/test]
+// [spec:hfst:sem:prediction-units.boundary+2/test]
 // [spec:hfst:sem:prediction-units.stem/test]
 #[test]
 fn a_stem_can_follow_a_compound_join() {
@@ -402,4 +402,71 @@ fn a_grammar_naming_missing_tags_is_refused() {
         .err()
         .expect("the grammar is refused");
     assert!(refused.to_string().contains("+Der/Missing"), "{refused}");
+}
+
+// [spec:hfst:sem:prediction-units.boundary+2/test]
+// [spec:hfst:sem:prediction-units.ending+1/test]
+// [spec:hfst:req:prediction.generator-decides/test]
+#[test]
+fn derivations_are_offered_only_with_der_tags() {
+    let generator = lexc(DERIVATIONS);
+    let grammar = grammar(DERIVATIONS_GRAMMAR);
+    let walker = walker(&generator, &grammar);
+    let next = walker.next(&word_after(&walker, "oqar", &[]));
+    assert_eq!(
+        kinds(&next),
+        [
+            (UnitKind::Boundary, "+KIP+Der/nv"),
+            (UnitKind::Boundary, "+LI+Der/vv"),
+            (UnitKind::Boundary, "+NIQ+Der/vn"),
+            (UnitKind::Ending, "+V+Ind+3Sg"),
+        ]
+    );
+    assert!(!next.truncated);
+    let derived = word_after(&walker, "oqar", &["+NIQ+Der/vn"]);
+    let after = walker.next(&derived);
+    assert!(
+        after
+            .candidates
+            .iter()
+            .any(|c| c.key.as_str() == "+N+Abs+Sg")
+    );
+    assert!(
+        after
+            .candidates
+            .iter()
+            .any(|c| c.key.as_str() == "+KIP+Der/nv")
+    );
+    assert!(!after.truncated);
+}
+
+// [spec:hfst:sem:prediction-units.boundary+2/test]
+// [spec:hfst:req:prediction.bounded/test]
+#[test]
+fn without_derivation_tags_chains_never_end() {
+    let generator = lexc(DERIVATIONS);
+    let grammar = grammar(NO_DERIVATIONS_GRAMMAR);
+    let limits = WalkLimits {
+        max_unit_symbols: 6,
+        max_configurations: 50_000,
+    };
+    let walker = Walker::new(&generator, &grammar, limits).unwrap();
+    let next = walker.next(&word_after(&walker, "oqar", &[]));
+    assert!(next.truncated);
+    let keys = keys(&next);
+    assert!(keys.contains(&"+NIQ+N+Abs+Sg"), "{keys:?}");
+    assert!(keys.contains(&"+NIQ+KIP+Der/nv"), "{keys:?}");
+}
+
+// [spec:hfst:sem:prediction-units.enclitic/test]
+#[test]
+fn an_enclitic_derivation_tag_follows_complete_words() {
+    let generator = lexc(DERIVATIONS);
+    let grammar = grammar(DERIVATIONS_GRAMMAR);
+    let walker = walker(&generator, &grammar);
+    let complete = word_after(&walker, "oqar", &["+V+Ind+3Sg"]);
+    let next = walker.next(&complete);
+    assert_eq!(kinds(&next), [(UnitKind::Enclitic, "+LI")]);
+    let asked = complete.pick(candidate(&next, "+LI"));
+    assert_eq!(surfaces(&walker, &asked), ["oqarpoqlu"]);
 }

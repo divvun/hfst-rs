@@ -56,6 +56,8 @@ struct GrammarFile {
     #[serde(default)]
     prefix: Vec<Pattern>,
     #[serde(default)]
+    derivation: Vec<Pattern>,
+    #[serde(default)]
     enclitic: Vec<Pattern>,
     #[serde(default)]
     hidden: Vec<Pattern>,
@@ -84,7 +86,7 @@ impl UnitGrammar {
     /// `tags` entry that is not one character and a filter flag that is not
     /// a flag diacritic are refused here; what needs the generator's alphabet
     /// is refused by [`UnitGrammar::validate`].
-    // [spec:hfst:syn:prediction-units.format+1]
+    // [spec:hfst:syn:prediction-units.format+2]
     pub fn from_toml(bytes: &[u8]) -> Result<UnitGrammar> {
         let text = std::str::from_utf8(bytes).map_err(grammar_error)?;
         let file: GrammarFile = toml::from_str(text).map_err(grammar_error)?;
@@ -114,7 +116,7 @@ impl UnitGrammar {
     /// Check the grammar against its generator's analysis-side alphabet.
     /// Every `tags` entry and every filter flag must be in it, and every
     /// pattern must match some tag in it.
-    // [spec:hfst:syn:prediction-units.format+1]
+    // [spec:hfst:syn:prediction-units.format+2]
     pub fn validate<S: AsRef<str>>(&self, analysis_alphabet: &[S]) -> Result<()> {
         let in_alphabet = |wanted: &str| analysis_alphabet.iter().any(|s| s.as_ref() == wanted);
         if let Some(tag) = self.file.tags.iter().find(|tag| !in_alphabet(tag)) {
@@ -153,6 +155,7 @@ impl UnitGrammar {
         let lists = [
             ("boundary", &self.file.boundary),
             ("prefix", &self.file.prefix),
+            ("derivation", &self.file.derivation),
             ("enclitic", &self.file.enclitic),
             ("hidden", &self.file.hidden),
         ];
@@ -185,7 +188,7 @@ impl UnitGrammar {
         self.hash
     }
 
-    // [spec:hfst:sem:prediction-units.boundary+1]
+    // [spec:hfst:sem:prediction-units.boundary+2]
     pub fn is_boundary(&self, tag: &str) -> bool {
         any_matches(&self.file.boundary, tag)
     }
@@ -193,6 +196,13 @@ impl UnitGrammar {
     // [spec:hfst:sem:prediction-units.prefix]
     pub fn is_prefix(&self, tag: &str) -> bool {
         any_matches(&self.file.prefix, tag)
+    }
+
+    /// A tag that can only begin a run that a boundary tag ends, such as a
+    /// Greenlandic morpheme name before its `Der/` tag.
+    // [spec:hfst:sem:prediction-units.boundary+2]
+    pub fn is_derivation(&self, tag: &str) -> bool {
+        any_matches(&self.file.derivation, tag)
     }
 
     // [spec:hfst:sem:prediction-units.enclitic]

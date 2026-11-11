@@ -16,12 +16,13 @@ are the units the model counted (`prediction-model.same-grammar`).
 > language's filters, labels and word classes. A grammar's hash is the
 > SHA-256 of its bytes.
 
-> [spec:hfst:syn:prediction-units.format+1]
+> [spec:hfst:syn:prediction-units.format+2]
 > A grammar is a TOML document with these keys, each optional:
 >
 > - `tags`: an array of symbols of one character that the grammar treats as
 >   tags.
-> - `boundary`, `prefix`, `enclitic` and `hidden`: arrays of patterns.
+> - `boundary`, `prefix`, `derivation`, `enclitic` and `hidden`: arrays of
+>   patterns.
 > - `filter`: an array of tables, each with a `name`, a `label` and `flags`,
 >   an array of flag diacritics written as the generator writes them.
 > - `labels`: a table from a unit's key to its label.
@@ -47,17 +48,22 @@ are the units the model counted (`prediction-model.same-grammar`).
 > Before a word's first stem, a tag that matches a `prefix` pattern is a
 > prefix unit on its own, as Plains Cree's preverbs (`PV/e+`) are.
 
-> [spec:hfst:sem:prediction-units.boundary+1]
+> [spec:hfst:sem:prediction-units.boundary+2]
 > After a stem or a boundary unit, a run of tags that ends with a tag
 > matching a `boundary` pattern is one unit, a derivation or a compound join,
-> and the next unit starts after it. Greenlandic's `Der/nv` and North Sámi's
+> and the next unit starts after it. A tag that matches a `derivation`
+> pattern can only begin such a run, and a run that begins with one is a
+> unit only when it ends with a boundary tag. Greenlandic's derivational
+> morphemes are `derivation` tags and its `Der/` tags are boundaries, so
+> `+NIQ+Der/vn` is one unit, and a chain of morpheme names without their
+> `Der/` tags is not a unit. Greenlandic's `Der/nv` and North Sámi's
 > `Der/` tags and the `#` that closes a compound join are boundaries.
 
-> [spec:hfst:sem:prediction-units.ending]
-> After a stem or a boundary unit, a run of tags with no boundary tag and no
-> enclitic tag in it, after which some configuration is final, is an ending. Every such run is
-> offered, so an ending and a longer ending that extends it are both offered,
-> such as `+N+Sg+Nom` and `+N+Sg+Nom+PxSg1`.
+> [spec:hfst:sem:prediction-units.ending+1]
+> After a stem or a boundary unit, a run of tags with no boundary, derivation
+> or enclitic tag in it, after which some configuration is final, is an
+> ending. Every such run is offered, so an ending and a longer ending that
+> extends it are both offered, such as `+N+Sg+Nom` and `+N+Sg+Nom+PxSg1`.
 
 > [spec:hfst:sem:prediction-units.enclitic]
 > After a complete word, a run of tags whose first tag matches an `enclitic`

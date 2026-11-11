@@ -9371,7 +9371,7 @@ children (
                 id predict.kal-check
                 title "Show the walk on lang-kal's generator offers every morpheme and derivation type the 462-name list in hfst's C++ predict branch finds, and that each ending it offers generates, where that branch offered endings from the corpus unchecked"
                 kind @test
-                deps (predict.walk)
+                deps (predict.walk predict.derivations)
             }
 
             {
@@ -9397,6 +9397,35 @@ children (
             {
                 id predict.embed
                 title "Expose prediction through hfst-embed's read-only surface, a session over a generator, a unit grammar and a model, and the model builder behind its compile feature, so @divvun/hfst and divvun-hfst can bind them"
+                deps (predict.walk predict.model)
+            }
+
+            {
+                id predict.derivations
+                title "Let a unit grammar name the tags that begin a derivation, so a run that begins with one is a unit only when it ends at a boundary tag and no other derivation tag sits inside a run: lang-kal's generator makes Der tags optional, so without this a unit can chain any number of morpheme names and the walk never reaches +NIQ+Der/vn within its bounds"
+                deps (predict.walk)
+                sealed true
+                log (
+                    {
+                        at 2026-11-11T16:17:30.262496Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
+
+                    {
+                        at 2026-11-11T16:32:14.938372Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan complete)"
+                    }
+                )
+            }
+
+            {
+                id predict.accept-speed
+                title "Check that the generator accepts a reading with a walk that stops at the first final configuration, in place of a full lookup that enumerates every surface form: the model builder spends about 10 ms per reading on lang-kal's generator, too slow for corpora of millions of words"
+                kind @perf
                 deps (predict.walk predict.model)
             }
         )
