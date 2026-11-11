@@ -27,4 +27,113 @@ elements (
             {at "2026-06-28T11:53:36Z", kind @established, by "[dec:hfst:idiomatize-staging]"}
         )
     }
+    {
+        id [arch:hfst:prediction]
+        name "Predictive text"
+        kind @subsystem
+        lifecycle @provisional
+        owns ()
+        exposes ("crates/hfst/src/prediction.rs" "crates/hfst-embed/src/predict.rs" "crates/hfst-cli/src/tools/predict*.rs")
+        depends_on ()
+        composed_of ([arch:hfst:prediction-units] [arch:hfst:prediction-walk] [arch:hfst:prediction-model] [arch:hfst:prediction-evaluation])
+        decisions ([dec:hfst:predictive-text])
+        log (
+            {at "2026-11-11T12:34:17Z", kind @established, by "[dec:hfst:predictive-text]"}
+        )
+    }
+    {
+        id [arch:hfst:prediction-units]
+        name "Unit grammar"
+        kind @module
+        lifecycle @provisional
+        owns (
+            [spec:hfst:def:prediction-units.grammar]
+            [spec:hfst:syn:prediction-units.format]
+            [spec:hfst:sem:prediction-units.stem]
+            [spec:hfst:sem:prediction-units.prefix]
+            [spec:hfst:sem:prediction-units.boundary]
+            [spec:hfst:sem:prediction-units.ending]
+            [spec:hfst:sem:prediction-units.enclitic]
+            [spec:hfst:sem:prediction-units.filter]
+            [spec:hfst:sem:prediction-units.hidden]
+            [spec:hfst:sem:prediction-units.labels]
+            [spec:hfst:sem:prediction-units.classes]
+        )
+        exposes ("crates/hfst/src/prediction/units.rs" "crates/hfst/src/prediction/units/*.rs")
+        depends_on ()
+        composed_of ()
+        decisions ([dec:hfst:prediction-unit-grammar])
+        log (
+            {at "2026-11-11T12:34:17Z", kind @established, by "[dec:hfst:prediction-unit-grammar]"}
+        )
+    }
+    {
+        id [arch:hfst:prediction-walk]
+        name "Continuation walk, entry, session and realiser"
+        kind @module
+        lifecycle @provisional
+        owns (
+            [spec:hfst:def:prediction.unit]
+            [spec:hfst:def:prediction.state]
+            [spec:hfst:req:prediction.generator-decides]
+            [spec:hfst:req:prediction.flags]
+            [spec:hfst:req:prediction.bounded]
+            [spec:hfst:sem:prediction.complete]
+            [spec:hfst:req:prediction.realise]
+            [spec:hfst:sem:prediction.preview]
+            [spec:hfst:req:prediction.script-edges]
+            [spec:hfst:sem:prediction.entry]
+            [spec:hfst:sem:prediction.session]
+            [spec:hfst:req:prediction.views]
+        )
+        exposes ("crates/hfst/src/prediction/walk.rs" "crates/hfst/src/prediction/walk/*.rs" "crates/hfst/src/prediction/entry.rs" "crates/hfst/src/prediction/session.rs" "crates/hfst/src/prediction/realise.rs")
+        depends_on ([arch:hfst:prediction-units])
+        composed_of ()
+        decisions ([dec:hfst:predictive-text])
+        log (
+            {at "2026-11-11T12:34:17Z", kind @established, by "[dec:hfst:predictive-text]"}
+        )
+    }
+    {
+        id [arch:hfst:prediction-model]
+        name "Prediction model builder and ranker"
+        kind @module
+        lifecycle @provisional
+        owns (
+            [spec:hfst:def:prediction-model.file]
+            [spec:hfst:syn:prediction-model.format]
+            [spec:hfst:req:prediction-model.same-grammar]
+            [spec:hfst:req:prediction-model.input]
+            [spec:hfst:sem:prediction-model.order]
+            [spec:hfst:req:prediction-model.faces]
+            [spec:hfst:req:prediction-model.budget]
+            [spec:hfst:req:prediction-model.rank-only]
+        )
+        exposes ("crates/hfst/src/prediction/model.rs" "crates/hfst/src/prediction/model/*.rs" "crates/hfst/src/prediction/rank.rs")
+        depends_on ([arch:hfst:prediction-units])
+        composed_of ()
+        decisions ([dec:hfst:predictive-text] [dec:hfst:prediction-unit-grammar] [dec:hfst:prediction-measured-choices])
+        log (
+            {at "2026-11-11T12:34:17Z", kind @established, by "[dec:hfst:predictive-text]"}
+        )
+    }
+    {
+        id [arch:hfst:prediction-evaluation]
+        name "Prediction evaluation harness"
+        kind @module
+        lifecycle @provisional
+        owns (
+            [spec:hfst:def:prediction-evaluation.keystrokes]
+            [spec:hfst:req:prediction-evaluation.held-out]
+            [spec:hfst:req:prediction-evaluation.external]
+            [spec:hfst:req:prediction-evaluation.report]
+        )
+        exposes ("crates/hfst/src/prediction/evaluate.rs" "crates/hfst/src/prediction/evaluate/*.rs")
+        depends_on ([arch:hfst:prediction-walk] [arch:hfst:prediction-model])
+        composed_of ()
+        decisions ([dec:hfst:prediction-measured-choices])
+        log (
+            {at "2026-11-11T12:34:17Z", kind @established, by "[dec:hfst:prediction-measured-choices]"}
+        )
+    }
 )

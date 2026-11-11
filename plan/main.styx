@@ -9224,4 +9224,141 @@ children (
             }
         )
     }
+
+    {
+        id predict
+        title "Predict text a unit at a time: the generator says which stems, derivations, endings and enclitics can come next, a per-language n-gram model over those units ranks them, and each language's settings are chosen by keystrokes saved on its own text"
+        kind @feat
+        children (
+            {
+                id predict.spec
+                title "State predictive text in the spec and the AKM: docs/spec/prediction.md, prediction-units.md, prediction-model.md and prediction-evaluation.md; the predictive-text, prediction-unit-grammar and prediction-measured-choices decisions; and the prediction subsystem and its four modules in the architecture register"
+                kind @docs
+                sealed true
+                log (
+                    {
+                        at 2026-11-11T12:32:55.402798Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
+
+                    {
+                        at 2026-11-11T12:36:15.313631Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan complete)"
+                    }
+                )
+            }
+
+            {
+                id predict.units
+                title "Read and apply a language's unit grammar: the TOML format and its refusals, stems, prefixes, boundaries, endings, enclitics, flag filters, hidden tags, labels and word classes, with kal, crk and sme grammars as test fixtures"
+                implements {
+                    target-impl (
+                        [spec:hfst:def:prediction-units.grammar]
+                        [spec:hfst:syn:prediction-units.format]
+                        [spec:hfst:sem:prediction-units.stem]
+                        [spec:hfst:sem:prediction-units.prefix]
+                        [spec:hfst:sem:prediction-units.boundary]
+                        [spec:hfst:sem:prediction-units.ending]
+                        [spec:hfst:sem:prediction-units.enclitic]
+                        [spec:hfst:sem:prediction-units.filter]
+                        [spec:hfst:sem:prediction-units.hidden]
+                        [spec:hfst:sem:prediction-units.labels]
+                        [spec:hfst:sem:prediction-units.classes]
+                    )
+                }
+                deps (predict.spec)
+            }
+
+            {
+                id predict.walk
+                title "Walk the generator for what can come next: the units it accepts from a word in progress under its flags and within stated bounds, complete words with their forms, entry matching through a relaxation transducer, the session, the preview and the realiser, over tables read in place"
+                implements {
+                    target-impl (
+                        [spec:hfst:def:prediction.unit]
+                        [spec:hfst:def:prediction.state]
+                        [spec:hfst:req:prediction.generator-decides]
+                        [spec:hfst:req:prediction.flags]
+                        [spec:hfst:req:prediction.bounded]
+                        [spec:hfst:sem:prediction.complete]
+                        [spec:hfst:req:prediction.realise]
+                        [spec:hfst:sem:prediction.preview]
+                        [spec:hfst:req:prediction.script-edges]
+                        [spec:hfst:sem:prediction.entry]
+                        [spec:hfst:sem:prediction.session]
+                        [spec:hfst:req:prediction.views]
+                    )
+                }
+                deps (predict.units)
+            }
+
+            {
+                id predict.model
+                title "Build and read prediction models: the HFSTPRED file read in place, pinned to its grammar's hash, built from hfst-lookup-format analyses with a stated rule for ambiguous tokens, drop-oldest and stupid backoff, per-class faces, a size limit, and a ranker that only reorders the walk's candidates"
+                implements {
+                    target-impl (
+                        [spec:hfst:def:prediction-model.file]
+                        [spec:hfst:syn:prediction-model.format]
+                        [spec:hfst:req:prediction-model.same-grammar]
+                        [spec:hfst:req:prediction-model.input]
+                        [spec:hfst:sem:prediction-model.order]
+                        [spec:hfst:req:prediction-model.faces]
+                        [spec:hfst:req:prediction-model.budget]
+                        [spec:hfst:req:prediction-model.rank-only]
+                    )
+                }
+                deps (predict.units)
+            }
+
+            {
+                id predict.evaluation
+                title "Measure prediction: keystrokes saved on held-out text by a simulated user, with k-fold models, recorded suggestions from other systems scored the same way, and a side-by-side report per variant"
+                implements {
+                    target-impl (
+                        [spec:hfst:def:prediction-evaluation.keystrokes]
+                        [spec:hfst:req:prediction-evaluation.held-out]
+                        [spec:hfst:req:prediction-evaluation.external]
+                        [spec:hfst:req:prediction-evaluation.report]
+                    )
+                }
+                deps (predict.walk predict.model)
+            }
+
+            {
+                id predict.kal-check
+                title "Show the walk on lang-kal's generator offers every morpheme and derivation type the 462-name list in hfst's C++ predict branch finds, and that each ending it offers generates, where that branch offered endings from the corpus unchecked"
+                kind @test
+                deps (predict.walk)
+            }
+
+            {
+                id predict.cli
+                title "Add the hfst predict, predict-model and predict-eval tools as thin drivers over the library: predict reads analysis prefixes and writes the units and forms that follow, in place of the patched C++ optimized lookup"
+                deps (predict.walk predict.model predict.evaluation)
+            }
+
+            {
+                id predict.crk-comparison
+                title "Write up unit prediction against lang-crk's morph-completion speller on held-out text from the tagged Plains Cree corpus, both scored by keystrokes saved with three suggestions, with the person-first filter and without"
+                kind @docs
+                deps (predict.cli)
+            }
+
+            {
+                id predict.sme-evaluation
+                title "Write up unit prediction for North Sámi: keystrokes saved on held-out analysed text for each model order and backoff, against ranking whole word forms, to show whether a language with short unit chains gains enough to ship"
+                kind @docs
+                deps (predict.cli)
+            }
+
+            {
+                id predict.embed
+                title "Expose prediction through hfst-embed's read-only surface, a session over a generator, a unit grammar and a model, and the model builder behind its compile feature, so @divvun/hfst and divvun-hfst can bind them"
+                deps (predict.walk predict.model)
+            }
+        )
+    }
 )
