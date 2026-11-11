@@ -31,7 +31,7 @@ alternatives (
     }
     {
         option "Follow the HFST project's Python API, `hfst.HfstTransducer` and its relatives."
-        rejected_because "It is the whole C++ library through SWIG in C++ names, with transducers changed in place. The package offers the same compilers, operations and writers under Python's names, on transducers that never change, as `[dec:hfst:compile-surface]` sets out."
+        rejected_because "It is the whole C++ library through SWIG in C++ names. divvun-hfst is a clean break from it and offers the same compilers, operations and writers under Python's names, as `[dec:hfst:compile-surface]` sets out."
     }
     {
         option "Copy the reading and running code of crates/hfst-wasm into the Python crate."

@@ -8963,7 +8963,6 @@ children (
                         [spec:hfst:req:python.tokenise]
                         [spec:hfst:req:python.dhfst]
                         [spec:hfst:req:python.errors]
-                        [spec:hfst:req:python.threads]
                         [spec:hfst:req:python.logging]
                     )
                 }
@@ -9124,7 +9123,7 @@ children (
 
             {
                 id compile-surface.embed-transducer
-                title "Add hfst-embed's compile feature and its transducer type: an immutable, Send and Sync value over AnyTransducer read from and written to bytes in every type, with each operation and query embed.tools lists as a method taking typed options, converting operands as the binary tools do, and returning new transducers or report data"
+                title "Add hfst-embed's compile feature and its transducer type: a Send and Sync value over AnyTransducer, read from and written to bytes in every type, with each operation and query embed.tools lists as a method taking typed options; operations change the transducer in place without copying it, converting operands as the binary tools do, and queries return report data"
                 implements {
                     target-impl ([spec:hfst:req:embed.transducer] [spec:hfst:req:embed.operations])
                 }
@@ -9151,9 +9150,14 @@ children (
 
             {
                 id compile-surface.python-transducer
-                title "Widen divvun_hfst.Transducer to every type: read_transducers and load_transducers read tropical OpenFst, foma and THFST as well, lookup on those types answers as hfst lookup does, and each operation and query is a snake_case method with keyword-only options returning a new Transducer or a declared result, the GIL released"
+                title "Widen divvun_hfst.Transducer to every type: read_transducers and load_transducers read tropical OpenFst, foma and THFST as well, lookup on those types answers as hfst lookup does, each operation is a snake_case method with keyword-only options that changes the transducer in place and returns None, queries return declared results, copy() gives an independent one, and a call waits on a transducer another thread is changing, the GIL released throughout"
                 implements {
-                    target-impl ([spec:hfst:req:python.load] [spec:hfst:req:python.transducer] [spec:hfst:req:python.operations])
+                    target-impl (
+                        [spec:hfst:req:python.load]
+                        [spec:hfst:req:python.transducer]
+                        [spec:hfst:req:python.operations]
+                        [spec:hfst:req:python.threads]
+                    )
                 }
                 deps (compile-surface.embed-transducer)
             }
@@ -9214,7 +9218,7 @@ children (
 
             {
                 id compile-surface.release
-                title "Release the compile surface: divvun-hfst 0.2.0 and @divvun/hfst 0.2.0 with READMEs covering compiling and a table from the HFST project's Python names to divvun_hfst's, the npm tarball carrying the compile entry, and the python/v0.2.0 and wasm/v0.2.0 tags"
+                title "Release the compile surface: divvun-hfst 0.2.0 and @divvun/hfst 0.2.0 with READMEs covering compiling, the npm tarball carrying the compile entry, and the python/v0.2.0 and wasm/v0.2.0 tags"
                 kind @chore
                 deps (compile-surface.python-parity compile-surface.wasm-parity)
             }

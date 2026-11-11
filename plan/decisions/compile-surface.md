@@ -16,6 +16,7 @@ scope {
         [spec:hfst:req:embed.operations]
         [spec:hfst:req:embed.writers]
         [spec:hfst:req:python.load]
+        [spec:hfst:req:python.threads]
         [spec:hfst:req:python.transducer]
         [spec:hfst:req:python.compile]
         [spec:hfst:req:python.compile-errors]
@@ -46,11 +47,11 @@ alternatives (
     }
     {
         option "Follow the HFST project's Python API, `hfst.HfstTransducer`, `hfst.regex` and `hfst.compile_lexc_file`, so scripts written for it run unchanged."
-        rejected_because "Its transducers change in place, which no object threads share safely, and its names are the C++ library's. The package keeps one convention, Python's, across what it already offers and what it adds, and its documentation maps the old names to the new."
+        rejected_because "Its names are the C++ library's. divvun-hfst is a clean break from that binding, not a replacement for it, and keeps one convention, Python's, across everything it offers."
     }
     {
-        option "Operations that change the transducer they are called on."
-        rejected_because "A loaded transducer is shared by threads with the GIL released, so changing it in place would need a lock around every call. An operation that returns a new transducer needs none, and it is what Python and JavaScript callers expect of values."
+        option "Transducers that never change, each operation returning a new one."
+        rejected_because "The library's operations work in place, so every step would first copy the transducer, doubling peak memory on the language-sized networks the compile surface exists to build. A lock held for the length of an operation costs a thread that shares a transducer some waiting; a copy costs every caller memory on every step. A caller who wants the original keeps a `copy()`."
     }
     {
         option "Bind each tool's command line, taking its arguments as strings."
@@ -67,7 +68,7 @@ consequences {
         "The remaining panics in the compilers become errors."
         "hfst-embed gains a `compile` feature. hfst-python enables it; hfst-wasm does not, and a new hfst-wasm-compile crate does, so the main module's build check still holds."
         "divvun-hfst's `Transducer` holds any type, so `read_transducers` reads tropical OpenFst and foma streams it refused before."
-        "Every operation copies its input before it changes the copy, which costs memory the size of the transducer."
+        "A Python `Transducer` holds a lock that an operation takes for its length, so a thread that calls a transducer another thread is changing waits for it."
     )
     deferred (
         "The tools that only move a stream or talk to a terminal, which `embed.tools` lists."
@@ -97,7 +98,9 @@ The npm package does pay, in bytes every page downloads, so compiling is a
 second entry point with a `.wasm` of its own, and the main entry point stays
 the read-only module its build check keeps it.
 
-Transducers are values. A Python thread or a JavaScript caller that holds one
-can rely on it staying as it is, and the GIL can be released around every
-call without a lock. The cost is a copy per operation, which a caller
-building a large network pays once per step.
+Operations change the transducer they are called on, as the library's do, so
+building a network costs what the tools cost and no copy per step. Python's
+mutating methods return `None` and JavaScript's return the object, and the
+packages follow each. A Python transducer is locked for the length of an
+operation, with the GIL released, so threads that share one wait rather than
+see it half changed.

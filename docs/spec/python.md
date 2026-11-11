@@ -89,8 +89,8 @@ module pays nothing for code it does not run, so it is one module.
 > `Transducer` MUST hold a transducer of any type through hfst-embed's
 > transducer type and expose its `type`, `name` and `properties`. For a type
 > `@divvun/hfst` does not read, `lookup` MUST return what `hfst lookup` finds
-> for it, in the shape and order `python.lookup` gives. A `Transducer` never
-> changes: every operation returns a new one.
+> for it, in the shape and order `python.lookup` gives. `copy()` MUST return
+> a transducer of its own with the same contents.
 
 > [spec:hfst:req:python.compile]
 > The package MUST offer each compiler of `embed.compile` as a function:
@@ -122,8 +122,9 @@ module pays nothing for code it does not run, so it is one module.
 > `Transducer` MUST offer each operation and query of `embed.operations` as a
 > method named after the tool in snake_case, such as `compose`,
 > `determinize`, `push_weights` and `extract_paths` for `fst2strings`, with
-> the tool's options as keyword-only arguments. An operation MUST return a new
-> `Transducer` and a query an instance of a declared class. Each MUST release
+> the tool's options as keyword-only arguments. An operation MUST change the
+> transducer it is called on and return `None`, as Python's mutating methods
+> do; a query MUST return an instance of a declared class. Each MUST release
 > the GIL while the library works.
 
 > [spec:hfst:req:python.writers]
@@ -150,11 +151,15 @@ module pays nothing for code it does not run, so it is one module.
 
 ## Threads
 
-> [spec:hfst:req:python.threads]
+> [spec:hfst:req:python.threads+1]
 > Loading, both lookups, tokenising and acceptor lookup MUST release the GIL
-> while the library works. A loaded object is immutable, so threads MAY call
-> one at the same time: each call is a run of its own over the shared tables,
-> and gives what it gives when no other call runs.
+> while the library works. An `OptimisedTransducer`, a `Tokeniser` and a DHFST
+> model never change, so threads MAY call one at the same time: each call is a
+> run of its own over the shared tables, and gives what it gives when no other
+> call runs. A `Transducer` changes only through its operations. A call on a
+> `Transducer` that another call is changing MUST wait until that change is
+> done, and an operation that reads and changes the same `Transducer`, such as
+> `t.compose(t)`, MUST read it as it was before the change.
 
 ## Logging
 

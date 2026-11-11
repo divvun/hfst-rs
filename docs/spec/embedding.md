@@ -59,8 +59,10 @@ way, so that a package calling the function gets what the tool writes.
 > holds a transducer of any type the library reads: tropical OpenFst, foma,
 > and optimized lookup, weighted and unweighted. It MUST read a stream of them
 > from bytes, in any of those types, and write one to bytes in any of them,
-> converting as `hfst fst2fst` converts. A value of the type never changes:
-> every operation returns a new one, so the type MUST be `Send` and `Sync`.
+> converting as `hfst fst2fst` converts. An operation MUST change the
+> transducer it is called on, as the library's operations do, without copying
+> it first. The type MUST be `Send` and `Sync`, so a binding can run an
+> operation with its host's lock released.
 
 > [spec:hfst:req:embed.compile]
 > With the `compile` feature, hfst-embed MUST offer each compiler as a

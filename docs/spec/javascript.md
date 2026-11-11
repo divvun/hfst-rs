@@ -211,8 +211,11 @@ every other embedder.
 > `divvun-hfst` offers beyond `@divvun/hfst`, with the same results, under
 > JavaScript names: the compilers as functions, `readTransducers` over a
 > stream of any type, and a `Transducer` holding any type with each operation,
-> query and writer as a method. Transducers pass between the two entry points
-> as bytes: `toBytes` on one side and a reader on the other. THFST, which is a
+> query and writer as a method. An operation MUST change the transducer it is
+> called on and return it, as JavaScript's mutating methods such as
+> `Array.prototype.sort` do, and `copy()` MUST return a transducer of its own.
+> Transducers pass between the two entry points as bytes: `toBytes` on one side
+> and a reader on the other. THFST, which is a
 > directory, is not written.
 
 > [spec:hfst:req:javascript.compile-files]
