@@ -104,7 +104,7 @@ fn units(expected: &[(UnitKind, &str)]) -> Vec<(UnitKind, String)> {
 }
 
 // [spec:hfst:syn:prediction-units.format+2/test]
-// [spec:hfst:def:prediction-units.grammar+1/test]
+// [spec:hfst:def:prediction-units.grammar+2/test]
 #[test]
 fn the_fixture_grammars_read_and_hash_apart() {
     let hashes: Vec<[u8; 32]> = [KAL, SME, CRK]
@@ -116,7 +116,7 @@ fn the_fixture_grammars_read_and_hash_apart() {
     assert_ne!(hashes[0], hashes[2]);
 }
 
-// [spec:hfst:sem:prediction-units.boundary+2/test]
+// [spec:hfst:sem:prediction-units.boundary+3/test]
 // [spec:hfst:sem:prediction-units.ending+1/test]
 #[test]
 fn kal_cuts_a_derivation_before_its_ending() {
@@ -130,7 +130,7 @@ fn kal_cuts_a_derivation_before_its_ending() {
     );
 }
 
-// [spec:hfst:sem:prediction-units.boundary+2/test]
+// [spec:hfst:sem:prediction-units.boundary+3/test]
 // [spec:hfst:sem:prediction-units.ending+1/test]
 #[test]
 fn kal_refuses_morpheme_names_without_their_der_tags() {
@@ -151,7 +151,7 @@ fn kal_refuses_morpheme_names_without_their_der_tags() {
     );
 }
 
-// [spec:hfst:sem:prediction-units.boundary+2/test]
+// [spec:hfst:sem:prediction-units.boundary+3/test]
 // [spec:hfst:sem:prediction-units.hidden/test]
 #[test]
 fn kal_chains_derivations_and_hides_transitivity() {
@@ -174,7 +174,7 @@ fn kal_chains_derivations_and_hides_transitivity() {
 }
 
 // [spec:hfst:sem:prediction-units.enclitic/test]
-// [spec:hfst:sem:prediction-units.boundary+2/test]
+// [spec:hfst:sem:prediction-units.boundary+3/test]
 #[test]
 fn kal_li_is_derivation_or_enclitic_by_place() {
     assert_eq!(
@@ -227,7 +227,7 @@ fn kal_classes_derivations_by_what_they_make() {
     assert_eq!(grammar.word_class(&units[..2]), Some("verb"));
 }
 
-// [spec:hfst:sem:prediction-units.boundary+2/test]
+// [spec:hfst:sem:prediction-units.boundary+3/test]
 // [spec:hfst:sem:prediction-units.classes/test]
 #[test]
 fn sme_cuts_and_classes_an_agent_noun() {
@@ -249,7 +249,7 @@ fn sme_cuts_and_classes_an_agent_noun() {
     assert_eq!(grammar.label(&units[2]), Label::CompleteWord);
 }
 
-// [spec:hfst:sem:prediction-units.boundary+2/test]
+// [spec:hfst:sem:prediction-units.boundary+3/test]
 // [spec:hfst:sem:prediction-units.stem/test]
 // [spec:hfst:sem:prediction-units.hidden/test]
 #[test]
@@ -337,7 +337,7 @@ fn crk_reads_each_preverb_as_a_prefix() {
     );
 }
 
-// [spec:hfst:sem:prediction-units.boundary+2/test]
+// [spec:hfst:sem:prediction-units.boundary+3/test]
 #[test]
 fn crk_cuts_a_diminutive() {
     assert_eq!(

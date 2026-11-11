@@ -117,7 +117,7 @@ fn a_tags_entry_the_generator_lacks_is_refused() {
         .expect("# is there");
 }
 
-// [spec:hfst:def:prediction-units.grammar+1/test]
+// [spec:hfst:def:prediction-units.grammar+2/test]
 #[test]
 fn classify_makes_listed_characters_tags() {
     let g = grammar("tags = [\"#\", \"ŋ\"]");
@@ -261,7 +261,7 @@ fn a_star_matches_any_run_of_characters() {
     }
 }
 
-// [spec:hfst:def:prediction-units.grammar+1/test]
+// [spec:hfst:def:prediction-units.grammar+2/test]
 #[test]
 fn the_hash_is_the_sha256_of_the_bytes() {
     let empty_sha256 = [

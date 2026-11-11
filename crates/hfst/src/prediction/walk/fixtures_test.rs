@@ -279,13 +279,21 @@ pub(in crate::prediction) fn word_after(
 /// Greenlandic in small: a derivation's Der tag may be left out, so a
 /// morpheme name can go straight on to an ending or to the next morpheme
 /// name, without end. `+LI` begins a derivation after a stem and is an
-/// enclitic after a complete word.
+/// enclitic after a complete word, and a proper noun's tag comes before
+/// its derivation tag.
 pub(in crate::prediction) const DERIVATIONS: &str = r#"
 Multichar_Symbols
 +V +N +Abs +Sg +Ind +3Sg +NIQ +KIP +LI +Der/vn +Der/nv +Der/vv +Gram/IV
++Prop +U
 
 LEXICON Root
 oqar:oqar Verb ;
+Akoq:Akoq Proper ;
+
+LEXICON Proper
++Prop+Abs:0 End ;
++Prop+U:u Verb ;
++Prop+U+Der/nv:u Verb ;
 
 LEXICON Verb
 +V+Ind+3Sg:poq End ;
@@ -310,7 +318,7 @@ LEXICON End
 
 pub(in crate::prediction) const DERIVATIONS_GRAMMAR: &str = r#"
 boundary = ["+Der/*"]
-derivation = ["+NIQ", "+KIP", "+LI"]
+derivation = ["+NIQ", "+KIP", "+LI", "+U"]
 enclitic = ["+LI"]
 hidden = ["+Gram/*"]
 "#;

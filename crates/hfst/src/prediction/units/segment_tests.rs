@@ -94,7 +94,7 @@ fn a_prefix_tag_after_the_stem_is_ordinary() {
     );
 }
 
-// [spec:hfst:sem:prediction-units.boundary+2/test]
+// [spec:hfst:sem:prediction-units.boundary+3/test]
 // [spec:hfst:sem:prediction-units.stem/test]
 #[test]
 fn boundary_units_end_at_the_first_boundary_tag() {
@@ -108,7 +108,7 @@ fn boundary_units_end_at_the_first_boundary_tag() {
     );
 }
 
-// [spec:hfst:sem:prediction-units.boundary+2/test]
+// [spec:hfst:sem:prediction-units.boundary+3/test]
 #[test]
 fn boundary_units_follow_one_another() {
     assert_eq!(
@@ -122,7 +122,7 @@ fn boundary_units_follow_one_another() {
     );
 }
 
-// [spec:hfst:sem:prediction-units.boundary+2/test]
+// [spec:hfst:sem:prediction-units.boundary+3/test]
 // [spec:hfst:sem:prediction-units.enclitic/test]
 #[test]
 fn an_enclitic_name_before_der_is_derivation() {
@@ -236,7 +236,7 @@ fn the_tokenizer_never_reads_flags_or_reserved_symbols() {
     assert!(tokenizer.tokenize("@_EPSILON_SYMBOL_@").is_err());
 }
 
-// [spec:hfst:sem:prediction-units.boundary+2/test]
+// [spec:hfst:sem:prediction-units.boundary+3/test]
 // [spec:hfst:sem:prediction-units.stem/test]
 #[test]
 fn a_listed_character_closes_a_compound_join() {
@@ -288,7 +288,7 @@ fn derived(analysis: &str) -> crate::error::Result<Vec<(UnitKind, String)>> {
         .collect())
 }
 
-// [spec:hfst:sem:prediction-units.boundary+2/test]
+// [spec:hfst:sem:prediction-units.boundary+3/test]
 #[test]
 fn derivation_tags_begin_units_boundaries_end() {
     assert_eq!(
@@ -297,6 +297,14 @@ fn derivation_tags_begin_units_boundaries_end() {
             (UnitKind::Stem, "oqar"),
             (UnitKind::Boundary, "+NIQ+Der/vn"),
             (UnitKind::Ending, "+N+Abs+Sg"),
+        ])
+    );
+    assert_eq!(
+        derived("akoq+N+Abs+KIP+Der/nv+V+Ind+3Sg").expect("segments"),
+        units(&[
+            (UnitKind::Stem, "akoq"),
+            (UnitKind::Boundary, "+N+Abs+KIP+Der/nv"),
+            (UnitKind::Ending, "+V+Ind+3Sg"),
         ])
     );
     assert_eq!(
@@ -310,20 +318,16 @@ fn derivation_tags_begin_units_boundaries_end() {
     );
 }
 
-// [spec:hfst:sem:prediction-units.boundary+2/test]
+// [spec:hfst:sem:prediction-units.boundary+3/test]
 #[test]
 fn a_chain_of_derivation_tags_is_refused() {
     let message = derived("oqar+NIQ+KIP+Der/nv+V+Ind+3Sg")
-        .expect_err("+KIP does not begin its unit")
+        .expect_err("+KIP is a second derivation tag")
         .to_string();
     assert!(
-        message.contains("\"+KIP\" at symbol 5 does not begin"),
+        message.contains("\"+KIP\" at symbol 5 follows \"+NIQ\" at symbol 4"),
         "{message}"
     );
-    let message = derived("oqar+N+NIQ+Der/vn+N+Abs+Sg")
-        .expect_err("+N comes before +NIQ")
-        .to_string();
-    assert!(message.contains("\"+NIQ\""), "{message}");
 }
 
 // [spec:hfst:sem:prediction-units.ending+1/test]
@@ -340,7 +344,7 @@ fn a_derivation_tag_no_boundary_ends_is_refused() {
 }
 
 // [spec:hfst:sem:prediction-units.enclitic/test]
-// [spec:hfst:sem:prediction-units.boundary+2/test]
+// [spec:hfst:sem:prediction-units.boundary+3/test]
 #[test]
 fn derivation_tags_may_begin_enclitics_only() {
     assert_eq!(

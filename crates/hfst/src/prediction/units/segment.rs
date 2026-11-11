@@ -106,7 +106,7 @@ impl<'g> Cutter<'g> {
     /// After a stem or a boundary unit, a boundary tag before the next letter
     /// ends a boundary unit, and letters after it start a stem. With no
     /// boundary tag left, the rest is an ending and enclitics.
-    // [spec:hfst:sem:prediction-units.boundary+2]
+    // [spec:hfst:sem:prediction-units.boundary+3]
     fn after_stem(&mut self) -> Result<()> {
         loop {
             let letter = self.next(SymbolClass::Letter);
@@ -115,7 +115,7 @@ impl<'g> Cutter<'g> {
             else {
                 return self.ending_and_enclitics();
             };
-            self.derivation_begins(boundary + 1)?;
+            self.one_derivation(boundary + 1)?;
             self.take(UnitKind::Boundary, boundary + 1);
             if self.classes.get(self.at) == Some(&SymbolClass::Letter) {
                 self.stem()?;
@@ -162,20 +162,15 @@ impl<'g> Cutter<'g> {
         self.grammar.is_derivation(&self.symbols[at])
     }
 
-    /// Refuse a derivation tag that does not begin the run from here to
-    /// `end`. Hidden tags before it do not count, since they are left out
-    /// of the unit's key.
-    // [spec:hfst:sem:prediction-units.boundary+2]
-    fn derivation_begins(&self, end: usize) -> Result<()> {
-        let mut leading = true;
-        for at in self.at..end {
-            let tag = &self.symbols[at];
-            if self.is_derivation(at) && !leading {
-                return self.refuse(format!(
-                    "derivation tag {tag:?} at symbol {at} does not begin its unit"
-                ));
-            }
-            leading = leading && self.grammar.is_hidden(tag);
+    /// Refuse a second derivation tag in the run from here to `end`.
+    // [spec:hfst:sem:prediction-units.boundary+3]
+    fn one_derivation(&self, end: usize) -> Result<()> {
+        let mut derivations = (self.at..end).filter(|&at| self.is_derivation(at));
+        if let (Some(first), Some(second)) = (derivations.next(), derivations.next()) {
+            return self.refuse(format!(
+                "derivation tag {:?} at symbol {second} follows {:?} at symbol {first} in one unit",
+                self.symbols[second], self.symbols[first]
+            ));
         }
         Ok(())
     }

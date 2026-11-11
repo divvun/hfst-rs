@@ -209,8 +209,9 @@ impl Flags {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(in crate::prediction) enum Purpose {
     Tags,
-    /// Tags of a run that only a boundary tag can end.
-    Bounded,
+    /// Tags of a run that only a boundary tag can end, and whether it holds
+    /// its derivation tag.
+    Bounded(bool),
     Prefixes,
     Letters,
 }
@@ -340,16 +341,16 @@ impl<'m, 'a, T: TransducerTablesInterface> Pass<'m, 'a, T> {
             Want::Final => self.reach(state).can_end(),
             Want::Symbol(symbol) => self.reach(state).reads(symbol),
             Want::Reading(wanted) => self.reach(state).reads_any(wanted),
-            Want::Boundary => self.reaches.bounded(self.machine, self.roles, state),
+            Want::Boundary(hold) => self.reaches.bounded(self.machine, self.roles, state, hold),
         }
     }
 
     /// True when a run of tags from some of `seeds` can still end at a
-    /// boundary tag.
-    pub(in crate::prediction) fn bounded(&mut self, seeds: &[Live]) -> bool {
+    /// boundary tag, `hold` saying whether it holds its derivation tag.
+    pub(in crate::prediction) fn bounded(&mut self, seeds: &[Live], hold: bool) -> bool {
         seeds
             .iter()
-            .any(|seed| self.met(Want::Boundary, seed.here.state))
+            .any(|seed| self.met(Want::Boundary(hold), seed.here.state))
     }
 
     fn along(&mut self, live: &Live, arc: &Edge, flags: FlagsId) -> Live {
@@ -436,7 +437,7 @@ impl<'m, 'a, T: TransducerTablesInterface> Pass<'m, 'a, T> {
         let mut entries = Vec::new();
         let mut by_symbol: BTreeMap<SymbolNumber, Vec<usize>> = BTreeMap::new();
         let want = match purpose {
-            Purpose::Bounded => Want::Boundary,
+            Purpose::Bounded(hold) => Want::Boundary(hold),
             Purpose::Tags | Purpose::Prefixes | Purpose::Letters => Want::Reading(wanted),
         };
         for live in self.explore(&[root], want) {

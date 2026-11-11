@@ -115,9 +115,8 @@ struct TagRun {
     ending: bool,
     /// After a complete word: starts with an enclitic tag and has no other.
     enclitic: bool,
-    /// Every tag so far is hidden, so a derivation tag may still begin the
-    /// unit.
-    leading: bool,
+    /// The run holds a derivation tag, and can take no other.
+    derived: bool,
 }
 
 /// What a run of tags becomes with one more tag.
@@ -125,7 +124,7 @@ struct Extension {
     boundary: bool,
     ending: bool,
     enclitic: bool,
-    leading: bool,
+    derived: bool,
 }
 
 impl<'a, T: TransducerTablesInterface> Walker<'a, T> {
@@ -242,7 +241,7 @@ impl<'a, T: TransducerTablesInterface> Walker<'a, T> {
     /// generator that lets a Der tag be left out does not send the walk
     /// through every ending after every morpheme name.
     // [spec:hfst:req:prediction.generator-decides]
-    // [spec:hfst:sem:prediction-units.boundary+2]
+    // [spec:hfst:sem:prediction-units.boundary+3]
     // [spec:hfst:sem:prediction-units.ending+1]
     // [spec:hfst:sem:prediction-units.enclitic]
     pub(in crate::prediction) fn tag_runs(
@@ -260,18 +259,25 @@ impl<'a, T: TransducerTablesInterface> Walker<'a, T> {
                 .get(symbol as usize)
                 .is_some_and(|&role| role != Role::Stop)
         };
+        let goes_on_derived = |symbol: SymbolNumber| {
+            self.roles
+                .get(symbol as usize)
+                .is_some_and(|&role| matches!(role, Role::Through | Role::Boundary))
+        };
         let mut queue = VecDeque::from([TagRun {
             symbols: Vec::new(),
             seeds: seeds.to_vec(),
             ending: after_stem,
             enclitic: complete,
-            leading: true,
+            derived: false,
         }]);
         while let Some(run) = queue.pop_front() {
             let readers = if run.ending || run.enclitic {
                 pass.readers(&run.seeds, Purpose::Tags, &is_tag)
+            } else if run.derived {
+                pass.readers(&run.seeds, Purpose::Bounded(true), &goes_on_derived)
             } else {
-                pass.readers(&run.seeds, Purpose::Bounded, &goes_on)
+                pass.readers(&run.seeds, Purpose::Bounded(false), &goes_on)
             };
             for symbol in readers.symbols() {
                 let Some(extension) = self.extend(&run, symbol, after_stem) else {
@@ -299,7 +305,10 @@ impl<'a, T: TransducerTablesInterface> Walker<'a, T> {
                     };
                     self.offer(pass, offers, kind, &symbols, reached.clone());
                 }
-                if !extension.ending && !extension.enclitic && !pass.bounded(&reached) {
+                if !extension.ending
+                    && !extension.enclitic
+                    && !pass.bounded(&reached, extension.derived)
+                {
                     continue;
                 }
                 queue.push_back(TagRun {
@@ -307,7 +316,7 @@ impl<'a, T: TransducerTablesInterface> Walker<'a, T> {
                     seeds: reached,
                     ending: extension.ending,
                     enclitic: extension.enclitic,
-                    leading: extension.leading,
+                    derived: extension.derived,
                 });
             }
             if pass.budget.configurations_cut {
@@ -318,14 +327,13 @@ impl<'a, T: TransducerTablesInterface> Walker<'a, T> {
 
     /// What `run` can become with `symbol` after it, or nothing when the
     /// symbol is not a tag or the run could become no unit with it.
-    /// A derivation tag after anything but hidden tags ends the search
-    /// there, so chains of derivation tags are never walked. A run with a
-    /// derivation tag in it is never an ending: only a boundary tag can end
-    /// it.
-    // [spec:hfst:sem:prediction-units.boundary+2]
+    /// A second derivation tag ends the search there, so chains of
+    /// derivation tags are never walked. A run with a derivation tag in it
+    /// is never an ending: only a boundary tag can end it.
+    // [spec:hfst:sem:prediction-units.boundary+3]
     fn extend(&self, run: &TagRun, symbol: SymbolNumber, after_stem: bool) -> Option<Extension> {
         let info = self.info(symbol)?;
-        if info.class != SymbolClass::Tag || (info.derivation && !run.leading) {
+        if info.class != SymbolClass::Tag || (info.derivation && run.derived) {
             return None;
         }
         let enclitic = if run.symbols.is_empty() {
@@ -337,7 +345,7 @@ impl<'a, T: TransducerTablesInterface> Walker<'a, T> {
             boundary: after_stem && info.boundary,
             ending: run.ending && !info.enclitic && !info.boundary && !info.derivation,
             enclitic,
-            leading: run.leading && info.hidden,
+            derived: run.derived || info.derivation,
         };
         (after_stem || extension.enclitic).then_some(extension)
     }

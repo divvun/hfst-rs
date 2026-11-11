@@ -70,7 +70,7 @@ struct GrammarFile {
 }
 
 /// One language's unit grammar, read from its TOML file.
-// [spec:hfst:def:prediction-units.grammar+1]
+// [spec:hfst:def:prediction-units.grammar+2]
 #[derive(Clone, Debug)]
 pub struct UnitGrammar {
     file: GrammarFile,
@@ -172,7 +172,7 @@ impl UnitGrammar {
     /// Classify one symbol of the generator's analysis side as
     /// [`classify_symbol`] does, except that a symbol the grammar lists under
     /// `tags` is a tag.
-    // [spec:hfst:def:prediction-units.grammar+1]
+    // [spec:hfst:def:prediction-units.grammar+2]
     pub fn classify(&self, symbol: &str) -> SymbolClass {
         let class = classify_symbol(symbol);
         if class == SymbolClass::Letter && self.file.tags.iter().any(|tag| tag == symbol) {
@@ -183,12 +183,12 @@ impl UnitGrammar {
     }
 
     /// The SHA-256 of the bytes the grammar was read from.
-    // [spec:hfst:def:prediction-units.grammar+1]
+    // [spec:hfst:def:prediction-units.grammar+2]
     pub fn hash(&self) -> [u8; 32] {
         self.hash
     }
 
-    // [spec:hfst:sem:prediction-units.boundary+2]
+    // [spec:hfst:sem:prediction-units.boundary+3]
     pub fn is_boundary(&self, tag: &str) -> bool {
         any_matches(&self.file.boundary, tag)
     }
@@ -198,9 +198,9 @@ impl UnitGrammar {
         any_matches(&self.file.prefix, tag)
     }
 
-    /// A tag that can only begin a run that a boundary tag ends, such as a
-    /// Greenlandic morpheme name before its `Der/` tag.
-    // [spec:hfst:sem:prediction-units.boundary+2]
+    /// A tag a run holds at most one of, and only when a boundary tag ends
+    /// the run, such as a Greenlandic morpheme name before its `Der/` tag.
+    // [spec:hfst:sem:prediction-units.boundary+3]
     pub fn is_derivation(&self, tag: &str) -> bool {
         any_matches(&self.file.derivation, tag)
     }

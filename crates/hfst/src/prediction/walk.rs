@@ -199,15 +199,13 @@ struct SymbolInfo {
     prefix: bool,
     derivation: bool,
     enclitic: bool,
-    hidden: bool,
 }
 
 impl SymbolInfo {
-    /// A derivation tag can only begin a run, so a run that only a boundary
-    /// tag can still end never goes through one.
     fn role(&self) -> Role {
         match self.class {
-            SymbolClass::Tag if self.derivation => Role::Stop,
+            SymbolClass::Tag if self.derivation && self.boundary => Role::DerivationBoundary,
+            SymbolClass::Tag if self.derivation => Role::Derivation,
             SymbolClass::Tag if self.boundary => Role::Boundary,
             SymbolClass::Tag => Role::Through,
             SymbolClass::Letter | SymbolClass::Flag | SymbolClass::Reserved => Role::Stop,
@@ -258,7 +256,6 @@ impl<'a, T: TransducerTablesInterface> Walker<'a, T> {
                 prefix: grammar.is_prefix(name),
                 derivation: grammar.is_derivation(name),
                 enclitic: grammar.is_enclitic(name),
-                hidden: grammar.is_hidden(name),
             })
             .collect();
         let roles = symbols.iter().map(SymbolInfo::role).collect();

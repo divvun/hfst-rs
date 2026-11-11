@@ -7,13 +7,13 @@ are the units the model counted (`prediction-model.same-grammar`).
 
 ## The grammar
 
-> [spec:hfst:def:prediction-units.grammar+1]
+> [spec:hfst:def:prediction-units.grammar+2]
 > A unit grammar is a TOML file kept in a language's repository beside its
 > generator. On the generator's analysis side, a symbol of one character is a
 > letter unless the grammar lists it under `tags`, a flag diacritic is a
 > flag, and any other symbol is a tag. The grammar sorts tags into
-> boundaries, prefixes, enclitics and hidden tags, and it holds the
-> language's filters, labels and word classes. A grammar's hash is the
+> boundaries, prefixes, derivations, enclitics and hidden tags, and it holds
+> the language's filters, labels and word classes. A grammar's hash is the
 > SHA-256 of its bytes.
 
 > [spec:hfst:syn:prediction-units.format+2]
@@ -48,15 +48,15 @@ are the units the model counted (`prediction-model.same-grammar`).
 > Before a word's first stem, a tag that matches a `prefix` pattern is a
 > prefix unit on its own, as Plains Cree's preverbs (`PV/e+`) are.
 
-> [spec:hfst:sem:prediction-units.boundary+2]
+> [spec:hfst:sem:prediction-units.boundary+3]
 > After a stem or a boundary unit, a run of tags that ends with a tag
 > matching a `boundary` pattern is one unit, a derivation or a compound join,
-> and the next unit starts after it. A tag that matches a `derivation`
-> pattern can only begin such a run, and a run that begins with one is a
-> unit only when it ends with a boundary tag. Greenlandic's derivational
-> morphemes are `derivation` tags and its `Der/` tags are boundaries, so
-> `+NIQ+Der/vn` is one unit, and a chain of morpheme names without their
-> `Der/` tags is not a unit. Greenlandic's `Der/nv` and North Sámi's
+> and the next unit starts after it. A run can hold at most one tag that
+> matches a `derivation` pattern, and a run that holds one is a unit only
+> when it ends with a boundary tag. Greenlandic's derivational morphemes are
+> `derivation` tags and its `Der/` tags are boundaries, so `+NIQ+Der/vn` and
+> `+Prop+U+Der/nv` are units, and a chain of morpheme names without their
+> `Der/` tags is not. Greenlandic's `Der/nv` and North Sámi's
 > `Der/` tags and the `#` that closes a compound join are boundaries.
 
 > [spec:hfst:sem:prediction-units.ending+1]

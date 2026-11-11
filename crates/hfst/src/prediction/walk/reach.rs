@@ -41,7 +41,11 @@ pub(in crate::prediction) enum Role {
     Through,
     /// It ends the run.
     Boundary,
-    /// The run cannot take it: a letter, a derivation tag or no tag.
+    /// A run holds at most one derivation tag.
+    Derivation,
+    /// Ends a run that holds no derivation tag yet, and only that one.
+    DerivationBoundary,
+    /// The run cannot take it: a letter or no tag.
     Stop,
 }
 
@@ -52,8 +56,9 @@ pub(in crate::prediction) enum Want<'w> {
     Final,
     Symbol(SymbolNumber),
     Reading(&'w dyn Fn(SymbolNumber) -> bool),
-    /// A boundary tag, at the end of a run of tags that go through.
-    Boundary,
+    /// A boundary tag, at the end of a run of tags that go through. True
+    /// when the run already holds its derivation tag.
+    Boundary(bool),
 }
 
 /// A graph over states whose components settle a value each.
@@ -140,6 +145,10 @@ struct Tags<'g, 'a, T: TransducerTablesInterface> {
     machine: &'g Machine<'a, T>,
     outgoing: &'g mut IdMap<TransitionTableIndex, Rc<[SymbolNumber]>>,
     roles: &'g [Role],
+    /// For a run that can still take a derivation tag, the settled values
+    /// of runs that hold one, where a derivation arc leads; none for a run
+    /// that holds one.
+    held: Option<&'g mut IdMap<TransitionTableIndex, bool>>,
 }
 
 impl<T: TransducerTablesInterface> Tags<'_, '_, T> {
@@ -148,6 +157,32 @@ impl<T: TransducerTablesInterface> Tags<'_, '_, T> {
             .get(symbol as usize)
             .copied()
             .unwrap_or(Role::Stop)
+    }
+
+    fn ends(&self, symbol: SymbolNumber) -> bool {
+        match self.role(symbol) {
+            Role::Boundary => true,
+            Role::DerivationBoundary => self.held.is_some(),
+            Role::Through | Role::Derivation | Role::Stop => false,
+        }
+    }
+
+    /// True when a run that takes its derivation tag into `target` can
+    /// still end at a boundary tag.
+    fn after_derivation(&mut self, target: TransitionTableIndex) -> bool {
+        let Some(held) = self.held.as_deref_mut() else {
+            return false;
+        };
+        if !held.contains_key(&target) {
+            let mut holding = Tags {
+                machine: self.machine,
+                outgoing: &mut *self.outgoing,
+                roles: self.roles,
+                held: None,
+            };
+            settle(&mut holding, held, target);
+        }
+        held.get(&target) == Some(&true)
     }
 }
 
@@ -172,11 +207,18 @@ impl<T: TransducerTablesInterface> Graph for Tags<'_, '_, T> {
     ) -> bool {
         for &member in members {
             let own = outgoing_of(self.outgoing, self.machine, member);
-            if own
-                .iter()
-                .any(|&symbol| self.role(symbol) == Role::Boundary)
-            {
+            if own.iter().any(|&symbol| self.ends(symbol)) {
                 return true;
+            }
+            for &symbol in own.iter() {
+                if self.role(symbol) != Role::Derivation || self.held.is_none() {
+                    continue;
+                }
+                for arc in self.machine.symbol_arcs(member, symbol) {
+                    if self.after_derivation(self.machine.arc(arc).target) {
+                        return true;
+                    }
+                }
             }
             let leads = self
                 .edges(member)
@@ -293,7 +335,10 @@ fn close_component<G: Graph>(
 #[derive(Default)]
 pub(in crate::prediction) struct Reaches {
     reaches: IdMap<TransitionTableIndex, Rc<Reach>>,
-    bounded: IdMap<TransitionTableIndex, bool>,
+    /// Whether a run that holds its derivation tag can end at a boundary.
+    held: IdMap<TransitionTableIndex, bool>,
+    /// Whether a run that can still take one can.
+    free: IdMap<TransitionTableIndex, bool>,
     outgoing: IdMap<TransitionTableIndex, Rc<[SymbolNumber]>>,
 }
 
@@ -324,24 +369,41 @@ impl Reaches {
     }
 
     /// True when a run of tags from `root` can end at a boundary tag, going
-    /// through only tags `roles` lets it.
+    /// through only tags `roles` lets it, and through a derivation tag only
+    /// when it does not `hold` one already.
     pub(in crate::prediction) fn bounded<T: TransducerTablesInterface>(
         &mut self,
         machine: &Machine<'_, T>,
         roles: &[Role],
         root: TransitionTableIndex,
+        hold: bool,
     ) -> bool {
-        if !self.bounded.contains_key(&root) {
-            let Reaches {
-                bounded, outgoing, ..
-            } = self;
-            let mut tags = Tags {
+        let Reaches {
+            held,
+            free,
+            outgoing,
+            ..
+        } = self;
+        let (settled, mut tags) = if hold {
+            let tags = Tags {
                 machine,
                 outgoing,
                 roles,
+                held: None,
             };
-            settle(&mut tags, bounded, root);
+            (held, tags)
+        } else {
+            let tags = Tags {
+                machine,
+                outgoing,
+                roles,
+                held: Some(held),
+            };
+            (free, tags)
+        };
+        if !settled.contains_key(&root) {
+            settle(&mut tags, settled, root);
         }
-        self.bounded.get(&root).copied().unwrap_or(false)
+        settled.get(&root).copied().unwrap_or(false)
     }
 }

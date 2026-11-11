@@ -78,7 +78,7 @@ fn configurations_keep_what_each_path_wrote_and_weighed() {
 
 // [spec:hfst:req:prediction.generator-decides/test]
 // [spec:hfst:sem:prediction-units.ending+1/test]
-// [spec:hfst:sem:prediction-units.boundary+2/test]
+// [spec:hfst:sem:prediction-units.boundary+3/test]
 #[test]
 fn the_units_offered_are_those_the_generator_accepts() {
     let generator = lexc(NOUNS);
@@ -306,7 +306,7 @@ fn a_walk_within_its_bounds_is_not_truncated() {
     assert!(!walker.next(&word).truncated);
 }
 
-// [spec:hfst:sem:prediction-units.boundary+2/test]
+// [spec:hfst:sem:prediction-units.boundary+3/test]
 // [spec:hfst:sem:prediction-units.stem/test]
 #[test]
 fn a_stem_can_follow_a_compound_join() {
@@ -404,7 +404,7 @@ fn a_grammar_naming_missing_tags_is_refused() {
     assert!(refused.to_string().contains("+Der/Missing"), "{refused}");
 }
 
-// [spec:hfst:sem:prediction-units.boundary+2/test]
+// [spec:hfst:sem:prediction-units.boundary+3/test]
 // [spec:hfst:sem:prediction-units.ending+1/test]
 // [spec:hfst:req:prediction.generator-decides/test]
 #[test]
@@ -440,7 +440,7 @@ fn derivations_are_offered_only_with_der_tags() {
     assert!(!after.truncated);
 }
 
-// [spec:hfst:sem:prediction-units.boundary+2/test]
+// [spec:hfst:sem:prediction-units.boundary+3/test]
 // [spec:hfst:req:prediction.bounded/test]
 #[test]
 fn without_derivation_tags_chains_never_end() {
@@ -469,4 +469,23 @@ fn an_enclitic_derivation_tag_follows_complete_words() {
     assert_eq!(kinds(&next), [(UnitKind::Enclitic, "+LI")]);
     let asked = complete.pick(candidate(&next, "+LI"));
     assert_eq!(surfaces(&walker, &asked), ["oqarpoqlu"]);
+}
+
+// [spec:hfst:sem:prediction-units.boundary+3/test]
+#[test]
+fn tags_may_come_before_the_one_derivation_tag() {
+    let generator = lexc(DERIVATIONS);
+    let grammar = grammar(DERIVATIONS_GRAMMAR);
+    let walker = walker(&generator, &grammar);
+    let next = walker.next(&word_after(&walker, "Akoq", &[]));
+    assert_eq!(
+        kinds(&next),
+        [
+            (UnitKind::Ending, "+Prop+Abs"),
+            (UnitKind::Boundary, "+Prop+U+Der/nv"),
+        ]
+    );
+    assert!(!next.truncated);
+    let derived = word_after(&walker, "Akoq", &["+Prop+U+Der/nv", "+V+Ind+3Sg"]);
+    assert_eq!(surfaces(&walker, &derived), ["Akoqupoq"]);
 }

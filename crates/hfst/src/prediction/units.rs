@@ -33,7 +33,7 @@ pub enum SymbolClass {
     Reserved,
 }
 
-// [spec:hfst:def:prediction-units.grammar+1]
+// [spec:hfst:def:prediction-units.grammar+2]
 /// Classify one symbol of a generator's analysis side as if no grammar
 /// listed `tags`. A letter is one character, not one byte, so `ŋ` is a
 /// letter. A grammar can make a one-character symbol a tag, as North Sámi's
@@ -111,7 +111,7 @@ pub enum Label {
 mod tests {
     use super::*;
 
-    // [spec:hfst:def:prediction-units.grammar+1/test]
+    // [spec:hfst:def:prediction-units.grammar+2/test]
     #[test]
     fn one_character_symbols_are_letters() {
         for symbol in ["a", "ŋ", "â", "#", "+", "@"] {
@@ -119,7 +119,7 @@ mod tests {
         }
     }
 
-    // [spec:hfst:def:prediction-units.grammar+1/test]
+    // [spec:hfst:def:prediction-units.grammar+2/test]
     #[test]
     fn flags_are_flags_and_the_rest_are_tags() {
         for flag in ["@U.person.NI@", "@D.person@", "@P.LEXNAME.#@", "@C.Num@"] {
