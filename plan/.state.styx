@@ -655,6 +655,7 @@ assertions (
     {id python.spec, kind @complete, author "brendan@necessary.nu", at 2026-11-10T15:00:49.230155Z}
     {id python.embed, kind @complete, author "brendan@necessary.nu", at 2026-11-10T15:14:12.551711Z}
     {id python.wheel-contents, kind @complete, author "brendan@necessary.nu", at 2026-11-10T15:48:25.575704Z}
+    {id compile-surface.spec, kind @complete, author "brendan@necessary.nu", at 2026-11-11T11:38:00.541522Z}
 )
 
 impl_evidence (

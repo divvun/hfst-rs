@@ -1,17 +1,18 @@
 # Python
 
 Divvun HFST runs in Python as a native extension module, published to PyPI as
-`divvun-hfst`. It is a pyo3 binding over the read-only surface `@divvun/hfst`
-binds, so a lookup is the library's own code on the host and not
-WebAssembly. These rules fix what the package contains and how its API
-behaves.
+`divvun-hfst`. It is a pyo3 binding over `crates/hfst-embed` with its
+`compile` feature, so a lookup or a compile is the library's own code on the
+host and not WebAssembly. These rules fix what the package contains and how
+its API behaves.
 
-The surface follows `@divvun/hfst`: the same readers, the same lookups, the
-same tokeniser and the same DHFST models, giving the same results. It differs
-where Python has a convention of its own, for names, option objects,
-exceptions and logging, and where a native host can do more: it loads files
-by path, and it releases the GIL so threads can share a loaded object. Like
-the npm package, it does not compile, write or transform transducers.
+The surface follows `@divvun/hfst`: its main entry point's readers, lookups,
+tokeniser and DHFST models, and its compile entry point's compilers,
+operations and writers, giving the same results. It differs where Python has
+a convention of its own, for names, option objects, exceptions, warnings and
+logging, and where a native host can do more: it reads and writes files by
+path, and it releases the GIL so threads can share a loaded object. A native
+module pays nothing for code it does not run, so it is one module.
 
 ## Package
 
@@ -33,15 +34,18 @@ the npm package, it does not compile, write or transform transducers.
 
 ## Loading
 
-> [spec:hfst:req:python.load]
+> [spec:hfst:req:python.load+1]
 > `read_transducers`, `read_transducer`, `read_optimised_transducer`,
 > `read_tokeniser` and `read_dhfst` MUST take the bytes of a file as `bytes`
-> or `bytearray` and read them as `@divvun/hfst`'s reader of the same name
-> reads them: the same formats, the same objects in the same order, and the
-> same refusals with the same codes. For each there MUST be a `load_` function
-> that takes a path, as a `str` or an `os.PathLike`, reads the file in the
-> library rather than in Python, and loads its bytes as the `read_` function
-> does.
+> or `bytearray`. `read_transducers` and `read_transducer` MUST read them as
+> `@divvun/hfst/compile` reads a stream: every type hfst-embed's transducer
+> type holds, in stream order. The other three MUST read them as
+> `@divvun/hfst`'s reader of the same name reads them: the same formats, the
+> same objects in the same order, and the same refusals with the same codes.
+> For each there MUST be a `load_` function that takes a path, as a `str` or
+> an `os.PathLike`, reads the file in the library rather than in Python, and
+> loads its bytes as the `read_` function does; `load_transducers` MUST also
+> read a THFST directory.
 
 ## Lookup
 
@@ -78,6 +82,58 @@ the npm package, it does not compile, write or transform transducers.
 > `@divvun/hfst`'s acceptor lookup returns, the least weight as a `float` or
 > `None`. Each model MUST expose the metadata the npm package exposes, and an
 > acceptor its `info` as an `AcceptorInfo`.
+
+## Compiling, transforming and writing
+
+> [spec:hfst:req:python.transducer]
+> `Transducer` MUST hold a transducer of any type through hfst-embed's
+> transducer type and expose its `type`, `name` and `properties`. For a type
+> `@divvun/hfst` does not read, `lookup` MUST return what `hfst lookup` finds
+> for it, in the shape and order `python.lookup` gives. A `Transducer` never
+> changes: every operation returns a new one.
+
+> [spec:hfst:req:python.compile]
+> The package MUST offer each compiler of `embed.compile` as a function:
+> `regex`, `compile_lexc`, `compile_twolc`, `compile_xfst`, `compile_pmatch`,
+> `compile_strings`, `parse_att` and `parse_prolog`. Each takes its source as a
+> `str`, or for `compile_lexc` a sequence of them, and its options as a frozen
+> dataclass with a keyword-only field for each option, named after the tool's
+> long option in snake_case, which checks its fields when it is made. `regex`,
+> `compile_lexc`, `compile_strings` and the two parsers return a `Transducer`;
+> `compile_twolc` a list of the rule transducers; `compile_pmatch` the
+> archive's `bytes`, which `read_tokeniser` reads; and `compile_xfst` an
+> `XfstResult` holding the script's output, its stack, its defined networks
+> and the files it wrote. A keyword-only `files`, a mapping from names to
+> `str` or `bytes`, MUST make every file the compile reads come from that
+> mapping and every file it writes land in its result; without it, the compile
+> reads and writes the filesystem. Compiling MUST release the GIL while the
+> library works.
+
+> [spec:hfst:req:python.compile-errors]
+> A compile that fails MUST raise `divvun_hfst.CompileError`, a subclass of
+> `HfstError`, whose `diagnostics` hold every diagnostic it made as
+> `Diagnostic` objects: severity, message, source name, the span of its
+> primary label in code points, its other labels, its notes and help, and its
+> rendered text without colour. Each warning of a compile that succeeds MUST
+> be issued through `warnings.warn` as a `divvun_hfst.CompileWarning` carrying
+> its `Diagnostic`.
+
+> [spec:hfst:req:python.operations]
+> `Transducer` MUST offer each operation and query of `embed.operations` as a
+> method named after the tool in snake_case, such as `compose`,
+> `determinize`, `push_weights` and `extract_paths` for `fst2strings`, with
+> the tool's options as keyword-only arguments. An operation MUST return a new
+> `Transducer` and a query an instance of a declared class. Each MUST release
+> the GIL while the library works.
+
+> [spec:hfst:req:python.writers]
+> `Transducer.to_bytes(type)` MUST write the transducer, in `type` or in its
+> own type, as `embed.writers` says. `to_att`, `to_prolog`, `to_dot` and
+> `to_pckimmo` MUST return the text `fst2txt` writes as a `str`;
+> `to_dhfst_acceptor` and `to_dhfst_error_model` the DHFST bytes `fst2fst`
+> writes; `write_thfst(path)` MUST write the THFST directory; and
+> `divvun_hfst.pack_bhfst(acceptor, error_model, metadata)` MUST return the
+> bytes `bhfst` writes. Writing MUST release the GIL while the library works.
 
 ## Errors
 
@@ -121,3 +177,9 @@ the npm package, it does not compile, write or transform transducers.
 > same DHFST metadata. A test suite MUST check this through the built package
 > on the fixtures and native expectations the npm package's parity suite
 > uses.
+
+> [spec:hfst:req:python.compile-parity]
+> For every input the repository's tests give a compiler, operation, query or
+> writer `embed.tools` lists, the package MUST give what the tool gives, byte
+> for byte where the tool writes bytes or text. A test suite MUST check this
+> through the built package.

@@ -1,6 +1,6 @@
 ---
 id [dec:hfst:python-package]
-epitome "divvun-hfst is a pyo3 extension module, imported as divvun_hfst, over crates/hfst-embed, the read-only surface @divvun/hfst binds too: the same readers from bytes and also from paths, both lookups, tokenising and DHFST, with frozen objects that threads share and the GIL released while the library works."
+epitome "divvun-hfst is a pyo3 extension module, imported as divvun_hfst, over crates/hfst-embed, the surface @divvun/hfst binds too: the same readers from bytes and also from paths, both lookups, tokenising and DHFST, with frozen objects that threads share and the GIL released while the library works."
 state @decided
 category @existence
 scope {
@@ -31,7 +31,7 @@ alternatives (
     }
     {
         option "Follow the HFST project's Python API, `hfst.HfstTransducer` and its relatives."
-        rejected_because "It is the whole C++ library through SWIG, compilers and algebra included, in C++ names. This package has the npm package's read-only scope, whose surface is already specified and checked against the native library."
+        rejected_because "It is the whole C++ library through SWIG in C++ names, with transducers changed in place. The package offers the same compilers, operations and writers under Python's names, on transducers that never change, as `[dec:hfst:compile-surface]` sets out."
     }
     {
         option "Copy the reading and running code of crates/hfst-wasm into the Python crate."

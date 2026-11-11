@@ -8061,7 +8061,7 @@ children (
                 title "Scaffold the binding: crates/hfst-wasm (wasm-bindgen cdylib) and the TypeScript package js/hfst published as @divvun/hfst; explicit async init; deno check on the TS; an nplan typescript platform"
                 kind @feat
                 implements {
-                    js-impl ([spec:hfst:def:javascript.packages] [spec:hfst:req:javascript.init] [spec:hfst:req:javascript.typed-surface])
+                    js-impl ([spec:hfst:req:javascript.init] [spec:hfst:req:javascript.typed-surface])
                     target-impl ([spec:hfst:req:javascript.portable-build])
                 }
                 deps (wasm.rustfst-entropy)
@@ -8959,7 +8959,6 @@ children (
                 title "Add crates/hfst-python, pyo3 glue over hfst-embed: read_* from bytes and load_* from paths read in Rust, Transducer and OptimisedTransducer lookups with keyword-only limits, Tokeniser.tokenise with code point offsets and format, DHFST acceptors and error models, HfstError with the npm codes and FormatError, the GIL released for loads, lookups and tokenising, tracing events handed to logging"
                 implements {
                     target-impl (
-                        [spec:hfst:req:python.load]
                         [spec:hfst:req:python.lookup]
                         [spec:hfst:req:python.tokenise]
                         [spec:hfst:req:python.dhfst]
@@ -9054,6 +9053,170 @@ children (
                         text "Doing → Done (nplan complete)"
                     }
                 )
+            }
+        )
+    }
+
+    {
+        id compile-surface
+        title "Give the packages what the hfst tools do to a transducer: hfst-embed's compile feature compiles, transforms, inspects and writes every type through library functions the tools call, divvun-hfst binds it, and @divvun/hfst adds it as a second entry point, @divvun/hfst/compile, with a .wasm of its own [docs/spec/embedding.md]"
+        kind @feat
+        children (
+            {
+                id compile-surface.spec
+                title "State the compile surface in the spec and the AKM: docs/spec/embedding.md classifying the tools and requiring each in the library, panic-free, behind hfst-embed's compile feature; python.load+1 and Python rules for transducers of every type, compilers, compile errors, operations, writers and parity; javascript.packages+3 and rules for the @divvun/hfst/compile entry; the compile-surface decision"
+                kind @docs
+                sealed true
+                log (
+                    {
+                        at 2026-11-11T11:36:49.512038Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
+
+                    {
+                        at 2026-11-11T11:38:00.541522Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan complete)"
+                    }
+
+                    {
+                        at 2026-11-11T11:38:00.746619Z
+                        author "brendan@necessary.nu"
+                        kind @decision
+                        text "Written: docs/spec/embedding.md (embed.tools def classifying all 62 tools; embed.tools-in-library, embed.no-panic, embed.transducer, embed.compile, embed.compile-files, embed.compile-diagnostics, embed.operations, embed.writers); python.md bumps python.load to +1 (read_transducers reads every type) and adds python.transducer, python.compile, python.compile-errors, python.operations, python.writers, python.compile-parity; javascript.md bumps the javascript.packages def to +3 (two entry points) and adds javascript.compile-module, compile-files, compile-errors, compile-parity, with javascript.read-only-module now naming the main entry's module. [dec:hfst:compile-surface] records the scope; [dec:hfst:python-package]'s epitome and its SWIG alternative are updated. python.load moves from python.bindings to compile-surface.python-transducer and javascript.packages from wasm.crates to compile-surface.wasm-compile, the nodes that meet the new versions. Survey facts the nodes rely on: hfst (foma included) builds for wasm32-unknown-unknown today; diagnostics are already data (diag::Diagnostic) and every compiler but twolc takes a FileResolver, with MemoryFiles for memory; AnyTransducer is the type-erased sum and the CLI dispatches with for_any!/for_algebra!; PmatchCompiler (Rc) and XfstCompiler (unbounded Box<dyn Write>) are not Send, so a binding builds them inside the call; xfst binary saves with an empty file name still open process stdout (file_io.rs:94-100); three panic_any sites remain (twolc/eval.rs:467, lexc.rs:224, pmatch_compiler/eval_context.rs:273); strings2fst, the BHFST packer, redirect_converting and format-name parsing live only in hfst-cli; the DHFST writers return bytes and run single-threaded where threads are absent; thfst_io::write_dir needs a filesystem."
+                        after_done true
+                    }
+                )
+            }
+
+            {
+                id compile-surface.cli-logic
+                title "Move what still decides a tool's output out of hfst-cli into the library: strings2fst's parsing and building, regexp2fst's expression splitting, lexc's multiple sources, redirect_converting and convert_transducers, format-name parsing, the BHFST packer writing to bytes, and the reports of summarize, check-alpha, grep, pair-test, kill-paths' TSV and reweight's rules; the tools call them"
+                kind @refactor
+                implements {
+                    target-impl ([spec:hfst:req:embed.tools-in-library] [spec:hfst:def:embed.tools])
+                }
+                deps (compile-surface.spec)
+            }
+
+            {
+                id compile-surface.no-panic
+                title "Turn the compilers' remaining panics into errors: twolc's single-symbol pair side (twolc/eval.rs), lexc's get_verbosity, pmatch's pmatcherror on malformed ranges and arrows, and any other panic reachable from a compile, operation, query, conversion or write"
+                kind @fix
+                implements {
+                    target-impl ([spec:hfst:req:embed.no-panic])
+                }
+                deps (compile-surface.spec)
+            }
+
+            {
+                id compile-surface.xfst-files
+                title "Make xfst write only through its sink and its resolver: a binary save with no file name (save stack, save definition NAME) opens the process's stdout through HfstOutputStream::new in file_io.rs, and the read_lexc facade reads with std::fs rather than the resolver"
+                kind @fix
+                implements {
+                    target-impl ([spec:hfst:req:embed.compile-files])
+                }
+                deps (compile-surface.spec)
+            }
+
+            {
+                id compile-surface.embed-transducer
+                title "Add hfst-embed's compile feature and its transducer type: an immutable, Send and Sync value over AnyTransducer read from and written to bytes in every type, with each operation and query embed.tools lists as a method taking typed options, converting operands as the binary tools do, and returning new transducers or report data"
+                implements {
+                    target-impl ([spec:hfst:req:embed.transducer] [spec:hfst:req:embed.operations])
+                }
+                deps (compile-surface.cli-logic compile-surface.no-panic)
+            }
+
+            {
+                id compile-surface.embed-compile
+                title "Add the compilers to hfst-embed's compile feature: regex, lexc over several sources, twolc's rule transducers, xfst scripts returning output, stack, definitions and written files, pmatch archives, strings and AT&T and Prolog text, each with typed options covering its tool's, a caller's file resolver, and every diagnostic returned as data with the result or the error"
+                implements {
+                    target-impl ([spec:hfst:req:embed.compile] [spec:hfst:req:embed.compile-diagnostics])
+                }
+                deps (compile-surface.embed-transducer compile-surface.xfst-files)
+            }
+
+            {
+                id compile-surface.embed-writers
+                title "Add the writers to hfst-embed's compile feature: every type and DHFST model fst2fst writes, AT&T, Prolog, dot and PC-KIMMO text as fst2txt writes it, and BHFST packing to bytes, with THFST written through the file resolver"
+                implements {
+                    target-impl ([spec:hfst:req:embed.writers])
+                }
+                deps (compile-surface.embed-transducer)
+            }
+
+            {
+                id compile-surface.python-transducer
+                title "Widen divvun_hfst.Transducer to every type: read_transducers and load_transducers read tropical OpenFst, foma and THFST as well, lookup on those types answers as hfst lookup does, and each operation and query is a snake_case method with keyword-only options returning a new Transducer or a declared result, the GIL released"
+                implements {
+                    target-impl ([spec:hfst:req:python.load] [spec:hfst:req:python.transducer] [spec:hfst:req:python.operations])
+                }
+                deps (compile-surface.embed-transducer)
+            }
+
+            {
+                id compile-surface.python-compile
+                title "Bind the compilers in divvun-hfst: regex, compile_lexc, compile_twolc, compile_xfst with XfstResult, compile_pmatch returning archive bytes, compile_strings, parse_att and parse_prolog, each with a frozen options dataclass and a files mapping; CompileError carrying Diagnostic objects with code-point spans, and CompileWarning through warnings.warn"
+                implements {
+                    target-impl ([spec:hfst:req:python.compile] [spec:hfst:req:python.compile-errors])
+                }
+                deps (compile-surface.embed-compile compile-surface.python-transducer)
+            }
+
+            {
+                id compile-surface.python-writers
+                title "Bind the writers in divvun-hfst: Transducer.to_bytes in any type, to_att, to_prolog, to_dot and to_pckimmo, to_dhfst_acceptor and to_dhfst_error_model, write_thfst(path), and divvun_hfst.pack_bhfst returning the bytes bhfst writes"
+                implements {
+                    target-impl ([spec:hfst:req:python.writers])
+                }
+                deps (compile-surface.embed-writers compile-surface.python-transducer)
+            }
+
+            {
+                id compile-surface.python-parity
+                title "Show divvun-hfst does what the tools do: through the built package, every input the repository's tests give a compiler, operation, query or writer gives the tool's bytes or text, with the expectations built by the hfst CLI into the fixture directory the Python tests already read"
+                kind @test
+                implements {
+                    target-impl ([spec:hfst:req:python.compile-parity])
+                }
+                deps (compile-surface.python-compile compile-surface.python-writers)
+            }
+
+            {
+                id compile-surface.wasm-compile
+                title "Add @divvun/hfst/compile: a crates/hfst-wasm-compile module over hfst-embed's compile feature, built beside the main module by js/build.mjs and exported as ./compile, with its own init, the compilers, readTransducers over any type, a Transducer with every operation, query and writer but THFST, files as a record, Map or function, compile-failed errors and warnings carrying diagnostics with UTF-16 spans, and the main module's read-only check unchanged"
+                implements {
+                    js-impl (
+                        [spec:hfst:def:javascript.packages]
+                        [spec:hfst:req:javascript.compile-module]
+                        [spec:hfst:req:javascript.compile-files]
+                        [spec:hfst:req:javascript.compile-errors]
+                    )
+                    target-impl ([spec:hfst:req:javascript.compile-module] [spec:hfst:req:javascript.compile-files] [spec:hfst:req:javascript.compile-errors])
+                }
+                deps (compile-surface.embed-compile compile-surface.embed-writers)
+            }
+
+            {
+                id compile-surface.wasm-parity
+                title "Show @divvun/hfst/compile gives what divvun-hfst gives, on the fixtures the tools build from the repository's test inputs, under Deno, Node, Bun and a browser engine"
+                kind @test
+                implements {
+                    js-impl ([spec:hfst:req:javascript.compile-parity])
+                    target-impl ([spec:hfst:req:javascript.compile-parity])
+                }
+                deps (compile-surface.wasm-compile)
+            }
+
+            {
+                id compile-surface.release
+                title "Release the compile surface: divvun-hfst 0.2.0 and @divvun/hfst 0.2.0 with READMEs covering compiling and a table from the HFST project's Python names to divvun_hfst's, the npm tarball carrying the compile entry, and the python/v0.2.0 and wasm/v0.2.0 tags"
+                kind @chore
+                deps (compile-surface.python-parity compile-surface.wasm-parity)
             }
         )
     }

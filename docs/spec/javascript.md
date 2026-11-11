@@ -1,23 +1,29 @@
 # JavaScript and WebAssembly
 
 Divvun HFST runs in JavaScript as WebAssembly, published to npm as
-`@divvun/hfst`, a read-only package that replaces `hfst-js`. These rules fix
-what the package contains, what the hfst library must do so it can run without
-a host operating system, and how the API behaves.
+`@divvun/hfst`. Its main entry point is read-only and replaces `hfst-js`; a
+second entry point, `@divvun/hfst/compile`, compiles, transforms and writes
+transducers from a module of its own, which only a caller who compiles loads.
+These rules fix what the package contains, what the hfst library must do so it
+can run without a host operating system, and how the API behaves.
 
 ## Package
 
-> [spec:hfst:def:javascript.packages+2]
+> [spec:hfst:def:javascript.packages+3]
 > Divvun HFST ships to npm as one package, `@divvun/hfst`, built from this
-> repository. It loads optimized-lookup transducers, pmatch containers and
-> DHFST files, and runs lookup on the hfst library's engine, optimised lookup
-> on divvunspell's `divvun-fst` engine, tokenisation and DHFST acceptor
-> lookup. It does not compile, write or transform transducers. Spelling
-> (correctness checks and suggestions) is not in this package: divvunspell's
-> own wasm package, `@divvun/fst`, carries it. The package is one ES module
-> entry point with one `.wasm` file beside it, and loads unchanged in browsers,
-> Web Workers, Deno, Node 20 or later, and Bun. It declares LGPL-3.0-or-later
-> and names Divvun HFST, copyright UiT.
+> repository, with two entry points. `@divvun/hfst` loads optimized-lookup
+> transducers, pmatch containers and DHFST files, and runs lookup on the hfst
+> library's engine, optimised lookup on divvunspell's `divvun-fst` engine,
+> tokenisation and DHFST acceptor lookup; it does not compile, write or
+> transform transducers. `@divvun/hfst/compile` does what hfst-embed's
+> `compile` feature does: it compiles, transforms, inspects and writes
+> transducers of every type the library reads. Spelling (correctness checks
+> and suggestions) is not in this package: divvunspell's own wasm package,
+> `@divvun/fst`, carries it. Each entry point is one ES module with a `.wasm`
+> file of its own beside it, and importing or starting one does not fetch or
+> compile the other's. Both load unchanged in browsers, Web Workers, Deno,
+> Node 20 or later, and Bun. The package declares LGPL-3.0-or-later and names
+> Divvun HFST, copyright UiT.
 
 > [spec:hfst:req:javascript.version]
 > The package MUST be published to npm at a version of its own, which
@@ -33,7 +39,7 @@ a host operating system, and how the API behaves.
 > code `not-initialised`.
 
 > [spec:hfst:req:javascript.read-only-module]
-> The package's WebAssembly module MUST NOT link the compilers (regex, lexc,
+> The main entry point's WebAssembly module MUST NOT link the compilers (regex, lexc,
 > twolc, pmatch, xfst), the foma backend, the tropical OpenFst backend or the
 > transducer algebra. A build check MUST fail when code from any of them is
 > reachable from the module's exports.
@@ -196,6 +202,40 @@ every other embedder.
 > package's notes for users moving from `hfst-js`. Load time and uncached
 > lookup time MUST be measured against `hfst-js` on the same files and
 > machine, and the figures published with the package.
+
+## The compile entry point
+
+> [spec:hfst:req:javascript.compile-module]
+> `@divvun/hfst/compile` MUST start as `javascript.init` says, with an init of
+> its own that by default loads its own `.wasm`. It MUST offer what
+> `divvun-hfst` offers beyond `@divvun/hfst`, with the same results, under
+> JavaScript names: the compilers as functions, `readTransducers` over a
+> stream of any type, and a `Transducer` holding any type with each operation,
+> query and writer as a method. Transducers pass between the two entry points
+> as bytes: `toBytes` on one side and a reader on the other. THFST, which is a
+> directory, is not written.
+
+> [spec:hfst:req:javascript.compile-files]
+> The files a compile reads MUST come only from its options, given as a record
+> or `Map` from names to strings or `Uint8Array`s, or as a function that takes
+> a name and returns the file's text or bytes, or `undefined` for a file it
+> does not have. The files an xfst script writes MUST come back in its result.
+> A name the files do not supply MUST fail the compile and name the file.
+
+> [spec:hfst:req:javascript.compile-errors]
+> A compile that fails MUST throw an `HfstError` with code `compile-failed`,
+> whose `diagnostics` hold every diagnostic it made as plain objects:
+> severity, message, source name, the span of its primary label in UTF-16
+> units, its other labels, its notes and help, and its rendered text without
+> colour. A compile that succeeds MUST return its warnings in the same shape
+> with its result. A trap in one entry point's module MUST poison that module
+> only.
+
+> [spec:hfst:req:javascript.compile-parity]
+> For the same inputs and options, `@divvun/hfst/compile` MUST give what
+> `divvun-hfst` gives. A test suite MUST check this on fixtures the tools
+> build from the inputs the repository's tests give them, under Deno, Node
+> and Bun, and in at least one browser engine.
 
 ## Limits
 
