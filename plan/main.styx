@@ -9388,6 +9388,29 @@ children (
                 title "Show the walk on lang-kal's generator offers every morpheme and derivation type the 462-name list in hfst's C++ predict branch finds, and that each ending it offers generates, where that branch offered endings from the corpus unchecked"
                 kind @test
                 deps (predict.walk predict.derivations)
+                sealed true
+                log (
+                    {
+                        at 2026-11-11T21:45:08.329564Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
+
+                    {
+                        at 2026-11-11T23:10:09.847319Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "lang-kal run (2,000 corpus words, every 8th word's words in progress, 796 of 5,526): the emulated predict-branch lookup finds 96,211 (name, Der) pairs, the walk offers all; 276,864 endings offered, all make a complete word with a form and all are accepted after the walk's units. 16 of 797 walks hit the default 1M-configuration bound. On denser samples (1,409 and 1,001 words in progress) 46 and 67 pairs were missed, all after one word each (naap +TUQ +TUR +UTIGE +NIQ +QAR; ator +TUQ +SSAQ +NNGUR +TIP) where that bound cut the walk; with 4M or 20M configurations every one is offered. The test re-walks such words with 20x the bound and fails only on misses the bound does not explain. Walk next() on kal: mean ~0.2 s, max ~1.4 s (release)."
+                    }
+
+                    {
+                        at 2026-11-11T23:10:10.064972Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan complete)"
+                    }
+                )
             }
 
             {
@@ -9498,6 +9521,26 @@ children (
                 title "Expose the prediction model builder behind hfst-embed's compile feature, once that feature exists, so divvun-hfst and @divvun/hfst/compile can build models from analysed text"
                 deps (predict.embed compile-surface.embed-transducer)
             }
+
+            {
+                id predict.preview-reuse
+                title "Preview from the walk a caller already has: Walker::preview walks the word again even when the caller has just walked it for its candidates, so a keyboard showing both pays the walk twice (about 75 ms more per keystroke on kal, 15 ms on sme)"
+                kind @perf
+                deps (predict.walk predict.embed)
+            }
+
+            {
+                id predict.display-script
+                title "Show labels and previews in the user's script: prediction.script-edges converts only typed letters and the committed word, so a syllabics keyboard would show its candidates and preview in Roman letters; make what is shown an output edge too, in the spec, the session and hfst-embed"
+                kind @fix
+                deps (predict.walk predict.embed)
+            }
         )
+    }
+
+    {
+        id lookup-state-reuse-slowdown
+        title "A LookupState reused over many lookups slows down badly: generating 15,770 kal analyses through one state did not finish in 10 minutes, while the same analyses in chunks of 2,000, each with a fresh state, took 114 s in total; find what the state accumulates across lookups and stop it"
+        kind @fix
     }
 )
