@@ -896,6 +896,25 @@ impl_evidence (
     ), rule_versions_seen (
         {id lookup-run-state.pmatch-shared-core, version 0}
     )}
+    {id predict.model, covered_rules (
+        prediction-model.budget
+        prediction-model.faces
+        prediction-model.file
+        prediction-model.format
+        prediction-model.input
+        prediction-model.order
+        prediction-model.rank-only
+        prediction-model.same-grammar
+    ), covered_claims (
+        {impl_name target-impl, rule prediction-model.budget}
+        {impl_name target-impl, rule prediction-model.faces}
+        {impl_name target-impl, rule prediction-model.file}
+        {impl_name target-impl, rule prediction-model.format}
+        {impl_name target-impl, rule prediction-model.input}
+        {impl_name target-impl, rule prediction-model.order}
+        {impl_name target-impl, rule prediction-model.rank-only}
+        {impl_name target-impl, rule prediction-model.same-grammar}
+    )}
     {id predict.units, covered_rules (
         prediction-units.boundary
         prediction-units.classes

@@ -2,4 +2,6 @@
 //! derivations, an ending and enclitics, from what the language's generator
 //! accepts next.
 
+pub mod model;
+pub mod rank;
 pub mod units;
