@@ -3,9 +3,10 @@
 
 use super::entry::Relaxation;
 use super::realise::{Script, realise};
-use super::units::UnitKey;
+use super::units::{AnalysisTokenizer, SymbolClass, Unit, UnitKey, UnitKind};
 use super::walk::{CandidateOrder, Next, Walker, Word};
 use crate::error::Result;
+use crate::hfst_data_types::Symbol;
 use crate::transducer::TransducerTablesInterface;
 
 /// Builds words one unit at a time over one generator, unit grammar and
@@ -194,6 +195,77 @@ impl<'a, T: TransducerTablesInterface> Session<'a, T> {
     }
 }
 
+impl<T: TransducerTablesInterface> Walker<'_, T> {
+    /// The word in progress that an analysis, or the start of one, spells.
+    /// The analysis is cut into units as the model builder cuts a reading,
+    /// except that a start of only prefix tags is those prefixes. The stem
+    /// is entered by its letters and every other unit is picked by its key
+    /// from what the walk offers there. The tokenizer must be built from the
+    /// generator's analysis alphabet. The error names the first unit the
+    /// generator does not accept where it comes.
+    pub fn word_from_analysis(
+        &self,
+        analysis: &str,
+        tokenizer: &AnalysisTokenizer,
+    ) -> Result<Word> {
+        let grammar = self.grammar();
+        let symbols = tokenizer.tokenize(analysis)?;
+        let only_prefixes = symbols.iter().all(|symbol| {
+            grammar.classify(symbol) == SymbolClass::Tag && grammar.is_prefix(symbol)
+        });
+        let units = if only_prefixes {
+            symbols
+                .into_iter()
+                .map(|symbol| Unit {
+                    kind: UnitKind::Prefix,
+                    symbols: vec![symbol],
+                })
+                .collect()
+        } else {
+            grammar.segment(&symbols)?
+        };
+        let mut word = self.start();
+        let mut spelled = String::new();
+        for unit in &units {
+            let next = match unit.kind {
+                UnitKind::Stem => {
+                    let letters: String = unit.symbols.iter().map(Symbol::as_str).collect();
+                    self.entry(&word, &letters, None)?
+                }
+                UnitKind::Prefix
+                | UnitKind::Boundary
+                | UnitKind::Ending
+                | UnitKind::Enclitic
+                | UnitKind::Filter => self.next(&word),
+            };
+            let key = grammar.key(unit);
+            let Some(candidate) = next.candidates.iter().find(|offered| offered.key == key) else {
+                crate::bail!(FaultyStringInput, refusal(analysis, &key, &spelled, &next));
+            };
+            word = word.pick(candidate);
+            spelled.extend(unit.symbols.iter().map(Symbol::as_str));
+        }
+        Ok(word)
+    }
+}
+
+fn refusal(analysis: &str, key: &UnitKey, spelled: &str, next: &Next) -> String {
+    let place = if spelled.is_empty() {
+        "at the start of the word".to_owned()
+    } else {
+        format!("after {spelled:?}")
+    };
+    let cut = if next.truncated {
+        "; a walk limit cut the search short"
+    } else {
+        ""
+    };
+    format!(
+        "analysis {analysis:?}: the generator does not accept the unit {:?} {place}{cut}",
+        key.as_str()
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use std::cell::RefCell;
@@ -370,5 +442,107 @@ mod tests {
         assert_eq!(context(&session), ["girji", "+N+Pl+Nom"]);
         session.type_letters("Q").unwrap();
         assert!(keys_of(&mut session).is_empty());
+    }
+
+    fn tokenizer(generator: &crate::transducer::Transducer) -> AnalysisTokenizer {
+        AnalysisTokenizer::new(generator.get_alphabet().get_symbol_table())
+    }
+
+    fn unit_keys(
+        walker: &Walker<'_, crate::transducer::WeightedTables>,
+        word: &Word,
+    ) -> Vec<String> {
+        word.units()
+            .iter()
+            .map(|unit| walker.grammar().key(unit).as_str().to_owned())
+            .collect()
+    }
+
+    #[test]
+    fn an_analysis_replays_into_the_word_it_spells() {
+        let generator = lexc(NOUNS);
+        let grammar = grammar(NOUNS_GRAMMAR);
+        let walker = walker(&generator, &grammar);
+        let tokenizer = tokenizer(&generator);
+        let word = walker
+            .word_from_analysis("girji+N+Sem/Obj+Sg+Nom+Qst", &tokenizer)
+            .unwrap();
+        assert_eq!(unit_keys(&walker, &word), ["girji", "+N+Sg+Nom", "+Qst"]);
+        assert_eq!(surfaces(&walker, &word)[0], "girjigo");
+        let compound = walker
+            .word_from_analysis("girji+N+Cmp#guolli+N+Pl+Nom", &tokenizer)
+            .unwrap();
+        assert_eq!(surfaces(&walker, &compound), ["girjguolat"]);
+        let stem = walker.word_from_analysis("girji", &tokenizer).unwrap();
+        assert!(!stem.is_complete());
+        assert_eq!(keys(&walker.next(&stem))[0], "+N+Cmp#");
+    }
+
+    #[test]
+    fn a_replayed_derivation_reaches_its_ending() {
+        let generator = lexc(DERIVATIONS);
+        let grammar = grammar(DERIVATIONS_GRAMMAR);
+        let walker = walker(&generator, &grammar);
+        let tokenizer = tokenizer(&generator);
+        let derived = walker
+            .word_from_analysis("oqar+Gram/IV+NIQ+Der/vn", &tokenizer)
+            .unwrap();
+        assert_eq!(unit_keys(&walker, &derived), ["oqar", "+NIQ+Der/vn"]);
+        assert!(keys(&walker.next(&derived)).contains(&"+N+Abs+Sg"));
+        let word = walker
+            .word_from_analysis("oqar+NIQ+Der/vn+N+Abs+Sg", &tokenizer)
+            .unwrap();
+        assert_eq!(surfaces(&walker, &word), ["oqarniq"]);
+    }
+
+    #[test]
+    fn prefixes_alone_and_nothing_are_words_in_progress() {
+        let generator = lexc(PERSONS);
+        let grammar = grammar(PERSONS_GRAMMAR);
+        let walker = walker(&generator, &grammar);
+        let tokenizer = tokenizer(&generator);
+        assert!(
+            walker
+                .word_from_analysis("", &tokenizer)
+                .unwrap()
+                .units()
+                .is_empty()
+        );
+        let prefixed = walker.word_from_analysis("PV/kii+", &tokenizer).unwrap();
+        assert_eq!(prefixed.units()[0].kind, UnitKind::Prefix);
+        assert!(walker.next(&prefixed).stem_next);
+        let word = walker
+            .word_from_analysis("PV/kii+nipaa+V+AI+Ind+1Sg", &tokenizer)
+            .unwrap();
+        assert_eq!(surfaces(&walker, &word), ["nikii-nipaan"]);
+    }
+
+    #[test]
+    fn refusals_name_the_unit_and_its_place() {
+        let generator = lexc(NOUNS);
+        let grammar = grammar(NOUNS_GRAMMAR);
+        let walker = walker(&generator, &grammar);
+        let tokenizer = tokenizer(&generator);
+        let ending = walker
+            .word_from_analysis("borra+N+Sg+Nom", &tokenizer)
+            .expect_err("a verb takes no noun ending");
+        assert_eq!(ending.kind, ErrorKind::FaultyStringInput);
+        let message = ending.message.unwrap();
+        assert!(
+            message.contains(r#"unit "+N+Sg+Nom" after "borra""#),
+            "{message}"
+        );
+        let stem = walker
+            .word_from_analysis("gir+N+Sg+Nom", &tokenizer)
+            .expect_err("gir is no stem");
+        let message = stem.message.unwrap();
+        assert!(
+            message.contains(r#"unit "gir" at the start of the word"#),
+            "{message}"
+        );
+        let unknown = walker
+            .word_from_analysis("girji+X", &tokenizer)
+            .expect_err("+X is not in the alphabet");
+        assert_eq!(unknown.kind, ErrorKind::SymbolNotFound);
     }
 }

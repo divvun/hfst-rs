@@ -40,6 +40,9 @@ pub mod lexc_compiler;
 pub mod lookup;
 pub mod optimized_lookup;
 pub mod pair_test;
+pub mod predict;
+pub mod predict_eval;
+pub mod predict_model;
 pub mod regexp2fst;
 pub mod reweight;
 pub mod strings2fst;
@@ -300,6 +303,21 @@ pub const TOOLS: &[(&str, ToolRun, &str)] = &[
         "hfst-pmatch2fst",
         pmatch2fst::execute,
         "Compile regular expressions into transducer(s) (Experimental version)",
+    ),
+    (
+        "hfst-predict",
+        predict::execute,
+        "Write the units a generator accepts after each analysis, ranked",
+    ),
+    (
+        "hfst-predict-eval",
+        predict_eval::execute,
+        "Measure the keystrokes unit prediction saves on analysed text",
+    ),
+    (
+        "hfst-predict-model",
+        predict_model::execute,
+        "Build a prediction model from analysed text",
     ),
     (
         "hfst-preprocess-for-optimized-lookup-format",

@@ -9394,6 +9394,22 @@ children (
                 id predict.cli
                 title "Add the hfst predict, predict-model and predict-eval tools as thin drivers over the library: predict reads analysis prefixes and writes the units and forms that follow, in place of the patched C++ optimized lookup"
                 deps (predict.walk predict.model predict.evaluation)
+                sealed true
+                log (
+                    {
+                        at 2026-11-11T21:57:27.692386Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
+
+                    {
+                        at 2026-11-11T22:27:14.34017Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan complete)"
+                    }
+                )
             }
 
             {

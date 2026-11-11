@@ -26,6 +26,8 @@ dhat = { version = "0.3", optional = true }
 # The xfst shell's line editor. No file history: the history lasts for the
 # session only.
 rustyline = { version = "19", default-features = false }
+# hfst predict --json writes one JSON object per analysis.
+serde_json = "1"
 tracing = "0.1.44"
 tracing-subscriber = "0.3.23"
 sysinfo = { version = "0.37.2", default-features = false, features = ["system"] }
