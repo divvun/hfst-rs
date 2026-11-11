@@ -1,4 +1,4 @@
-use super::{SymbolClass, Unit, UnitGrammar, UnitKind, classify_symbol};
+use super::{SymbolClass, Unit, UnitGrammar, UnitKind};
 use crate::error::Result;
 use crate::hfst_data_types::Symbol;
 
@@ -37,7 +37,7 @@ impl<'g> Cutter<'g> {
         let symbols: Vec<Symbol> = analysis.iter().map(|s| Symbol::new(s.as_ref())).collect();
         let mut classes = Vec::with_capacity(symbols.len());
         for (at, symbol) in symbols.iter().enumerate() {
-            let class = classify_symbol(symbol);
+            let class = grammar.classify(symbol);
             match class {
                 SymbolClass::Letter | SymbolClass::Tag => classes.push(class),
                 SymbolClass::Flag | SymbolClass::Reserved => crate::bail!(
@@ -106,7 +106,7 @@ impl<'g> Cutter<'g> {
     /// After a stem or a boundary unit, a boundary tag before the next letter
     /// ends a boundary unit, and letters after it start a stem. With no
     /// boundary tag left, the rest is an ending and enclitics.
-    // [spec:hfst:sem:prediction-units.boundary]
+    // [spec:hfst:sem:prediction-units.boundary+1]
     fn after_stem(&mut self) -> Result<()> {
         loop {
             let letter = self.next(SymbolClass::Letter);

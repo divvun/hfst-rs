@@ -50,6 +50,8 @@ struct WordClass {
 #[serde(deny_unknown_fields)]
 struct GrammarFile {
     #[serde(default)]
+    tags: Vec<String>,
+    #[serde(default)]
     boundary: Vec<Pattern>,
     #[serde(default)]
     prefix: Vec<Pattern>,
@@ -66,7 +68,7 @@ struct GrammarFile {
 }
 
 /// One language's unit grammar, read from its TOML file.
-// [spec:hfst:def:prediction-units.grammar]
+// [spec:hfst:def:prediction-units.grammar+1]
 #[derive(Clone, Debug)]
 pub struct UnitGrammar {
     file: GrammarFile,
@@ -78,13 +80,19 @@ fn grammar_error(cause: impl std::fmt::Display) -> crate::error::Error {
 }
 
 impl UnitGrammar {
-    /// Read a grammar. A key the format does not list, a missing field and a
-    /// filter flag that is not a flag diacritic are refused here; what needs
-    /// the generator's alphabet is refused by [`UnitGrammar::validate`].
-    // [spec:hfst:syn:prediction-units.format]
+    /// Read a grammar. A key the format does not list, a missing field, a
+    /// `tags` entry that is not one character and a filter flag that is not
+    /// a flag diacritic are refused here; what needs the generator's alphabet
+    /// is refused by [`UnitGrammar::validate`].
+    // [spec:hfst:syn:prediction-units.format+1]
     pub fn from_toml(bytes: &[u8]) -> Result<UnitGrammar> {
         let text = std::str::from_utf8(bytes).map_err(grammar_error)?;
         let file: GrammarFile = toml::from_str(text).map_err(grammar_error)?;
+        if let Some(tag) = file.tags.iter().find(|tag| tag.chars().count() != 1) {
+            return Err(grammar_error(format!(
+                "tags lists {tag:?}, which is not one character"
+            )));
+        }
         for filter in &file.filter {
             if let Some(flag) = filter
                 .flags
@@ -104,14 +112,20 @@ impl UnitGrammar {
     }
 
     /// Check the grammar against its generator's analysis-side alphabet.
-    /// Every pattern must match some tag in it and every filter flag must be
-    /// in it.
-    // [spec:hfst:syn:prediction-units.format]
+    /// Every `tags` entry and every filter flag must be in it, and every
+    /// pattern must match some tag in it.
+    // [spec:hfst:syn:prediction-units.format+1]
     pub fn validate<S: AsRef<str>>(&self, analysis_alphabet: &[S]) -> Result<()> {
+        let in_alphabet = |wanted: &str| analysis_alphabet.iter().any(|s| s.as_ref() == wanted);
+        if let Some(tag) = self.file.tags.iter().find(|tag| !in_alphabet(tag)) {
+            return Err(grammar_error(format!(
+                "tags lists {tag:?}, which the generator lacks"
+            )));
+        }
         let tags: Vec<&str> = analysis_alphabet
             .iter()
             .map(AsRef::as_ref)
-            .filter(|symbol| classify_symbol(symbol) == SymbolClass::Tag)
+            .filter(|symbol| self.classify(symbol) == SymbolClass::Tag)
             .collect();
         for (key, pattern) in self.patterns() {
             if !tags.iter().any(|tag| pattern.matches(tag)) {
@@ -123,10 +137,7 @@ impl UnitGrammar {
         }
         for filter in &self.file.filter {
             for flag in &filter.flags {
-                if !analysis_alphabet
-                    .iter()
-                    .any(|symbol| symbol.as_ref() == flag)
-                {
+                if !in_alphabet(flag) {
                     return Err(grammar_error(format!(
                         "filter {:?} sets {flag}, which the generator lacks",
                         filter.name
@@ -155,13 +166,26 @@ impl UnitGrammar {
         keyed.chain(classes)
     }
 
+    /// Classify one symbol of the generator's analysis side as
+    /// [`classify_symbol`] does, except that a symbol the grammar lists under
+    /// `tags` is a tag.
+    // [spec:hfst:def:prediction-units.grammar+1]
+    pub fn classify(&self, symbol: &str) -> SymbolClass {
+        let class = classify_symbol(symbol);
+        if class == SymbolClass::Letter && self.file.tags.iter().any(|tag| tag == symbol) {
+            SymbolClass::Tag
+        } else {
+            class
+        }
+    }
+
     /// The SHA-256 of the bytes the grammar was read from.
-    // [spec:hfst:def:prediction-units.grammar]
+    // [spec:hfst:def:prediction-units.grammar+1]
     pub fn hash(&self) -> [u8; 32] {
         self.hash
     }
 
-    // [spec:hfst:sem:prediction-units.boundary]
+    // [spec:hfst:sem:prediction-units.boundary+1]
     pub fn is_boundary(&self, tag: &str) -> bool {
         any_matches(&self.file.boundary, tag)
     }
@@ -193,9 +217,7 @@ impl UnitGrammar {
         let key: String = unit
             .symbols
             .iter()
-            .filter(|symbol| {
-                !(classify_symbol(symbol) == SymbolClass::Tag && self.is_hidden(symbol))
-            })
+            .filter(|symbol| !(self.classify(symbol) == SymbolClass::Tag && self.is_hidden(symbol)))
             .map(Symbol::as_str)
             .collect();
         UnitKey(Symbol::new(key))
@@ -209,7 +231,7 @@ impl UnitGrammar {
         let tags = unit
             .symbols
             .iter()
-            .filter(|symbol| classify_symbol(symbol) == SymbolClass::Tag);
+            .filter(|symbol| self.classify(symbol) == SymbolClass::Tag);
         self.file
             .class
             .iter()
@@ -236,7 +258,7 @@ impl UnitGrammar {
             UnitKind::Stem => Label::Text(
                 unit.symbols
                     .iter()
-                    .filter(|symbol| classify_symbol(symbol) == SymbolClass::Letter)
+                    .filter(|symbol| self.classify(symbol) == SymbolClass::Letter)
                     .map(Symbol::as_str)
                     .collect(),
             ),

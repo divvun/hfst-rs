@@ -36,6 +36,7 @@ const KAL_TAGS: &[&str] = &[
 ];
 
 const SME_TAGS: &[&str] = &[
+    "+Cmp/SplitR",
     "+N",
     "+V",
     "+A",
@@ -100,8 +101,8 @@ fn units(expected: &[(UnitKind, &str)]) -> Vec<(UnitKind, String)> {
         .collect()
 }
 
-// [spec:hfst:syn:prediction-units.format/test]
-// [spec:hfst:def:prediction-units.grammar/test]
+// [spec:hfst:syn:prediction-units.format+1/test]
+// [spec:hfst:def:prediction-units.grammar+1/test]
 #[test]
 fn the_fixture_grammars_read_and_hash_apart() {
     let hashes: Vec<[u8; 32]> = [KAL, SME, CRK]
@@ -113,7 +114,7 @@ fn the_fixture_grammars_read_and_hash_apart() {
     assert_ne!(hashes[0], hashes[2]);
 }
 
-// [spec:hfst:sem:prediction-units.boundary/test]
+// [spec:hfst:sem:prediction-units.boundary+1/test]
 // [spec:hfst:sem:prediction-units.ending/test]
 #[test]
 fn kal_cuts_a_derivation_before_its_ending() {
@@ -127,7 +128,7 @@ fn kal_cuts_a_derivation_before_its_ending() {
     );
 }
 
-// [spec:hfst:sem:prediction-units.boundary/test]
+// [spec:hfst:sem:prediction-units.boundary+1/test]
 // [spec:hfst:sem:prediction-units.hidden/test]
 #[test]
 fn kal_chains_derivations_and_hides_transitivity() {
@@ -150,7 +151,7 @@ fn kal_chains_derivations_and_hides_transitivity() {
 }
 
 // [spec:hfst:sem:prediction-units.enclitic/test]
-// [spec:hfst:sem:prediction-units.boundary/test]
+// [spec:hfst:sem:prediction-units.boundary+1/test]
 #[test]
 fn kal_li_is_derivation_or_enclitic_by_place() {
     assert_eq!(
@@ -203,7 +204,7 @@ fn kal_classes_derivations_by_what_they_make() {
     assert_eq!(grammar.word_class(&units[..2]), Some("verb"));
 }
 
-// [spec:hfst:sem:prediction-units.boundary/test]
+// [spec:hfst:sem:prediction-units.boundary+1/test]
 // [spec:hfst:sem:prediction-units.classes/test]
 #[test]
 fn sme_cuts_and_classes_an_agent_noun() {
@@ -225,11 +226,11 @@ fn sme_cuts_and_classes_an_agent_noun() {
     assert_eq!(grammar.label(&units[2]), Label::CompleteWord);
 }
 
-// [spec:hfst:sem:prediction-units.boundary/test]
+// [spec:hfst:sem:prediction-units.boundary+1/test]
 // [spec:hfst:sem:prediction-units.stem/test]
 // [spec:hfst:sem:prediction-units.hidden/test]
 #[test]
-fn sme_cuts_a_compound_at_cmp() {
+fn sme_cuts_a_compound_at_its_join() {
     assert_eq!(
         cut(
             SME,
@@ -238,9 +239,21 @@ fn sme_cuts_a_compound_at_cmp() {
         ),
         units(&[
             (UnitKind::Stem, "guolli"),
-            (UnitKind::Boundary, "+N+Cmp/SgNom+Cmp"),
-            (UnitKind::Stem, "#bivdu"),
+            (UnitKind::Boundary, "+N+Cmp/SgNom+Cmp#"),
+            (UnitKind::Stem, "bivdu"),
             (UnitKind::Ending, "+N+Sg+Nom"),
+        ])
+    );
+}
+
+// [spec:hfst:sem:prediction-units.ending/test]
+#[test]
+fn sme_ends_a_split_compound_with_no_join() {
+    assert_eq!(
+        cut(SME, SME_TAGS, "álbmot+N+Cmp/SgNom+Cmp/SplitR+Cmp"),
+        units(&[
+            (UnitKind::Stem, "álbmot"),
+            (UnitKind::Ending, "+N+Cmp/SgNom+Cmp/SplitR+Cmp"),
         ])
     );
 }
@@ -301,7 +314,7 @@ fn crk_reads_each_preverb_as_a_prefix() {
     );
 }
 
-// [spec:hfst:sem:prediction-units.boundary/test]
+// [spec:hfst:sem:prediction-units.boundary+1/test]
 #[test]
 fn crk_cuts_a_diminutive() {
     assert_eq!(
@@ -315,7 +328,7 @@ fn crk_cuts_a_diminutive() {
 }
 
 // [spec:hfst:sem:prediction-units.filter/test]
-// [spec:hfst:syn:prediction-units.format/test]
+// [spec:hfst:syn:prediction-units.format+1/test]
 #[test]
 fn crk_filters_set_the_person_flags() {
     let grammar = UnitGrammar::from_toml(CRK).expect("fixture reads");

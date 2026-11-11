@@ -48,7 +48,7 @@ name = "verb"
 patterns = ["+V"]
 "#;
 
-// [spec:hfst:syn:prediction-units.format/test]
+// [spec:hfst:syn:prediction-units.format+1/test]
 #[test]
 fn a_grammar_with_every_key_reads() {
     let g = grammar(EVERY_KEY);
@@ -62,7 +62,7 @@ fn a_grammar_with_every_key_reads() {
     assert_eq!(g.filters().len(), 2);
 }
 
-// [spec:hfst:syn:prediction-units.format/test]
+// [spec:hfst:syn:prediction-units.format+1/test]
 #[test]
 fn every_key_is_optional() {
     let g = grammar("");
@@ -73,7 +73,7 @@ fn every_key_is_optional() {
         .expect("an empty grammar names nothing");
 }
 
-// [spec:hfst:syn:prediction-units.format/test]
+// [spec:hfst:syn:prediction-units.format+1/test]
 #[test]
 fn an_unknown_key_is_refused_by_name() {
     assert!(refusal("boundaries = [\"+Der/*\"]").contains("boundaries"));
@@ -83,7 +83,7 @@ fn an_unknown_key_is_refused_by_name() {
     assert!(refusal(class).contains("pos"));
 }
 
-// [spec:hfst:syn:prediction-units.format/test]
+// [spec:hfst:syn:prediction-units.format+1/test]
 #[test]
 fn a_missing_field_or_wrong_type_is_refused() {
     assert!(refusal("[[filter]]\nname = \"ni-\"\nflags = []\n").contains("label"));
@@ -92,7 +92,56 @@ fn a_missing_field_or_wrong_type_is_refused() {
     assert!(UnitGrammar::from_toml(&[0xff, 0xfe]).is_err());
 }
 
-// [spec:hfst:syn:prediction-units.format/test]
+// [spec:hfst:syn:prediction-units.format+1/test]
+#[test]
+fn a_tags_entry_must_be_one_character() {
+    assert!(refusal("tags = [\"##\"]").contains("\"##\""));
+    assert!(refusal("tags = [\"\"]").contains("one character"));
+    grammar("tags = [\"#\", \"ŋ\"]");
+}
+
+// [spec:hfst:syn:prediction-units.format+1/test]
+#[test]
+fn a_tags_entry_the_generator_lacks_is_refused() {
+    let message = grammar("tags = [\"#\"]")
+        .validate(&["a", "+N"])
+        .expect_err("# is missing")
+        .to_string();
+    assert!(message.contains("tags lists \"#\""), "{message}");
+    grammar("tags = [\"#\"]")
+        .validate(&["a", "#", "+N"])
+        .expect("# is there");
+}
+
+// [spec:hfst:def:prediction-units.grammar+1/test]
+#[test]
+fn classify_makes_listed_characters_tags() {
+    let g = grammar("tags = [\"#\", \"ŋ\"]");
+    assert_eq!(g.classify("#"), SymbolClass::Tag);
+    assert_eq!(g.classify("ŋ"), SymbolClass::Tag);
+    assert_eq!(g.classify("a"), SymbolClass::Letter);
+    assert_eq!(g.classify("+N"), SymbolClass::Tag);
+    assert_eq!(g.classify("@U.person.NI@"), SymbolClass::Flag);
+    assert_eq!(g.classify("@_EPSILON_SYMBOL_@"), SymbolClass::Reserved);
+    assert_eq!(grammar("").classify("#"), SymbolClass::Letter);
+}
+
+// [spec:hfst:syn:prediction-units.format+1/test]
+// [spec:hfst:sem:prediction-units.hidden/test]
+#[test]
+fn listed_characters_are_tags_to_every_key() {
+    let text = "tags = [\"#\"]\nhidden = [\"#\"]\n[[class]]\nname = \"join\"\npatterns = [\"#\"]\n";
+    let g = grammar(text);
+    g.validate(&["#", "+N"]).expect("# is a tag");
+    let join = unit(UnitKind::Boundary, &["+N", "#"]);
+    assert_eq!(g.key(&join).as_str(), "+N");
+    assert_eq!(g.class_of(&join), Some("join"));
+    let plain = grammar("hidden = [\"#\"]");
+    assert!(plain.validate(&["#", "+N"]).is_err());
+    assert_eq!(plain.key(&join).as_str(), "+N#");
+}
+
+// [spec:hfst:syn:prediction-units.format+1/test]
 #[test]
 fn a_filter_flag_must_be_a_flag_diacritic() {
     let text = "[[filter]]\nname = \"ni-\"\nlabel = \"ni-\"\nflags = [\"+1Sg\"]\n";
@@ -118,7 +167,7 @@ const ALPHABET: &[&str] = &[
     "+V",
 ];
 
-// [spec:hfst:syn:prediction-units.format/test]
+// [spec:hfst:syn:prediction-units.format+1/test]
 #[test]
 fn a_grammar_its_alphabet_fits_validates() {
     grammar(EVERY_KEY)
@@ -126,7 +175,7 @@ fn a_grammar_its_alphabet_fits_validates() {
         .expect("every pattern matches a tag and every flag is there");
 }
 
-// [spec:hfst:syn:prediction-units.format/test]
+// [spec:hfst:syn:prediction-units.format+1/test]
 #[test]
 fn a_pattern_matching_no_tag_is_refused() {
     let without_cmp: Vec<&str> = ALPHABET.iter().copied().filter(|s| *s != "+Cmp").collect();
@@ -147,7 +196,7 @@ fn a_pattern_matching_no_tag_is_refused() {
     );
 }
 
-// [spec:hfst:syn:prediction-units.format/test]
+// [spec:hfst:syn:prediction-units.format+1/test]
 #[test]
 fn letters_and_flags_do_not_satisfy_a_pattern() {
     let letter = grammar("hidden = [\"a\"]");
@@ -156,7 +205,7 @@ fn letters_and_flags_do_not_satisfy_a_pattern() {
     assert!(flag.validate(&["@U.person.NI@", "+N"]).is_err());
 }
 
-// [spec:hfst:syn:prediction-units.format/test]
+// [spec:hfst:syn:prediction-units.format+1/test]
 #[test]
 fn a_filter_flag_the_generator_lacks_is_refused() {
     let without_flag: Vec<&str> = ALPHABET
@@ -172,7 +221,7 @@ fn a_filter_flag_the_generator_lacks_is_refused() {
     assert!(message.contains("ki-"), "{message}");
 }
 
-// [spec:hfst:syn:prediction-units.format/test]
+// [spec:hfst:syn:prediction-units.format+1/test]
 #[test]
 fn a_star_matches_any_run_of_characters() {
     let cases: &[(&str, &str, bool)] = &[
@@ -199,7 +248,7 @@ fn a_star_matches_any_run_of_characters() {
     }
 }
 
-// [spec:hfst:def:prediction-units.grammar/test]
+// [spec:hfst:def:prediction-units.grammar+1/test]
 #[test]
 fn the_hash_is_the_sha256_of_the_bytes() {
     let empty_sha256 = [

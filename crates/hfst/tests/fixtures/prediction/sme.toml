@@ -1,10 +1,14 @@
 # North Sámi. Every pattern matches a tag on the analysis side of lang-sme's
 # src/fst/generator-gt-norm.hfst.
 
-# A derivation ends with its Der tag. A compound's first part ends with
-# +Cmp: the generator spells the join +Cmp#, where # is a symbol of its own
-# and so a letter, which starts the next stem.
-boundary = ["+Der/*", "+Cmp"]
+# The generator spells a compound join +Cmp#, with # a symbol of its own.
+# As a tag, # closes the join, so the next part starts a plain stem.
+tags = ["#"]
+
+# A derivation ends with its Der tag and a compound join with #. +Cmp is no
+# boundary: a split compound's first part, as in álbmot- ja, ends with
+# +Cmp/SplitR+Cmp and no #.
+boundary = ["+Der/*", "#"]
 
 # The question clitic and the focus clitics.
 enclitic = ["+Qst", "+Foc/*"]

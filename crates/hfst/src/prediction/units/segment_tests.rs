@@ -94,7 +94,7 @@ fn a_prefix_tag_after_the_stem_is_ordinary() {
     );
 }
 
-// [spec:hfst:sem:prediction-units.boundary/test]
+// [spec:hfst:sem:prediction-units.boundary+1/test]
 // [spec:hfst:sem:prediction-units.stem/test]
 #[test]
 fn boundary_units_end_at_the_first_boundary_tag() {
@@ -108,7 +108,7 @@ fn boundary_units_end_at_the_first_boundary_tag() {
     );
 }
 
-// [spec:hfst:sem:prediction-units.boundary/test]
+// [spec:hfst:sem:prediction-units.boundary+1/test]
 #[test]
 fn boundary_units_follow_one_another() {
     assert_eq!(
@@ -122,7 +122,7 @@ fn boundary_units_follow_one_another() {
     );
 }
 
-// [spec:hfst:sem:prediction-units.boundary/test]
+// [spec:hfst:sem:prediction-units.boundary+1/test]
 // [spec:hfst:sem:prediction-units.enclitic/test]
 #[test]
 fn an_enclitic_name_before_der_is_derivation() {
@@ -234,4 +234,39 @@ fn the_tokenizer_never_reads_flags_or_reserved_symbols() {
     let tokenizer = AnalysisTokenizer::new(&["@U.person.NI@", "@_EPSILON_SYMBOL_@", "a"]);
     assert!(tokenizer.tokenize("a@U.person.NI@").is_err());
     assert!(tokenizer.tokenize("@_EPSILON_SYMBOL_@").is_err());
+}
+
+// [spec:hfst:sem:prediction-units.boundary+1/test]
+// [spec:hfst:sem:prediction-units.stem/test]
+#[test]
+fn a_listed_character_closes_a_compound_join() {
+    let analysis = [
+        "g", "u", "o", "l", "l", "i", "+N", "+Cmp", "#", "b", "i", "v", "d", "u", "+N", "+Sg",
+    ];
+    let joined = UnitGrammar::from_toml(b"tags = [\"#\"]\nboundary = [\"#\"]\n")
+        .expect("test grammar reads");
+    let kinds_and_text: Vec<(UnitKind, String)> = joined
+        .segment(&analysis)
+        .expect("analysis segments")
+        .into_iter()
+        .map(|unit| (unit.kind, unit.symbols.concat()))
+        .collect();
+    assert_eq!(
+        kinds_and_text,
+        units(&[
+            (UnitKind::Stem, "guolli"),
+            (UnitKind::Boundary, "+N+Cmp#"),
+            (UnitKind::Stem, "bivdu"),
+            (UnitKind::Ending, "+N+Sg"),
+        ])
+    );
+    let unlisted = UnitGrammar::from_toml(b"boundary = [\"+Cmp\"]").expect("test grammar reads");
+    let stems: Vec<String> = unlisted
+        .segment(&analysis)
+        .expect("analysis segments")
+        .into_iter()
+        .filter(|unit| unit.kind == UnitKind::Stem)
+        .map(|unit| unit.symbols.concat())
+        .collect();
+    assert_eq!(stems, ["guolli", "#bivdu"]);
 }

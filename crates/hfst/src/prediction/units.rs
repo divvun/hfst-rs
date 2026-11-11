@@ -22,7 +22,7 @@ use crate::hfst_symbol_defs::{is_default, is_epsilon, is_identity, is_unknown};
 /// What a symbol on a generator's analysis side is to a unit grammar.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum SymbolClass {
-    /// A symbol of one character.
+    /// A symbol of one character the grammar does not list under `tags`.
     Letter,
     Flag,
     /// Any other symbol.
@@ -33,11 +33,12 @@ pub enum SymbolClass {
     Reserved,
 }
 
-// [spec:hfst:def:prediction-units.grammar]
-/// Classify one symbol of a generator's analysis side. A letter is one
-/// character, not one byte, so `ŋ` is a letter. A one-character symbol is a
-/// letter even where a language uses it as a mark, as North Sámi's
-/// generator does with the `#` after `+Cmp`.
+// [spec:hfst:def:prediction-units.grammar+1]
+/// Classify one symbol of a generator's analysis side as if no grammar
+/// listed `tags`. A letter is one character, not one byte, so `ŋ` is a
+/// letter. A grammar can make a one-character symbol a tag, as North Sámi's
+/// does with the `#` that closes a compound join, so a walk or a model
+/// builder must classify with [`UnitGrammar::classify`] instead.
 pub fn classify_symbol(symbol: &str) -> SymbolClass {
     if symbol.is_empty()
         || is_epsilon(symbol)
@@ -110,7 +111,7 @@ pub enum Label {
 mod tests {
     use super::*;
 
-    // [spec:hfst:def:prediction-units.grammar/test]
+    // [spec:hfst:def:prediction-units.grammar+1/test]
     #[test]
     fn one_character_symbols_are_letters() {
         for symbol in ["a", "ŋ", "â", "#", "+", "@"] {
@@ -118,7 +119,7 @@ mod tests {
         }
     }
 
-    // [spec:hfst:def:prediction-units.grammar/test]
+    // [spec:hfst:def:prediction-units.grammar+1/test]
     #[test]
     fn flags_are_flags_and_the_rest_are_tags() {
         for flag in ["@U.person.NI@", "@D.person@", "@P.LEXNAME.#@", "@C.Num@"] {
