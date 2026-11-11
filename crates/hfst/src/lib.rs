@@ -90,6 +90,7 @@ pub mod pmatch_compiler;
 pub mod pmatch_core;
 pub mod pmatch_state;
 pub mod pmatch_tokenize;
+pub mod prediction;
 pub mod string_manipulation;
 pub mod string_utils;
 pub mod substitute_driver;

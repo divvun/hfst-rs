@@ -1276,4 +1276,29 @@ impl_evidence (
     ), rule_versions_seen (
         {id xre-finalization.root-optimize, version 0}
     )}
+    {id predict.units, covered_rules (
+        prediction-units.boundary
+        prediction-units.classes
+        prediction-units.enclitic
+        prediction-units.ending
+        prediction-units.filter
+        prediction-units.format
+        prediction-units.grammar
+        prediction-units.hidden
+        prediction-units.labels
+        prediction-units.prefix
+        prediction-units.stem
+    ), covered_claims (
+        {impl_name target-impl, rule prediction-units.boundary}
+        {impl_name target-impl, rule prediction-units.classes}
+        {impl_name target-impl, rule prediction-units.enclitic}
+        {impl_name target-impl, rule prediction-units.ending}
+        {impl_name target-impl, rule prediction-units.filter}
+        {impl_name target-impl, rule prediction-units.format}
+        {impl_name target-impl, rule prediction-units.grammar}
+        {impl_name target-impl, rule prediction-units.hidden}
+        {impl_name target-impl, rule prediction-units.labels}
+        {impl_name target-impl, rule prediction-units.prefix}
+        {impl_name target-impl, rule prediction-units.stem}
+    )}
 )

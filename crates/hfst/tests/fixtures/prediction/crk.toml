@@ -1,0 +1,42 @@
+# Plains Cree. lang-crk is not built here, so its tags come from its
+# sources: the Multichar_Symbols of src/fst/morphology/root.lexc and the
+# person flags of src/fst/morphology/affixes/verb_affixes.lexc.
+
+# Preverbs, reduplication and initial change all come before the stem, as
+# in PV/ki+PV/nitawi+kiskinwahamâkosiw+V+AI+Ind+1Sg.
+prefix = ["PV/*", "RdplW+", "RdplS+", "IC+"]
+
+# Diminutive, comitative and unspecified-actor derivations.
+boundary = ["+Der/*"]
+
+# The person prefixes: the generator's own ni- and ki- paths set these
+# flags, and an ending must agree with them.
+[[filter]]
+name = "ni-"
+label = "ni-"
+flags = ["@U.person.NI@"]
+
+[[filter]]
+name = "ki-"
+label = "ki-"
+flags = ["@U.person.KI@"]
+
+[[class]]
+name = "AI"
+patterns = ["+AI"]
+
+[[class]]
+name = "TA"
+patterns = ["+TA"]
+
+[[class]]
+name = "TI"
+patterns = ["+TI"]
+
+[[class]]
+name = "II"
+patterns = ["+II"]
+
+[[class]]
+name = "noun"
+patterns = ["+N"]

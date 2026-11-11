@@ -9271,6 +9271,14 @@ children (
                     )
                 }
                 deps (predict.spec)
+                log (
+                    {
+                        at 2026-11-11T12:44:39.078032Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
+                )
             }
 
             {

@@ -1,0 +1,28 @@
+# North Sámi. Every pattern matches a tag on the analysis side of lang-sme's
+# src/fst/generator-gt-norm.hfst.
+
+# A derivation ends with its Der tag. A compound's first part ends with
+# +Cmp: the generator spells the join +Cmp#, where # is a symbol of its own
+# and so a letter, which starts the next stem.
+boundary = ["+Der/*", "+Cmp"]
+
+# The question clitic and the focus clitics.
+enclitic = ["+Qst", "+Foc/*"]
+
+# Semantic tags sit between the lemma and the inflection, and the generator
+# writes the same word with or without them.
+hidden = ["+Sem/*"]
+
+# NomAg and NomAct derivations make nouns, whatever part of speech they
+# start from, so noun comes before verb.
+[[class]]
+name = "noun"
+patterns = ["+Der/NomAg", "+Der/NomAct", "+N"]
+
+[[class]]
+name = "verb"
+patterns = ["+V"]
+
+[[class]]
+name = "adjective"
+patterns = ["+A"]

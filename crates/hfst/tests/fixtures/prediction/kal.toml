@@ -1,0 +1,29 @@
+# Greenlandic. Every pattern matches a tag on the analysis side of lang-kal's
+# src/fst/generator-gt-norm.hfst.
+
+# A derivation ends with its Der tag, as +NIQ+Der/vn does.
+boundary = ["+Der/*"]
+
+# The demonstrative prefixes, as in TA+una.
+prefix = ["TA+", "AA+"]
+
+# Oqaasileriffik's enclitics. Its list also has +MITA and +MITAAVA, which
+# the generator lacks. +LI, +MI, +KASIK, +PALAAQ and +QQINNAAQ also name
+# derivations; there a Der tag follows them, so they end a boundary unit.
+enclitic = [
+    "+AA", "+AASIIT", "+AASIT", "+GUUQ", "+KASIK", "+LI", "+LU", "+LUUNNIIT",
+    "+LUSUUQ", "+MAA", "+MAANNA", "+MAANNAA", "+MI", "+PALAAQ", "+QQINNAAQ",
+    "+TTAAQ", "+UKU", "+UKUA", "+UNA",
+]
+
+# Transitivity and other grammatical marks, and semantic tags. The generator
+# accepts most words with or without them, so they are not a choice.
+hidden = ["+Gram/*", "+Sem/*"]
+
+[[class]]
+name = "noun"
+patterns = ["+Der/vn", "+Der/nn", "+N"]
+
+[[class]]
+name = "verb"
+patterns = ["+Der/nv", "+Der/vv", "+V"]
