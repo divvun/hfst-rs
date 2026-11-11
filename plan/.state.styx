@@ -911,6 +911,17 @@ impl_evidence (
     ), rule_versions_seen (
         {id lookup-run-state.pmatch-shared-core, version 0}
     )}
+    {id predict.evaluation, covered_rules (
+        prediction-evaluation.external
+        prediction-evaluation.held-out
+        prediction-evaluation.keystrokes
+        prediction-evaluation.report
+    ), covered_claims (
+        {impl_name target-impl, rule prediction-evaluation.external}
+        {impl_name target-impl, rule prediction-evaluation.held-out}
+        {impl_name target-impl, rule prediction-evaluation.keystrokes}
+        {impl_name target-impl, rule prediction-evaluation.report}
+    )}
     {id predict.model, covered_rules (
         prediction-model.budget
         prediction-model.faces

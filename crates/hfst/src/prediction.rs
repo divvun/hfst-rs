@@ -3,6 +3,7 @@
 //! accepts next.
 
 pub mod entry;
+pub mod evaluate;
 pub mod model;
 pub mod rank;
 pub mod realise;

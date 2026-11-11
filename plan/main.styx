@@ -9373,6 +9373,14 @@ children (
                     )
                 }
                 deps (predict.walk predict.model)
+                log (
+                    {
+                        at 2026-11-11T16:17:53.952343Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
+                )
             }
 
             {
