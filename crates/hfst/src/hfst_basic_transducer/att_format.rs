@@ -242,13 +242,20 @@ impl HfstBasicTransducer {
                 output_symbol = "@_EPSILON_SYMBOL_@".to_string();
             }
 
-            let tr = HfstBasicTransition::new_symbols(
+            // [spec:hfst:req:embed.no-panic]
+            let tr = HfstBasicTransition::try_new_symbols(
                 parse_state_number(a(1)),
                 input_symbol.into(),
                 output_symbol.into(),
                 weight,
                 self.coder_mut(),
-            );
+            )
+            .map_err(|_| {
+                crate::err!(
+                    NotValidAttFormat,
+                    format!("arc with an empty symbol: {line}")
+                )
+            })?;
             self.add_transition(parse_state_number(a(0)), &tr, true);
         } else {
             // line could not be parsed

@@ -472,8 +472,9 @@ pub trait PmatchObject<B: AlgebraBackend + 'static> {
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-object.evaluate-as-arg-fn]
     // [spec:hfst:def:pmatch-utils.hfst.pmatch-object.evaluate-as-arg-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-object.evaluate-as-arg-fn]
-    fn evaluate_as_arg(&self, ctx: &mut PmatchEvalContext<B>) -> ObjRef<B> {
-        panic!("evaluate_as_arg called on a PmatchObject that does not support it")
+    // [spec:hfst:req:embed.no-panic]
+    fn evaluate_as_arg(&self, ctx: &mut PmatchEvalContext<B>) -> crate::error::Result<ObjRef<B>> {
+        Ok(PmatchTransducerContainer::new(self.evaluate(ctx)?))
     }
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-object.as-string-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-object.as-string-fn]
@@ -674,9 +675,7 @@ pub trait PmatchObjectPairBase<B: AlgebraBackend + 'static> {
     fn evaluate_pair(
         &self,
         ctx: &mut PmatchEvalContext<B>,
-    ) -> crate::error::Result<TransducerPointerPair<B>> {
-        panic!("evaluate_pair called on a PmatchObject that is not a pair")
-    }
+    ) -> crate::error::Result<TransducerPointerPair<B>>;
 }
 
 // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-object-pair]
@@ -789,6 +788,9 @@ pub struct PmatchEvalContext<B: AlgebraBackend + 'static> {
     variables: BTreeMap<String, String>,
     call_stack: Vec<BTreeMap<String, ObjRef<B>>>,
     eval_stack: Vec<String>,
+    /// The definitions and functions being evaluated. One that is reached
+    /// again from inside itself would recurse forever.
+    in_expansion: BTreeSet<String>,
     def_insed_expressions: BTreeMap<String, ObjRef<B>>,
     inserted_names: BTreeSet<Symbol>,
     uncomposed: BTreeSet<Symbol>,

@@ -399,6 +399,7 @@ assertions (
     {id cli-residual-fixes, kind @complete, author "brendan@necessary.nu", at 2026-08-21T20:53:38.377963Z}
     {id cli-timing-as-info, kind @complete, author "brendan@necessary.nu", at 2026-09-15T17:03:30.995247Z}
     {id clippy-deny-gate, kind @complete, author "brendan@necessary.nu", at 2026-07-17T19:49:59.63991Z}
+    {id compile-surface.spec, kind @complete, author "brendan@necessary.nu", at 2026-11-11T11:38:00.541522Z}
     {id compose-facade-nativize, kind @complete, author "brendan@necessary.nu", at 2026-07-19T16:26:17.752081Z}
     {id compose-intersect-diagnostics, kind @complete, author "brendan@necessary.nu", at 2026-06-29T14:09:41.317897Z}
     {id compose-intersect-empty-panic, kind @complete, author "brendan@necessary.nu", at 2026-08-13T23:41:01.321301Z}
@@ -415,6 +416,7 @@ assertions (
     {id dhfst-writer-name, kind @complete, author "brendan@necessary.nu", at 2026-10-04T22:32:59.72173Z}
     {id diag-parse-error-spans, kind @complete, author "brendan@necessary.nu", at 2026-07-19T19:26:30.125695Z}
     {id divvun-hfst-branding, kind @complete, author "brendan@necessary.nu", at 2026-08-11T10:39:34.984866Z}
+    {id divvunspell-alerts, kind @complete, author "brendan@necessary.nu", at 2026-10-31T22:47:58.978301Z}
     {id drop-dead-commandline-def, kind @complete, author "brendan@necessary.nu", at 2026-07-17T19:45:16.969208Z}
     {id esu-lexc-divergence, kind @complete, author "brendan@necessary.nu", at 2026-10-02T13:14:08.554953Z}
     {id esu-twolc-divergence, kind @complete, author "brendan@necessary.nu", at 2026-10-02T13:14:08.604125Z}
@@ -568,6 +570,10 @@ assertions (
     {id pmatch-middot-loses-punct-reading, kind @complete, author "brendan@necessary.nu", at 2026-08-15T22:43:56.279798Z}
     {id pmatch-tokenize-runtime-divergence, kind @complete, author "brendan@necessary.nu", at 2026-08-15T19:11:22.718785Z}
     {id pmatch2fst-syntax-error-exit-zero, kind @complete, author "brendan@necessary.nu", at 2026-10-28T22:35:08.097638Z}
+    {id predict.spec, kind @complete, author "brendan@necessary.nu", at 2026-11-11T12:36:15.313631Z}
+    {id python.embed, kind @complete, author "brendan@necessary.nu", at 2026-11-10T15:14:12.551711Z}
+    {id python.spec, kind @complete, author "brendan@necessary.nu", at 2026-11-10T15:00:49.230155Z}
+    {id python.wheel-contents, kind @complete, author "brendan@necessary.nu", at 2026-11-10T15:48:25.575704Z}
     {id quality-burndown.alias-sweep, kind @complete, author "brendan@necessary.nu", at 2026-09-24T17:14:45.498921Z}
     {id quality-burndown.cli-api, kind @complete, author "brendan@necessary.nu", at 2026-09-24T15:41:51.262071Z}
     {id quality-burndown.lib-api, kind @complete, author "brendan@necessary.nu", at 2026-09-24T15:54:02.502712Z}
@@ -679,10 +685,12 @@ assertions (
     {id version-banner-one-identity, kind @complete, author "brendan@necessary.nu", at 2026-09-28T14:53:15.900988Z}
     {id version-line-provenance, kind @complete, author "brendan@necessary.nu", at 2026-08-12T00:05:48.497893Z}
     {id virtual-flag-contract, kind @complete, author "brendan@necessary.nu", at 2026-08-18T11:19:28.704235Z}
+    {id wasm.deno-check-root, kind @complete, author "brendan@necessary.nu", at 2026-10-31T19:42:40.017179Z}
     {id wasm.divvun-fst-lookup, kind @complete, author "brendan@necessary.nu", at 2026-10-30T15:57:40.709629Z}
     {id wasm.divvun-fst-wasm32, kind @complete, author "brendan@necessary.nu", at 2026-10-30T15:55:35.198419Z}
     {id wasm.fst-package, kind @complete, author "brendan@necessary.nu", at 2026-10-31T16:13:17.296618Z}
     {id wasm.performance, kind @complete, author "brendan@necessary.nu", at 2026-10-31T19:32:50.735442Z}
+    {id wasm.publish, kind @complete, author "brendan@necessary.nu", at 2026-10-31T20:37:12.299712Z}
     {id wasm.rustfst-entropy, kind @complete, author "brendan@necessary.nu", at 2026-10-28T23:08:51.232443Z}
     {id wasm.single-package, kind @complete, author "brendan@necessary.nu", at 2026-10-29T13:35:02.029483Z}
     {id wasm.thfst-chunked-panic, kind @complete, author "brendan@necessary.nu", at 2026-10-31T18:03:53.307235Z}
@@ -695,24 +703,21 @@ assertions (
     {id xfst-prototype-adjacency, kind @complete, author "brendan@necessary.nu", at 2026-08-12T00:04:11.724393Z}
     {id xfst-quoted-percent-and-bare-regex, kind @complete, author "brendan@necessary.nu", at 2026-10-01T20:48:35.562057Z}
     {id xfst-set-minimal-unwired, kind @complete, author "brendan@necessary.nu", at 2026-08-12T11:15:03.860264Z}
+    {id xfst-shell.cancel.design, kind @complete, author "brendan@necessary.nu", at 2026-11-03T11:58:35.717386Z}
+    {id xfst-shell.nfst-xfst-0-6, kind @complete, author "brendan@necessary.nu", at 2026-11-03T13:50:09.576786Z}
     {id xre-eval-error-message, kind @complete, author "brendan@necessary.nu", at 2026-10-28T22:12:14.269416Z}
     {id xre-function-as-network-error, kind @complete, author "brendan@necessary.nu", at 2026-08-12T00:04:55.496721Z}
     {id xre-intermediate-optimization, kind @complete, author "brendan@necessary.nu", at 2026-08-19T23:55:03.286981Z}
     {id zip-upgrade.divvunspell, kind @complete, author "brendan@necessary.nu", at 2026-10-31T18:02:55.139381Z}
     {id zip-upgrade.hfst, kind @complete, author "brendan@necessary.nu", at 2026-10-31T19:37:53.145211Z}
-    {id wasm.deno-check-root, kind @complete, author "brendan@necessary.nu", at 2026-10-31T19:42:40.017179Z}
-    {id wasm.publish, kind @complete, author "brendan@necessary.nu", at 2026-10-31T20:37:12.299712Z}
-    {id divvunspell-alerts, kind @complete, author "brendan@necessary.nu", at 2026-10-31T22:47:58.978301Z}
-    {id xfst-shell.nfst-xfst-0-6, kind @complete, author "brendan@necessary.nu", at 2026-11-03T13:50:09.576786Z}
-    {id xfst-shell.cancel.design, kind @complete, author "brendan@necessary.nu", at 2026-11-03T11:58:35.717386Z}
-    {id python.spec, kind @complete, author "brendan@necessary.nu", at 2026-11-10T15:00:49.230155Z}
-    {id python.embed, kind @complete, author "brendan@necessary.nu", at 2026-11-10T15:14:12.551711Z}
-    {id python.wheel-contents, kind @complete, author "brendan@necessary.nu", at 2026-11-10T15:48:25.575704Z}
-    {id compile-surface.spec, kind @complete, author "brendan@necessary.nu", at 2026-11-11T11:38:00.541522Z}
-    {id predict.spec, kind @complete, author "brendan@necessary.nu", at 2026-11-11T12:36:15.313631Z}
 )
 
 impl_evidence (
+    {id compile-surface.no-panic, covered_rules (
+        embed.no-panic
+    ), covered_claims (
+        {impl_name target-impl, rule embed.no-panic}
+    )}
     {id dead-not-implemented-surface, covered_rules (
         xfst-cmd.no-dead-surface
     ), covered_claims (
@@ -890,6 +895,31 @@ impl_evidence (
         {impl_name target-impl, rule lookup-run-state.pmatch-shared-core}
     ), rule_versions_seen (
         {id lookup-run-state.pmatch-shared-core, version 0}
+    )}
+    {id predict.units, covered_rules (
+        prediction-units.boundary
+        prediction-units.classes
+        prediction-units.enclitic
+        prediction-units.ending
+        prediction-units.filter
+        prediction-units.format
+        prediction-units.grammar
+        prediction-units.hidden
+        prediction-units.labels
+        prediction-units.prefix
+        prediction-units.stem
+    ), covered_claims (
+        {impl_name target-impl, rule prediction-units.boundary}
+        {impl_name target-impl, rule prediction-units.classes}
+        {impl_name target-impl, rule prediction-units.enclitic}
+        {impl_name target-impl, rule prediction-units.ending}
+        {impl_name target-impl, rule prediction-units.filter}
+        {impl_name target-impl, rule prediction-units.format}
+        {impl_name target-impl, rule prediction-units.grammar}
+        {impl_name target-impl, rule prediction-units.hidden}
+        {impl_name target-impl, rule prediction-units.labels}
+        {impl_name target-impl, rule prediction-units.prefix}
+        {impl_name target-impl, rule prediction-units.stem}
     )}
     {id python.bindings, covered_rules (
         python.dhfst
@@ -1275,30 +1305,5 @@ impl_evidence (
         {impl_name target-impl, rule xre-finalization.root-optimize}
     ), rule_versions_seen (
         {id xre-finalization.root-optimize, version 0}
-    )}
-    {id predict.units, covered_rules (
-        prediction-units.boundary
-        prediction-units.classes
-        prediction-units.enclitic
-        prediction-units.ending
-        prediction-units.filter
-        prediction-units.format
-        prediction-units.grammar
-        prediction-units.hidden
-        prediction-units.labels
-        prediction-units.prefix
-        prediction-units.stem
-    ), covered_claims (
-        {impl_name target-impl, rule prediction-units.boundary}
-        {impl_name target-impl, rule prediction-units.classes}
-        {impl_name target-impl, rule prediction-units.enclitic}
-        {impl_name target-impl, rule prediction-units.ending}
-        {impl_name target-impl, rule prediction-units.filter}
-        {impl_name target-impl, rule prediction-units.format}
-        {impl_name target-impl, rule prediction-units.grammar}
-        {impl_name target-impl, rule prediction-units.hidden}
-        {impl_name target-impl, rule prediction-units.labels}
-        {impl_name target-impl, rule prediction-units.prefix}
-        {impl_name target-impl, rule prediction-units.stem}
     )}
 )

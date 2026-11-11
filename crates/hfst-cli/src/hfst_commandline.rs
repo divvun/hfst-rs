@@ -464,7 +464,7 @@ pub fn convert_transducers(
         );
         let first = first.convert(type2, "")?;
         Ok((first, second))
-    } else if ct == -1 {
+    } else {
         hfst_warning(
             opts,
             0,
@@ -476,12 +476,6 @@ pub fn convert_transducers(
         );
         let second = second.convert(type1, "")?;
         Ok((first, second))
-    } else {
-        // This should not happen.
-        hfst::HFST_THROW_MESSAGE!(
-            Fatal,
-            "convert_transducers: conversion_type returned an invalid integer"
-        );
     }
 }
 

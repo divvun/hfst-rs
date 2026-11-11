@@ -29,7 +29,7 @@ fn main() -> hfst::error::Result<()> {
     println!("OL lookup of unknown input OK");
 
     // Round-trip the OL transducer back to a HfstBasicTransducer.
-    let basic2 = ConversionFunctions::hfst_ol_to_hfst_basic_transducer(&ol);
+    let basic2 = ConversionFunctions::hfst_ol_to_hfst_basic_transducer(&ol)?;
     let t0 = basic2.index(0)?;
     assert_eq!(
         t0.len(),

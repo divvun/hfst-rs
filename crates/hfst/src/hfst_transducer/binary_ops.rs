@@ -172,8 +172,8 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
         // (The XFSM-only 'insert_missing_diacritics_to_alphabet_from' arm is
         // compiled out with the xfsm backend.)
         if config.xerox_composition {
-            encode_flag_diacritics(self);
-            encode_flag_diacritics(&mut another_copy);
+            encode_flag_diacritics(self)?;
+            encode_flag_diacritics(&mut another_copy)?;
         }
         let encoded_flag_overlay = if config.xerox_composition {
             flag_overlay.map(FlagDiacriticOverlay::xerox_encoded)

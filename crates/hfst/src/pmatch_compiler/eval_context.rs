@@ -27,6 +27,7 @@ impl<B: AlgebraBackend + 'static> PmatchEvalContext<B> {
             variables: BTreeMap::new(),
             call_stack: Vec::new(),
             eval_stack: Vec::new(),
+            in_expansion: BTreeSet::new(),
             def_insed_expressions: BTreeMap::new(),
             inserted_names: BTreeSet::new(),
             uncomposed: BTreeSet::new(),
@@ -78,6 +79,7 @@ impl<B: AlgebraBackend + 'static> PmatchEvalContext<B> {
         );
         self.call_stack.clear();
         self.eval_stack.clear();
+        self.in_expansion.clear();
         self.def_insed_expressions.clear();
         self.inserted_names.clear();
         self.unsatisfied_insertions.clear();
@@ -207,6 +209,28 @@ impl<B: AlgebraBackend + 'static> PmatchEvalContext<B> {
     pub(super) fn eval_stack_pop(&mut self) {
         self.eval_stack.pop();
     }
+
+    /// Run `expand`, the evaluation of the definition or function `name`,
+    /// failing instead when `name` is already being evaluated: pmatch has no
+    /// way to stop such a recursion, which would exhaust the stack.
+    // [spec:hfst:req:embed.no-panic]
+    pub(super) fn expanding<T>(
+        &mut self,
+        name: &str,
+        expand: impl FnOnce(&mut Self) -> crate::error::Result<T>,
+    ) -> crate::error::Result<T> {
+        if !self.in_expansion.insert(name.to_string()) {
+            crate::bail!(
+                Hfst,
+                format!(
+                    "{name} is defined in terms of itself; Ins({name}) inserts it when matching instead"
+                )
+            );
+        }
+        let result = expand(self);
+        self.in_expansion.remove(name);
+        result
+    }
     pub(super) fn eval_stack_last(&self) -> Option<String> {
         self.eval_stack.last().cloned()
     }
@@ -252,24 +276,20 @@ impl<B: AlgebraBackend + 'static> PmatchEvalContext<B> {
 
     // [spec:hfst:def:pmatch-utils.pmatcherror-fn]
     // [spec:hfst:sem:pmatch-utils.pmatcherror-fn]
-    pub(super) fn pmatcherror(&self, msg: &str) {
-        let buf = self.data.clone();
-        let bytes = buf.as_bytes();
-        let parsedata: String = if bytes.is_empty() {
-            String::new()
-        } else if bytes.len() < 60 {
-            String::from_utf8_lossy(bytes).into_owned()
-        } else {
-            String::from_utf8_lossy(&bytes[..59]).into_owned() + "... [truncated]"
-        };
-        let mut errmsg = String::new();
-        errmsg.push_str("hfst-pmatch:");
-        errmsg.push_str("parsing failed: ");
-        errmsg.push_str(msg);
-        errmsg.push_str("\n*** parsing ");
-        errmsg.push_str(&parsedata);
-        errmsg.push('\n');
-
-        std::panic::panic_any(errmsg);
+    // [spec:hfst:req:embed.no-panic]
+    /// The error a malformed pmatch construct fails the compile with.
+    pub(super) fn pmatcherror(&self, msg: &str) -> crate::error::Error {
+        let bytes = self.data.as_bytes();
+        let mut errmsg = format!("hfst-pmatch:parsing failed: {msg}");
+        if !bytes.is_empty() {
+            errmsg.push_str("\n*** parsing ");
+            if bytes.len() < 60 {
+                errmsg.push_str(&String::from_utf8_lossy(bytes));
+            } else {
+                errmsg.push_str(&String::from_utf8_lossy(&bytes[..59]));
+                errmsg.push_str("... [truncated]");
+            }
+        }
+        crate::err!(Hfst, errmsg)
     }
 }

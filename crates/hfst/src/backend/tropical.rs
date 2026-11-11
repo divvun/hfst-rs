@@ -65,8 +65,8 @@ impl Backend for StdVectorFst {
     // SymbolTable edit that preserves each symbol's original label. Equivalent
     // automaton, but the serialized bytes diverge from the round-trip (which
     // renumbers symbols in arc-walk order) by design ([node:flag-encode-diverge]).
-    fn encode_flag_diacritics(&mut self) {
-        TropicalWeightTransducer::encode_flag_diacritics(self);
+    fn encode_flag_diacritics(&mut self) -> crate::error::Result<()> {
+        TropicalWeightTransducer::encode_flag_diacritics(self)
     }
     fn decode_flag_diacritics(&mut self) {
         TropicalWeightTransducer::decode_flag_diacritics(self);

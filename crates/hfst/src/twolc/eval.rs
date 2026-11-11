@@ -253,8 +253,8 @@ impl<B: AlgebraBackend> TwolcCompiler<B> {
                 }
             }
             TwolcRegex::Pair { upper, lower } => {
-                let up = symbol_of(upper, vvm);
-                let lo = symbol_of(lower, vvm);
+                let up = symbol_of(upper, vvm)?;
+                let lo = symbol_of(lower, vvm)?;
                 let site = PairSite {
                     pair: e.span.range.clone(),
                     upper: upper.span.range.clone(),
@@ -452,19 +452,20 @@ impl<B: AlgebraBackend> TwolcCompiler<B> {
 
 /// Resolve a 'TwolcRegex' operand expected to be a single symbol (the upper or
 /// lower side of a 'Pair'), applying variable substitution.
-fn symbol_of(e: &Spanned<TwolcRegex>, vvm: &VariableValueMap) -> Symbol {
-    match &e.value {
+// [spec:hfst:req:embed.no-panic]
+fn symbol_of(e: &Spanned<TwolcRegex>, vvm: &VariableValueMap) -> crate::error::Result<Symbol> {
+    Ok(match &e.value {
         TwolcRegex::Symbol(s) => substitute_symbol(s, vvm),
         TwolcRegex::Epsilon => Symbol::new_static(TWOLC_EPSILON),
         TwolcRegex::Any => Symbol::new_static(TWOLC_UNKNOWN),
-        TwolcRegex::Group(inner) => symbol_of(inner, vvm),
+        TwolcRegex::Group(inner) => symbol_of(inner, vvm)?,
         TwolcRegex::Pair { .. }
         | TwolcRegex::Optional(_)
         | TwolcRegex::Binary(..)
         | TwolcRegex::Unary(..)
         | TwolcRegex::RepeatN(..)
         | TwolcRegex::RepeatNToK(..) => {
-            std::panic::panic_any("twolc pair side must be a single symbol".to_string())
+            crate::bail!(Hfst, "twolc pair side must be a single symbol")
         }
-    }
+    })
 }

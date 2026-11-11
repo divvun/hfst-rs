@@ -9109,6 +9109,14 @@ children (
                     target-impl ([spec:hfst:req:embed.no-panic])
                 }
                 deps (compile-surface.spec)
+                log (
+                    {
+                        at 2026-11-11T11:54:41.914537Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
+                )
             }
 
             {

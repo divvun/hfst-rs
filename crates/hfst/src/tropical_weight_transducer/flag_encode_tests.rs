@@ -73,7 +73,8 @@ fn diacritics_across_both_tables(t: &StdVectorFst) -> Vec<String> {
 fn encode_leaves_no_unencoded_flag_in_either_table() {
     for with_output_table in [false, true] {
         let mut t = flagged_fst(with_output_table);
-        TropicalWeightTransducer::encode_flag_diacritics(&mut t);
+        TropicalWeightTransducer::encode_flag_diacritics(&mut t)
+            .expect("the flagged net has no reserved symbol");
         assert_eq!(
             diacritics_across_both_tables(&t),
             Vec::<String>::new(),
@@ -90,7 +91,8 @@ fn encode_decode_round_trips_with_both_tables() {
     for with_output_table in [false, true] {
         let before = flagged_fst(with_output_table);
         let mut t = before.clone();
-        TropicalWeightTransducer::encode_flag_diacritics(&mut t);
+        TropicalWeightTransducer::encode_flag_diacritics(&mut t)
+            .expect("the flagged net has no reserved symbol");
         TropicalWeightTransducer::decode_flag_diacritics(&mut t);
 
         assert_eq!(

@@ -176,9 +176,12 @@ fn reset_facade_metadata_after_flag_pass<B: Backend>(fst: &mut HfstTransducer<B>
 
 // [spec:hfst:def:hfst-transducer.hfst.encode-flag-diacritics-fn]
 // [spec:hfst:sem:hfst-transducer.hfst.encode-flag-diacritics-fn]
-pub(super) fn encode_flag_diacritics<B: Backend>(fst: &mut HfstTransducer<B>) {
-    fst.fst.encode_flag_diacritics();
+pub(super) fn encode_flag_diacritics<B: Backend>(
+    fst: &mut HfstTransducer<B>,
+) -> crate::error::Result<()> {
+    fst.fst.encode_flag_diacritics()?;
     reset_facade_metadata_after_flag_pass(fst);
+    Ok(())
 }
 
 // [spec:hfst:def:hfst-transducer.hfst.decode-flag-diacritics-fn]

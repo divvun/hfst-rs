@@ -211,17 +211,17 @@ impl<B: AlgebraBackend> LexcCompiler<B> {
 
     // [spec:hfst:def:lexc-compiler.hfst.lexc.lexc-compiler.get-verbosity-fn]
     // [spec:hfst:sem:lexc-compiler.hfst.lexc.lexc-compiler.get-verbosity-fn]
+    // [spec:hfst:req:embed.no-panic]
+    // 'set_verbosity' never sets both 'quiet' and 'verbose', the state the
+    // C++ threw on; quiet wins, so every state has an answer.
     pub fn get_verbosity(&self) -> u32 {
-        if self.quiet && !self.verbose {
-            return 0;
+        if self.quiet {
+            0
+        } else if self.verbose {
+            2
+        } else {
+            1
         }
-        if !self.quiet && !self.verbose {
-            return 1;
-        }
-        if !self.quiet && self.verbose {
-            return 2;
-        }
-        std::panic::panic_any("LexcCompiler::getVerbosity() failed".to_string())
     }
 
     pub fn set_treat_warnings_as_errors(&mut self, value: bool) -> &mut Self {

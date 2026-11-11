@@ -41,13 +41,25 @@ impl HfstBasicTransition {
         weight: WeightType,
         coder: &mut SymbolCoder,
     ) -> Self {
-        HfstBasicTransition {
+        Self::try_new_symbols(s, isymbol, osymbol, weight, coder)
+            .expect("new_symbols is called with non-empty transition symbols")
+    }
+
+    /// As [`Self::new_symbols`], with an empty symbol an error.
+    // [spec:hfst:req:embed.no-panic]
+    pub fn try_new_symbols(
+        s: HfstState,
+        isymbol: SymbolType,
+        osymbol: SymbolType,
+        weight: WeightType,
+        coder: &mut SymbolCoder,
+    ) -> crate::error::Result<Self> {
+        Ok(HfstBasicTransition {
             target_state: s,
             transition_data: HfstTropicalTransducerTransitionData::new_symbols(
                 isymbol, osymbol, weight, coder,
-            )
-            .expect("new_symbols is called with non-empty transition symbols"),
-        }
+            )?,
+        })
     }
 
     // [spec:hfst:def:hfst-basic-transition.hfst.implementations.hfst-basic-transition.hfst-basic-transition-fn]

@@ -264,3 +264,48 @@ fn empty_symbol_string_in_alphabet_does_not_panic() {
     };
     assert!(back.lookup_fd_cstr("a", -1, 0.0).is_empty());
 }
+
+// The same nameless alphabet, converted rather than looked up: an arc needs a
+// name for each of its symbols.
+// [spec:hfst:req:embed.no-panic/test]
+#[test]
+fn nameless_symbol_fails_conversion_without_panicking() {
+    let _guard = serialized();
+    let transducer = one_arc_ol();
+    let symbols = transducer.get_header().symbol_count() as usize;
+    let bytes = write_ol(&transducer);
+    let mut spliced = bytes[..HEADER_LEN].to_vec();
+    spliced.extend(std::iter::repeat_n(0u8, symbols));
+    spliced.extend_from_slice(&bytes[alphabet_end(&bytes, symbols)..]);
+    let back = match read_ol(&spliced) {
+        Ok(t) => t,
+        Err(e) => panic!("an unnameable alphabet is still readable: {e}"),
+    };
+    let Err(e) = ConversionFunctions::hfst_ol_to_hfst_basic_transducer(&back) else {
+        panic!("an arc without symbol names converted");
+    };
+    assert!(
+        e.to_string().contains("corrupt"),
+        "unhelpful diagnostic: {e}"
+    );
+}
+
+// A transition into the transition table has to land on the entry that opens
+// a state; the traversal cannot walk one aimed at an arc.
+// [spec:hfst:req:embed.no-panic/test]
+#[test]
+fn transition_into_an_arc_is_rejected() {
+    let _guard = serialized();
+    let transducer = one_arc_ol();
+    let mut bytes = write_ol(&transducer);
+    let transitions = alphabet_end(&bytes, transducer.get_header().symbol_count() as usize)
+        + transducer.get_header().index_table_size() as usize * 6;
+    // The first transition entry is the one arc; aim it at itself.
+    let itself = hfst::transducer::TRANSITION_TARGET_TABLE_START;
+    bytes[transitions + 4..transitions + 8].copy_from_slice(&itself.to_le_bytes());
+    let err = expect_read_error(&bytes, "a transition into an arc is corruption");
+    assert!(
+        err.to_string().contains("rather than a state"),
+        "unhelpful diagnostic: {err}"
+    );
+}

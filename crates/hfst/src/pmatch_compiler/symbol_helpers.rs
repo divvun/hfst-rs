@@ -296,18 +296,18 @@ pub fn parse_range<B: AlgebraBackend + 'static>(
     while i < bytes.len() {
         let mut codepoint1 = read_codepoint(bytes, &quoted, &mut i);
         if i >= bytes.len() || bytes[i] != b'-' {
-            ctx.pmatcherror(&format!("Could not parse range expression: {}", s));
+            return Err(ctx.pmatcherror(&format!("Could not parse range expression: {}", s)));
         }
         i += 1;
         let codepoint2 = read_codepoint(bytes, &quoted, &mut i);
         if codepoint1 == 0 || codepoint2 == 0 {
-            ctx.pmatcherror(&format!("Malformed character in range expression: {}", s));
+            return Err(ctx.pmatcherror(&format!("Malformed character in range expression: {}", s)));
         }
         if codepoint2 < codepoint1 {
-            ctx.pmatcherror(&format!(
+            return Err(ctx.pmatcherror(&format!(
                 "Range expression goes from higher to lower: {}",
                 s
-            ));
+            )));
         }
         while codepoint1 <= codepoint2 {
             retval.disjunct(

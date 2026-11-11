@@ -643,10 +643,9 @@ impl<B: AlgebraBackend + 'static> PmatchObject<B> for PmatchBinaryOperation<B> {
                     }
                     Err(e) => {
                         if matches!(e.kind, crate::error::ErrorKind::TransducersAreNotAutomata) {
-                            ctx.pmatcherror(
+                            return Err(ctx.pmatcherror(
                                 "Error: transducers must be automata in merge operation.",
-                            );
-                            unreachable!("pmatcherror panics");
+                            ));
                         } else {
                             return Err(e);
                         }

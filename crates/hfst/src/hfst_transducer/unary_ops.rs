@@ -122,9 +122,23 @@ impl<B: AlgebraBackend> HfstTransducer<B> {
         k: u32,
     ) -> crate::error::Result<&mut HfstTransducer<B>> {
         self.is_trie = false; // This could be done so that is_trie is preserved
+        // [spec:hfst:req:embed.no-panic]
+        let Some(more) = k.checked_sub(n) else {
+            return self.empty_language();
+        };
         let mut a = HfstTransducer::new_copy(self)?;
-        let b = HfstTransducer::new_copy(a.repeat_n_minus(k - n)?)?;
+        let b = HfstTransducer::new_copy(a.repeat_n_minus(more)?)?;
         self.repeat_n(n)?.concatenate(&b, true)
+    }
+
+    /// Make this the empty language over its own alphabet: what a repetition
+    /// that no count satisfies, such as `{3,1}` or fewer than none, denotes.
+    pub fn empty_language(&mut self) -> crate::error::Result<&mut HfstTransducer<B>> {
+        let alphabet = self.get_alphabet()?;
+        self.is_trie = false;
+        self.fst = B::empty();
+        self.fst.add_symbols_to_alphabet(&alphabet)?;
+        Ok(self)
     }
 
     // -------------------------------------------------------------------------

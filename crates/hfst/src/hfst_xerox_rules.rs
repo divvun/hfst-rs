@@ -117,7 +117,6 @@ impl<B: AlgebraBackend> fmt::Display for Rule<B> {
 }
 
 // ===== flattened bodies (free fns share scope) =====
-use crate::HFST_THROW_MESSAGE;
 use crate::hfst_symbol_defs::HfstSymbolSubstitutions;
 use crate::hfst_symbol_defs::StringSet;
 use crate::hfst_symbol_defs::internal_epsilon;

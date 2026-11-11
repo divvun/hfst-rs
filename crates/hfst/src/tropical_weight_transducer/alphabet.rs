@@ -126,7 +126,7 @@ impl TropicalWeightTransducer {
     // automaton, divergent bytes by design ([node:flag-encode-diverge]).
     // [spec:hfst:def:hfst-transducer.hfst.encode-flag-diacritics-fn]
     // [spec:hfst:sem:hfst-transducer.hfst.encode-flag-diacritics-fn]
-    pub fn encode_flag_diacritics(t: &mut StdVectorFst) {
+    pub fn encode_flag_diacritics(t: &mut StdVectorFst) -> crate::error::Result<()> {
         assert!(t.input_symbols().is_some());
         let old = t
             .input_symbols()
@@ -135,7 +135,7 @@ impl TropicalWeightTransducer {
             .clone();
         let mut st = SymbolTable::empty();
         for (label, sym) in old.iter() {
-            check_reserved_flag_collision(sym);
+            check_reserved_flag_collision(sym)?;
             let new_sym: Symbol = if FdOperation::is_diacritic(sym) {
                 encode_flag(sym)
             } else {
@@ -144,6 +144,7 @@ impl TropicalWeightTransducer {
             st.add_symbol_with_key(new_sym.as_str(), label);
         }
         Self::set_both_symbol_tables(t, st);
+        Ok(())
     }
 
     // An HFST tropical transducer may carry an output symbol table, and when

@@ -680,13 +680,20 @@ impl HfstBasicTransducer {
             if let Some((source, target, isymbol, osymbol, weight)) =
                 Self::parse_prolog_arc_line(&linestr, &retval.name)
             {
-                let tr = HfstBasicTransition::new_symbols(
+                // [spec:hfst:req:embed.no-panic]
+                let tr = HfstBasicTransition::try_new_symbols(
                     target,
                     isymbol.into(),
                     osymbol.into(),
                     weight,
                     retval.coder_mut(),
-                );
+                )
+                .map_err(|_| {
+                    crate::err!(
+                        NotValidPrologFormat,
+                        format!("arc with an empty symbol: {linestr}")
+                    )
+                })?;
                 retval.add_transition(source, &tr, true);
             } else if let Some((state, weight)) =
                 Self::parse_prolog_final_line(&linestr, &retval.name)

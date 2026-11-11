@@ -45,25 +45,25 @@ pub enum FlagDiacriticOperation {
 /// The reserved-symbol guard shared by every `encode_flag_diacritics` path: an
 /// alphabet symbol already wrapped in '%...%' whose '@...@'-unescaped form is a
 /// flag diacritic would collide with a freshly-encoded flag, so the C++ raised
-/// an error. Kept as a `panic_any` (the port's throw port) so both the basic
-/// round-trip default and the tropical in-place override fail identically.
+/// an error. Both the basic round-trip default and the tropical in-place
+/// override fail with it identically.
 // [spec:hfst:sem:hfst-transducer.hfst.encode-flag-diacritics-fn]
-pub(crate) fn check_reserved_flag_collision(symbol: &str) {
-    if symbol.len() > 4 {
-        let bytes = symbol.as_bytes();
-        if (bytes[0] == b'%') && (bytes[symbol.len() - 1] == b'%') {
-            let mut str_bytes = bytes.to_vec();
-            let last = str_bytes.len() - 1;
-            str_bytes[0] = b'@';
-            str_bytes[last] = b'@';
-            let str = String::from_utf8(str_bytes)
-                .expect("alphabet symbol remains valid UTF-8 after @-unescaping");
-            if FdOperation::is_diacritic(&str) {
-                let msg = "error: reserved symbol '".to_string() + &str + "' detected";
-                std::panic::panic_any(msg);
-            }
+// [spec:hfst:req:embed.no-panic]
+pub(crate) fn check_reserved_flag_collision(symbol: &str) -> crate::error::Result<()> {
+    if let Some(inner) = symbol
+        .strip_prefix('%')
+        .and_then(|rest| rest.strip_suffix('%'))
+        .filter(|inner| inner.len() > 2)
+    {
+        let unescaped = format!("@{inner}@");
+        if FdOperation::is_diacritic(&unescaped) {
+            crate::bail!(
+                FlagDiacriticsAreNotIdentities,
+                format!("reserved symbol '{unescaped}' detected")
+            );
         }
     }
+    Ok(())
 }
 
 /// The surface every backend provides: identity, serialization tag, deep
@@ -173,13 +173,11 @@ pub trait Backend: Sized {
     /// graph through the basic transducer, which renumbers symbols in arc-walk
     /// order (the C++ behaviour); the tropical backend overrides this with an
     /// in-place SymbolTable rename that keeps each symbol at its original label
-    /// (a pure alphabet edit — the arc graph never changes). Panics via
-    /// 'panic_any' if the alphabet already carries a symbol whose escaped form
-    /// would collide with an encoded flag (the reserved-symbol guard).
-    fn encode_flag_diacritics(&mut self) {
-        let basic_fst = self
-            .to_basic()
-            .expect("to_basic on a valid backend cannot fail");
+    /// (a pure alphabet edit — the arc graph never changes). Fails if the
+    /// alphabet already carries a symbol whose escaped form would collide with
+    /// an encoded flag (the reserved-symbol guard).
+    fn encode_flag_diacritics(&mut self) -> crate::error::Result<()> {
+        let basic_fst = self.to_basic()?;
         let mut basic_fst_copy = HfstBasicTransducer::new();
         let _ = basic_fst_copy.add_state(basic_fst.get_max_state());
 
@@ -221,7 +219,7 @@ pub trait Backend: Sized {
         // copy alphabet, encode all flags
         let alpha = basic_fst.get_alphabet().clone();
         for it in alpha.iter() {
-            check_reserved_flag_collision(it);
+            check_reserved_flag_collision(it)?;
             let mut symbol: Symbol = it.clone();
             if FdOperation::is_diacritic(&symbol) {
                 symbol = encode_flag(&symbol);
@@ -229,8 +227,8 @@ pub trait Backend: Sized {
             basic_fst_copy.add_symbol_to_alphabet(&symbol);
         }
 
-        *self =
-            Self::from_basic(&basic_fst_copy).expect("from_basic on a valid backend cannot fail");
+        *self = Self::from_basic(&basic_fst_copy)?;
+        Ok(())
     }
 
     /// The xerox-composition flag decode ('decode_flag_diacritics'): the exact

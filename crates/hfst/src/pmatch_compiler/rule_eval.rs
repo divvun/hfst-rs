@@ -40,8 +40,7 @@ impl<B: AlgebraBackend + 'static> PmatchObject<B> for PmatchParallelRulesContain
                 replace_leftmost_shortest_match_rule_vector(&self.make_mappings(ctx)?)?
             }
             ReplaceArrow::E_REPLACE_RIGHT_MARKUP => {
-                ctx.pmatcherror("Unrecognized arrow type");
-                return Ok(HfstTransducer::new());
+                return Err(ctx.pmatcherror("Unrecognized arrow type"));
             }
         };
         retval.set_final_weights(self.weight as f32, true)?;
@@ -102,8 +101,7 @@ impl<B: AlgebraBackend + 'static> PmatchObject<B> for PmatchReplaceRuleContainer
                 replace_leftmost_shortest_match_rule(&self.make_mapping(ctx)?)?
             }
             ReplaceArrow::E_REPLACE_RIGHT_MARKUP => {
-                ctx.pmatcherror("Unrecognized arrow");
-                return Ok(HfstTransducer::new());
+                return Err(ctx.pmatcherror("Unrecognized arrow"));
             }
         };
         retval.set_final_weights(self.weight as f32, true)?;
@@ -245,8 +243,7 @@ impl<B: AlgebraBackend + 'static> PmatchObject<B> for PmatchMappingPairsContaine
     pmatch_object_base_accessors!();
 
     fn evaluate(&self, ctx: &mut PmatchEvalContext<B>) -> crate::error::Result<HfstTransducer<B>> {
-        ctx.pmatcherror("Should never happen\n");
-        unreachable!()
+        Err(ctx.pmatcherror("Should never happen"))
     }
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch-contexts-container.evaluate-fn]
@@ -257,7 +254,6 @@ impl<B: AlgebraBackend + 'static> PmatchObject<B> for PmatchContextsContainer<B>
     pmatch_object_base_accessors!();
 
     fn evaluate(&self, ctx: &mut PmatchEvalContext<B>) -> crate::error::Result<HfstTransducer<B>> {
-        ctx.pmatcherror("Should never happen\n");
-        unreachable!()
+        Err(ctx.pmatcherror("Should never happen"))
     }
 }

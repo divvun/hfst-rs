@@ -154,6 +154,7 @@ mod construction;
 mod determinize;
 mod intersect;
 mod io;
+pub(crate) use io::{check_openfst_header, check_openfst_states};
 mod operations;
 mod path_extraction;
 mod substitute;
@@ -167,3 +168,6 @@ mod flag_encode_tests;
 
 #[cfg(test)]
 mod determinize_budget_tests;
+
+#[cfg(test)]
+mod read_check_tests;

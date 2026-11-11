@@ -486,6 +486,7 @@ mod input_impl {
                     // and leaves the istream positioned after it; load_prefix mirrors
                     // that by reporting how many bytes the single FST consumed.
                     let bytes = self.read_remaining_bytes();
+                    crate::tropical_weight_transducer::check_openfst_header(&bytes)?;
                     let (mut fst, consumed) = match StdVectorFst::load_prefix(&bytes) {
                         Ok(fc) => fc,
                         Err(_) => crate::bail!(
@@ -493,6 +494,7 @@ mod input_impl {
                             "could not read TROPICAL_OPENFST transducer payload"
                         ),
                     };
+                    crate::tropical_weight_transducer::check_openfst_states(&fst)?;
                     if consumed < bytes.len() {
                         self.pbr().unget_all(&bytes[consumed..]);
                     }

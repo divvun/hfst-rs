@@ -31,12 +31,14 @@ pub fn PmatchObject_evaluate_args<B: AlgebraBackend + 'static>(
             Ok(retval)
         }
     } else {
-        let errstring = format!(
-            "Object {} on line {} has no argument handling",
-            this.get_name(),
-            this.get_line_defined()
+        crate::bail!(
+            Hfst,
+            format!(
+                "Object {} on line {} has no argument handling",
+                this.get_name(),
+                this.get_line_defined()
+            )
         );
-        panic!("{}", errstring);
     }
 }
 // [spec:hfst:def:pmatch-utils.hfst.pmatch-object.expand-ins-arcs-fn]
@@ -207,16 +209,14 @@ impl<B: AlgebraBackend + 'static> PmatchObject<B> for PmatchSymbol<B> {
                 .expect("symbol_in_local_context verified above")
                 .evaluate(ctx)?;
         } else if ctx.definitions_contains(&self.sym) {
-            if ctx.flatten && ctx.def_insed_expressions_contains(&self.sym) {
-                retval = ctx
-                    .def_insed_expressions_get(&self.sym)
+            let definition = if ctx.flatten && ctx.def_insed_expressions_contains(&self.sym) {
+                ctx.def_insed_expressions_get(&self.sym)
                     .expect("checked with contains just above")
-                    .evaluate(ctx)?;
             } else {
-                retval = symbol_from_global_context(ctx, &self.sym)
+                symbol_from_global_context(ctx, &self.sym)
                     .expect("definitions_contains verified above")
-                    .evaluate(ctx)?;
-            }
+            };
+            retval = ctx.expanding(&self.sym, |ctx| definition.evaluate(ctx))?;
             ctx.used_definitions_insert(self.sym.clone());
         } else {
             if ctx.verbose {
@@ -240,7 +240,7 @@ impl<B: AlgebraBackend + 'static> PmatchObject<B> for PmatchSymbol<B> {
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-symbol.evaluate-as-arg-fn]
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-symbol.evaluate-as-arg-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-symbol.evaluate-as-arg-fn]
-    fn evaluate_as_arg(&self, ctx: &mut PmatchEvalContext<B>) -> ObjRef<B> {
+    fn evaluate_as_arg(&self, ctx: &mut PmatchEvalContext<B>) -> crate::error::Result<ObjRef<B>> {
         if symbol_in_local_context(ctx, &self.sym) {
             return symbol_from_local_context(ctx, &self.sym)
                 .expect("symbol_in_local_context verified above")
@@ -264,14 +264,14 @@ impl<B: AlgebraBackend + 'static> PmatchObject<B> for PmatchSymbol<B> {
                     self.sym, self.line_defined
                 );
             }
-            Rc::new(PmatchString {
+            Ok(Rc::new(PmatchString {
                 name: String::new(),
                 weight: 0.0,
                 line_defined: 0,
                 string: self.sym.clone(),
                 multichar: false,
                 _marker: std::marker::PhantomData,
-            })
+            }))
         }
     }
     // [spec:hfst:def:pmatch-utils.hfst.pmatch-symbol.collect-strings-into-fn]
@@ -342,15 +342,15 @@ impl<B: AlgebraBackend + 'static> PmatchObject<B> for PmatchString<B> {
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch-string.evaluate-as-arg-fn]
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-string.evaluate-as-arg-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-string.evaluate-as-arg-fn]
-    fn evaluate_as_arg(&self, ctx: &mut PmatchEvalContext<B>) -> ObjRef<B> {
-        Rc::new(PmatchString {
+    fn evaluate_as_arg(&self, ctx: &mut PmatchEvalContext<B>) -> crate::error::Result<ObjRef<B>> {
+        Ok(Rc::new(PmatchString {
             name: self.name.clone(),
             weight: self.weight,
             line_defined: self.line_defined,
             string: self.string.clone(),
             multichar: self.multichar,
             _marker: std::marker::PhantomData,
-        })
+        }))
     }
     // [spec:hfst:def:pmatch-utils.hfst.pmatch.pmatch-string.as-string-fn]
     // [spec:hfst:sem:pmatch-utils.hfst.pmatch.pmatch-string.as-string-fn]
@@ -523,13 +523,15 @@ impl<B: AlgebraBackend + 'static> PmatchObject<B> for PmatchFunction<B> {
             0
         };
         if funargs.len() != self.args.len() {
-            let errstring = format!(
-                "Function {} expected {} args, got {}\n",
-                self.name,
-                self.args.len(),
-                funargs.len()
+            crate::bail!(
+                Hfst,
+                format!(
+                    "Function {} expected {} args, got {}",
+                    self.name,
+                    self.args.len(),
+                    funargs.len()
+                )
             );
-            panic!("{}", errstring);
         }
         let mut local_env: BTreeMap<String, ObjRef<B>> = BTreeMap::new();
         if ctx.call_stack_len() != 0 {
@@ -575,9 +577,14 @@ impl<B: AlgebraBackend + 'static> PmatchObject<B> for PmatchFuncall<B> {
         if !self.name.is_empty() {
             ctx.eval_stack_push(self.name.clone());
         }
-        let evaluated_args: Vec<ObjRef<B>> =
-            self.args.iter().map(|it| it.evaluate_as_arg(ctx)).collect();
-        let retval = self.fun.evaluate_args(ctx, evaluated_args.clone());
+        let evaluated_args: Vec<ObjRef<B>> = self
+            .args
+            .iter()
+            .map(|it| it.evaluate_as_arg(ctx))
+            .collect::<crate::error::Result<_>>()?;
+        let retval = ctx.expanding(self.fun.get_name(), |ctx| {
+            self.fun.evaluate_args(ctx, evaluated_args.clone())
+        });
         if !self.name.is_empty() {
             ctx.eval_stack_pop();
         }
@@ -599,11 +606,13 @@ impl<B: AlgebraBackend + 'static> PmatchObject<B> for PmatchBuiltinFunction<B> {
         let mut retval: HfstTransducer<B> = HfstTransducer::new();
         if self.ty == PmatchBuiltin::Interpolate {
             if self.args.len() < 3 {
-                let errstring = format!(
-                    "Builtin function Interpolate called with {} arguments, but it expects at least 3.\n",
-                    self.args.len()
+                crate::bail!(
+                    Hfst,
+                    format!(
+                        "Builtin function Interpolate called with {} arguments, but it expects at least 3.",
+                        self.args.len()
+                    )
                 );
-                panic!("{}", errstring);
             }
             // arguments are in reverse order after parsing
             let n = self.args.len();

@@ -20,7 +20,7 @@ use crate::convert_transducer_format::ConversionFunctions;
 use crate::hfst_basic_transducer::HfstBasicTransducer;
 use crate::hfst_basic_transition::HfstBasicTransition;
 use crate::hfst_flag_diacritics::FdOperation;
-use crate::hfst_symbol_defs::{internal_epsilon, is_epsilon};
+use crate::hfst_symbol_defs::{Symbol, internal_epsilon, is_epsilon};
 use crate::pmatch::PmatchAlphabet;
 use crate::transducer::{
     HeaderFlag, NO_SYMBOL_NUMBER, SymbolNumber, SymbolTable, Transducer, TransducerAlphabet,
@@ -320,9 +320,10 @@ impl ConversionFunctions {
     // [spec:hfst:sem:convert-ol-transducer.hfst.implementations.conversion-functions.hfst-ol-to-hfst-basic-transducer-fn]
     // [spec:hfst:def:convert-transducer-format.hfst.implementations.conversion-functions.hfst-ol-to-hfst-basic-transducer-fn]
     // [spec:hfst:sem:convert-transducer-format.hfst.implementations.conversion-functions.hfst-ol-to-hfst-basic-transducer-fn]
+    // [spec:hfst:req:embed.no-panic]
     pub fn hfst_ol_to_hfst_basic_transducer<T: crate::transducer::TransducerTablesInterface>(
         t: &Transducer<T>,
-    ) -> HfstBasicTransducer {
+    ) -> crate::error::Result<HfstBasicTransducer> {
         let mut basic = HfstBasicTransducer::new();
         let weighted = t.get_header().probe_flag(HeaderFlag::Weighted);
         let symbols: SymbolTable = t.get_alphabet().get_symbol_table().clone();
@@ -362,18 +363,18 @@ impl ConversionFunctions {
                     );
                     agenda.push(target);
                 }
-                let arc = HfstBasicTransition::new_symbols(
+                let arc = HfstBasicTransition::try_new_symbols(
                     state_map[&target],
-                    symbols[in_sym as usize].clone(),
-                    symbols[out_sym as usize].clone(),
+                    arc_symbol(&symbols, in_sym)?,
+                    arc_symbol(&symbols, out_sym)?,
                     weight,
                     basic.coder_mut(),
-                );
+                )?;
                 basic.add_transition(current_state, &arc, true);
             }
         }
 
-        basic
+        Ok(basic)
     }
 
     /* Create an hfst_ol::Transducer equivalent to HfstBasicTransducer 't'. */
@@ -573,5 +574,19 @@ pub(crate) fn pack_ol_tables(
             &alphabet,
             crate::transducer::TransducerTables::new_tables(windex_table, wtransition_table),
         ))
+    }
+}
+
+/// The symbol an optimized-lookup arc carries. A table that names a symbol it
+/// does not hold, or holds the empty string, is corrupt.
+fn arc_symbol(symbols: &SymbolTable, number: SymbolNumber) -> crate::error::Result<Symbol> {
+    match symbols.get(number as usize) {
+        Some(symbol) if !symbol.is_empty() => Ok(symbol.clone()),
+        Some(_) | None => crate::bail!(
+            Hfst,
+            format!(
+                "optimized-lookup transducer is corrupt: an arc carries symbol {number}, which the alphabet does not name"
+            )
+        ),
     }
 }

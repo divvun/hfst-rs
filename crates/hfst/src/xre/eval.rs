@@ -130,9 +130,14 @@ impl<B: AlgebraBackend> XreCompiler<B> {
                 t
             }
             XreExpr::RepeatNMinus(inner, n) => {
-                // REGEXP9: repeat_n_minus($2 - 1).
+                // REGEXP9: repeat_n_minus($2 - 1). Fewer than none is the
+                // empty language.
+                // [spec:hfst:req:embed.no-panic]
                 let mut t = self.eval(inner)?;
-                t.repeat_n_minus(n.wrapping_sub(1))?;
+                match n.checked_sub(1) {
+                    Some(at_most) => t.repeat_n_minus(at_most)?,
+                    None => t.empty_language()?,
+                };
                 t
             }
             XreExpr::RepeatNToK(inner, n, k) => {
@@ -506,6 +511,18 @@ impl<B: AlgebraBackend> XreCompiler<B> {
                 )
             );
         }
+        // [spec:hfst:req:embed.no-panic]
+        if self.expanding_functions.contains(name) {
+            crate::bail!(
+                Hfst,
+                format!(
+                    "function '{}' calls itself, so its call never ends",
+                    name.trim_end_matches('(')
+                )
+            );
+        }
+        let mut expanding_functions = self.expanding_functions.clone();
+        expanding_functions.insert(Symbol::from(name));
 
         // define_function_args: definitions["@name N@"] = arg (1-based).
         let mut sub_defs = self.definitions.clone();
@@ -535,6 +552,7 @@ impl<B: AlgebraBackend> XreCompiler<B> {
             replace_pass: false,
             files: std::sync::Arc::clone(&self.files),
             diagnostics: self.diagnostics.forwarding(),
+            expanding_functions,
         };
 
         // get_function_xre + recursive compile.

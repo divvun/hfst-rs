@@ -57,7 +57,7 @@ fn flag_encode_decode_round_trip_restores_exactly() {
     );
 
     let mut t = original.clone();
-    encode_flag_diacritics(&mut t);
+    encode_flag_diacritics(&mut t).expect("the flagged net has no reserved symbol");
 
     // After encode every flag is %-escaped at its ORIGINAL label; ordinary
     // symbols and epsilon are untouched.
@@ -121,11 +121,11 @@ fn encoded_transducer_is_accepted_by_compose() {
     );
 }
 
+// [spec:hfst:req:embed.no-panic/test]
 #[test]
-#[should_panic(expected = "reserved symbol")]
-fn reserved_symbol_collision_panics() {
+fn reserved_symbol_collision_is_an_error() {
     // An alphabet symbol already wrapped in %...% whose @-unescaped form is a
-    // flag diacritic collides with an encoded flag: encode must panic.
+    // flag diacritic collides with an encoded flag: encode must fail.
     let mut t = HfstBasicTransducer::new();
     let s1 = t.add_state_new();
     t.set_final_weight(s1, &0.0);
@@ -140,12 +140,18 @@ fn reserved_symbol_collision_panics() {
     t.add_transition(0, &tr, true);
     let mut fst = HfstTransducer::<StdVectorFst>::new_from_basic(&t)
         .expect("building a tropical transducer from a basic one cannot fail");
-    encode_flag_diacritics(&mut fst);
+    let error = encode_flag_diacritics(&mut fst).expect_err("the reserved symbol collides");
+    assert!(
+        error
+            .to_string()
+            .contains("reserved symbol '@U.RESERVED.X@'"),
+        "{error}"
+    );
 }
 
 #[test]
-#[should_panic(expected = "reserved symbol")]
 // [spec:hfst:req:virtual-flag-algebra.special-compose/test]
+// [spec:hfst:req:embed.no-panic/test]
 fn virtual_xerox_preserves_collision_error() {
     let mut left = build_flagged();
     let mut basic = HfstBasicTransducer::new();
@@ -169,5 +175,10 @@ fn virtual_xerox_preserves_collision_error() {
         xerox_composition: true,
         ..EngineConfig::default()
     };
-    let _ = left.compose_with_config_and_flag_overlay(&right, true, &config, Some(&overlay));
+    let Err(error) =
+        left.compose_with_config_and_flag_overlay(&right, true, &config, Some(&overlay))
+    else {
+        panic!("composing onto a reserved symbol succeeded");
+    };
+    assert!(error.to_string().contains("reserved symbol"), "{error}");
 }

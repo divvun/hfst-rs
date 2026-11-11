@@ -37,7 +37,7 @@ impl Backend for Transducer<WeightedTables> {
     }
 
     fn to_basic(&self) -> crate::error::Result<HfstBasicTransducer> {
-        Ok(ConversionFunctions::hfst_ol_to_hfst_basic_transducer(self))
+        ConversionFunctions::hfst_ol_to_hfst_basic_transducer(self)
     }
 
     fn from_basic(net: &HfstBasicTransducer) -> crate::error::Result<Self> {
@@ -105,7 +105,7 @@ impl Backend for Transducer<UnweightedTables> {
     }
 
     fn to_basic(&self) -> crate::error::Result<HfstBasicTransducer> {
-        Ok(ConversionFunctions::hfst_ol_to_hfst_basic_transducer(self))
+        ConversionFunctions::hfst_ol_to_hfst_basic_transducer(self)
     }
 
     fn from_basic(_net: &HfstBasicTransducer) -> crate::error::Result<Self> {

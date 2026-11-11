@@ -124,6 +124,31 @@ impl<T: TransducerTablesInterface> Transducer<T> {
                 index_len as usize,
                 transition_len as usize,
             )?;
+            self.validate_state_target(i)?;
+        }
+        Ok(())
+    }
+
+    /// A transition into the transition table must land on the entry that
+    /// opens a state, which carries no symbols; the traversal reads that
+    /// state's arcs from the entries after it.
+    // [spec:hfst:req:embed.no-panic]
+    fn validate_state_target(&self, i: TransitionTableIndex) -> crate::error::Result<()> {
+        let target = self.tbl().get_transition_target(i);
+        if self.tbl().get_transition_input(i) == NO_SYMBOL_NUMBER
+            || !indexes_transition_table(target)
+        {
+            return Ok(());
+        }
+        if self.tbl().get_transition_input(target) != NO_SYMBOL_NUMBER
+            || self.tbl().get_transition_output(target) != NO_SYMBOL_NUMBER
+        {
+            crate::bail!(
+                Hfst,
+                format!(
+                    "optimized-lookup transducer is corrupt: transition {i} targets {target}, which is an arc rather than a state"
+                )
+            );
         }
         Ok(())
     }

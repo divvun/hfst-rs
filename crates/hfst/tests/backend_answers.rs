@@ -496,7 +496,8 @@ fn assert_mutations_take_effect<B: Backend>(tag: &str) {
         plain.contains(FLAG),
         "{tag}: the fixture's flag must reach the backend alphabet"
     );
-    b.encode_flag_diacritics();
+    b.encode_flag_diacritics()
+        .expect("a flag net has no reserved symbol");
     let encoded = alphabet_of(&b);
     assert!(
         !encoded.contains(FLAG) && encoded.contains("%U.FEAT.VAL%"),

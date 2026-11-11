@@ -119,10 +119,12 @@ impl<T: TransducerTablesInterface> Transducer<T> {
             // indexes transition table
             let in_sym = self.get_transition_input(state_index);
             let out_sym = self.get_transition_output(state_index);
-            if in_sym != NO_SYMBOL_NUMBER || out_sym != NO_SYMBOL_NUMBER {
-                // Oops
-                panic!("get_transitions_from_state: malformed transition boundary");
-            }
+            // 'validate_tables' refuses, at read, a transition that targets
+            // anything but a state's symbol-less opening entry.
+            assert!(
+                in_sym == NO_SYMBOL_NUMBER && out_sym == NO_SYMBOL_NUMBER,
+                "get_transitions_from_state: malformed transition boundary"
+            );
 
             let mut transition_i = state_index + 1;
             loop {

@@ -253,6 +253,7 @@ impl<'a> TropicalWeightInputStream<'a> {
                 "could not read TROPICAL_OPENFST transducer payload"
             );
         }
+        check_openfst_header(&bytes)?;
         let (fst, consumed) = match StdVectorFst::load_prefix(&bytes) {
             Ok(x) => x,
             Err(_) => {
@@ -262,6 +263,7 @@ impl<'a> TropicalWeightInputStream<'a> {
                 )
             }
         };
+        check_openfst_states(&fst)?;
         if consumed < bytes.len() {
             let rest = bytes.split_off(consumed);
             let drained = std::mem::replace(
@@ -498,4 +500,108 @@ impl TropicalWeightTransducer {
         t.set_input_symbols(Arc::new(st));
         Ok(t)
     }
+}
+
+/// A cursor over the OpenFst binary header, whose fields are little-endian.
+struct HeaderCursor<'b> {
+    bytes: &'b [u8],
+}
+
+impl HeaderCursor<'_> {
+    fn take(&mut self, n: usize) -> Option<&[u8]> {
+        if n > self.bytes.len() {
+            return None;
+        }
+        let (head, rest) = self.bytes.split_at(n);
+        self.bytes = rest;
+        Some(head)
+    }
+
+    fn i32(&mut self) -> Option<i32> {
+        Some(i32::from_le_bytes(self.take(4)?.try_into().ok()?))
+    }
+
+    fn i64(&mut self) -> Option<i64> {
+        Some(i64::from_le_bytes(self.take(8)?.try_into().ok()?))
+    }
+
+    /// A length-prefixed string; `None` for one cut short or not UTF-8.
+    fn string(&mut self) -> Option<&str> {
+        let len = usize::try_from(self.i32()?).ok()?;
+        std::str::from_utf8(self.take(len)?).ok()
+    }
+
+    /// A symbol table: its name, two counts, and (string, key) rows.
+    fn symbol_table(&mut self) -> Option<()> {
+        self.i32()?;
+        self.string()?;
+        self.i64()?;
+        let rows = u64::try_from(self.i64()?).ok()?;
+        for _ in 0..rows {
+            self.string()?;
+            let key = self.i64()?;
+            if !(0..MAX_SYMBOL_KEY).contains(&key) {
+                return None;
+            }
+        }
+        Some(())
+    }
+}
+
+/// The largest symbol number a table may give. rustfst sizes a table by its
+/// largest key, so one corrupt key would otherwise ask for gigabytes; no
+/// alphabet comes near this many symbols.
+const MAX_SYMBOL_KEY: i64 = 1 << 24;
+
+const HAS_INPUT_SYMBOLS: i32 = 1;
+const HAS_OUTPUT_SYMBOLS: i32 = 2;
+
+/// Refuse an OpenFst payload whose header is cut short, holds a string that is
+/// not UTF-8 or numbers a symbol out of range, before rustfst parses it:
+/// rustfst panics on such a string and allocates a table as large as the key.
+// [spec:hfst:req:embed.no-panic]
+pub(crate) fn check_openfst_header(bytes: &[u8]) -> crate::error::Result<()> {
+    let mut cursor = HeaderCursor { bytes };
+    let checked = (|| {
+        cursor.i32()?;
+        cursor.string()?;
+        cursor.string()?;
+        cursor.i32()?;
+        let flags = cursor.i32()?;
+        cursor.take(8 + 8 + 8 + 8)?;
+        if flags & HAS_INPUT_SYMBOLS != 0 {
+            cursor.symbol_table()?;
+        }
+        if flags & HAS_OUTPUT_SYMBOLS != 0 {
+            cursor.symbol_table()?;
+        }
+        Some(())
+    })();
+    match checked {
+        Some(()) => Ok(()),
+        None => crate::bail!(
+            TransducerHasWrongType,
+            "could not read TROPICAL_OPENFST transducer payload: its header is cut short, holds a string that is not UTF-8, or numbers a symbol out of range"
+        ),
+    }
+}
+
+/// Refuse a transducer whose start state or an arc's target is not one of its
+/// states. rustfst reads such a file as it is, and every later walk of the
+/// graph would index past its states.
+// [spec:hfst:req:embed.no-panic]
+pub(crate) fn check_openfst_states(fst: &StdVectorFst) -> crate::error::Result<()> {
+    let states = fst.num_states();
+    let in_range = |state: u32| (state as usize) < states;
+    let arcs_in_range = fst.states_iter().all(|s| {
+        fst.get_trs(s)
+            .is_ok_and(|trs| trs.trs().iter().all(|arc| in_range(arc.nextstate)))
+    });
+    if !fst.start().is_none_or(in_range) || !arcs_in_range {
+        crate::bail!(
+            TransducerHasWrongType,
+            "could not read TROPICAL_OPENFST transducer payload: it refers to a state it does not hold"
+        );
+    }
+    Ok(())
 }

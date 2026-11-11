@@ -166,6 +166,9 @@ pub struct XreCompiler<B: AlgebraBackend> {
     /// What compiling has reported, oldest first, until the caller takes it
     /// or a sink receives it.
     pub(crate) diagnostics: Diagnostics,
+    /// The functions whose bodies are being compiled. A call to one of them
+    /// from inside its own body would recurse forever.
+    pub(crate) expanding_functions: BTreeSet<Symbol>,
 }
 
 /// What went wrong, without the generic kind prefix when the error says more.
@@ -213,6 +216,7 @@ impl<B: AlgebraBackend> XreCompiler<B> {
             replace_pass: false,
             files: crate::file_resolver::default_resolver(),
             diagnostics: Diagnostics::default(),
+            expanding_functions: BTreeSet::new(),
         }
     }
 
@@ -241,6 +245,7 @@ impl<B: AlgebraBackend> XreCompiler<B> {
             replace_pass: false,
             files: crate::file_resolver::default_resolver(),
             diagnostics: Diagnostics::default(),
+            expanding_functions: BTreeSet::new(),
         }
     }
 }

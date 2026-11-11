@@ -494,7 +494,13 @@ impl<B: AlgebraBackend + FromAnyTransducer + 'static> PmatchCompiler<B> {
                 );
             }
 
-            if ctx.variables_get("need-separators").as_deref() == Some("on") {
+            // A script that only inserts definitions with Ins() and defines no
+            // TOP has no root to add separators to or to label; writing it
+            // says so.
+            // [spec:hfst:req:embed.no-panic]
+            if ctx.variables_get("need-separators").as_deref() == Some("on")
+                && let Some(top) = retval.get("TOP")
+            {
                 let whitespace_acc =
                     ctx.with_utils(|u| HfstTransducer::new_copy(&u.latin1_whitespace_acceptor))?;
                 let punct_acc =
@@ -509,11 +515,9 @@ impl<B: AlgebraBackend + FromAnyTransducer + 'static> PmatchCompiler<B> {
                     HfstTransducer::new_copy(&not_whitespace)?;
                 begins_and_ends_with_non_whitespace.concatenate(&anything, true)?;
                 begins_and_ends_with_non_whitespace.concatenate(&not_whitespace, true)?;
-                begins_and_ends_with_non_whitespace
-                    .compose(retval.get("TOP").expect("TOP defined above"), true)?;
+                begins_and_ends_with_non_whitespace.compose(top, true)?;
                 let mut is_single_non_whitespace = HfstTransducer::new_copy(&not_whitespace)?;
-                is_single_non_whitespace
-                    .compose(retval.get("TOP").expect("TOP defined above"), true)?;
+                is_single_non_whitespace.compose(top, true)?;
                 let empty = HfstTransducer::new();
                 if !begins_and_ends_with_non_whitespace.compare(&empty, true)?
                     || !is_single_non_whitespace.compare(&empty, true)?
@@ -546,8 +550,7 @@ impl<B: AlgebraBackend + FromAnyTransducer + 'static> PmatchCompiler<B> {
                         )?,
                         true,
                     )?;
-                    top_with_boundaries
-                        .concatenate(retval.get("TOP").expect("TOP defined above"), true)?;
+                    top_with_boundaries.concatenate(top, true)?;
                     top_with_boundaries.concatenate(&rc, true)?;
                     let mut new_top = add_pmatch_delimiters(&top_with_boundaries)?;
                     new_top.minimize()?;
@@ -561,11 +564,10 @@ impl<B: AlgebraBackend + FromAnyTransducer + 'static> PmatchCompiler<B> {
             }
 
             let vars: Vec<(String, String)> = ctx.variables_snapshot();
-            let top = retval
-                .get_mut("TOP")
-                .expect("TOP present in result by this point");
-            for (k, v) in &vars {
-                top.set_property(k, v);
+            if let Some(top) = retval.get_mut("TOP") {
+                for (k, v) in &vars {
+                    top.set_property(k, v);
+                }
             }
             ctx.data = String::new();
             ctx.len = 0;

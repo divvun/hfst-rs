@@ -40,15 +40,6 @@ impl Error {
             message: Some(message.into()),
         }
     }
-
-    /// Raise this error as a panic payload. The transitional bridge between the
-    /// not-yet-`Result`ified panic control flow and the converted call sites:
-    /// a converted callee can re-`throw()` an `Err` so an upstream
-    /// `catch_unwind` boundary still observes the same typed payload, and a
-    /// not-yet-converted throw site reads `Error::new(kind).throw()`.
-    pub fn throw(self) -> ! {
-        std::panic::panic_any(self)
-    }
 }
 
 impl From<ErrorKind> for Error {
@@ -189,25 +180,4 @@ macro_rules! bail {
     ($($tt:tt)*) => {
         return ::core::result::Result::Err($crate::err!($($tt)*))
     };
-}
-
-/// Raise an [`Error`] as a panic — the literal port of the C++ `HFST_THROW(E)`
-/// macro, kept while the panic-based control flow is migrated to [`Result`].
-/// `HFST_THROW!(Kind)` or `HFST_THROW!(Kind(data))`. The `!`-typed block lets a
-/// throw stand as a function's tail expression, as the C++ `throw` did.
-#[macro_export]
-macro_rules! HFST_THROW {
-    ($kind:ident ( $($arg:expr),* $(,)? )) => {{
-        $crate::err!($kind($($arg),*)).throw()
-    }};
-    ($kind:ident) => {{
-        $crate::err!($kind).throw()
-    }};
-}
-
-/// Raise an [`Error`] carrying a contextual message — the port of the C++
-/// `HFST_THROW_MESSAGE(E, M)` macro. `HFST_THROW_MESSAGE!(Kind, message)`.
-#[macro_export]
-macro_rules! HFST_THROW_MESSAGE {
-    ($kind:ident, $m:expr) => {{ $crate::err!($kind, $m).throw() }};
 }

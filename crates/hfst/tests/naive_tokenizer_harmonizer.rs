@@ -234,7 +234,7 @@ fn under_padded_harmonizer_keeps_every_transition() {
     // as the pmatch runtime does; if the short padding lost an arc, the two
     // reconstructions would differ.
     let decoded = |ol: &Transducer<WeightedTables>| {
-        let basic = ConversionFunctions::hfst_ol_to_hfst_basic_transducer(ol);
+        let basic = ConversionFunctions::hfst_ol_to_hfst_basic_transducer(ol).expect("decodable");
         HfstTransducer::<StdVectorFst>::new_from_basic(&basic).expect("decodable")
     };
     let source = HfstTransducer::<StdVectorFst>::new_from_basic(&tokenizer).expect("decodable");
