@@ -9535,6 +9535,27 @@ children (
                 kind @fix
                 deps (predict.walk predict.embed)
             }
+
+            {
+                id predict.walk-speed
+                title "Bring the walk on lang-kal under keyboard latency: next() averages 0.2 s and peaks at 1.4 s, and after long derivation chains 2-4% of walks reach the 1M-configuration bound and lose candidates (ator +TUQ +SSAQ +NNGUR offers 698 of 1,080); the walk keeps nothing between calls, so start by keeping what each state reaches through epsilon and flag arcs, and the word's own walk, across calls"
+                kind @perf
+                deps (predict.walk predict.kal-check)
+            }
+
+            {
+                id predict.kal-check-runner
+                title "Let the ignored lang-kal checks run under nextest: the repository's profile kills every test at 10 s, so `cargo nextest run --run-ignored only --test prediction_kal` stops tests that take 4 to 8 minutes; give binary(prediction_kal) its own timeout in .config/nextest.toml"
+                kind @test
+                deps (predict.kal-check)
+            }
+
+            {
+                id predict.kal-grammar
+                title "Tidy the Greenlandic unit grammar before offering it to lang-kal: keys carry +Orth/Alt, +Orth/Arch, +Use/-Spell and +OLang/DAN because only +Gram/* and +Sem/* are hidden; many endings come in pairs with a +AAT variant, so check whether +AAT is an enclitic; +T(S)IP+Der/vv has a name in neither list"
+                kind @chore
+                deps (predict.kal-check)
+            }
         )
     }
 
