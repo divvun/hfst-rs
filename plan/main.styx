@@ -9404,8 +9404,24 @@ children (
 
             {
                 id predict.embed
-                title "Expose prediction through hfst-embed's read-only surface, a session over a generator, a unit grammar and a model, and the model builder behind its compile feature, so @divvun/hfst and divvun-hfst can bind them"
+                title "Expose prediction through hfst-embed's read-only surface: a predictor over a generator's optimized-lookup bytes, a unit grammar and a model, with entry, units next, picking, backspace, commit, preview and the faces, so @divvun/hfst and divvun-hfst can bind it without the compilers"
                 deps (predict.walk predict.model)
+                sealed true
+                log (
+                    {
+                        at 2026-11-11T16:17:54.285787Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
+
+                    {
+                        at 2026-11-11T16:38:32.468048Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan complete)"
+                    }
+                )
             }
 
             {
@@ -9435,6 +9451,12 @@ children (
                 title "Check that the generator accepts a reading with a walk that stops at the first final configuration, in place of a full lookup that enumerates every surface form: the model builder spends about 10 ms per reading on lang-kal's generator, too slow for corpora of millions of words"
                 kind @perf
                 deps (predict.walk predict.model)
+            }
+
+            {
+                id predict.embed-builder
+                title "Expose the prediction model builder behind hfst-embed's compile feature, once that feature exists, so divvun-hfst and @divvun/hfst/compile can build models from analysed text"
+                deps (predict.embed compile-surface.embed-transducer)
             }
         )
     }

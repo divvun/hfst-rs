@@ -7,15 +7,17 @@
 //! give the same answers for the same bytes.
 //!
 //! It reads optimized-lookup transducers, pmatch containers and DHFST files
-//! from bytes. Nothing in it reaches a compiler, the foma backend, the tropical
-//! OpenFst backend or the transducer algebra, so a module built over it links
-//! none of them.
+//! from bytes, and predicts words a unit at a time from a language's
+//! generator, unit grammar and prediction model. Nothing in it reaches a
+//! compiler, the foma backend, the tropical OpenFst backend or the transducer
+//! algebra, so a module built over it links none of them.
 
 pub mod dhfst;
 pub mod error;
 pub mod format;
 pub mod lookup;
 pub mod optimised;
+pub mod predict;
 mod stream;
 pub mod tokenise;
 pub mod transducer;
