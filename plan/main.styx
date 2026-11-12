@@ -9682,6 +9682,34 @@ children (
                     }
                 )
             }
+
+            {
+                id predict.noun-filters
+                title "Make person filters work for Plains Cree nouns: lang-crk's noun possessor prefixes set the person flag with @P, which overwrites the filter's @U value, so after ni- a noun still offers all 27 endings (3,204 of 3,214 held-out noun tokens are offered the same units with the filter as without); decide in the spec whether a filter's flags are applied at the start, checked when the word completes, or both"
+                kind @fix
+                deps (predict.crk-comparison)
+            }
+
+            {
+                id predict.filter-scoring
+                title "Count and score filters: the model never counts a filter, so at the start of a word ni- and ki- rank after every prefix the model has seen, and the harness's simulated user never picks one, so person-first entry cannot be measured in keystrokes; measured directly, the filter lifts the right ending to first place for 67.2% of held-out ni- verbs, against 27.6% without it"
+                kind @feat
+                deps (predict.crk-comparison)
+            }
+
+            {
+                id predict.recording-format
+                title "Let a recording vary by fold and by context and mark complete words: suggestions are keyed by word and prefix alone, so a baseline retrained per fold, or one that uses the previous word, cannot be one recording and is scored outside the harness, and a recorded suggestion cannot say it is a complete word"
+                kind @feat
+                deps (predict.crk-comparison)
+            }
+
+            {
+                id predict.crk-whole-words
+                title "Measure whole-word offers on the Plains Cree comparison text: units alone saved 25.9% with three suggestions against 29.4% for lang-crk's speller with fairly counted weights; add the hybrid's numbers to docs/prediction/crk-comparison.md"
+                kind @docs
+                deps (predict.crk-comparison predict.whole-words)
+            }
         )
     }
 
