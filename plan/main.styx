@@ -9926,4 +9926,21 @@ children (
             }
         )
     }
+
+    {
+        id path-extraction-time
+        title "Path extraction copied the path for the callback at every state, and fst2strings rebuilt the path's strings at every state, so a path n states long took time quadratic in n; lending the walk's own path and extending the strings take linear time"
+        kind @perf
+        implements {
+            target-impl (
+                [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.extract-paths-fn]
+                [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.extract-paths-fn]
+                [spec:hfst:sem:hfst-ol-transducer.hfst.implementations.extract-paths-fn]
+                [spec:hfst:sem:hfst-ol-transducer.hfst.implementations.hfst-ol-transducer.extract-paths-fn]
+                [spec:hfst:sem:hfst-extract-strings.hfst.extract-strings-cb.operator-fn]
+                [spec:hfst:sem:hfst-fst2strings.callback.operator-fn]
+            )
+        }
+        deps (path-extraction-memory)
+    }
 )
