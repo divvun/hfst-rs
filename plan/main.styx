@@ -9734,6 +9734,13 @@ children (
                     }
                 )
             }
+
+            {
+                id predict.stem-slot
+                title "Keep a stem on show beside its own whole words: with one word per stem, Plains Cree two-unit words gain 12 points but words of three or more units lose 1 to 4, and Greenlandic loses 0.6 to 1.6 overall, because the leftover-score rule drops a stem below its own word and out of the shown list (459 of 1,290 stems on Cree's typed starts); find a rule that keeps both gains, such as keeping the stem's place while it has likely endings left, and measure it on kal, crk and sme"
+                kind @feat
+                deps (predict.whole-words predict.crk-whole-words)
+            }
         )
     }
 
