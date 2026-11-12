@@ -12,13 +12,12 @@ use hfst::hfst_symbol_defs::{StringSet, is_epsilon};
 use hfst::hfst_transducer::{AnyTransducer, HfstTransducer};
 use hfst::lookup_driver::{
     AmbiguityLimit, FlagPolicy, LookupCascade, LookupEngineOptions, LookupReporter, PairPrintStyle,
-    is_optimized_lookup_type,
 };
 use hfst::pair_test_driver::PairTestGrammar;
 use hfst::pmatch::PmatchContainer;
 use hfst::tools::fst2strings::{Fst2StringsError, PathQuery, extract_paths, extract_paths_ol};
 use hfst::tools::grep::{Dialect, Matcher, PatternError};
-use hfst::tools::lookup::{Lookup, LookupError};
+use hfst::tools::lookup::{CascadeError, FlookupCascade, Lookup, LookupError};
 use hfst::tools::optimized_lookup::{OptimizedLookup, OptimizedLookupOutcome};
 use hfst::tools::pair_test::{PairTestError, PairTester, ReportOptions, read_test_cases};
 use hfst::tools::pmatch::{InputSplitter, reported_locations};
@@ -512,7 +511,7 @@ pub struct FlookupOptions {
     /// Look up as the transducers are, rather than inverted: `--invert`.
     pub invert: bool,
     /// Look up in optimized lookup without `invert`, as `--force-ol`, which
-    /// looks up as the transducer is.
+    /// inverts it through tropical OpenFst where it is otherwise refused.
     pub force_ol: bool,
     pub obey_flags: bool,
     pub show_flags: bool,
@@ -607,6 +606,21 @@ fn report_of(
     })
 }
 
+/// Why a lookup refused its transducers, as the library decides it.
+fn cascade_error(e: CascadeError) -> Error {
+    match e {
+        CascadeError::Library(e) => Error::from(e),
+        CascadeError::InvertsOptimizedLookup => Error::new(
+            Code::TypeMismatch,
+            "lookup not supported for optimized lookup transducers: convert to openfst format, invert, and convert back to optimized lookup format or set force_ol",
+        ),
+        e
+        @ (CascadeError::PairsOnOptimizedLookup | CascadeError::IgnoresFlagsOnOptimizedLookup) => {
+            Error::new(Code::TypeMismatch, e.to_string())
+        }
+    }
+}
+
 // [spec:hfst:req:embed.operations]
 /// `hfst lookup` on the stream `transducers`: what it reports for each of
 /// `lines`.
@@ -640,17 +654,8 @@ pub fn lookup_report(
         },
         pair_style: PairPrintStyle::Lookup,
     };
-    if !options.obey_flags
-        && transducers
-            .first()
-            .is_some_and(|t| is_optimized_lookup_type(t.inner.get_type()))
-    {
-        return Err(Error::new(
-            Code::TypeMismatch,
-            "not obeying flags not supported on optimized lookup transducers",
-        ));
-    }
-    let lookup = Lookup::new(cascade, engine, options.input_format.library())?;
+    let lookup =
+        Lookup::new(cascade, engine, options.input_format.library()).map_err(cascade_error)?;
     lines
         .iter()
         .map(|line| {
@@ -673,43 +678,14 @@ pub fn flookup_report(
     lines: &[&str],
     options: &FlookupOptions,
 ) -> Result<Vec<LookupReport>, Error> {
-    let mut held: Vec<AnyTransducer> = Vec::new();
+    // [spec:hfst:req:embed.tools-in-library]
+    let mut cascade = FlookupCascade::new(options.invert, options.force_ol);
     for t in transducers {
-        let ty = t.inner.get_type();
-        if is_optimized_lookup_type(ty) && !options.invert && !options.force_ol {
-            return Err(Error::new(
-                Code::TypeMismatch,
-                "lookup not supported for optimized lookup transducers: convert to openfst format, invert, and convert back to optimized lookup format or set force_ol",
-            ));
-        }
-        let mut copy = t.inner.copy()?;
-        if !options.invert {
-            copy = match copy {
-                AnyTransducer::Tropical(mut t) => {
-                    t.invert()?;
-                    AnyTransducer::Tropical(t)
-                }
-                AnyTransducer::Foma(mut t) => {
-                    t.invert()?;
-                    AnyTransducer::Foma(t)
-                }
-                ol @ (AnyTransducer::OlW(_) | AnyTransducer::OlU(_) | AnyTransducer::Thfst(_)) => {
-                    let mut tropical =
-                        ol.converted(ImplementationType::TROPICAL_OPENFST_TYPE, "")?;
-                    if let AnyTransducer::Tropical(t) = &mut tropical {
-                        t.invert()?;
-                    }
-                    tropical.converted(ty, "")?
-                }
-            };
-        }
-        held.push(copy);
+        cascade
+            .push_borrowed(&t.inner, "", &Logged)
+            .map_err(cascade_error)?;
     }
-    let mut cascade = LookupCascade::new();
-    for t in &held {
-        cascade.begin_transducer(t, "", &Logged);
-        cascade.push_borrowed(t, &Logged)?;
-    }
+    let cascade = cascade.finish(false).map_err(cascade_error)?;
     let engine = LookupEngineOptions {
         obey_flags: options.obey_flags,
         show_flags: options.show_flags,
@@ -725,7 +701,8 @@ pub fn flookup_report(
         ambiguity: AmbiguityLimit::Cycles,
         pair_style: PairPrintStyle::Flookup,
     };
-    let lookup = Lookup::new(cascade, engine, options.input_format.library())?;
+    let lookup =
+        Lookup::new(cascade, engine, options.input_format.library()).map_err(cascade_error)?;
     lines
         .iter()
         .map(|line| {

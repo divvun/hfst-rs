@@ -28,6 +28,7 @@ impl<B: AlgebraBackend + 'static> PmatchEvalContext<B> {
             call_stack: Vec::new(),
             eval_stack: Vec::new(),
             in_expansion: BTreeSet::new(),
+            definition_depths: HashMap::new(),
             def_insed_expressions: BTreeMap::new(),
             inserted_names: BTreeSet::new(),
             uncomposed: BTreeSet::new(),
@@ -80,6 +81,7 @@ impl<B: AlgebraBackend + 'static> PmatchEvalContext<B> {
         self.call_stack.clear();
         self.eval_stack.clear();
         self.in_expansion.clear();
+        self.definition_depths.clear();
         self.def_insed_expressions.clear();
         self.inserted_names.clear();
         self.unsatisfied_insertions.clear();
@@ -219,7 +221,7 @@ impl<B: AlgebraBackend + 'static> PmatchEvalContext<B> {
         name: &str,
         expand: impl FnOnce(&mut Self) -> crate::error::Result<T>,
     ) -> crate::error::Result<T> {
-        if !self.in_expansion.insert(name.to_string()) {
+        if self.in_expansion.contains(name) {
             crate::bail!(
                 Hfst,
                 format!(
@@ -227,10 +229,37 @@ impl<B: AlgebraBackend + 'static> PmatchEvalContext<B> {
                 )
             );
         }
+        let Some(_descent) = self.descend_into(name) else {
+            return Err(too_deep_through(name));
+        };
+        self.in_expansion.insert(name.to_string());
         let result = expand(self);
         self.in_expansion.remove(name);
         result
     }
+
+    // [spec:hfst:req:embed.no-panic]
+    /// The levels of [`crate::depth::MAX_EXPRESSION_DEPTH`] evaluating the
+    /// definition or function `name` descends, held while it does: its
+    /// body's depth and the reference to it. `None` past the limit.
+    pub(super) fn descend_into(&self, name: &str) -> Option<crate::depth::Descent> {
+        let body = self.definition_depths.get(name).copied().unwrap_or(0);
+        crate::depth::Descent::enter(body + 1)
+    }
+
+    /// Evaluate the definition `name`, `object`, at the top of the compile,
+    /// failing as [`Self::expanding`] does when it is too deep.
+    pub(super) fn evaluate_definition(
+        &mut self,
+        name: &str,
+        object: &ObjRef<B>,
+    ) -> crate::error::Result<HfstTransducer<B>> {
+        let Some(_descent) = self.descend_into(name) else {
+            return Err(too_deep_through(name));
+        };
+        object.evaluate(self)
+    }
+
     pub(super) fn eval_stack_last(&self) -> Option<String> {
         self.eval_stack.last().cloned()
     }
@@ -292,4 +321,16 @@ impl<B: AlgebraBackend + 'static> PmatchEvalContext<B> {
         }
         crate::err!(Hfst, errmsg)
     }
+}
+
+/// The error evaluating `name` fails with when it, with the definitions it
+/// goes through, nests past [`crate::depth::MAX_EXPRESSION_DEPTH`].
+fn too_deep_through(name: &str) -> crate::error::Error {
+    crate::err!(
+        Hfst,
+        format!(
+            "{name} nests operators more than {} deep, with the definitions it uses",
+            crate::depth::MAX_EXPRESSION_DEPTH
+        )
+    )
 }

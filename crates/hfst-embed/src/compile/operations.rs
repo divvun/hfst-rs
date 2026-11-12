@@ -48,17 +48,20 @@ fn binary_warning(w: BinaryWarning) {
     }
 }
 
+// [spec:hfst:req:embed.no-panic]
 /// Run `$body` with `$t` the typed transducer of an algebra type, or refuse
-/// optimized lookup as `$tool` does.
+/// optimized lookup as `$tool` does. It runs on the stack a compile is
+/// given, which the algebra's recursion, such as minimizing along a long
+/// path, is measured against.
 macro_rules! algebra {
     ($self:expr, $tool:expr, $t:ident => $body:expr) => {
-        match &mut $self.inner {
+        hfst::depth::on_compile_stack(|| match &mut $self.inner {
             AnyTransducer::Tropical($t) => $body,
             AnyTransducer::Foma($t) => $body,
             AnyTransducer::OlW(_) | AnyTransducer::OlU(_) | AnyTransducer::Thfst(_) => {
                 Err(refuses_optimized_lookup($tool))
             }
-        }
+        })
     };
 }
 
@@ -126,9 +129,11 @@ fn binary_operand<'o>(
     }
 }
 
+// [spec:hfst:req:embed.no-panic]
 /// Run a binary operation: `$body` with `$f` the typed transducer and `$s`
 /// the operand of the same type, as a library [`lib::Operand`] when the
-/// operation may change it (`mut $s`), else as a typed reference.
+/// operation may change it (`mut $s`), else as a typed reference. It runs on
+/// the stack a compile is given, as [`algebra`] does.
 macro_rules! binary {
     ($self:expr, $other:expr, $tool:expr, $noun:expr, $do_not_convert:expr, $f:ident, mut $s:ident => $body:expr) => {
         binary!(@run $self, $other, $tool, $noun, $do_not_convert, $f, s => {
@@ -139,7 +144,8 @@ macro_rules! binary {
     ($self:expr, $other:expr, $tool:expr, $noun:expr, $do_not_convert:expr, $f:ident, $s:ident => $body:expr) => {
         binary!(@run $self, $other, $tool, $noun, $do_not_convert, $f, $s => $body)
     };
-    (@run $self:expr, $other:expr, $tool:expr, $noun:expr, $do_not_convert:expr, $f:ident, $s:ident => $body:expr) => {{
+    (@run $self:expr, $other:expr, $tool:expr, $noun:expr, $do_not_convert:expr, $f:ident, $s:ident => $body:expr) => {
+        hfst::depth::on_compile_stack(|| {
         let mut itself = None;
         let mut converted = None;
         let second = binary_operand(
@@ -159,7 +165,8 @@ macro_rules! binary {
                 "the operands did not convert to one type",
             )),
         }
-    }};
+        })
+    };
 }
 
 /// `hfst determinize`'s options.
@@ -711,20 +718,24 @@ impl Transducer {
                 ),
             ));
         }
-        let analyzer: HfstTransducer<StdVectorFst> = match &self.inner {
-            AnyTransducer::Tropical(t) => HfstTransducer::new_copy(t)?,
-            other @ (AnyTransducer::OlW(_)
-            | AnyTransducer::OlU(_)
-            | AnyTransducer::Foma(_)
-            | AnyTransducer::Thfst(_)) => other.copy()?.into_typed()?,
-        };
-        let mut guesser = hfst::guessify_fst::guessify_analyzer(analyzer, options.default_penalty)?;
-        let (guesser, generator) = hfst::guessify_fst::guesser_transducers(
-            &mut guesser,
-            !options.do_not_compile_generator,
-        )?;
-        self.inner = AnyTransducer::OlW(guesser);
-        Ok(generator.map(|g| Transducer::new(AnyTransducer::OlW(g))))
+        // [spec:hfst:req:embed.no-panic]
+        hfst::depth::on_compile_stack(|| {
+            let analyzer: HfstTransducer<StdVectorFst> = match &self.inner {
+                AnyTransducer::Tropical(t) => HfstTransducer::new_copy(t)?,
+                other @ (AnyTransducer::OlW(_)
+                | AnyTransducer::OlU(_)
+                | AnyTransducer::Foma(_)
+                | AnyTransducer::Thfst(_)) => other.copy()?.into_typed()?,
+            };
+            let mut guesser =
+                hfst::guessify_fst::guessify_analyzer(analyzer, options.default_penalty)?;
+            let (guesser, generator) = hfst::guessify_fst::guesser_transducers(
+                &mut guesser,
+                !options.do_not_compile_generator,
+            )?;
+            self.inner = AnyTransducer::OlW(guesser);
+            Ok(generator.map(|g| Transducer::new(AnyTransducer::OlW(g))))
+        })
     }
 
     // [spec:hfst:req:embed.operations]
@@ -789,29 +800,32 @@ impl Transducer {
                 "Must give target labels with -t, -T or -F",
             ));
         };
-        let mut converted = None;
-        let mut itself = None;
-        let replacement = binary_operand(
-            &mut self.inner,
-            Operand::Other(to.transducer),
-            &mut itself,
-            &mut converted,
-            "substitute",
-            "substitution",
-            options.do_not_convert,
-        )?;
-        match (&mut self.inner, replacement) {
-            (AnyTransducer::Tropical(t), AnyTransducer::Tropical(r)) => {
-                substitute_by_transducer(t, &from, r, to.name)
+        // [spec:hfst:req:embed.no-panic]
+        hfst::depth::on_compile_stack(|| {
+            let mut converted = None;
+            let mut itself = None;
+            let replacement = binary_operand(
+                &mut self.inner,
+                Operand::Other(to.transducer),
+                &mut itself,
+                &mut converted,
+                "substitute",
+                "substitution",
+                options.do_not_convert,
+            )?;
+            match (&mut self.inner, replacement) {
+                (AnyTransducer::Tropical(t), AnyTransducer::Tropical(r)) => {
+                    substitute_by_transducer(t, &from, r, to.name)
+                }
+                (AnyTransducer::Foma(t), AnyTransducer::Foma(r)) => {
+                    substitute_by_transducer(t, &from, r, to.name)
+                }
+                _ => Err(Error::new(
+                    Code::Internal,
+                    "the operands did not convert to one type",
+                )),
             }
-            (AnyTransducer::Foma(t), AnyTransducer::Foma(r)) => {
-                substitute_by_transducer(t, &from, r, to.name)
-            }
-            _ => Err(Error::new(
-                Code::Internal,
-                "the operands did not convert to one type",
-            )),
-        }
+        })
     }
 
     // [spec:hfst:req:embed.operations]

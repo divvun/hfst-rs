@@ -23,18 +23,14 @@ use crate::CliLookupReporter;
 use crate::cli::{self, CommonArgs, ToolArgs, ToolResult, UnaryIo};
 use crate::globals::CommonOptions;
 use crate::hfst_commandline::{hfst_error, hfst_set_program_name, hfst_warning, verbose_print};
-use hfst::hfst_data_types::ImplementationType;
 use hfst::hfst_input_stream::HfstInputStream;
 use hfst::hfst_lookup_format::{
     CascadeVariant, LookupFormats, LookupInputFormat, LookupOutputFormat, LookupRenderOptions,
     LookupStats, print_lookups,
 };
-use hfst::lookup_driver::{
-    AmbiguityLimit, FlagPolicy, LookupCascade, LookupEngineOptions, PairPrintStyle,
-    is_optimized_lookup_type,
-};
+use hfst::lookup_driver::{AmbiguityLimit, FlagPolicy, LookupEngineOptions, PairPrintStyle};
 use hfst::tools::format::format_description;
-use hfst::tools::lookup::{LineLookup, Lookup};
+use hfst::tools::lookup::{FlookupCascade, LineLookup, Lookup};
 use std::io::{BufRead, Write};
 
 // ---------------------------------------------------------------------------
@@ -562,68 +558,20 @@ fn process_stream(
     outstream: &mut dyn Write,
 ) -> i32 {
     let reporter = CliLookupReporter::new(common);
-    let mut cascade = LookupCascade::new();
+    let mut cascade = FlookupCascade::new(options.invert, options.force_ol);
 
     while inputstream.is_good() {
         // [spec:hfst:def:hfst-flookup.trans-fn]
         // [spec:hfst:sem:hfst-flookup.trans-fn]
-        let mut trans = match inputstream.read() {
+        let trans = match inputstream.read() {
             Ok(t) => t,
             Err(e) => {
                 hfst_error(common, 1, 0, &format!("{e}"));
                 return 1;
             }
         };
-        let ty = trans.get_type();
-        if is_optimized_lookup_type(ty) && !options.invert && !options.force_ol {
-            hfst_error(
-                common,
-                1,
-                0,
-                "lookup not supported for optimized lookup transducers: convert to openfst format,\n\
-                 invert, and convert back to optimized lookup format or specify --force-ol\n",
-            );
-        }
-
-        cascade.begin_transducer(&trans, &common.input_filename, &reporter);
-
-        if !options.invert {
-            if !is_optimized_lookup_type(ty) {
-                crate::for_algebra!(&mut trans, t => {
-                    if let Err(e) = t.invert() {
-                        hfst_error(common, 1, 0, &format!("{e}"));
-                        return 1;
-                    }
-                }, else => {
-                    unreachable!("non-OL stream type paired with an OL transducer")
-                });
-            } else {
-                // the C++ convert / invert / convert round-trip, as typed
-                // conversions at this boundary
-                trans = match trans.convert(ImplementationType::TROPICAL_OPENFST_TYPE, "") {
-                    Ok(v) => v,
-                    Err(e) => {
-                        hfst_error(common, 1, 0, &format!("{e}"));
-                        return 1;
-                    }
-                };
-                if let hfst::hfst_transducer::AnyTransducer::Tropical(t) = &mut trans
-                    && let Err(e) = t.invert()
-                {
-                    hfst_error(common, 1, 0, &format!("{e}"));
-                    return 1;
-                }
-                trans = match trans.convert(ty, "") {
-                    Ok(v) => v,
-                    Err(e) => {
-                        hfst_error(common, 1, 0, &format!("{e}"));
-                        return 1;
-                    }
-                };
-            }
-        }
-
-        if let Err(e) = cascade.push_transducer(trans, &reporter) {
+        // [spec:hfst:req:embed.tools-in-library]
+        if let Err(e) = cascade.push(trans, &common.input_filename, &reporter) {
             hfst_error(common, 1, 0, &format!("{e}"));
             return 1;
         }
@@ -631,14 +579,13 @@ fn process_stream(
 
     inputstream.close();
 
-    if options.print_pairs && is_optimized_lookup_type(inputstream.get_type()) {
-        hfst_error(
-            common,
-            1,
-            0,
-            "pair printing not supported on optimized lookup transducers",
-        );
-    }
+    let cascade = match cascade.finish(options.print_pairs) {
+        Ok(cascade) => cascade,
+        Err(e) => {
+            hfst_error(common, 1, 0, &format!("{e}"));
+            return 1;
+        }
+    };
 
     let mut line: String;
 

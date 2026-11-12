@@ -21,9 +21,7 @@ impl<B: AlgebraBackend> XreCompiler<B> {
             self.contains_only_comments = true;
             return None;
         }
-        // Reject pathologically deep nesting before it can overflow the parser's
-        // recursion; report it as an ordinary parse failure, never an abort.
-        if exceeds_max_nesting_depth(src) {
+        if !self.shallow_enough(src) {
             return None;
         }
         match parse(src) {
@@ -84,9 +82,7 @@ impl<B: AlgebraBackend> XreCompiler<B> {
             *chars_read = 0;
             return None;
         }
-        // Reject pathologically deep nesting before it can overflow the parser's
-        // recursion; report it as an ordinary parse failure, never an abort.
-        if exceeds_max_nesting_depth(expression) {
+        if !self.shallow_enough(expression) {
             *chars_read = 0;
             return None;
         }
@@ -120,6 +116,24 @@ impl<B: AlgebraBackend> XreCompiler<B> {
         }
     }
 
+    // [spec:hfst:req:embed.no-panic]
+    /// Whether `src` parses to no more than the parser and the evaluator can
+    /// descend into on the stack a compile has (see [`crate::depth`]). Too
+    /// deep, it fails as an ordinary parse failure would, never an abort.
+    /// Brackets nested past [`crate::depth::MAX_NESTING_DEPTH`] fail with
+    /// nothing said, which is what regexp2fst prints for them; any other
+    /// limit with an error naming it.
+    fn shallow_enough(&mut self, src: &str) -> bool {
+        match crate::depth::scan_xre(src) {
+            Ok(_) => true,
+            Err(e) if e.limit == crate::depth::Limit::Nesting => false,
+            Err(e) => {
+                self.diag_at(e.span.clone(), Severity::Error, &e.to_string());
+                false
+            }
+        }
+    }
+
     /// Evaluate a parsed root, reporting why it failed when it does.
     fn eval_reported(&mut self, expression: &SpannedXre) -> Option<HfstTransducer<B>> {
         match self.eval_finalized(expression) {
@@ -137,44 +151,4 @@ impl<B: AlgebraBackend> XreCompiler<B> {
 fn is_only_whitespace_or_comments(src: &str) -> bool {
     src.lines()
         .all(|line| line.trim_start().is_empty() || line.trim_start().starts_with('!'))
-}
-
-/// Ceiling on grouping-delimiter nesting depth accepted before parsing.
-///
-/// The `nfst-xre` parser is recursive-descent and the AST evaluator recurses
-/// per node, so pathologically deep bracket/paren nesting (`[[[[…`) exhausts
-/// even the worker thread's large stack and aborts the process (SIGABRT), which
-/// no `catch_unwind` can recover. Rejecting over-deep input up front turns that
-/// abort into an ordinary parse failure. The bound sits far below the empirical
-/// overflow point (~12k) yet far above any hand-written grammar's real nesting.
-const MAX_NESTING_DEPTH: usize = 4000;
-
-/// Whether `src`'s grouping-delimiter nesting (`[`, `(`, `[.`) ever runs deeper
-/// than [`MAX_NESTING_DEPTH`]. `%`-escaped characters and `"…"`-quoted literals
-/// are skipped so their brackets never count toward the depth.
-fn exceeds_max_nesting_depth(src: &str) -> bool {
-    let mut depth: usize = 0;
-    let mut in_quote = false;
-    let mut chars = src.chars();
-    while let Some(c) = chars.next() {
-        match c {
-            '"' => in_quote = !in_quote,
-            // Inside a quoted literal '%' is itself, not an escape.
-            _ if in_quote => {}
-            // A '%' escapes the next character (an ordinary literal, never a
-            // grouping delimiter); consume it so its bracket does not count.
-            '%' => {
-                let _ = chars.next();
-            }
-            '[' | '(' => {
-                depth += 1;
-                if depth > MAX_NESTING_DEPTH {
-                    return true;
-                }
-            }
-            ']' | ')' => depth = depth.saturating_sub(1),
-            _ => {}
-        }
-    }
-    false
 }

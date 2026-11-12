@@ -506,6 +506,90 @@ fn lookups_report_within_the_beam() {
     assert!(unknown.results.is_empty());
 }
 
+fn engine(obey_flags: bool, flags: FlagPolicy) -> LookupEngineOptions {
+    LookupEngineOptions {
+        obey_flags,
+        show_flags: false,
+        print_pairs: false,
+        print_space: false,
+        quote_special: false,
+        epsilon_format: String::new(),
+        beam: -1.0,
+        time_cutoff: 0.0,
+        infinite_cutoff: 5,
+        cascade: CascadeVariant::Union,
+        flags,
+        ambiguity: AmbiguityLimit::Cycles,
+        pair_style: PairPrintStyle::Flookup,
+    }
+}
+
+// [spec:hfst:req:embed.tools-in-library/test]
+// flookup inverts each transducer unless told to look up as it is, through
+// tropical OpenFst for optimized lookup, which it refuses unless forced;
+// optimized lookup prints no pairs, and lookup obeys its flags.
+#[test]
+fn lookup_cascades_refuse_as_the_tools_do() {
+    use super::lookup::{CascadeError, FlookupCascade};
+    let quiet = Quiet::default();
+    let ol = || {
+        AnyTransducer::Tropical(regex("{cat}:{dog}"))
+            .convert(
+                crate::hfst_data_types::ImplementationType::HFST_OLW_TYPE,
+                "",
+            )
+            .expect("converts")
+    };
+    let mut cascade = FlookupCascade::new(false, false);
+    assert!(matches!(
+        cascade.push(ol(), "", &quiet),
+        Err(CascadeError::InvertsOptimizedLookup)
+    ));
+    let lookup_inverted = |as_is: bool, force_ol: bool, t: AnyTransducer, word: &str| {
+        let mut cascade = FlookupCascade::new(as_is, force_ol);
+        cascade.push(t, "", &quiet).expect("pushes");
+        let cascade = cascade.finish(false).expect("finishes");
+        let lookup = Lookup::new(
+            cascade,
+            engine(true, FlagPolicy::PostFilter),
+            LookupInputFormat::Utf8TokenInput,
+        )
+        .expect("ready");
+        let found = lookup
+            .look_up(word, &quiet, &mut std::io::sink(), &mut std::io::sink())
+            .expect("looks up");
+        found
+            .results
+            .iter()
+            .map(|path| reported_symbols(path, false).concat())
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(lookup_inverted(true, false, ol(), "cat"), ["dog"]);
+    assert_eq!(lookup_inverted(false, true, ol(), "dog"), ["cat"]);
+    let tropical = AnyTransducer::Tropical(regex("{cat}:{dog}"));
+    assert_eq!(lookup_inverted(false, false, tropical, "dog"), ["cat"]);
+
+    let mut cascade = FlookupCascade::new(true, false);
+    cascade.push(ol(), "", &quiet).expect("pushes");
+    assert!(matches!(
+        cascade.finish(true),
+        Err(CascadeError::PairsOnOptimizedLookup)
+    ));
+
+    let t = ol();
+    let mut cascade = LookupCascade::new();
+    cascade.begin_transducer(&t, "", &quiet);
+    cascade.push_borrowed(&t, &quiet).expect("pushes");
+    assert!(matches!(
+        Lookup::new(
+            cascade,
+            engine(false, FlagPolicy::InLookup),
+            LookupInputFormat::Utf8TokenInput
+        ),
+        Err(CascadeError::IgnoresFlagsOnOptimizedLookup)
+    ));
+}
+
 // [spec:hfst:req:embed.tools-in-library/test]
 #[test]
 fn guesses_print_as_the_tool_prints() {

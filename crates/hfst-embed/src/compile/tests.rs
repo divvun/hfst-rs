@@ -987,3 +987,172 @@ fn xfst_scripts_read_and_write_through_the_resolver() {
     .expect("refused");
     assert_eq!(refused.error.code().name(), "invalid-argument");
 }
+
+/// Run `f` on a thread with a stack of 1 MiB, less than a Python thread or
+/// a Rust thread has by default.
+fn on_a_small_stack<T: Send>(f: impl FnOnce() -> T + Send) -> T {
+    std::thread::scope(|scope| {
+        std::thread::Builder::new()
+            .stack_size(1024 * 1024)
+            .spawn_scoped(scope, f)
+            .expect("a thread")
+            .join()
+            .expect("no panic")
+    })
+}
+
+fn brackets(n: usize) -> String {
+    format!("{}a{}", "[".repeat(n), "]".repeat(n))
+}
+
+/// Every message a failed compile gave.
+fn said(failed: &CompileError) -> String {
+    let mut said = vec![failed.error.to_string()];
+    said.extend(failed.diagnostics.iter().map(|d| d.message().to_string()));
+    said.join("; ")
+}
+
+// [spec:hfst:req:embed.no-panic/test]
+// Each compiler and an xfst run nest as deep as they may on a caller's
+// small stack, which 2000 brackets overflow many times over, as they run on
+// a stack of their own.
+#[test]
+fn compiles_run_on_a_stack_of_their_own() {
+    let deep = brackets(2000);
+    on_a_small_stack(|| {
+        let files = memory(&[]);
+        let regex = format!("{deep} ;\n");
+        compile_regexps(
+            source("deep.xre", &regex),
+            Format::OpenFstTropical,
+            &RegexpOptions::default(),
+            files.clone(),
+        )
+        .expect("a regex compiles");
+        let lexicon = format!("LEXICON Root\n< {deep} > # ;\n");
+        compile_lexc(
+            &[source("deep.lexc", &lexicon)],
+            Format::OpenFstTropical,
+            &LexcOptions::default(),
+            files.clone(),
+        )
+        .expect("a lexicon compiles");
+        let grammar = format!("Alphabet a b ;\nRules\n\"r\"\na:b <=> {deep} _ ;\n");
+        compile_twolc(
+            source("deep.twolc", &grammar),
+            Format::OpenFstTropical,
+            &TwolcOptions::default(),
+        )
+        .expect("a grammar compiles");
+        let script = format!("Define TOP {deep} ;\n");
+        compile_pmatch(
+            source("deep.pmatch", &script),
+            &Pmatch2FstOptions::default(),
+            files.clone(),
+        )
+        .expect("a pmatch script compiles");
+        let script = format!("regex {deep} ;\n");
+        compile_xfst(
+            source("deep.xfst", &script),
+            "",
+            Format::OpenFstTropical,
+            &XfstOptions::default(),
+            files,
+        )
+        .expect("an xfst script runs");
+    });
+}
+
+// [spec:hfst:req:embed.no-panic/test]
+// Past the limits each fails with an error that says so, never an abort.
+#[test]
+fn compiles_too_deep_fail_with_errors() {
+    let nested = brackets(hfst::depth::MAX_NESTING_DEPTH + 1);
+    let operators = format!("{}a", "~".repeat(hfst::depth::MAX_EXPRESSION_DEPTH + 1));
+    on_a_small_stack(|| {
+        let files = memory(&[]);
+        let regex = format!("{operators} ;\n");
+        let failed = compile_regexps(
+            source("deep.xre", &regex),
+            Format::OpenFstTropical,
+            &RegexpOptions::default(),
+            files.clone(),
+        )
+        .err()
+        .expect("too deep");
+        assert!(
+            said(&failed).contains("operators are nested more than"),
+            "{}",
+            said(&failed)
+        );
+        let lexicon = format!("LEXICON Root\n< {nested} > # ;\n");
+        let failed = compile_lexc(
+            &[source("deep.lexc", &lexicon)],
+            Format::OpenFstTropical,
+            &LexcOptions::default(),
+            files.clone(),
+        )
+        .err()
+        .expect("too deep");
+        assert!(
+            said(&failed).contains("brackets are nested more than"),
+            "{}",
+            said(&failed)
+        );
+        let grammar = format!("Alphabet a b ;\nRules\n\"r\"\na:b <=> {operators} _ ;\n");
+        let failed = compile_twolc(
+            source("deep.twolc", &grammar),
+            Format::OpenFstTropical,
+            &TwolcOptions::default(),
+        )
+        .err()
+        .expect("too deep");
+        assert!(
+            said(&failed).contains("operators are nested more than"),
+            "{}",
+            said(&failed)
+        );
+        let script = format!("Define TOP {nested} ;\n");
+        let failed = compile_pmatch(
+            source("deep.pmatch", &script),
+            &Pmatch2FstOptions::default(),
+            files.clone(),
+        )
+        .expect_err("too deep");
+        assert!(
+            said(&failed).contains("brackets are nested more than"),
+            "{}",
+            said(&failed)
+        );
+        let script = format!("regex {nested} ;\n");
+        let failed = compile_xfst(
+            source("deep.xfst", &script),
+            "",
+            Format::OpenFstTropical,
+            &XfstOptions::default(),
+            files,
+        )
+        .err()
+        .expect("too deep");
+        assert!(
+            said(&failed).contains("brackets are nested more than"),
+            "{}",
+            said(&failed)
+        );
+    });
+}
+
+// [spec:hfst:req:embed.no-panic/test]
+// An operation runs on a stack of its own too: minimizing a path of 50,000
+// arcs recurses along it, past a small stack.
+#[test]
+fn operations_run_on_a_stack_of_their_own() {
+    let mut basic = hfst::hfst_basic_transducer::HfstBasicTransducer::new();
+    let a = hfst::hfst_data_types::Symbol::from("a");
+    basic.disjunct_path(&vec![(a.clone(), a); 50_000], 0.0);
+    let mut t = Transducer::new(AnyTransducer::Tropical(
+        hfst::hfst_transducer::HfstTransducer::new_from_basic(&basic).expect("converts"),
+    ));
+    on_a_small_stack(|| t.minimize(&MinimizeOptions::default())).expect("minimizes");
+    assert_eq!(t.summarize(false).expect("summarizes").states, 50_001);
+}

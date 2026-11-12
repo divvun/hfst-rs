@@ -337,6 +337,37 @@ fn with_interrupt<T>(flag: Option<&'static AtomicBool>, f: impl FnOnce() -> T) -
     }
 }
 
+/// The first regular expression of the xfst script `src` too deep for the
+/// parser to read, with its span. The script's parser reads each as it
+/// reaches it, so it is measured first.
+fn too_deep_regex(src: &str) -> Option<(crate::depth::TooDeep, std::ops::Range<usize>)> {
+    let tokens = nfst_xfst::tokenize(src).ok()?;
+    tokens.iter().find_map(|(token, span)| match token {
+        nfst_xfst::Token::RegexBody(body) => crate::depth::scan_xre(body)
+            .err()
+            .map(|e| (e, span.range.clone())),
+        nfst_xfst::Token::Command(_)
+        | nfst_xfst::Token::Name(_)
+        | nfst_xfst::Token::ApplyBody(_)
+        | nfst_xfst::Token::HeredocBody(_)
+        | nfst_xfst::Token::AliasBody(_)
+        | nfst_xfst::Token::RedirectOut(_)
+        | nfst_xfst::Token::RedirectAppend(_)
+        | nfst_xfst::Token::RedirectIn(_)
+        | nfst_xfst::Token::Range(..)
+        | nfst_xfst::Token::Prototype(_)
+        | nfst_xfst::Token::Comma
+        | nfst_xfst::Token::LeftParen
+        | nfst_xfst::Token::RightParen
+        | nfst_xfst::Token::LeftBracket
+        | nfst_xfst::Token::RightBracket
+        | nfst_xfst::Token::Semicolon
+        | nfst_xfst::Token::Colon
+        | nfst_xfst::Token::EndSub
+        | nfst_xfst::Token::CtrlD => None,
+    })
+}
+
 /// The deepest 'source' nesting allowed, so a script that sources itself
 /// fails instead of overflowing the stack.
 const MAX_SOURCE_DEPTH: u32 = 64;
@@ -516,6 +547,19 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
         // a located one: line and column come from rendering a span against
         // this string.
         self.source = Arc::from(src);
+        // [spec:hfst:req:embed.no-panic]
+        if let Some((e, span)) = too_deep_regex(src) {
+            let diagnostics = vec![
+                Diagnostic::error(e.to_string())
+                    .label(span, e.to_string())
+                    .in_source(&self.source_name, self.source.clone()),
+            ];
+            self.diagnostics.extend(diagnostics.iter().cloned());
+            return Err(ScriptError {
+                source_name: self.source_name.clone(),
+                diagnostics,
+            });
+        }
         let script = match nfst_xfst::parse(src) {
             Ok(s) => s,
             Err(e) => {

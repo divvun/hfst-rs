@@ -130,6 +130,30 @@ fn report_pmatch_parse_error<B: AlgebraBackend + 'static>(
     }
 }
 
+// [spec:hfst:req:embed.no-panic]
+/// Measure `expanded_script` before it is parsed, keeping how deep each of
+/// its definitions is, or report where it is too deep to parse and fail.
+fn measure_script<B: AlgebraBackend + 'static>(
+    ctx: &mut PmatchEvalContext<B>,
+    expanded_script: &str,
+) -> crate::error::Result<()> {
+    match crate::depth::scan_pmatch(expanded_script) {
+        Ok(depths) => {
+            ctx.definition_depths = depths;
+            Ok(())
+        }
+        Err(e) => {
+            let message = format!("pmatch: {e}");
+            ctx.diagnostics.push(
+                Diagnostic::error(&message)
+                    .label(e.span.clone(), message.clone())
+                    .in_source("<pmatch>", Arc::from(expanded_script)),
+            );
+            crate::bail!(Hfst, message)
+        }
+    }
+}
+
 /// The error a script that does not parse fails with. Its diagnostics carry
 /// the detail; this names how many there were.
 fn syntax_error(e: &nfst_pmatch::ParseError) -> crate::error::Error {
@@ -284,7 +308,7 @@ impl<B: AlgebraBackend + FromAnyTransducer + 'static> PmatchCompiler<B> {
             let obj = ctx
                 .definitions_get(name)
                 .expect("definitions_contains verified above");
-            let evaluated = obj.evaluate(ctx)?;
+            let evaluated = ctx.evaluate_definition(name, &obj)?;
             self.definitions.insert(name.to_string(), evaluated);
         }
         Ok(())
@@ -304,6 +328,7 @@ impl<B: AlgebraBackend + FromAnyTransducer + 'static> PmatchCompiler<B> {
             let ctx = &mut self.eval_ctx;
             ctx.init_globals();
             let expanded_script = expand_includes(ctx, src)?;
+            measure_script(ctx, &expanded_script)?;
             ctx.verbose = self.verbose;
             ctx.flatten = self.flatten;
             ctx.include_cosine_distances = self.include_cosine_distances;
@@ -371,7 +396,7 @@ impl<B: AlgebraBackend + FromAnyTransducer + 'static> PmatchCompiler<B> {
                         } else {
                             ctx.definitions_get(key).expect("key is a definitions key")
                         };
-                        let mut tmp: HfstTransducer<B> = obj_ptr.evaluate(ctx)?;
+                        let mut tmp: HfstTransducer<B> = ctx.evaluate_definition(key, &obj_ptr)?;
                         tmp.minimize()?;
                         dummy.harmonize(&mut tmp, false)?;
                         if ctx.uncomposed_contains(key) {
@@ -411,7 +436,7 @@ impl<B: AlgebraBackend + FromAnyTransducer + 'static> PmatchCompiler<B> {
                     "Pmatch compilation: regex or TOP was undefined, using {} as root",
                     first_key
                 );
-                let mut tmp: HfstTransducer<B> = first_obj.evaluate(ctx)?;
+                let mut tmp: HfstTransducer<B> = ctx.evaluate_definition(&first_key, &first_obj)?;
                 tmp.minimize()?;
                 tmp.set_name("TOP");
                 retval.insert("TOP".to_string(), tmp);
@@ -419,7 +444,7 @@ impl<B: AlgebraBackend + FromAnyTransducer + 'static> PmatchCompiler<B> {
                 let top_obj = ctx
                     .definitions_get("TOP")
                     .expect("TOP present in this branch");
-                let mut tmp: HfstTransducer<B> = top_obj.evaluate(ctx)?;
+                let mut tmp: HfstTransducer<B> = ctx.evaluate_definition("TOP", &top_obj)?;
                 tmp.minimize()?;
                 tmp.set_name("TOP");
                 retval.insert("TOP".to_string(), tmp);

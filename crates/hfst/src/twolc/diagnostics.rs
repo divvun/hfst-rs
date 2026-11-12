@@ -307,6 +307,11 @@ impl<B: AlgebraBackend> TwolcCompiler<B> {
     }
 
     /// Record the parser's diagnostics, notes included.
+    /// Report a grammar too deep to parse, where it passed the limit.
+    pub(super) fn report_too_deep(&mut self, e: &crate::depth::TooDeep) {
+        self.emit(Diagnostic::error(e.to_string()).label(e.span.clone(), "here"));
+    }
+
     pub(super) fn report_parse_errors(&mut self, diagnostics: &[nfst_twolc::Diagnostic]) {
         for pd in diagnostics {
             let mut d = Diagnostic::error(pd.message.clone()).label(pd.span.range.clone(), "here");

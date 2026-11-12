@@ -8,6 +8,13 @@
 //! tools call, so for the same input and options a package gets what the tool
 //! writes.
 //!
+//! Natively every compile, xfst run and operation runs on a thread of its
+//! own with the stack [`hfst::depth::COMPILE_STACK_SIZE`] gives, as the tools
+//! do, so the library's depth limits hold whatever stack the caller is on: a
+//! Python thread's, or a default Rust thread's. The thread is joined before
+//! the call returns. On wasm32, which has no threads, they run where they are
+//! called, under the lower limits [`hfst::depth`] sets for it.
+//!
 //! None of this is linked without the `compile` feature.
 
 mod compilers;
@@ -21,6 +28,11 @@ pub use operations::*;
 pub use queries::*;
 pub use transducer::{Operand, Transducer, WriteOptions, read_transducers};
 pub use writers::*;
+
+// [spec:hfst:req:embed.compile-files]
+/// Where a compile reads the files its source names and an xfst script
+/// writes: the filesystem, files held in memory, or a caller's own.
+pub use hfst::file_resolver::{FileResolver, FsResolver, MemoryFiles};
 
 #[cfg(test)]
 mod tests;

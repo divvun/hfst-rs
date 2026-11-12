@@ -210,10 +210,10 @@ fn main() {
     // parsers and the evaluators each descend per node), so a large real-world
     // grammar — an omorfi-scale regex, a deeply nested lexicon — can exhaust the
     // default 8 MiB main-thread stack and abort. Run the whole tool on a worker
-    // thread with a generous stack so valid input compiles (hfst/hfst#287).
-    const STACK_SIZE: usize = 512 * 1024 * 1024;
+    // thread with the stack the library's depth limits are measured against,
+    // so valid input compiles (hfst/hfst#287).
     let worker = std::thread::Builder::new()
-        .stack_size(STACK_SIZE)
+        .stack_size(hfst::depth::COMPILE_STACK_SIZE)
         .spawn(run_main)
         .expect("spawn hfst worker thread");
     if worker.join().is_err() {

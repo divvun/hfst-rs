@@ -791,6 +791,10 @@ pub struct PmatchEvalContext<B: AlgebraBackend + 'static> {
     /// The definitions and functions being evaluated. One that is reached
     /// again from inside itself would recurse forever.
     in_expansion: BTreeSet<String>,
+    /// How deep each definition's and function's body is, by name, as
+    /// [`crate::depth::scan_pmatch`] measured the script: an evaluation that
+    /// goes through one descends that much further.
+    definition_depths: HashMap<String, usize>,
     def_insed_expressions: BTreeMap<String, ObjRef<B>>,
     inserted_names: BTreeSet<Symbol>,
     uncomposed: BTreeSet<Symbol>,

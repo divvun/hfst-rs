@@ -113,6 +113,11 @@ impl<B: AlgebraBackend> TwolcCompiler<B> {
     fn build_grammar(&mut self, input: &str) -> Option<(OstConfig, TwolCGrammar<B>)> {
         // Retain the source so diagnostics can point into it.
         self.source = Arc::from(input);
+        // [spec:hfst:req:embed.no-panic]
+        if let Err(e) = crate::depth::scan_twolc(input) {
+            self.report_too_deep(&e);
+            return None;
+        }
         let file = match nfst_twolc::parse(input) {
             Ok(f) => f,
             Err(e) => {

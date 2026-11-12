@@ -26,7 +26,6 @@ use hfst::hfst_lookup_format::{
 };
 use hfst::lookup_driver::{
     AmbiguityLimit, FlagPolicy, LookupCascade, LookupEngineOptions, PairPrintStyle,
-    is_optimized_lookup_type,
 };
 use hfst::tools::format::format_description;
 use hfst::tools::lookup::{LineLookup, Lookup};
@@ -618,15 +617,6 @@ fn process_stream(
     }
 
     inputstream.close();
-
-    if !options.obey_flags && is_optimized_lookup_type(inputstream.get_type()) {
-        hfst_error(
-            common,
-            1,
-            0,
-            "not obeying flags not supported on optimized lookup transducers",
-        );
-    }
 
     // if transducer type is other than optimized_lookup,
     // convert to HfstBasicTransducer

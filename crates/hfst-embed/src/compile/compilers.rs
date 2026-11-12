@@ -188,40 +188,42 @@ pub fn compile_regexps(
     options: &RegexpOptions,
     files: Arc<dyn FileResolver>,
 ) -> CompileResult<Vec<Transducer>> {
-    let gathered = Gathered::default();
-    let mut xre = options.compiler::<StdVectorFst>(source.name);
-    xre.set_file_resolver(files);
-    xre.set_diagnostic_sink(gathered.sink());
-    let mut compiled = Vec::new();
-    let result = gathered.run(|| {
-        hfst::tools::regexp2fst::compile_regexps(
-            &mut xre,
-            &mut source.text.as_bytes(),
-            options,
-            &mut |event| {
-                if let hfst::tools::regexp2fst::RegexpEvent::Compiled(t) = event {
-                    compiled.push(t);
-                }
-                Ok(())
-            },
-        )
-    });
-    let diagnostics = gathered.take();
-    let error = match result {
-        Ok(()) => {
-            return match as_written(compiled, format) {
-                Ok(value) => Ok(Compiled { value, diagnostics }),
-                Err(e) => Err(failure(e, diagnostics)),
-            };
-        }
-        Err(RegexpError::Operation(e)) => Error::from(e),
-        Err(RegexpError::LineFailed { line }) => Error::new(
-            Code::Failed,
-            format!("{}:{line}: XRE parsing failed", source.name),
-        ),
-        Err(e) => Error::new(Code::Failed, e.to_string()),
-    };
-    Err(failure(error, diagnostics))
+    hfst::depth::on_compile_stack(|| {
+        let gathered = Gathered::default();
+        let mut xre = options.compiler::<StdVectorFst>(source.name);
+        xre.set_file_resolver(files);
+        xre.set_diagnostic_sink(gathered.sink());
+        let mut compiled = Vec::new();
+        let result = gathered.run(|| {
+            hfst::tools::regexp2fst::compile_regexps(
+                &mut xre,
+                &mut source.text.as_bytes(),
+                options,
+                &mut |event| {
+                    if let hfst::tools::regexp2fst::RegexpEvent::Compiled(t) = event {
+                        compiled.push(t);
+                    }
+                    Ok(())
+                },
+            )
+        });
+        let diagnostics = gathered.take();
+        let error = match result {
+            Ok(()) => {
+                return match as_written(compiled, format) {
+                    Ok(value) => Ok(Compiled { value, diagnostics }),
+                    Err(e) => Err(failure(e, diagnostics)),
+                };
+            }
+            Err(RegexpError::Operation(e)) => Error::from(e),
+            Err(RegexpError::LineFailed { line }) => Error::new(
+                Code::Failed,
+                format!("{}:{line}: XRE parsing failed", source.name),
+            ),
+            Err(e) => Error::new(Code::Failed, e.to_string()),
+        };
+        Err(failure(error, diagnostics))
+    })
 }
 
 // [spec:hfst:req:embed.compile]
@@ -234,29 +236,31 @@ pub fn compile_lexc(
     options: &LexcOptions,
     files: Arc<dyn FileResolver>,
 ) -> CompileResult<Transducer> {
-    let gathered = Gathered::default();
-    let mut lexc = options.compiler::<StdVectorFst>();
-    lexc.set_file_resolver(files);
-    lexc.set_diagnostic_sink(gathered.sink());
-    let named: Vec<(String, String)> = sources
-        .iter()
-        .map(|s| (s.name.to_string(), s.text.to_string()))
-        .collect();
-    let compiled = gathered.run(|| lexc.compile_named_sources(&named));
-    let diagnostics = gathered.take();
-    let written = match compiled {
-        Ok(t) => as_written(vec![t], format),
-        Err(hfst::tools::lexc::LexcSourcesError::Compile(e)) => Err(Error::from(e)),
-        Err(e) => Err(Error::new(Code::Failed, e.to_string())),
-    };
-    match written.map(|mut written| written.pop()) {
-        Ok(Some(value)) => Ok(Compiled { value, diagnostics }),
-        Ok(None) => Err(failure(
-            Error::new(Code::Internal, "the lexicons wrote no transducer"),
-            diagnostics,
-        )),
-        Err(e) => Err(failure(e, diagnostics)),
-    }
+    hfst::depth::on_compile_stack(|| {
+        let gathered = Gathered::default();
+        let mut lexc = options.compiler::<StdVectorFst>();
+        lexc.set_file_resolver(files);
+        lexc.set_diagnostic_sink(gathered.sink());
+        let named: Vec<(String, String)> = sources
+            .iter()
+            .map(|s| (s.name.to_string(), s.text.to_string()))
+            .collect();
+        let compiled = gathered.run(|| lexc.compile_named_sources(&named));
+        let diagnostics = gathered.take();
+        let written = match compiled {
+            Ok(t) => as_written(vec![t], format),
+            Err(hfst::tools::lexc::LexcSourcesError::Compile(e)) => Err(Error::from(e)),
+            Err(e) => Err(Error::new(Code::Failed, e.to_string())),
+        };
+        match written.map(|mut written| written.pop()) {
+            Ok(Some(value)) => Ok(Compiled { value, diagnostics }),
+            Ok(None) => Err(failure(
+                Error::new(Code::Internal, "the lexicons wrote no transducer"),
+                diagnostics,
+            )),
+            Err(e) => Err(failure(e, diagnostics)),
+        }
+    })
 }
 
 // [spec:hfst:req:embed.compile]
@@ -268,31 +272,33 @@ pub fn compile_strings(
     format: Format,
     options: &StringsOptions,
 ) -> CompileResult<Vec<Transducer>> {
-    let gathered = Gathered::default();
-    let compiled = gathered.run(|| {
-        hfst::tools::strings2fst::compile_strings::<StdVectorFst>(source.text, options.clone())
-    });
-    match compiled {
-        Ok(compiled) => {
-            for &(line, weight) in &compiled.negative_weights {
-                gathered.push(at_line(
-                    &source,
-                    line,
-                    Diagnostic::warning(negative_weight(weight)),
-                ));
+    hfst::depth::on_compile_stack(|| {
+        let gathered = Gathered::default();
+        let compiled = gathered.run(|| {
+            hfst::tools::strings2fst::compile_strings::<StdVectorFst>(source.text, options.clone())
+        });
+        match compiled {
+            Ok(compiled) => {
+                for &(line, weight) in &compiled.negative_weights {
+                    gathered.push(at_line(
+                        &source,
+                        line,
+                        Diagnostic::warning(negative_weight(weight)),
+                    ));
+                }
+                let diagnostics = gathered.take();
+                match as_written(compiled.transducers, format) {
+                    Ok(value) => Ok(Compiled { value, diagnostics }),
+                    Err(e) => Err(failure(e, diagnostics)),
+                }
             }
-            let diagnostics = gathered.take();
-            match as_written(compiled.transducers, format) {
-                Ok(value) => Ok(Compiled { value, diagnostics }),
-                Err(e) => Err(failure(e, diagnostics)),
+            Err(LineError { line, error }) => {
+                let message = error.to_string();
+                gathered.push(at_line(&source, line, Diagnostic::error(message.clone())));
+                Err(failure(Error::new(Code::Failed, message), gathered.take()))
             }
         }
-        Err(LineError { line, error }) => {
-            let message = error.to_string();
-            gathered.push(at_line(&source, line, Diagnostic::error(message.clone())));
-            Err(failure(Error::new(Code::Failed, message), gathered.take()))
-        }
-    }
+    })
 }
 
 // [spec:hfst:req:embed.compile]
@@ -303,38 +309,40 @@ pub fn compile_text(
     format: Format,
     options: &Txt2FstOptions,
 ) -> CompileResult<Vec<Transducer>> {
-    let gathered = Gathered::default();
-    let mut read = Vec::new();
-    let result = gathered.run(|| {
-        read_text::<StdVectorFst>(
-            &mut source.text.as_bytes(),
-            source.name,
-            options,
-            &mut |event| {
-                match event {
-                    TextEvent::Progress(_) => {}
-                    TextEvent::NegativeWeight { weight, line } => gathered.push(at_line(
-                        &source,
-                        line as usize,
-                        Diagnostic::warning(format!("Negative weight {weight:.6} found :-(")),
-                    )),
-                    TextEvent::NegativeEpsilonCycles => gathered.push(Diagnostic::warning(
-                        "Transducer has epsilon cycles with a negative weight.",
-                    )),
-                    TextEvent::Read(t) => read.push(t),
-                }
-                Ok(())
-            },
-        )
-    });
-    let diagnostics = gathered.take();
-    match result
-        .map_err(Error::from)
-        .and_then(|()| as_written(read, format))
-    {
-        Ok(value) => Ok(Compiled { value, diagnostics }),
-        Err(e) => Err(failure(e, diagnostics)),
-    }
+    hfst::depth::on_compile_stack(|| {
+        let gathered = Gathered::default();
+        let mut read = Vec::new();
+        let result = gathered.run(|| {
+            read_text::<StdVectorFst>(
+                &mut source.text.as_bytes(),
+                source.name,
+                options,
+                &mut |event| {
+                    match event {
+                        TextEvent::Progress(_) => {}
+                        TextEvent::NegativeWeight { weight, line } => gathered.push(at_line(
+                            &source,
+                            line as usize,
+                            Diagnostic::warning(format!("Negative weight {weight:.6} found :-(")),
+                        )),
+                        TextEvent::NegativeEpsilonCycles => gathered.push(Diagnostic::warning(
+                            "Transducer has epsilon cycles with a negative weight.",
+                        )),
+                        TextEvent::Read(t) => read.push(t),
+                    }
+                    Ok(())
+                },
+            )
+        });
+        let diagnostics = gathered.take();
+        match result
+            .map_err(Error::from)
+            .and_then(|()| as_written(read, format))
+        {
+            Ok(value) => Ok(Compiled { value, diagnostics }),
+            Err(e) => Err(failure(e, diagnostics)),
+        }
+    })
 }
 
 // -----------------------------------------------------------------------------
@@ -349,41 +357,43 @@ pub fn compile_twolc(
     format: Format,
     options: &TwolcOptions,
 ) -> CompileResult<Vec<Transducer>> {
-    let ty = match format {
-        Format::OpenFstTropical | Format::Foma => implementation_type(format),
-        Format::OptimizedLookupWeighted | Format::OptimizedLookupUnweighted => {
-            return Err(not_an_algebra("twolc"));
+    hfst::depth::on_compile_stack(|| {
+        let ty = match format {
+            Format::OpenFstTropical | Format::Foma => implementation_type(format),
+            Format::OptimizedLookupWeighted | Format::OptimizedLookupUnweighted => {
+                return Err(not_an_algebra("twolc"));
+            }
+        };
+        let gathered = Gathered::default();
+        let mut compiled = None;
+        let stored = gathered.run(|| {
+            stream_bytes(ty, true, |out| {
+                compiled = Some(hfst::tools::twolc::compile_twolc(
+                    (source.text, source.name),
+                    options,
+                    out,
+                    Some(gathered.sink()),
+                ));
+                Ok(())
+            })
+        });
+        let diagnostics = gathered.take();
+        match (stored, compiled) {
+            (Ok(bytes), Some(Ok(_))) => match read_transducers(&bytes) {
+                Ok(value) => Ok(Compiled { value, diagnostics }),
+                Err(e) => Err(failure(e, diagnostics)),
+            },
+            (_, Some(Err(_))) => Err(failure(
+                Error::new(Code::Failed, format!("{} did not compile", source.name)),
+                diagnostics,
+            )),
+            (Err(e), _) => Err(failure(e, diagnostics)),
+            (Ok(_), None) => Err(failure(
+                Error::new(Code::Internal, "the grammar was not compiled"),
+                diagnostics,
+            )),
         }
-    };
-    let gathered = Gathered::default();
-    let mut compiled = None;
-    let stored = gathered.run(|| {
-        stream_bytes(ty, true, |out| {
-            compiled = Some(hfst::tools::twolc::compile_twolc(
-                (source.text, source.name),
-                options,
-                out,
-                Some(gathered.sink()),
-            ));
-            Ok(())
-        })
-    });
-    let diagnostics = gathered.take();
-    match (stored, compiled) {
-        (Ok(bytes), Some(Ok(_))) => match read_transducers(&bytes) {
-            Ok(value) => Ok(Compiled { value, diagnostics }),
-            Err(e) => Err(failure(e, diagnostics)),
-        },
-        (_, Some(Err(_))) => Err(failure(
-            Error::new(Code::Failed, format!("{} did not compile", source.name)),
-            diagnostics,
-        )),
-        (Err(e), _) => Err(failure(e, diagnostics)),
-        (Ok(_), None) => Err(failure(
-            Error::new(Code::Internal, "the grammar was not compiled"),
-            diagnostics,
-        )),
-    }
+    })
 }
 
 // [spec:hfst:req:embed.compile]
@@ -394,31 +404,34 @@ pub fn compile_pmatch(
     options: &Pmatch2FstOptions,
     files: Arc<dyn FileResolver>,
 ) -> CompileResult<Vec<u8>> {
-    let gathered = Gathered::default();
-    let mut compiler = options.compiler();
-    compiler.set_file_resolver(files);
-    compiler.set_diagnostic_sink(gathered.sink());
-    let archive = gathered.run(|| {
-        let mut definitions = hfst::tools::pmatch2fst::compile_ruleset(&mut compiler, source.text)
-            .map_err(archive_error)?;
-        let mut written = Ok(());
-        let bytes = stream_bytes(ImplementationType::HFST_OLW_TYPE, true, |out| {
-            written = hfst::tools::pmatch2fst::write_ruleset(
-                &mut definitions,
-                out,
-                false,
-                &mut std::io::sink(),
-            );
-            Ok(())
-        })?;
-        written.map_err(archive_error)?;
-        Ok(bytes)
-    });
-    let diagnostics = gathered.take();
-    match archive {
-        Ok(value) => Ok(Compiled { value, diagnostics }),
-        Err(e) => Err(failure(e, diagnostics)),
-    }
+    hfst::depth::on_compile_stack(|| {
+        let gathered = Gathered::default();
+        let mut compiler = options.compiler();
+        compiler.set_file_resolver(files);
+        compiler.set_diagnostic_sink(gathered.sink());
+        let archive = gathered.run(|| {
+            let mut definitions =
+                hfst::tools::pmatch2fst::compile_ruleset(&mut compiler, source.text)
+                    .map_err(archive_error)?;
+            let mut written = Ok(());
+            let bytes = stream_bytes(ImplementationType::HFST_OLW_TYPE, true, |out| {
+                written = hfst::tools::pmatch2fst::write_ruleset(
+                    &mut definitions,
+                    out,
+                    false,
+                    &mut std::io::sink(),
+                );
+                Ok(())
+            })?;
+            written.map_err(archive_error)?;
+            Ok(bytes)
+        });
+        let diagnostics = gathered.take();
+        match archive {
+            Ok(value) => Ok(Compiled { value, diagnostics }),
+            Err(e) => Err(failure(e, diagnostics)),
+        }
+    })
 }
 
 fn archive_error(error: hfst::tools::pmatch2fst::ArchiveError) -> Error {
@@ -556,20 +569,22 @@ pub fn compile_xfst(
     options: &XfstOptions,
     files: Arc<dyn FileResolver>,
 ) -> CompileResult<XfstResult> {
-    let recording = Arc::new(Recording {
-        files,
-        written: Mutex::new(Vec::new()),
-    });
-    match format {
-        Format::Foma => run_script(script, (input, options), &recording, AnyTransducer::Foma),
-        Format::OpenFstTropical => run_script::<StdVectorFst>(
-            script,
-            (input, options),
-            &recording,
-            AnyTransducer::Tropical,
-        ),
-        Format::OptimizedLookupWeighted | Format::OptimizedLookupUnweighted => {
-            Err(not_an_algebra("xfst"))
+    hfst::depth::on_compile_stack(|| {
+        let recording = Arc::new(Recording {
+            files,
+            written: Mutex::new(Vec::new()),
+        });
+        match format {
+            Format::Foma => run_script(script, (input, options), &recording, AnyTransducer::Foma),
+            Format::OpenFstTropical => run_script::<StdVectorFst>(
+                script,
+                (input, options),
+                &recording,
+                AnyTransducer::Tropical,
+            ),
+            Format::OptimizedLookupWeighted | Format::OptimizedLookupUnweighted => {
+                Err(not_an_algebra("xfst"))
+            }
         }
-    }
+    })
 }

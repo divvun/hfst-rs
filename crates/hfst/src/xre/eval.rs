@@ -5,6 +5,7 @@ use nfst_xre::{ReadKind, UnaryOp, parse};
 
 use super::lexer_support::strip_newline;
 use super::*;
+use crate::depth::Descent;
 use crate::hfst_symbol_defs::{internal_epsilon, internal_identity, internal_unknown};
 use crate::hfst_xerox_rules::{after, before};
 use crate::virtual_flag_frontends::prepare_compose_flag_overlay;
@@ -47,6 +48,21 @@ fn xre_pair_side_kind(e: &SpannedXre) -> Option<XrePairSide> {
     }
 }
 
+/// Whether `op` fails before its operands are evaluated.
+fn fails_unevaluated(op: BinaryOp) -> bool {
+    matches!(op, BinaryOp::Shuffle | BinaryOp::IgnoreInternally)
+}
+
+/// The levels of [`crate::depth::MAX_EXPRESSION_DEPTH`] a function call
+/// holds beside the evaluation of its body: the compiler it builds for the
+/// body and the parse of the body take as much stack as eight levels of an
+/// expression.
+const CALL_LEVELS: usize = 8;
+
+/// The deepest '@re' files may nest, each read by the one before. A file
+/// that reads itself would otherwise recurse until the stack overflowed.
+const MAX_READ_DEPTH: u32 = 64;
+
 // ====================== core recursive evaluator ===========================
 impl<B: AlgebraBackend> XreCompiler<B> {
     // [spec:hfst:def:xre-utils.hfst.xre.compile-fn]
@@ -54,7 +70,11 @@ impl<B: AlgebraBackend> XreCompiler<B> {
     pub(crate) fn eval(&mut self, e: &SpannedXre) -> crate::error::Result<HfstTransducer<B>> {
         // Anchor any diagnostic emitted while evaluating this node at its span.
         self.current_span = e.span.range.clone();
-        let result = self.eval_node(e);
+        // [spec:hfst:req:embed.no-panic]
+        let result = match Descent::enter(1) {
+            Some(_level) => self.eval_node(e),
+            None => Err(crate::depth::too_deep()),
+        };
         // A failing child records its span first, so the innermost node whose
         // own evaluation failed is the one an error report points at.
         if result.is_err() && self.failed_span.is_none() {
@@ -337,15 +357,62 @@ impl<B: AlgebraBackend> XreCompiler<B> {
     }
 
     // REGEXP2/3/5/6/7 binary operators.
+    // [spec:hfst:req:embed.no-panic]
+    /// A binary operation. The parser nests a chain of them, `a | b | c` or
+    /// `a b c`, down its left operand, and a generated union runs to
+    /// thousands of operands, so the chain is evaluated in a loop from its
+    /// innermost left operand up rather than by recursing down it: in the
+    /// order recursion takes, at the cost of one level of the stack. The loop
+    /// stops at an operator that fails before evaluating its operands, which
+    /// is evaluated as it was.
     fn eval_binary(
         &mut self,
         op: BinaryOp,
         l: &SpannedXre,
         r: &SpannedXre,
     ) -> crate::error::Result<HfstTransducer<B>> {
+        if fails_unevaluated(op) {
+            return self.apply_binary(op, HfstTransducer::new(), r);
+        }
+        let mut chain = vec![(op, r, None)];
+        let mut innermost = l;
+        while let XreExpr::Binary(op, l, r) = &innermost.value
+            && !fails_unevaluated(*op)
+        {
+            chain.push((*op, r.as_ref(), Some(innermost)));
+            innermost = l;
+        }
+        let mut left = self.eval(innermost)?;
+        for (op, r, node) in chain.into_iter().rev() {
+            // What evaluating `node` would have set before its operands.
+            if let Some(node) = node {
+                self.current_span = node.span.range.clone();
+            }
+            left = match self.apply_binary(op, left, r) {
+                Ok(t) => t,
+                Err(e) => {
+                    if let Some(node) = node
+                        && self.failed_span.is_none()
+                    {
+                        self.failed_span = Some(node.span.range.clone());
+                    }
+                    return Err(e);
+                }
+            };
+        }
+        Ok(left)
+    }
+
+    /// `left`, the evaluated left operand of `op`, with `r` evaluated and
+    /// `op` applied to the two.
+    fn apply_binary(
+        &mut self,
+        op: BinaryOp,
+        mut left: HfstTransducer<B>,
+        r: &SpannedXre,
+    ) -> crate::error::Result<HfstTransducer<B>> {
         Ok(match op {
             BinaryOp::Compose => {
-                let mut left = self.eval(l)?;
                 let mut right = self.eval(r)?;
                 let config = self.opt_cfg();
                 let overlay = prepare_compose_flag_overlay(
@@ -364,14 +431,12 @@ impl<B: AlgebraBackend> XreCompiler<B> {
                 left
             }
             BinaryOp::CrossProduct => {
-                let mut left = self.eval(l)?;
                 let right = self.eval(r)?;
                 left.cross_product(&right, false)?;
                 left.optimize_with_config(&self.opt_cfg())?;
                 left
             }
             BinaryOp::LenientCompose => {
-                let mut left = self.eval(l)?;
                 let right = self.eval(r)?;
                 left.lenient_composition(&right, false)?;
                 left.optimize_with_config(&self.opt_cfg())?;
@@ -379,7 +444,6 @@ impl<B: AlgebraBackend> XreCompiler<B> {
             }
             BinaryOp::MergeRight => {
                 // .m>. : merge left into right.
-                let mut left = self.eval(l)?;
                 let right = self.eval(r)?;
                 let mut res = self.merge_first_to_second(&mut left, right)?;
                 res.optimize_with_config(&self.opt_cfg())?;
@@ -387,30 +451,25 @@ impl<B: AlgebraBackend> XreCompiler<B> {
             }
             BinaryOp::MergeLeft => {
                 // .<m. : merge right into left.
-                let left = self.eval(l)?;
                 let mut right = self.eval(r)?;
                 let mut res = self.merge_first_to_second(&mut right, left)?;
                 res.optimize_with_config(&self.opt_cfg())?;
                 res
             }
             BinaryOp::Before => {
-                let left = self.eval(l)?;
                 let right = self.eval(r)?;
                 before(&left, &right)?
             }
             BinaryOp::After => {
-                let left = self.eval(l)?;
                 let right = self.eval(r)?;
                 after(&left, &right)?
             }
             BinaryOp::Union => {
-                let mut left = self.eval(l)?;
                 let right = self.eval(r)?;
                 left.disjunct(&right, self.harmonize)?;
                 left
             }
             BinaryOp::Intersect => {
-                let mut left = self.eval(l)?;
                 let right = self.eval(r)?;
                 left.intersect(&right, self.harmonize)?;
                 left.optimize_with_config(&self.opt_cfg())?;
@@ -418,21 +477,18 @@ impl<B: AlgebraBackend> XreCompiler<B> {
                 left
             }
             BinaryOp::Subtract => {
-                let mut left = self.eval(l)?;
                 let right = self.eval(r)?;
                 left.subtract(&right, self.harmonize)?;
                 left.prune_alphabet(false)?;
                 left
             }
             BinaryOp::UpperPriorityUnion => {
-                let mut left = self.eval(l)?;
                 let right = self.eval(r)?;
                 left.priority_union(&right)?;
                 left
             }
             BinaryOp::LowerPriorityUnion => {
                 // invert both, priority_union, invert back.
-                let mut left = self.eval(l)?;
                 let mut right = self.eval(r)?;
                 right.invert()?;
                 left.invert()?;
@@ -441,14 +497,12 @@ impl<B: AlgebraBackend> XreCompiler<B> {
                 left
             }
             BinaryOp::Concatenate => {
-                let mut left = self.eval(l)?;
                 let right = self.eval(r)?;
                 left.concatenate(&right, self.harmonize)?;
                 left
             }
             BinaryOp::Ignoring => {
                 // harmonize (force), then insert_freely without harmonization.
-                let mut left = self.eval(l)?;
                 let mut right = self.eval(r)?;
                 left.harmonize(&mut right, true)?;
                 left.insert_freely(&right, false)?;
@@ -457,12 +511,10 @@ impl<B: AlgebraBackend> XreCompiler<B> {
             // Operators the C++ grammar rejects with xreerror + YYABORT.
             BinaryOp::Shuffle => crate::bail!(Hfst, "No shuffle"),
             BinaryOp::UpperSubtract => {
-                let mut left = self.eval(l)?;
                 left.upper_subtract(&self.eval(r)?)?;
                 left
             }
             BinaryOp::LowerSubtract => {
-                let mut left = self.eval(l)?;
                 left.lower_subtract(&self.eval(r)?)?;
                 left
             }
@@ -470,7 +522,6 @@ impl<B: AlgebraBackend> XreCompiler<B> {
                 crate::bail!(Hfst, "No ignoring internally")
             }
             BinaryOp::LeftQuotient => {
-                let mut left = self.eval(l)?;
                 left.left_quotient(&self.eval(r)?)?;
                 left
             }
@@ -521,6 +572,10 @@ impl<B: AlgebraBackend> XreCompiler<B> {
                 )
             );
         }
+        // [spec:hfst:req:embed.no-panic]
+        let Some(_call) = Descent::enter(CALL_LEVELS) else {
+            return Err(crate::depth::too_deep());
+        };
         let mut expanding_functions = self.expanding_functions.clone();
         expanding_functions.insert(Symbol::from(name));
 
@@ -553,6 +608,7 @@ impl<B: AlgebraBackend> XreCompiler<B> {
             files: std::sync::Arc::clone(&self.files),
             diagnostics: self.diagnostics.forwarding(),
             expanding_functions,
+            read_depth: self.read_depth,
         };
 
         // get_function_xre + recursive compile.
@@ -670,10 +726,21 @@ impl<B: AlgebraBackend> XreCompiler<B> {
             }
             // READ_RE: read the file content and re-compile it as a regex (the C++
             // spins up a fresh scanner; the ported compiler re-parses the string).
+            // [spec:hfst:req:embed.no-panic]
             ReadKind::Regex => {
+                if self.read_depth >= MAX_READ_DEPTH {
+                    crate::bail!(
+                        Hfst,
+                        format!(
+                            "'@re' of {path} is nested more than {MAX_READ_DEPTH} deep; does a file read itself?"
+                        )
+                    );
+                }
                 let contents = self.read_named_text(path)?;
-                self.compile(&contents)
-                    .ok_or_else(|| crate::err!(Hfst, "read-regex: regex did not compile"))
+                self.read_depth += 1;
+                let compiled = self.compile(&contents);
+                self.read_depth -= 1;
+                compiled.ok_or_else(|| crate::err!(Hfst, "read-regex: regex did not compile"))
             }
         }
     }

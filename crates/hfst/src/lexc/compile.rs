@@ -5,6 +5,30 @@ use super::recode::{flag_joiner_encode, joiner_encode};
 use super::*;
 use crate::convert_transducer_format::ConversionFunctions;
 
+/// The first regular expression of the lexc source `src` too deep for the
+/// parser to read, with the span of the `<...>` or definition it is in. The
+/// parser reads each as it reaches it, so it is measured first.
+fn too_deep_regex(src: &str) -> Option<(crate::depth::TooDeep, std::ops::Range<usize>)> {
+    let tokens = nfst_lexc::tokenize(src).ok()?;
+    tokens.iter().find_map(|(token, span)| match token {
+        nfst_lexc::Token::XreBlock(body) | nfst_lexc::Token::DefinitionBody(body) => {
+            crate::depth::scan_xre(body)
+                .err()
+                .map(|e| (e, span.range.clone()))
+        }
+        nfst_lexc::Token::SectionMulticharsStart { .. }
+        | nfst_lexc::Token::SectionNoFlagsStart
+        | nfst_lexc::Token::SectionDefinitionsStart
+        | nfst_lexc::Token::LexiconStart { .. }
+        | nfst_lexc::Token::EndKeyword
+        | nfst_lexc::Token::Equals
+        | nfst_lexc::Token::Semicolon
+        | nfst_lexc::Token::Colon
+        | nfst_lexc::Token::Quoted(_)
+        | nfst_lexc::Token::Identifier(_) => None,
+    })
+}
+
 /// Parse a weight out of an entry gloss formatted '"weight: N"'.
 ///
 /// Mirrors 'handle_string_entry_common' in 'lexc-parser.yy': locate the
@@ -60,6 +84,12 @@ impl<B: AlgebraBackend> LexcCompiler<B> {
     pub fn parse(&mut self, lexc_source: &str) -> crate::error::Result<&mut Self> {
         // Retain the source so diagnostics can point into it.
         self.source = Arc::from(lexc_source);
+        // [spec:hfst:req:embed.no-panic]
+        if let Some((e, span)) = too_deep_regex(lexc_source) {
+            self.report(Diagnostic::error(e.to_string()).label(span, e.to_string()));
+            self.parseErrors_ = true;
+            return Ok(self);
+        }
         match nfst_lexc::parse(lexc_source) {
             Ok(ast) => {
                 self.compile_file(&ast.value)?;

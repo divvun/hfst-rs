@@ -51,6 +51,7 @@ impl TropicalWeightTransducer {
             Self::determinize_adaptive(&mut t, encode_weights, budget, "minimize", &mut det, true)?;
         match outcome {
             AdaptiveDeterminize::Determinized(encode_mapper) => {
+                refuse_long_paths(&det)?;
                 minimize(&mut det).map_err(openfst_error("minimize"))?;
                 decode(&mut det, encode_mapper).map_err(openfst_error("decode"))?;
             }
@@ -294,5 +295,122 @@ fn budget_config(budget: DeterminizeBudget) -> algorithms::DeterminizeBudgets {
         max_states: Some(budget.states),
         max_subset_elements: Some(budget.subset_elements),
         max_trs: Some(budget.trs),
+    }
+}
+
+// [spec:hfst:req:embed.no-panic]
+/// Fail when `t` is acyclic with a path longer than
+/// [`crate::depth::MAX_PATH_LENGTH`]: rustfst minimizes an acyclic machine by
+/// recursing along its paths from the start, which would overflow the stack.
+/// A path visits a state once, so a machine of no more states passes
+/// unread.
+fn refuse_long_paths(t: &StdVectorFst) -> crate::error::Result<()> {
+    if t.num_states() <= crate::depth::MAX_PATH_LENGTH {
+        return Ok(());
+    }
+    match longest_path(t) {
+        Some(arcs) if arcs > crate::depth::MAX_PATH_LENGTH => crate::bail!(
+            Hfst,
+            format!(
+                "cannot minimize a transducer with a path more than {} arcs long",
+                crate::depth::MAX_PATH_LENGTH
+            )
+        ),
+        Some(_) | None => Ok(()),
+    }
+}
+
+/// The most arcs of a path from the start of `t`, or `None` when a cycle is
+/// reachable from it, read without recursing.
+fn longest_path(t: &StdVectorFst) -> Option<usize> {
+    let start = t.start()?;
+    let targets = |s: StateId| -> Vec<StateId> {
+        t.get_trs(s)
+            .map(|trs| trs.trs().iter().map(|tr| tr.nextstate).collect())
+            .unwrap_or_default()
+    };
+    let n = t.num_states();
+    let mut reached = vec![false; n];
+    let mut incoming = vec![0usize; n];
+    let mut stack = vec![start];
+    reached[start as usize] = true;
+    while let Some(s) = stack.pop() {
+        for next in targets(s) {
+            incoming[next as usize] += 1;
+            if !reached[next as usize] {
+                reached[next as usize] = true;
+                stack.push(next);
+            }
+        }
+    }
+    // Whatever reaches the start lies on a cycle through it.
+    if incoming[start as usize] > 0 {
+        return None;
+    }
+    let mut arcs = vec![0usize; n];
+    let mut ready = vec![start];
+    let mut done = 0;
+    while let Some(s) = ready.pop() {
+        done += 1;
+        for next in targets(s) {
+            arcs[next as usize] = arcs[next as usize].max(arcs[s as usize] + 1);
+            incoming[next as usize] -= 1;
+            if incoming[next as usize] == 0 {
+                ready.push(next);
+            }
+        }
+    }
+    let reachable = reached.iter().filter(|&&r| r).count();
+    (done == reachable).then(|| arcs.into_iter().max().unwrap_or(0))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A machine whose start leads along `arcs` arcs in a line, with a
+    /// state to the side of each, so it has more states than arcs on its
+    /// longest path; `cycle` closes the line back to the start.
+    fn line(arcs: usize, cycle: bool) -> StdVectorFst {
+        let mut fst = StdVectorFst::new();
+        let start = fst.add_state();
+        fst.set_start(start).expect("a state");
+        let mut last = start;
+        for _ in 0..arcs {
+            let next = fst.add_state();
+            let side = fst.add_state();
+            for target in [next, side] {
+                fst.add_tr(
+                    last,
+                    StdTransition::new(1, 1, TropicalWeight::one(), target),
+                )
+                .expect("a state");
+            }
+            last = next;
+        }
+        if cycle {
+            fst.add_tr(last, StdTransition::new(1, 1, TropicalWeight::one(), start))
+                .expect("a state");
+        }
+        fst.set_final(last, TropicalWeight::one()).expect("a state");
+        fst
+    }
+
+    // [spec:hfst:req:embed.no-panic/test]
+    #[test]
+    fn a_path_past_the_limit_is_refused() {
+        let limit = crate::depth::MAX_PATH_LENGTH;
+        assert_eq!(longest_path(&line(limit, false)), Some(limit));
+        assert!(refuse_long_paths(&line(limit, false)).is_ok());
+        let refused = refuse_long_paths(&line(limit + 1, false)).expect_err("too long");
+        assert!(refused.to_string().contains("path more than"), "{refused}");
+    }
+
+    // [spec:hfst:req:embed.no-panic/test]
+    #[test]
+    fn cyclic_machines_go_to_the_cyclic_minimizer() {
+        let limit = crate::depth::MAX_PATH_LENGTH;
+        assert_eq!(longest_path(&line(limit + 1, true)), None);
+        assert!(refuse_long_paths(&line(limit + 1, true)).is_ok());
     }
 }

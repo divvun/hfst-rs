@@ -42,6 +42,7 @@ pub mod convert;
 pub mod convert_ol_transducer;
 pub mod convert_transducer_format;
 pub mod convert_tropical_weight_transducer;
+pub mod depth;
 pub mod dhfst;
 pub mod dhfst_acceptor;
 pub mod dhfst_acceptor_lookup;
