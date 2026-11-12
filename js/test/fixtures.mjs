@@ -13,6 +13,7 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { gunzipSync } from "node:zlib";
+import { buildCompileFixtures } from "./compile-fixtures.mjs";
 import { buildDhfstFixtures } from "./dhfst-fixtures.mjs";
 import { buildHfstJsFixtures } from "./hfst-js-fixtures.mjs";
 import { buildLookupFixtures } from "./lookup-fixtures.mjs";
@@ -65,6 +66,7 @@ export function buildFixtures(hfst, out) {
   buildParityFixtures(hfst, out);
   buildHfstJsFixtures(tool, out, sources, READ);
   buildOptimisedFixtures(out);
+  buildCompileFixtures(hfst, out);
 }
 
 /**

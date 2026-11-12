@@ -9282,6 +9282,14 @@ children (
                     target-impl ([spec:hfst:req:python.compile-parity])
                 }
                 deps (compile-surface.python-compile compile-surface.python-writers)
+                log (
+                    {
+                        at 2026-11-12T21:55:04.081858Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
+                )
             }
 
             {

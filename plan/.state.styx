@@ -1437,4 +1437,9 @@ impl_evidence (
     ), covered_claims (
         {impl_name target-impl, rule python.writers}
     )}
+    {id compile-surface.python-parity, covered_rules (
+        python.compile-parity
+    ), covered_claims (
+        {impl_name target-impl, rule python.compile-parity}
+    )}
 )

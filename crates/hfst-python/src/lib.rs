@@ -25,6 +25,13 @@ mod writers;
 // python/tests/test_parity.py checks them against the native library's on
 // the npm package's parity fixtures.
 
+// [spec:hfst:req:python.compile-parity]
+// Every compiler, operation, query and writer reaches hfst-embed's compile
+// feature, which calls the library function the hfst tool calls, with the
+// caller's options turned into the tool's: the bytes and reports are the
+// tool's. python/tests/test_compile_parity.py checks them against what the
+// tools write of the inputs the repository's tests give them.
+
 /// What the package calls itself and its readers, for the errors hfst-embed
 /// raises that send a caller to another reader.
 const PACKAGE: hfst_embed::Package = hfst_embed::Package {
