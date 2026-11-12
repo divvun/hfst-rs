@@ -9124,6 +9124,14 @@ children (
                         kind @status
                         text "Todo → Doing (nplan start)"
                     }
+
+                    {
+                        at 2026-11-12T16:52:18.543629Z
+                        author "brendan@necessary.nu"
+                        kind @errata
+                        text "embed.no-panic is not fully met. Measured after embed-compile, release build, macOS arm64: the pmatch and twolc parsers have no depth guard, and pmatch at 120,000 nesting levels overflows even the CLI's 512 MiB thread, which aborts with SIGABRT, not a panic. XRE's MAX_NESTING_DEPTH of 4000 needs about 9 KiB of stack per level (about 36 MiB at the cap), so hfst-embed on an ordinary thread aborts at about 112 levels on 1 MiB and 893 on 8 MiB. compile-surface.embed-gaps adds the guards and the large compile stack."
+                        after_done true
+                    }
                 )
             }
 
@@ -9207,7 +9215,7 @@ children (
                         [spec:hfst:req:python.threads]
                     )
                 }
-                deps (compile-surface.embed-transducer)
+                deps (compile-surface.embed-transducer compile-surface.embed-gaps)
             }
 
             {
@@ -9250,7 +9258,7 @@ children (
                     )
                     target-impl ([spec:hfst:req:javascript.compile-module] [spec:hfst:req:javascript.compile-files] [spec:hfst:req:javascript.compile-errors])
                 }
-                deps (compile-surface.embed-compile compile-surface.embed-writers)
+                deps (compile-surface.embed-compile compile-surface.embed-writers compile-surface.embed-gaps)
             }
 
             {
@@ -9269,6 +9277,13 @@ children (
                 title "Release the compile surface: divvun-hfst 0.2.0 and @divvun/hfst 0.2.0 with READMEs covering compiling, the npm tarball carrying the compile entry, and the python/v0.2.0 and wasm/v0.2.0 tags"
                 kind @chore
                 deps (compile-surface.python-parity compile-surface.wasm-parity)
+            }
+
+            {
+                id compile-surface.embed-gaps
+                title "Close what the compile feature left: depth guards in the pmatch and twolc parsers as XRE has, so no input overflows the stack; native compiles through hfst-embed on a stack as large as the CLI's; flookup's inversion and the optimized-lookup refusals moved into tools::lookup for the CLI and hfst-embed to share; hfst_embed::compile re-exporting the file resolvers"
+                kind @fix
+                deps (compile-surface.embed-compile compile-surface.embed-transducer)
             }
         )
     }
