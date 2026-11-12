@@ -7,13 +7,15 @@ walk's units in order: the generator decides which units are offered
 
 ## The file
 
-> [spec:hfst:def:prediction-model.file]
+> [spec:hfst:def:prediction-model.file+1]
 > A model is one file. It holds the hash of the unit grammar it was built
 > with; its order, the length of the longest run of units it counts; its
 > backoff method; how its builder counted a token with more than one reading;
 > the unit keys it counts, each with its count; for each length from 2 to the
-> order, the count of each run of that many units seen in the text; and, for
-> each class in the grammar, that class's face (`prediction-model.faces`).
+> order, the count of each run of that many units seen in the text; the word
+> forms it counts, with their runs and units (`prediction-model.word-forms`);
+> and, for each class in the grammar, that class's face
+> (`prediction-model.faces`).
 
 > [spec:hfst:syn:prediction-model.format]
 > A model file starts with the eight bytes `HFSTPRED`, a format version and
@@ -77,3 +79,21 @@ walk's units in order: the generator decides which units are offered
 > sum of theirs, and never below zero, so a stem whose likely endings are all
 > on offer as words ranks below them, and one with likely endings left over
 > keeps its place. A complete word the model cannot score is unseen.
+
+> [spec:hfst:req:prediction-model.word-forms]
+> The builder MUST also count the text's word forms: each counted token's
+> surface form with capitals folded, alone and in runs of up to the model's
+> order, and for each form the unit keys of the reading it was counted with
+> most often. Word forms follow the same ambiguity rule and the same breaks in
+> context as units. The model MUST let a reader find the forms that start
+> with given letters in place, without reading the whole table, and the size
+> limit (`prediction-model.budget`) drops runs of forms as it drops runs of
+> units.
+
+> [spec:hfst:sem:prediction-model.form-score]
+> A word form the model counted is scored by its count after the forms of the
+> words before it, with the model's backoff, as a share of the forms counted
+> after that context. Every other candidate, a unit or a complete word built
+> from units, is scored by the unit model times the unit weight, a setting
+> from 0 to 1. A complete word that is both a counted form and built from
+> units is offered once, with the higher of its two scores.

@@ -107,6 +107,24 @@ are offered beside the stems.
 > complete word, labelled with the word it writes. Picking a complete word
 > picks its stem and its ending, and the word is then complete.
 
+## Word forms the text has shown
+
+Building a word from units pays where the text never showed the form. Where
+it did, the form's own counts predict it better: on North Sámi, completing
+seen word forms saved 25.3% of keystrokes with three suggestions, against
+19.5% for units with whole words. So the forms the model counted are offered
+too, and units take over for the rest.
+
+> [spec:hfst:sem:prediction.seen-forms]
+> Before a word's first stem is picked, the offer also holds the word forms
+> the model counted (`prediction-model.word-forms`): those that start with
+> the letters typed, capitals folded, or, with no letters typed, the forms
+> most likely after the words before it. Each is a complete word labelled with
+> its form. Picking one completes the word: it writes that form, and the
+> units it was counted with become the word's units for the context. Whether
+> seen forms are offered, and whether units are, are settings, so a language
+> can measure forms alone, units alone and both.
+
 ## Memory
 
 > [spec:hfst:req:prediction.views]

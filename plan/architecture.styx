@@ -86,11 +86,12 @@ elements (
             [spec:hfst:sem:prediction.session]
             [spec:hfst:req:prediction.views]
             [spec:hfst:sem:prediction.whole-words]
+            [spec:hfst:sem:prediction.seen-forms]
         )
         exposes ("crates/hfst/src/prediction/walk.rs" "crates/hfst/src/prediction/walk/*.rs" "crates/hfst/src/prediction/entry.rs" "crates/hfst/src/prediction/session.rs" "crates/hfst/src/prediction/realise.rs")
         depends_on ([arch:hfst:prediction-units])
         composed_of ()
-        decisions ([dec:hfst:predictive-text] [dec:hfst:prediction-whole-words])
+        decisions ([dec:hfst:predictive-text] [dec:hfst:prediction-whole-words] [dec:hfst:prediction-word-forms])
         log (
             {at "2026-11-11T12:34:17Z", kind @established, by "[dec:hfst:predictive-text]"}
         )
@@ -110,11 +111,13 @@ elements (
             [spec:hfst:req:prediction-model.budget]
             [spec:hfst:req:prediction-model.rank-only]
             [spec:hfst:sem:prediction-model.word-score]
+            [spec:hfst:req:prediction-model.word-forms]
+            [spec:hfst:sem:prediction-model.form-score]
         )
         exposes ("crates/hfst/src/prediction/model.rs" "crates/hfst/src/prediction/model/*.rs" "crates/hfst/src/prediction/rank.rs")
         depends_on ([arch:hfst:prediction-units])
         composed_of ()
-        decisions ([dec:hfst:predictive-text] [dec:hfst:prediction-unit-grammar] [dec:hfst:prediction-measured-choices] [dec:hfst:prediction-whole-words])
+        decisions ([dec:hfst:predictive-text] [dec:hfst:prediction-unit-grammar] [dec:hfst:prediction-measured-choices] [dec:hfst:prediction-whole-words] [dec:hfst:prediction-word-forms])
         log (
             {at "2026-11-11T12:34:17Z", kind @established, by "[dec:hfst:predictive-text]"}
         )

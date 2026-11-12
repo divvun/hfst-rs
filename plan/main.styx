@@ -9773,6 +9773,45 @@ children (
                 kind @feat
                 deps (predict.whole-words predict.crk-whole-words)
             }
+
+            {
+                id predict.word-forms-spec
+                title "State word forms in the spec and the AKM: prediction.seen-forms, prediction-model.word-forms and prediction-model.form-score, the model file holding word forms, and the prediction-word-forms decision, after completing North Sámi's seen word forms saved 25.3% of keystrokes against 19.5% for units"
+                kind @docs
+                sealed true
+                log (
+                    {
+                        at 2026-11-12T21:30:06.426355Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
+
+                    {
+                        at 2026-11-12T21:30:41.021303Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan complete)"
+                    }
+                )
+            }
+
+            {
+                id predict.word-forms
+                title "Count word forms in the model and offer the seen ones: the builder counts surface forms, their runs and units, the file holds them for prefix lookup in place, the session offers forms on typed letters or after the words before, seen forms rank by their own counts and units by the unit model times a weight, with forms and units each switchable, through the harness, hfst-embed and the CLI"
+                kind @feat
+                implements {
+                    target-impl ([spec:hfst:sem:prediction.seen-forms] [spec:hfst:req:prediction-model.word-forms] [spec:hfst:sem:prediction-model.form-score])
+                }
+                deps (predict.word-forms-spec predict.whole-words)
+            }
+
+            {
+                id predict.word-forms-measure
+                title "Measure word forms alone, units alone and both on North Sámi, Plains Cree and Greenlandic on the same folds, with the unit weight and whole words varied, and update the three write-ups (Greenlandic gets docs/prediction/kal-evaluation.md) with which mix each language should ship"
+                kind @docs
+                deps (predict.word-forms)
+            }
         )
     }
 
