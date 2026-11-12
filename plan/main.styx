@@ -9909,5 +9909,13 @@ children (
         id path-extraction-memory
         title "Path extraction kept a copy of two visitation maps for every state on the path, so a path n states long took memory quadratic in n; one shared on-path count gives the same paths in linear memory"
         kind @fix
+        log (
+            {
+                at 2026-11-12T20:59:34.719572Z
+                author "brendan@necessary.nu"
+                kind @status
+                text "Todo → Doing (nplan start)"
+            }
+        )
     }
 )

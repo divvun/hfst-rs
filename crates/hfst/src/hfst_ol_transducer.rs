@@ -379,18 +379,24 @@ mod ol_lookup_ops {
     };
 
     /* The recursive path-extraction worker (C++ file-'static' free function in
-    `namespace hfst::implementations`). Kept module-private, like the C++. Note the
-    faithful quirk that `all_visitations` / `path_visitations` are passed *by value*
-    (each recursive call gets its own copy), while `spv` and `fd_state_stack` are
-    shared (passed by reference / pointer). */
+    `namespace hfst::implementations`). Kept module-private, like the C++.
+    `on_path[q]` is the number of times state `q` occurs on the path from the
+    start state to `s`, and a state off the path has no entry: the cycle
+    limit reads it before `s` is counted, the arc order after. Both returns
+    after the count undo it, so a call hands the counts back as it found them
+    and a branch never sees its siblings' visits. The C++ passes two maps by
+    value, a copy per call, which holds a path n states long in memory
+    quadratic in n; at every read both copies equal these counts, so the paths
+    and their order are the same. `spv` and `fd_state_stack` are shared down
+    the recursion too. A state is a table index, an index-table position or a
+    transition-table one past TARGET_TABLE, hence a map and not a vector. */
     // [spec:hfst:def:hfst-ol-transducer.hfst.implementations.extract-paths-fn]
-    // [spec:hfst:sem:hfst-ol-transducer.hfst.implementations.extract-paths-fn]
+    // [spec:hfst:sem:hfst-ol-transducer.hfst.implementations.extract-paths-fn+1]
     #[allow(clippy::too_many_arguments)]
     fn extract_paths<T: crate::transducer::TransducerTablesInterface>(
         t: &Transducer<T>,
         s: TransitionTableIndex,
-        mut all_visitations: BTreeMap<TransitionTableIndex, u16>,
-        mut path_visitations: BTreeMap<TransitionTableIndex, u16>,
+        on_path: &mut BTreeMap<TransitionTableIndex, u16>,
         /*std::vector<char>& lbuffer, int lpos,
         std::vector<char>& ubuffer, int upos,*/
         weight_sum: f32,
@@ -400,11 +406,10 @@ mod ol_lookup_ops {
         filter_fd: bool,
         spv: &mut StringPairVector,
     ) -> bool {
-        if cycles >= 0 && (*path_visitations.entry(s).or_insert(0) as i32) > cycles {
+        if cycles >= 0 && i32::from(visits(on_path, s)) > cycles {
             return true;
         }
-        *all_visitations.entry(s).or_insert(0) += 1;
-        *path_visitations.entry(s).or_insert(0) += 1;
+        *on_path.entry(s).or_insert(0) += 1;
 
         if !spv.is_empty() {
             // check for finality
@@ -435,7 +440,7 @@ mod ol_lookup_ops {
 
             let ret = callback.operator_call(&mut path, is_final);
             if !ret.continueSearch || !ret.continuePath {
-                *path_visitations.entry(s).or_insert(0) -= 1;
+                leave(on_path, s);
                 return ret.continueSearch;
             }
         }
@@ -447,11 +452,9 @@ mod ol_lookup_ops {
             let target = t.get_transition_target(*it);
             let mut i: usize = 0;
             while i < sorted_transitions.len() {
-                let av_t = *all_visitations.get(&target).unwrap_or(&0);
-                let av_i = *all_visitations
-                    .get(&t.get_transition_target(sorted_transitions[i]))
-                    .unwrap_or(&0);
-                if av_t < av_i {
+                if visits(on_path, target)
+                    < visits(on_path, t.get_transition_target(sorted_transitions[i]))
+                {
                     break;
                 }
                 i += 1;
@@ -531,8 +534,7 @@ mod ol_lookup_ops {
             res = extract_paths(
                 t,
                 target,
-                all_visitations.clone(),
-                path_visitations.clone(),
+                on_path,
                 /*lbuffer,lp, ubuffer,up,*/
                 weight_sum
                     + if t.get_header().probe_flag(HeaderFlag::Weighted) {
@@ -558,8 +560,23 @@ mod ol_lookup_ops {
             i += 1;
         }
 
-        *path_visitations.entry(s).or_insert(0) -= 1;
+        leave(on_path, s);
         res
+    }
+
+    fn visits(on_path: &BTreeMap<TransitionTableIndex, u16>, s: TransitionTableIndex) -> u16 {
+        on_path.get(&s).copied().unwrap_or(0)
+    }
+
+    /// Uncount `s` as the walk leaves it, dropping the entry at zero so the map
+    /// holds only the states on the current path.
+    fn leave(on_path: &mut BTreeMap<TransitionTableIndex, u16>, s: TransitionTableIndex) {
+        if let std::collections::btree_map::Entry::Occupied(mut count) = on_path.entry(s) {
+            *count.get_mut() -= 1;
+            if *count.get() == 0 {
+                count.remove();
+            }
+        }
     }
 
     #[allow(dead_code)]
@@ -567,7 +584,7 @@ mod ol_lookup_ops {
 
     impl HfstOlTransducer {
         // [spec:hfst:def:hfst-ol-transducer.hfst.implementations.hfst-ol-transducer.extract-paths-fn]
-        // [spec:hfst:sem:hfst-ol-transducer.hfst.implementations.hfst-ol-transducer.extract-paths-fn]
+        // [spec:hfst:sem:hfst-ol-transducer.hfst.implementations.hfst-ol-transducer.extract-paths-fn+1]
         pub fn extract_paths<T: crate::transducer::TransducerTablesInterface>(
             t: &Transducer<T>,
             callback: &mut dyn ExtractStringsCb,
@@ -577,8 +594,7 @@ mod ol_lookup_ops {
         ) {
             //std::vector<char> lbuffer(BUFFER_START_SIZE, 0);
             //std::vector<char> ubuffer(BUFFER_START_SIZE, 0);
-            let all_visitations: BTreeMap<TransitionTableIndex, u16> = BTreeMap::new();
-            let path_visitations: BTreeMap<TransitionTableIndex, u16> = BTreeMap::new();
+            let mut on_path: BTreeMap<TransitionTableIndex, u16> = BTreeMap::new();
             let mut fd_state_stack: Option<Vec<FdState<SymbolNumber>>> =
                 fd.map(|table| vec![FdState::new(table)]);
 
@@ -587,8 +603,7 @@ mod ol_lookup_ops {
             extract_paths(
                 t,
                 0,
-                all_visitations,
-                path_visitations,
+                &mut on_path,
                 /*lbuffer,0,ubuffer,0,*/
                 0.0f32,
                 callback,

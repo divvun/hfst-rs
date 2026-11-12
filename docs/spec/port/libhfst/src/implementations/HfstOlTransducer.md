@@ -3,12 +3,12 @@
 > [spec:hfst:def:hfst-ol-transducer.hfst.implementations.extract-paths-fn]
 > static bool extract_paths
 
-> [spec:hfst:sem:hfst-ol-transducer.hfst.implementations.extract-paths-fn]
+> [spec:hfst:sem:hfst-ol-transducer.hfst.implementations.extract-paths-fn+1]
 > Free (file-static) recursive helper that does a depth-first traversal of the
 > hfst_ol::Transducer `t` starting at transition-table index `s`, emitting paths
-> via `callback`. Parameters: `all_visitations` (a per-state visit counter
-> passed BY VALUE — each recursion gets its own copy), `path_visitations`
-> (per-state counter on the current path, also passed BY VALUE), `weight_sum`
+> via `callback`. Parameters: `on_path` (for every state, how many times it
+> occurs on the path from the start to `s`, a state on no path having no entry;
+> one count shared by the whole recursion), `weight_sum`
 > (accumulated weight so far), `callback` (an ExtractStringsCb&), `cycles`
 > (max allowed repeated visits of a state on one path, or negative for
 > unlimited), `fd_state_stack` (pointer to a vector of FdState<SymbolNumber>;
@@ -16,9 +16,9 @@
 > symbols are filtered out of the emitted strings), and `spv` (a
 > StringPairVector& holding the current path's input/output symbol pairs,
 > mutated and restored as the recursion proceeds). Steps:
-> 1. If `cycles >= 0` and `path_visitations[s] > cycles`, return `true`
+> 1. If `cycles >= 0` and `on_path[s] > cycles`, return `true`
 >    immediately (cycle limit reached for this state on this path).
-> 2. Increment `all_visitations[s]` and `path_visitations[s]`.
+> 2. Increment `on_path[s]`.
 > 3. If `spv` is non-empty (i.e. not at the very start): determine finality of
 >    state `s`. If `indexes_transition_index_table(s)`, look at `t->get_index(s)`:
 >    if `.final()`, mark final and, when the header's Weighted flag is set, set
@@ -27,10 +27,10 @@
 >    set final_weight from `TransitionW::get_weight()` (else 0). Build an
 >    HfstTwoLevelPath from `weight_sum + final_weight` and `spv`, call
 >    `callback(path, final)`. If the returned RetVal has `continueSearch` false
->    or `continuePath` false, decrement `path_visitations[s]` and return
+>    or `continuePath` false, decrement `on_path[s]` and return
 >    `ret.continueSearch`.
 > 4. Get the set of outgoing transitions `t->get_transitions_from_state(s)` and
->    build `sorted_transitions` ordered ascending by `all_visitations` of each
+>    build `sorted_transitions` ordered ascending by `on_path` of each
 >    transition's target (insertion sort: least-visited targets first).
 > 5. Iterate `sorted_transitions` while `res == true`. For each transition get
 >    its input and output symbols. If `fd_state_stack` is non-NULL and the input
@@ -41,13 +41,20 @@
 >    If not filtering, or the input symbol is not a flag operation, set istring to
 >    the alphabet symbol-table entry for `input` (else empty). Same for ostring
 >    with `output`. Push `StringPair(istring, ostring)` onto `spv`.
-> 7. Recurse into `extract_paths` on `transition.get_target()`, passing copies of
->    `all_visitations`/`path_visitations`, `weight_sum` plus (when Weighted) the
->    transition's `TransitionW::get_weight()` else 0, and the same callback,
->    cycles, fd_state_stack, filter_fd, spv. Store the result in `res`.
+> 7. Recurse into `extract_paths` on `transition.get_target()`, passing
+>    `on_path`, `weight_sum` plus (when Weighted) the transition's
+>    `TransitionW::get_weight()` else 0, and the same callback, cycles,
+>    fd_state_stack, filter_fd, spv. Store the result in `res`.
 > 8. Pop the just-pushed entry off `spv`. If `added_fd_state`, pop the
 >    fd_state_stack.
-> 9. After the loop, decrement `path_visitations[s]` and return `res`.
+> 9. After the loop, decrement `on_path[s]` and return `res`.
+> Steps 3 and 9 are the only returns after step 2's increment, and each undoes
+> it once, dropping an entry that reaches zero, so a call returns `on_path` as
+> it found it and a branch never sees its siblings' visits. The C++ passes two
+> maps, `all_visitations` and `path_visitations`, by value instead, a copy per
+> call: wherever either is read, both equal `on_path`, so the paths and their
+> order are the same, but a path n states long holds n copies of up to n
+> entries, memory quadratic in n where the shared count is linear.
 
 > [spec:hfst:def:hfst-ol-transducer.hfst.implementations.hfst-ol-input-stream]
 > class HfstOlInputStream {
@@ -228,20 +235,21 @@
 > [spec:hfst:def:hfst-ol-transducer.hfst.implementations.hfst-ol-transducer.extract-paths-fn]
 > void HfstOlTransducer::extract_paths
 
-> [spec:hfst:sem:hfst-ol-transducer.hfst.implementations.hfst-ol-transducer.extract-paths-fn]
+> [spec:hfst:sem:hfst-ol-transducer.hfst.implementations.hfst-ol-transducer.extract-paths-fn+1]
 > Public entry point that sets up state and invokes the recursive free
 > `extract_paths` helper. Parameters: `t` (the transducer), `callback`
 > (ExtractStringsCb&), `cycles` (max repeated state visits per path), `fd`
 > (a FdTable<SymbolNumber>* for flag diacritics, or NULL), `filter_fd`. Steps:
-> 1. Create empty maps `all_visitations` and `path_visitations`
->    (TransitionTableIndex -> unsigned short).
+> 1. Create the empty on-path count `on_path` (TransitionTableIndex -> unsigned
+>    short). The C++ creates two empty maps, `all_visitations` and
+>    `path_visitations`, in its place.
 > 2. If `fd == NULL`, set `fd_state_stack` to NULL; otherwise allocate a new
 >    `std::vector<FdState<SymbolNumber>>` initialized with one element
 >    `FdState<SymbolNumber>(*fd)`.
 > 3. Create an empty `StringPairVector spv`.
-> 4. Call the free helper `hfst::implementations::extract_paths(t, 0,
->    all_visitations, path_visitations, 0.0f, callback, cycles, fd_state_stack,
->    filter_fd, spv)` — starting at index 0, with weight_sum 0.0.
+> 4. Call the free helper `hfst::implementations::extract_paths(t, 0, on_path,
+>    0.0f, callback, cycles, fd_state_stack, filter_fd, spv)` — starting at
+>    index 0, with weight_sum 0.0.
 > Returns void. (Note: the allocated fd_state_stack is not freed here.)
 
 > [spec:hfst:def:hfst-ol-transducer.hfst.implementations.hfst-ol-transducer.get-alphabet-fn]

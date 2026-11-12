@@ -959,6 +959,7 @@ dependencies = [
  "nfst-twolc",
  "nfst-xfst",
  "nfst-xre",
+ "peak_alloc",
  "serde",
  "serde-xml-rs",
  "serde_json",
@@ -1944,6 +1945,12 @@ name = "pathdiff"
 version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "df94ce210e5bc13cb6651479fa48d14f601d9858cfe0467f43ae157023b938d3"
+
+[[package]]
+name = "peak_alloc"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ccc90935a8dd139fdf341762773687a1e361d3f54b396a55d9dd1f7001e484bb"
 
 [[package]]
 name = "pin-project-lite"

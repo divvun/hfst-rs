@@ -16,18 +16,21 @@ pub type LabelPairVector = Vec<LabelPair>;
 // 'namespace hfst::implementations').  Kept module-private, like the C++.
 // ============================================================================
 
-/* The recursive path-extraction worker.  Note the faithful C++ quirk that
-`all_visitations` / `path_visitations` are passed *by value* (each recursive
-call gets its own copy), while `spv` and `fd_state_stack` are shared
-(passed by reference / pointer). */
+/* The recursive path-extraction worker. `on_path[q]` is the number of times
+state `q` occurs on the path from the start state to `s`: the cycle limit
+reads it before `s` is counted, the arc order after. Both returns after the
+count undo it, so a call hands the counts back as it found them and a branch
+never sees its siblings' visits. The C++ passes two maps by value, a copy per
+call, which holds a path n states long in memory quadratic in n; at every read
+both copies equal these counts, so the paths and their order are the same.
+`spv` and `fd_state_stack` are shared down the recursion too. */
 // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.extract-paths-fn]
-// [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.extract-paths-fn]
+// [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.extract-paths-fn+1]
 #[allow(clippy::too_many_arguments)]
 fn extract_paths(
     t: &StdVectorFst,
     s: StateId,
-    mut all_visitations: BTreeMap<StateId, u16>,
-    mut path_visitations: BTreeMap<StateId, u16>,
+    on_path: &mut [u16],
     weight_sum: f32,
     callback: &mut dyn ExtractStringsCb,
     cycles: i32,
@@ -35,11 +38,10 @@ fn extract_paths(
     filter_fd: bool,
     spv: &mut StringPairVector,
 ) -> bool {
-    if cycles >= 0 && (*path_visitations.entry(s).or_insert(0) as i32) > cycles {
+    if cycles >= 0 && i32::from(on_path[s as usize]) > cycles {
         return true;
     }
-    *all_visitations.entry(s).or_insert(0) += 1;
-    *path_visitations.entry(s).or_insert(0) += 1;
+    on_path[s as usize] += 1;
 
     if !spv.is_empty() {
         let is_final = t.is_final(s).expect("s is a valid state of this fst");
@@ -57,7 +59,7 @@ fn extract_paths(
         };
         let ret = callback.operator_call(&mut path, is_final);
         if !ret.continueSearch || !ret.continuePath {
-            *path_visitations.entry(s).or_insert(0) -= 1;
+            on_path[s as usize] -= 1;
             return ret.continueSearch;
         }
     }
@@ -67,9 +69,7 @@ fn extract_paths(
     for a in t.get_trs(s).expect("s is a valid state of this fst").trs() {
         let mut i = 0usize;
         while i < arcs.len() {
-            let av_a = *all_visitations.get(&a.nextstate).unwrap_or(&0);
-            let av_i = *all_visitations.get(&arcs[i].nextstate).unwrap_or(&0);
-            if av_a < av_i {
+            if on_path[a.nextstate as usize] < on_path[arcs[i].nextstate as usize] {
                 break;
             }
             i += 1;
@@ -152,8 +152,7 @@ fn extract_paths(
         res = extract_paths(
             t,
             arc.nextstate,
-            all_visitations.clone(),
-            path_visitations.clone(),
+            on_path,
             weight_sum + *arc.weight.value(),
             callback,
             cycles,
@@ -173,7 +172,7 @@ fn extract_paths(
         idx += 1;
     }
 
-    *path_visitations.entry(s).or_insert(0) -= 1;
+    on_path[s as usize] -= 1;
     res
 }
 
@@ -489,7 +488,7 @@ impl TropicalWeightTransducer {
     // ---- extract_paths / extract_random_paths --------------------------------
 
     // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.extract-paths-fn]
-    // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.extract-paths-fn]
+    // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.extract-paths-fn+1]
     pub fn extract_paths(
         t: &StdVectorFst,
         callback: &mut dyn ExtractStringsCb,
@@ -501,8 +500,7 @@ impl TropicalWeightTransducer {
             return;
         }
 
-        let all_visitations: BTreeMap<StateId, u16> = BTreeMap::new();
-        let path_visitations: BTreeMap<StateId, u16> = BTreeMap::new();
+        let mut on_path: Vec<u16> = vec![0; t.num_states()];
         let mut fd_state_stack: Option<Vec<FdState<i64>>> = fd.map(|fd| vec![FdState::new(fd)]);
 
         let start = t
@@ -512,8 +510,7 @@ impl TropicalWeightTransducer {
         extract_paths(
             t,
             start,
-            all_visitations,
-            path_visitations,
+            &mut on_path,
             0.0f32,
             callback,
             cycles,

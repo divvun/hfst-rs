@@ -27,7 +27,6 @@ use crate::hfst_transducer::FlagDiacriticOverlay;
 use crate::hfst_tropical_transducer_transition_data::{SymbolType, WeightType};
 
 use foma::options::FomaOptions;
-use std::collections::BTreeMap;
 
 mod algebra;
 
@@ -370,26 +369,27 @@ impl ExtractStringsCb for CollectPaths<'_> {
 }
 
 /// The recursive path-extraction worker: the same traversal the OpenFst and
-/// optimized-lookup backends run, over foma's line table. `all_visitations` /
-/// `path_visitations` are per-call copies; `spv` and `fd_state_stack` are
-/// shared down the recursion.
+/// optimized-lookup backends run, over foma's line table. `on_path[q]` is the
+/// number of times state `q` occurs on the path from the start state to
+/// `state`: the cycle limit reads it before `state` is counted, the arc order
+/// after. Both returns after the count undo it, so a call hands the counts back
+/// as it found them and a branch never sees its siblings' visits. `spv` and
+/// `fd_state_stack` are shared down the recursion too.
 #[allow(clippy::too_many_arguments)]
 fn walk_paths(
     w: &Walk,
     state: u32,
-    mut all_visitations: BTreeMap<u32, u16>,
-    mut path_visitations: BTreeMap<u32, u16>,
+    on_path: &mut [u16],
     callback: &mut dyn ExtractStringsCb,
     cycles: i32,
     mut fd_state_stack: Option<&mut Vec<FdState<i32>>>,
     filter_fd: bool,
     spv: &mut StringPairVector,
 ) -> bool {
-    if cycles >= 0 && (*path_visitations.entry(state).or_insert(0) as i32) > cycles {
+    if cycles >= 0 && i32::from(on_path[state as usize]) > cycles {
         return true;
     }
-    *all_visitations.entry(state).or_insert(0) += 1;
-    *path_visitations.entry(state).or_insert(0) += 1;
+    on_path[state as usize] += 1;
 
     if !spv.is_empty() {
         let is_final = w.finals[state as usize];
@@ -400,7 +400,7 @@ fn walk_paths(
         };
         let ret = callback.operator_call(&mut path, is_final);
         if !ret.continueSearch || !ret.continuePath {
-            *path_visitations.entry(state).or_insert(0) -= 1;
+            on_path[state as usize] -= 1;
             return ret.continueSearch;
         }
     }
@@ -410,9 +410,7 @@ fn walk_paths(
     for arc in w.arcs[state as usize].iter() {
         let mut i = 0usize;
         while i < order.len() {
-            let av_a = *all_visitations.get(&arc.target).unwrap_or(&0);
-            let av_i = *all_visitations.get(&order[i].target).unwrap_or(&0);
-            if av_a < av_i {
+            if on_path[arc.target as usize] < on_path[order[i].target as usize] {
                 break;
             }
             i += 1;
@@ -480,8 +478,7 @@ fn walk_paths(
         res = walk_paths(
             w,
             arc.target,
-            all_visitations.clone(),
-            path_visitations.clone(),
+            on_path,
             callback,
             cycles,
             fd_state_stack.as_deref_mut(),
@@ -500,7 +497,7 @@ fn walk_paths(
         idx += 1;
     }
 
-    *path_visitations.entry(state).or_insert(0) -= 1;
+    on_path[state as usize] -= 1;
     res
 }
 
@@ -601,8 +598,7 @@ impl FomaTransducer {
         walk_paths(
             &w,
             0,
-            BTreeMap::new(),
-            BTreeMap::new(),
+            &mut vec![0; w.finals.len()],
             callback,
             cycles,
             fd_state_stack.as_mut(),
