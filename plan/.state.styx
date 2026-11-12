@@ -572,6 +572,7 @@ assertions (
     {id pmatch2fst-syntax-error-exit-zero, kind @complete, author "brendan@necessary.nu", at 2026-10-28T22:35:08.097638Z}
     {id predict.accept-speed, kind @complete, author "brendan@necessary.nu", at 2026-11-11T21:30:15.94195Z}
     {id predict.cli, kind @complete, author "brendan@necessary.nu", at 2026-11-11T22:27:14.34017Z}
+    {id predict.crk-comparison, kind @complete, author "brendan@necessary.nu", at 2026-11-12T17:48:18.413327Z}
     {id predict.derivations, kind @complete, author "brendan@necessary.nu", at 2026-11-11T16:32:14.938372Z}
     {id predict.embed, kind @complete, author "brendan@necessary.nu", at 2026-11-11T16:38:32.468048Z}
     {id predict.eval-speed, kind @complete, author "brendan@necessary.nu", at 2026-11-12T16:31:45.138221Z}

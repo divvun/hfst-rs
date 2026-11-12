@@ -9479,6 +9479,22 @@ children (
                 title "Write up unit prediction against lang-crk's morph-completion speller on held-out text from the tagged Plains Cree corpus, both scored by keystrokes saved with three suggestions, with the person-first filter and without"
                 kind @docs
                 deps (predict.cli)
+                sealed true
+                log (
+                    {
+                        at 2026-11-11T22:39:13.859882Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
+
+                    {
+                        at 2026-11-12T17:48:18.413327Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan complete)"
+                    }
+                )
             }
 
             {
