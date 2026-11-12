@@ -69,3 +69,11 @@ walk's units in order: the generator decides which units are offered
 > the model never saw come after them, by the generator's weight, lowest
 > first. Remaining ties are broken by the bytes of the unit key. No
 > candidate MAY be dropped for being unseen.
+
+> [spec:hfst:sem:prediction-model.word-score]
+> A complete word on offer (`prediction.whole-words`) is scored as its stem's
+> score times its ending's score after the context and the stem. A stem
+> offered beside its own complete words is scored as its own score less the
+> sum of theirs, and never below zero, so a stem whose likely endings are all
+> on offer as words ranks below them, and one with likely endings left over
+> keeps its place. A complete word the model cannot score is unseen.

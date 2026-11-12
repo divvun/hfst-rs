@@ -94,6 +94,19 @@ generator, not a list of morpheme names, decides what can come next.
 > word. The context keeps as many of the latest units as the model's order
 > uses.
 
+## Whole words
+
+Picking a stem and then an ending costs two taps, which is more than typing a
+short word such as North Sámi `ja`. So while a stem can be picked, whole words
+are offered beside the stems.
+
+> [spec:hfst:sem:prediction.whole-words]
+> While a stem can be picked next, the offer holds complete words as well as
+> units. Each stem on offer is completed by its highest-ranked endings, up to
+> a number that is a setting, and each such stem and ending is offered as one
+> complete word, labelled with the word it writes. Picking a complete word
+> picks its stem and its ending, and the word is then complete.
+
 ## Memory
 
 > [spec:hfst:req:prediction.views]

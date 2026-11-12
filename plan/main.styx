@@ -9564,6 +9564,38 @@ children (
                 kind @chore
                 deps (predict.kal-check)
             }
+
+            {
+                id predict.whole-words-spec
+                title "State whole-word offers in the spec and the AKM: prediction.whole-words and prediction-model.word-score, and the prediction-whole-words decision, after North Sámi units saved 16.8% of keystrokes where completing word forms saved 24.5%"
+                kind @docs
+                sealed true
+                log (
+                    {
+                        at 2026-11-12T15:30:15.504655Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
+
+                    {
+                        at 2026-11-12T15:30:22.23091Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan complete)"
+                    }
+                )
+            }
+
+            {
+                id predict.whole-words
+                title "Offer complete words beside the stems while a stem can be picked: each stem on offer completed by its highest-ranked endings and scored as stem times ending, stems scored by what their words leave, through the walk, the ranker, the session, the harness, hfst-embed and hfst predict"
+                kind @feat
+                implements {
+                    target-impl ([spec:hfst:sem:prediction.whole-words] [spec:hfst:sem:prediction-model.word-score])
+                }
+                deps (predict.whole-words-spec predict.preview-reuse)
+            }
         )
     }
 
