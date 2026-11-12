@@ -1245,3 +1245,254 @@ fn a_naive_tokeniser_formats_what_the_tool_prints() {
     .expect("formats");
     assert_eq!(printed, String::from_utf8_lossy(&expected));
 }
+
+/// A DHFST fixture's path.
+fn dhfst_fixture(name: &str) -> String {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/dhfst")
+        .join(name)
+        .to_str()
+        .expect("utf8")
+        .to_string()
+}
+
+// [spec:hfst:req:embed.writers/test]
+// The text of a stream, in each format and weight setting, is what
+// `hfst fst2txt` prints.
+#[test]
+fn text_is_what_fst2txt_prints() {
+    let inputs = Inputs::new();
+    let cases: Vec<(Vec<&str>, TextOptions)> = vec![
+        (vec![], TextOptions::default()),
+        (
+            vec!["-n"],
+            TextOptions {
+                use_numbers: true,
+                ..TextOptions::default()
+            },
+        ),
+        (
+            vec!["-w"],
+            TextOptions {
+                print_weights: true,
+                ..TextOptions::default()
+            },
+        ),
+        (
+            vec!["-D"],
+            TextOptions {
+                do_not_print_weights: true,
+                ..TextOptions::default()
+            },
+        ),
+        (
+            vec!["-f", "dot"],
+            TextOptions {
+                format: TextFormat::Dot,
+                ..TextOptions::default()
+            },
+        ),
+        (
+            vec!["-f", "prolog"],
+            TextOptions {
+                format: TextFormat::Prolog,
+                ..TextOptions::default()
+            },
+        ),
+        (
+            vec!["-f", "pckimmo"],
+            TextOptions {
+                format: TextFormat::Pckimmo,
+                ..TextOptions::default()
+            },
+        ),
+    ];
+    for name in [
+        "words",
+        "weights",
+        "flags",
+        "words.foma",
+        "words.olw",
+        "att",
+        "lexc",
+    ] {
+        let all = inputs.all(name);
+        let refs: Vec<&Transducer> = all.iter().collect();
+        for (args, options) in &cases {
+            let path = inputs.path(name);
+            let mut argv = vec!["fst2txt"];
+            argv.extend(args.iter().copied());
+            argv.push(&path);
+            let (ok, expected) = run(&argv, b"");
+            let written = text(&refs, options);
+            assert_eq!(written.is_ok(), ok, "hfst {argv:?}: {written:?}");
+            if let Ok(bytes) = written {
+                assert_eq!(
+                    String::from_utf8_lossy(&bytes),
+                    String::from_utf8_lossy(&expected),
+                    "hfst {argv:?}"
+                );
+            }
+        }
+        if refs.len() == 1 {
+            let alone = refs[0].to_text(&TextOptions::default()).expect("writes");
+            assert_eq!(alone, tool(&["fst2txt", &inputs.path(name)], b""));
+        }
+    }
+}
+
+// [spec:hfst:req:embed.writers/test]
+// Each DHFST file is what `hfst fst2fst -f dhfst` writes of the same input.
+#[test]
+fn dhfst_is_what_fst2fst_writes() {
+    let dir = tempfile::tempdir().expect("a directory");
+    let out = dir.path().join("out.dhfst");
+    let out = out.to_str().expect("utf8");
+    let cases: &[(&str, &[&str], DhfstOptions)] = &[
+        (
+            "errmodel.hfst",
+            &["--dhfst-type", "errmodel"],
+            DhfstOptions::new(DhfstKind::ErrorModel),
+        ),
+        (
+            "errmodel.hfst",
+            &["--dhfst-type", "errmodel", "--max-fallback-depth", "1"],
+            DhfstOptions {
+                max_fallback_depth: Some(1),
+                ..DhfstOptions::new(DhfstKind::ErrorModel)
+            },
+        ),
+        (
+            "errmodel.hfst",
+            &["--dhfst-type", "errmodel", "--unbounded-fallback"],
+            DhfstOptions {
+                max_fallback_depth: None,
+                ..DhfstOptions::new(DhfstKind::ErrorModel)
+            },
+        ),
+        (
+            "acceptor.hfst",
+            &["--dhfst-type", "acceptor"],
+            DhfstOptions::new(DhfstKind::Acceptor),
+        ),
+        (
+            "acceptor-wide.hfst",
+            &["--dhfst-type", "acceptor", "-Q"],
+            DhfstOptions {
+                quick: true,
+                ..DhfstOptions::new(DhfstKind::Acceptor)
+            },
+        ),
+    ];
+    for (input, args, options) in cases {
+        let path = dhfst_fixture(input);
+        let mut argv = vec!["fst2fst", "-f", "dhfst"];
+        argv.extend(args.iter().copied());
+        argv.extend(["-i", &path, "-o", out]);
+        tool(&argv, b"");
+        let expected = std::fs::read(out).expect("the tool wrote");
+        let t = read_transducers(&std::fs::read(&path).expect("the fixture"))
+            .expect("reads")
+            .remove(0);
+        let options = DhfstOptions {
+            source_name: input.to_string(),
+            ..options.clone()
+        };
+        assert_eq!(
+            t.to_dhfst(&options).expect("writes"),
+            expected,
+            "hfst {argv:?}"
+        );
+    }
+}
+
+// [spec:hfst:req:embed.writers/test]
+// A THFST directory written through files in memory, or on the filesystem,
+// holds what `hfst fst2fst -f thfst` writes.
+#[test]
+fn thfst_is_what_fst2fst_writes() {
+    let inputs = Inputs::new();
+    let dir = tempfile::tempdir().expect("a directory");
+    for name in ["words", "weights", "words.foma", "words.olw"] {
+        let by_tool = dir.path().join(format!("{name}.tool.thfst"));
+        let by_tool = by_tool.to_str().expect("utf8");
+        tool(
+            &["fst2fst", "-f", "thfst", &inputs.path(name), "-o", by_tool],
+            b"",
+        );
+        let t = inputs.one(name);
+        let memory = hfst::file_resolver::MemoryFiles::default();
+        t.write_thfst("out.thfst", false, &memory).expect("writes");
+        let on_disk = dir.path().join(format!("{name}.embed.thfst"));
+        let on_disk = on_disk.to_str().expect("utf8");
+        t.write_thfst(on_disk, false, &hfst::file_resolver::FsResolver)
+            .expect("writes");
+        for member in ["alphabet", "index", "transition"] {
+            let expected = std::fs::read(format!("{by_tool}/{member}")).expect("the tool wrote");
+            assert_eq!(
+                memory.get(&format!("out.thfst/{member}")),
+                Some(expected.clone()),
+                "{name} {member}"
+            );
+            let written = std::fs::read(format!("{on_disk}/{member}")).expect("written");
+            assert_eq!(written, expected, "{name} {member} on disk");
+        }
+    }
+}
+
+// [spec:hfst:req:embed.writers/test]
+// An archive packed from files is what `hfst bhfst` packs from the same
+// files, from the filesystem or from memory.
+#[test]
+fn bhfst_is_what_the_tool_packs() {
+    let dir = tempfile::tempdir().expect("a directory");
+    let index_xml = dir.path().join("index.xml");
+    std::fs::write(
+        &index_xml,
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<hfstspeller dtdversion="1.0" hfstversion="3">
+  <info><locale>se</locale><title>T</title><description>D</description><producer>p</producer></info>
+  <acceptor type="general" id="acceptor.default.hfst"><title>A</title><description>a</description></acceptor>
+  <errmodel id="errmodel.default.hfst"><title>E</title><description>e</description></errmodel>
+</hfstspeller>
+"#,
+    )
+    .expect("write index.xml");
+    let config = dir.path().join("config.json");
+    std::fs::write(&config, r#"{"beam": 3}"#).expect("write the config");
+    let out = dir.path().join("out.bhfst");
+    let (acceptor, errmodel) = (
+        dhfst_fixture("acceptor.hfst"),
+        dhfst_fixture("errmodel.dhfst"),
+    );
+    let index_xml = index_xml.to_str().expect("utf8").to_string();
+    let config = config.to_str().expect("utf8").to_string();
+    let out = out.to_str().expect("utf8");
+    tool(
+        &[
+            "bhfst", "-a", &acceptor, "-e", &errmodel, "-X", &index_xml, "-c", &config, "-o", out,
+        ],
+        b"",
+    );
+    let expected = std::fs::read(out).expect("the tool wrote");
+    let speller = SpellerFiles {
+        acceptor: acceptor.clone(),
+        errmodel: errmodel.clone(),
+        meta: MetaFile::IndexXml(index_xml.clone()),
+        speller_config: Some(config.clone()),
+    };
+    let packed = pack_bhfst(&speller, &hfst::file_resolver::FsResolver).expect("packs");
+    assert_eq!(packed, expected);
+
+    let memory = hfst::file_resolver::MemoryFiles::default();
+    for name in [&acceptor, &errmodel, &index_xml, &config] {
+        memory.insert(name.as_str(), std::fs::read(name).expect("a file"));
+    }
+    assert_eq!(pack_bhfst(&speller, &memory).expect("packs"), expected);
+    let printed = tool(&["bhfst", "-I", out], b"");
+    let mut metadata = bhfst_metadata(&packed).expect("metadata");
+    if !metadata.ends_with(b"\n") {
+        metadata.push(b'\n');
+    }
+    assert_eq!(metadata, printed);
+}

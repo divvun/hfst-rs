@@ -4,11 +4,13 @@
 use std::io::Write;
 
 use super::bhfst::{
-    BhfstError, MetaSource, PackSource, SourceInput, build_meta_json, dhfst_meta_ids, is_dhfst,
-    meta_json_of, pack, parse_speller_config, read_zhfst, resolve_source,
+    BhfstError, MetaFile, MetaSource, PackSource, SourceInput, SpellerFiles, build_meta_json,
+    dhfst_meta_ids, is_dhfst, meta_json_of, pack, pack_files, pack_zhfst, parse_speller_config,
+    read_zhfst, resolve_source,
 };
 use super::test_support::{regex, stream_bytes};
 use crate::dhfst_header::DhfstType;
+use crate::file_resolver::MemoryFiles;
 use crate::hfst_data_types::ImplementationType;
 use box_format::core::ArchiveReader;
 use box_format::{BoxPath, Record};
@@ -226,4 +228,118 @@ fn zhfst_members_are_read_by_their_ids() {
     assert!(zhfst.speller_config.is_none());
     let missing = read_zhfst("s.zhfst", b"not a zip", &mut |_| {});
     assert!(missing.is_err());
+}
+
+fn zhfst_of(members: &[(&str, &[u8])]) -> Vec<u8> {
+    let mut zip = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+    let options = zip::write::SimpleFileOptions::default();
+    for (name, bytes) in members {
+        zip.start_file(*name, options).expect("a member");
+        zip.write_all(bytes).expect("written");
+    }
+    zip.finish().expect("a zip").into_inner()
+}
+
+// [spec:hfst:sem:dhfst.bhfst-member+2/test]
+// [spec:hfst:sem:thfst-backend.bhfst-tool/test]
+// [spec:hfst:req:embed.tools-in-library/test]
+// A ready THFST directory is packed as it is, a transducer stream is
+// converted to THFST, and meta.json names a DHFST member by its file.
+#[test]
+fn files_pack_from_a_resolver() {
+    let files = MemoryFiles::default();
+    let errmodel = olw("[?:?]*");
+    files.insert("e.hfst", errmodel.clone());
+    files.insert("index.xml", INDEX_XML);
+    for (member, bytes) in [("alphabet", "{}"), ("index", "ix"), ("transition", "tr")] {
+        files.insert(format!("a.thfst/{member}"), bytes);
+    }
+    let speller = SpellerFiles {
+        acceptor: "a.thfst".to_string(),
+        errmodel: "e.hfst".to_string(),
+        meta: MetaFile::IndexXml("index.xml".to_string()),
+        speller_config: None,
+    };
+    let mut heard = Vec::new();
+    let archive = pack_files(&speller, &files, &mut |m| heard.push(m.to_string())).expect("packed");
+    assert_eq!(member(&archive, "acceptor.default.thfst/index"), b"ix");
+    assert_eq!(
+        heard[..3],
+        [
+            "Converting index.xml (index.xml) to meta.json...\n",
+            "Using ready THFST directory a.thfst\n",
+            "Reading e.hfst and converting to THFST...\n",
+        ]
+    );
+    let json = meta(&meta_json_of("s.bhfst", &archive).expect("meta.json"));
+    assert_eq!(json["acceptor"]["id"], "acceptor.default.thfst");
+
+    files.insert("e.dhfst", b"DHFST\x01\x01\0".to_vec());
+    let dhfst = SpellerFiles {
+        errmodel: "e.dhfst".to_string(),
+        ..speller.clone()
+    };
+    let refused = pack_files(&dhfst, &files, &mut |_| {}).expect_err("not loadable");
+    assert!(
+        refused.to_string().starts_with("e.dhfst is not a DHFST"),
+        "{refused}"
+    );
+
+    let missing = SpellerFiles {
+        acceptor: "nowhere.hfst".to_string(),
+        ..speller
+    };
+    let refused = pack_files(&missing, &files, &mut |_| {}).expect_err("no such file");
+    assert_eq!(
+        refused.to_string(),
+        "cannot open nowhere.hfst: not a transducer stream: file could not be opened"
+    );
+}
+
+// [spec:hfst:sem:thfst-backend.speller-config/test]
+// [spec:hfst:sem:thfst-backend.zhfst-input/test]
+// [spec:hfst:req:embed.tools-in-library/test]
+// A speller configuration named on its own wins over the zhfst's.
+#[test]
+fn an_explicit_speller_config_wins() {
+    let acceptor = olw("{cat}");
+    let files = MemoryFiles::default();
+    files.insert(
+        "s.zhfst",
+        zhfst_of(&[
+            ("index.xml", INDEX_XML.as_bytes()),
+            ("acceptor.default.hfst", &acceptor),
+            ("errmodel.default.hfst", &acceptor),
+            ("speller-config.json", br#"{"beam": 2}"#),
+        ]),
+    );
+    files.insert("c.json", br#"{"beam": 1}"#.to_vec());
+    let beam = |config: Option<&str>| {
+        let archive = pack_zhfst("s.zhfst", config, &files, &mut |_| {}).expect("packed");
+        meta(&meta_json_of("s.bhfst", &archive).expect("meta.json"))["spellerConfig"]["beam"]
+            .clone()
+    };
+    assert_eq!(beam(Some("c.json")), 1);
+    assert_eq!(beam(None), 2);
+    let unread = pack_zhfst("s.zhfst", Some("absent.json"), &files, &mut |_| {});
+    assert!(unread.is_err_and(|e| e.to_string().starts_with("cannot read absent.json")));
+}
+
+// [spec:hfst:sem:thfst-backend.bhfst-tool/test]
+// A directory without all three THFST members is not a source.
+#[test]
+fn a_directory_without_members_is_not_a_source() {
+    let files = MemoryFiles::default();
+    files.insert("p.thfst/index", b"ix".to_vec());
+    let speller = SpellerFiles {
+        acceptor: "p.thfst".to_string(),
+        errmodel: "p.thfst".to_string(),
+        meta: MetaFile::None,
+        speller_config: None,
+    };
+    let refused = pack_files(&speller, &files, &mut |_| {}).expect_err("not a source");
+    assert_eq!(
+        refused.to_string(),
+        "cannot open p.thfst: not a transducer stream: file could not be opened"
+    );
 }

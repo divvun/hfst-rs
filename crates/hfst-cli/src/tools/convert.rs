@@ -612,13 +612,11 @@ pub mod fst2fst {
         error, hfst_parse_format_name, hfst_set_program_name, verbose_print, warning,
     };
     use clap::ArgAction;
-    use hfst::dhfst_acceptor_writer::{AcceptorOptions, AcceptorSource, WrittenAcceptor};
-    use hfst::dhfst_writer::{SourceModel, WriteOptions, Written};
     use hfst::hfst_data_types::ImplementationType;
     use hfst::hfst_input_stream::HfstInputStream;
     use hfst::hfst_output_stream::HfstOutputStream;
-    use hfst::hfst_transducer::AnyTransducer;
     use hfst::tools::conversion::fst2fst;
+    use hfst::tools::dhfst::{DEFAULT_FALLBACK_DEPTH, DhfstKind, DhfstOptions, write_dhfst};
     use hfst::tools::format::format_description;
     use hfst::tools::metadata::hfst_get_name;
     use std::io::Write;
@@ -628,20 +626,6 @@ pub mod fst2fst {
     /// place in the type-name vocabulary.
     // [spec:hfst:def:dhfst.fst2fst+2]
     const DHFST_FORMAT: &str = "dhfst";
-
-    /// What a DHFST file is to hold, as `--dhfst-type` names it. The type is
-    /// never guessed from the transducer.
-    // [spec:hfst:def:dhfst.fst2fst+2]
-    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-    enum DhfstKind {
-        /// `--dhfst-type errmodel`: an error model, type 1
-        ErrorModel,
-        /// `--dhfst-type acceptor`: an acceptor, type 2
-        Acceptor,
-    }
-
-    /// The fallback depth bound `-f dhfst` writes with unless told otherwise.
-    const DHFST_DEFAULT_DEPTH: u32 = 4;
 
     /// One occurrence of an output-type option, in the order it was written.
     ///
@@ -803,7 +787,7 @@ pub mod fst2fst {
             if self.unbounded_fallback {
                 None
             } else {
-                Some(self.max_fallback_depth.unwrap_or(DHFST_DEFAULT_DEPTH))
+                Some(self.max_fallback_depth.unwrap_or(DEFAULT_FALLBACK_DEPTH))
             }
         }
 
@@ -999,11 +983,9 @@ pub mod fst2fst {
     }
 
     /// Write the one transducer of `instream` as DHFST of the type asked
-    /// for: converted to weighted optimized lookup exactly as `-f olw`
-    /// converts it, then encoded and self-checked by the DHFST writer.
-    /// Nothing is written unless the check passes.
+    /// for, as the library writes it, and print the writer's report.
     // [spec:hfst:sem:dhfst.fst2fst+2]
-    fn write_dhfst(
+    fn write_dhfst_file(
         common: &CommonOptions,
         options: &Options,
         kind: DhfstKind,
@@ -1032,37 +1014,6 @@ pub mod fst2fst {
                 hfst_get_name(&orig, &common.input_filename)
             ),
         );
-        // Conversion to HFST_OLW_TYPE always yields the OlW variant; any other
-        // would be a bug in the conversion path.
-        let olw = match orig.convert(
-            options.output_type,
-            if options.quick { "quick" } else { "" },
-        ) {
-            Ok(AnyTransducer::OlW(t)) => t,
-            Ok(AnyTransducer::Tropical(_) | AnyTransducer::OlU(_) | AnyTransducer::Thfst(_)) => {
-                error(
-                    common,
-                    1,
-                    0,
-                    "internal error: the conversion did not yield weighted optimized lookup",
-                );
-                return 1;
-            }
-            #[cfg(feature = "foma")]
-            Ok(AnyTransducer::Foma(_)) => {
-                error(
-                    common,
-                    1,
-                    0,
-                    "internal error: the conversion did not yield weighted optimized lookup",
-                );
-                return 1;
-            }
-            Err(e) => {
-                error(common, 1, 0, &format!("{e}"));
-                return 1;
-            }
-        };
         // The meta section names the source by its file name, as dhfst-tools
         // does, so from the same file the two differ only in the writer.
         let source_name = match common.input_filename.as_str() {
@@ -1072,11 +1023,13 @@ pub mod fst2fst {
                 .map(|n| n.to_string_lossy().into_owned())
                 .unwrap_or_default(),
         };
-        let written = match kind {
-            DhfstKind::ErrorModel => write_errmodel(options, olw, source_name),
-            DhfstKind::Acceptor => write_acceptor(&olw, source_name),
+        let dhfst_options = DhfstOptions {
+            kind,
+            max_fallback_depth: options.dhfst_depth,
+            quick: options.quick,
+            source_name,
         };
-        let (bytes, report) = match written {
+        let written = match write_dhfst(orig, &dhfst_options) {
             Ok(w) => w,
             Err(e) => {
                 error(common, 1, 0, &format!("{e}"));
@@ -1085,7 +1038,7 @@ pub mod fst2fst {
         };
         let saved = common
             .output_writer()
-            .and_then(|mut out| out.write_all(&bytes).and_then(|()| out.flush()));
+            .and_then(|mut out| out.write_all(&written.bytes).and_then(|()| out.flush()));
         if let Err(e) = saved {
             error(
                 common,
@@ -1095,127 +1048,8 @@ pub mod fst2fst {
             );
             return 1;
         }
-        verbose_print(common, &report);
+        verbose_print(common, &written.report);
         0
-    }
-
-    /// Write `olw` as a DHFST error model. Answers the bytes and the
-    /// writer's report.
-    fn write_errmodel(
-        options: &Options,
-        olw: hfst::hfst_transducer::HfstTransducer<
-            hfst::transducer::Transducer<hfst::transducer::WeightedTables>,
-        >,
-        source_name: String,
-    ) -> hfst::error::Result<(Vec<u8>, String)> {
-        let model = SourceModel::from_olw(&olw)?;
-        drop(olw);
-        let write_options = WriteOptions {
-            max_fallback_depth: options.dhfst_depth,
-            threads: 0,
-            source_name,
-        };
-        let written = hfst::dhfst_writer::write(&model, &write_options)?;
-        let report = dhfst_report(&model, &written, options.dhfst_depth);
-        Ok((written.bytes, report))
-    }
-
-    /// Write `olw` as a DHFST acceptor. Answers the bytes and the writer's
-    /// report.
-    fn write_acceptor(
-        olw: &hfst::hfst_transducer::HfstTransducer<
-            hfst::transducer::Transducer<hfst::transducer::WeightedTables>,
-        >,
-        source_name: String,
-    ) -> hfst::error::Result<(Vec<u8>, String)> {
-        let source = AcceptorSource::new(olw)?;
-        let written = hfst::dhfst_acceptor_writer::write(
-            &source,
-            &AcceptorOptions {
-                threads: 0,
-                source_name,
-            },
-        )?;
-        let report = acceptor_report(&written);
-        Ok((written.bytes, report))
-    }
-
-    /// The DHFST acceptor writer's report, as `-v` prints it.
-    fn acceptor_report(w: &WrittenAcceptor) -> String {
-        format!(
-            "DHFST acceptor: {} states numbered below {}, {} arcs ({} free) in {} slots \
-             ({} used, {:.1}%), {} list records, {} weights, {} free pairs, {}\n\
-             checked: {} (state, symbol) answers read back from the written bytes, \
-             all equal to the source ({} free-symbol quirks)\n\
-             wrote {} bytes of DHFST\n",
-            w.states,
-            w.ids,
-            w.arcs,
-            w.free_arcs,
-            w.slots,
-            w.used_slots,
-            100.0 * w.used_slots as f64 / w.slots.max(1) as f64,
-            w.list_records,
-            w.weights,
-            w.free_pairs,
-            if w.distances {
-                "distances to a final state stored"
-            } else {
-                "every distance to a final state 0, none stored"
-            },
-            w.checked,
-            w.free_symbol_quirks,
-            w.bytes.len(),
-        )
-    }
-
-    /// The DHFST writer's report, as `-v` prints it.
-    fn dhfst_report(model: &SourceModel, written: &Written, depth: Option<u32>) -> String {
-        let r = &written.report;
-        let pc = |x: u64| 100.0 * x as f64 / r.source_arcs.max(1) as f64;
-        let defaults: u64 = r.defaults.iter().sum();
-        let entries = r.explicit_arcs + r.blockers + defaults;
-        let b = &r.answered_by;
-        format!(
-            "DHFST source: {} states, {} arcs, {} symbols, {} duplicate arcs dropped\n\
-             encoding: {entries} entries ({:.2}% of arcs) = explicit {} + blockers {} + defaults {defaults} \
-             (identity {}, substitution {}, deletion {}, insertion {}); classes {}, class pairs {}\n\
-             fallbacks: {} states; depth bound {}, longest chain {}; states per chain length {:?}\n\
-             source arcs answered by: own explicit {:.2}%, own default identity {:.2}% \
-             substitution {:.2}% deletion {:.2}% insertion {:.2}%, inherited explicit {:.2}%, \
-             inherited default {:.2}%\n\
-             checked: {} (state, pair) resolutions of the encoding; {} (state, input) queries, \
-             {} arcs, read back from the written bytes: all equal to the source\n\
-             wrote {} bytes of DHFST\n",
-            model.states().len(),
-            r.source_arcs,
-            model.symbols().len(),
-            model.duplicate_arcs(),
-            pc(entries),
-            r.explicit_arcs,
-            r.blockers,
-            r.defaults[0],
-            r.defaults[1],
-            r.defaults[2],
-            r.defaults[3],
-            r.classes,
-            r.class_pairs,
-            r.states_with_fallback,
-            depth.map_or("none".to_string(), |d| d.to_string()),
-            r.max_depth,
-            r.depth_histogram,
-            pc(b[0]),
-            pc(b[1]),
-            pc(b[2]),
-            pc(b[3]),
-            pc(b[4]),
-            pc(b[5]),
-            pc(b[6]),
-            r.pairs_checked,
-            r.queries_checked,
-            r.arcs_checked,
-            written.bytes.len(),
-        )
     }
 
     // [spec:hfst:def:hfst-fst2fst.main-fn]
@@ -1303,7 +1137,7 @@ pub mod fst2fst {
         // DHFST bypasses the transducer output stream: the output is created
         // only once the written bytes have passed the self-check.
         if let Some(kind) = options.dhfst {
-            return cli::from_code(write_dhfst(&common, &options, kind, &mut instream));
+            return cli::from_code(write_dhfst_file(&common, &options, kind, &mut instream));
         }
 
         let mut outstream = match if output_opened {
@@ -1373,20 +1207,9 @@ pub mod fst2txt {
     use crate::cli::{self, CommonArgs, ToolArgs, ToolResult, UnaryIo};
     use crate::globals::CommonOptions;
     use crate::hfst_commandline::{error, hfst_set_program_name, verbose_print};
-    use hfst::hfst_data_types::ImplementationType;
     use hfst::hfst_input_stream::HfstInputStream;
-    use hfst::hfst_print_dot::print_dot_file;
-    use hfst::hfst_print_pckimmo::print_pckimmo;
-    use hfst::hfst_transducer::HfstTransducer;
-
-    // [spec:hfst:def:hfst-fst2txt.fst-text-format]
-    #[derive(Clone, Copy, PartialEq, Eq)]
-    enum FstTextFormat {
-        Att,     // AT&T / OpenFst compatible TSV
-        Dot,     // Graphviz / dotty
-        Pckimmo, // PCKIMMO format
-        Prolog,  // prolog format
-    }
+    use hfst::hfst_transducer::AnyTransducer;
+    use hfst::tools::fst2txt::{TextFormat, TextOptions, write_text};
 
     /// hfst-fst2txt's command line.
     // [spec:hfst:def:hfst-fst2txt.parse-options-fn]
@@ -1422,28 +1245,22 @@ pub mod fst2txt {
     impl Args {
         /// Case 'f': the four text-format vocabularies, fatal on anything else.
         // [spec:hfst:def:hfst-fst2txt.fst-text-format]
-        fn text_format(&self, common: &CommonOptions) -> FstTextFormat {
+        fn text_format(&self, common: &CommonOptions) -> TextFormat {
             let Some(name) = self.format.as_deref() else {
-                return FstTextFormat::Att;
+                return TextFormat::Att;
             };
-            match name {
-                "att" | "AT&T" | "openfst" | "OpenFst" => FstTextFormat::Att,
-                "dot" | "graphviz" | "GraphViz" => FstTextFormat::Dot,
-                "pckimmo" => FstTextFormat::Pckimmo,
-                "prolog" | "Prolog" => FstTextFormat::Prolog,
-                other => {
-                    error(
-                        common,
-                        1,
-                        0,
-                        &format!(
-                            "Cannot parse {} as text format; Use one of att, pckimmo, dot, prolog",
-                            other
-                        ),
-                    );
-                    FstTextFormat::Att
-                }
-            }
+            TextFormat::from_name(name).unwrap_or_else(|| {
+                error(
+                    common,
+                    1,
+                    0,
+                    &format!(
+                        "Cannot parse {} as text format; Use one of att, pckimmo, dot, prolog",
+                        name
+                    ),
+                );
+                TextFormat::Att
+            })
         }
     }
 
@@ -1464,19 +1281,11 @@ pub mod fst2txt {
         }
     }
 
-    /// hfst-fst2txt's resolved tool state (the former tool-specific `static mut`s).
-    struct Options {
-        use_numbers: bool,
-        print_weights: bool,
-        do_not_print_weights: bool,
-        format: FstTextFormat,
-    }
-
     // [spec:hfst:def:hfst-fst2txt.process-stream-fn]
     // [spec:hfst:sem:hfst-fst2txt.process-stream-fn]
     fn process_stream(
         common: &CommonOptions,
-        options: &Options,
+        options: &TextOptions,
         instream: &mut HfstInputStream<'_>,
         outf: &mut dyn std::io::Write,
     ) -> i32 {
@@ -1493,9 +1302,7 @@ pub mod fst2txt {
                     return 1;
                 }
             };
-            // the one runtime dispatch per stream read ([dec:hfst:monomorphic-backends])
-            let code =
-                crate::for_any!(any, t => process_one(common, options, t, outf, transducer_n));
+            let code = process_one(common, options, &any, outf, transducer_n);
             if code != 0 {
                 return code;
             }
@@ -1504,98 +1311,35 @@ pub mod fst2txt {
         0
     }
 
-    // The per-transducer body, generic over the backend (text output only needs
-    // the common Backend surface).
-    fn process_one<B: hfst::backend::Backend>(
+    /// The per-transducer body: the library writes the text, and the tool
+    /// prints what it notes on standard error.
+    fn process_one(
         common: &CommonOptions,
-        options: &Options,
-        mut t: HfstTransducer<B>,
+        options: &TextOptions,
+        t: &AnyTransducer,
         outf: &mut dyn std::io::Write,
         transducer_n: usize,
     ) -> i32 {
-        {
-            let mut inputname = t.get_name();
-            if inputname.is_empty() {
-                inputname = common.input_filename.clone();
+        let mut inputname = t.get_name();
+        if inputname.is_empty() {
+            inputname = common.input_filename.clone();
+        }
+        if transducer_n == 1 {
+            verbose_print(common, &format!("Converting {}...\n", inputname));
+        } else {
+            verbose_print(
+                common,
+                &format!("Converting {}...{}\n", inputname, transducer_n),
+            );
+        }
+        let written = write_text(t, transducer_n, options, outf, &mut |note| {
+            if !common.silent {
+                eprintln!("{note}");
             }
-            if transducer_n == 1 {
-                verbose_print(common, &format!("Converting {}...\n", inputname));
-            } else {
-                verbose_print(
-                    common,
-                    &format!("Converting {}...{}\n", inputname, transducer_n),
-                );
-            }
-
-            if transducer_n > 1 {
-                let _ = outf.write_all(b"--\n");
-            }
-
-            let ty = t.get_type();
-            // Weights are printed unless explicitly suppressed or the format is a
-            // non-weighted one (SFST/foma). Weighted formats — and the
-            // "should not happen" fallthrough — both print, so they share the else.
-            let printw: bool = if options.print_weights {
-                true
-            } else {
-                !(options.do_not_print_weights
-                    || ty == ImplementationType::SFST_TYPE
-                    || ty == ImplementationType::FOMA_TYPE)
-            };
-            let write_result = match options.format {
-                FstTextFormat::Att => {
-                    if options.use_numbers {
-                        t.write_in_att_format_number(outf, printw)
-                    } else {
-                        t.write_in_att_format_file(outf, printw)
-                    }
-                }
-                FstTextFormat::Dot => outf
-                    .write_all(b"// This graph generated with hfst-fst2txt\n")
-                    .and_then(|()| print_dot_file(outf, &mut t)),
-                FstTextFormat::Pckimmo => print_pckimmo(outf, &t),
-                FstTextFormat::Prolog => {
-                    // C: catches HfstException -> error "Error encountered when
-                    // writing in prolog format". The Rust impl panics; the catch
-                    // arm is not reproduced here.
-                    let namestr = t.get_name();
-                    let alt_namestr = format!("NO_NAME_{}", transducer_n);
-                    let namestr = if namestr.is_empty() {
-                        if !common.silent {
-                            eprintln!(
-                                "Transducer has no name, giving it a name '{}'...",
-                                alt_namestr
-                            );
-                        }
-                        alt_namestr
-                    } else {
-                        if !common.silent {
-                            eprintln!("Renaming transducer into '{}'...", alt_namestr);
-                        }
-                        alt_namestr
-                    };
-                    if let Err(e) = t.write_in_prolog_format(outf, &namestr, printw) {
-                        error(
-                            common,
-                            1,
-                            0,
-                            &format!("Error encountered when writing in prolog format: {e}"),
-                        );
-                        return 1;
-                    }
-                    Ok(())
-                }
-            };
-            if let Err(e) = write_result {
-                error(
-                    common,
-                    1,
-                    0,
-                    &format!("Error encountered when writing in text format: {e}"),
-                );
-                return 1;
-            }
-            // C: delete t; (Rust drops at end of loop iteration).
+        });
+        if let Err(e) = written {
+            error(common, 1, 0, &format!("{e}"));
+            return 1;
         }
         0
     }
@@ -1607,7 +1351,7 @@ pub mod fst2txt {
 
         let common = hfst_set_program_name(&argv0, "0.3", "HfstFst2Txt");
         let (common, args) = cli::parse::<Args>(common, args)?;
-        let options = Options {
+        let options = TextOptions {
             use_numbers: args.use_numbers,
             print_weights: args.print_weights,
             do_not_print_weights: args.do_not_print_weights,
@@ -1652,5 +1396,55 @@ pub mod fst2txt {
         // C: free(inputfilename); free(outfilename); (the foundation owns these
         // allocations; not freed here).
         cli::from_code(retval)
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::{Args, process_stream};
+        use clap::Parser;
+        use hfst::hfst_input_stream::HfstInputStream;
+        use hfst::tools::fst2txt::{TextFormat, TextOptions};
+
+        fn quiet() -> crate::globals::CommonOptions {
+            let mut common = crate::hfst_commandline::hfst_set_program_name(
+                "hfst-fst2txt",
+                "0.3",
+                "HfstFst2Txt",
+            );
+            common.silent = true;
+            common
+        }
+
+        // [spec:hfst:def:hfst-fst2txt.fst-text-format/test]
+        // [spec:hfst:sem:hfst-fst2txt.process-stream-fn/test]
+        // `--format` names the library's formats, and a stream is written
+        // transducer by transducer.
+        #[test]
+        fn a_stream_is_written_in_the_format_named() {
+            let args = Args::parse_from(["hfst-fst2txt", "-f", "Prolog"]);
+            assert_eq!(args.text_format(&quiet()), TextFormat::Prolog);
+            let att = Args::parse_from(["hfst-fst2txt"]);
+            assert_eq!(att.text_format(&quiet()), TextFormat::Att);
+            let fixture = format!(
+                "{}/tests/fixtures/dhfst/acceptor.hfst",
+                env!("CARGO_MANIFEST_DIR")
+            );
+            let bytes = std::fs::read(fixture).expect("the fixture");
+            let stream = [bytes.clone(), bytes].concat();
+            let mut cursor = std::io::Cursor::new(stream);
+            let mut instream = HfstInputStream::read_from(&mut cursor).expect("a stream");
+            let options = TextOptions {
+                format: TextFormat::Prolog,
+                ..TextOptions::default()
+            };
+            let mut out = Vec::new();
+            assert_eq!(
+                process_stream(&quiet(), &options, &mut instream, &mut out),
+                0
+            );
+            let text = String::from_utf8(out).expect("utf8");
+            assert!(text.starts_with("network(NO_NAME_1)."), "{text}");
+            assert!(text.contains("--\nnetwork(NO_NAME_2)."), "{text}");
+        }
     }
 }

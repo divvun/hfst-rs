@@ -13,19 +13,11 @@
 use crate::cli::{self, CommonArgs, ToolArgs, ToolResult};
 use crate::globals::CommonOptions;
 use crate::hfst_commandline::{error, hfst_set_program_name, verbose_print};
-use hfst::dhfst_header::DhfstType;
-use hfst::hfst_input_stream::HfstInputStream;
-use hfst::thfst_io::ThfstMembers;
+use hfst::file_resolver::FsResolver;
 use hfst::tools::bhfst::{
-    BhfstError, INDEX_XML_MEMBER, MetaSource, PackSource, SPELLER_CONFIG_MEMBER, SourceInput,
-    SpellerConfig, build_meta_json, dhfst_meta_ids, is_dhfst, meta_json_of, pack,
-    parse_speller_config, read_zhfst, resolve_source,
+    BhfstError, MetaFile, SpellerFiles, meta_json_of, pack_files, pack_zhfst,
 };
 use std::io::Write;
-use std::path::Path;
-
-/// The three THFST member files.
-const THFST_MEMBERS: [&str; 3] = ["alphabet", "index", "transition"];
 
 /// hfst-bhfst's command line.
 // [spec:hfst:req:cli.arg-parse]
@@ -172,132 +164,14 @@ fn report(common: &CommonOptions, e: BhfstError) -> i32 {
     1
 }
 
-/// Read a whole file, reporting failure through the common error path.
-fn read_file(common: &CommonOptions, path: &str) -> Result<Vec<u8>, i32> {
-    std::fs::read(path).map_err(|e| {
-        error(common, 1, 0, &format!("cannot read {path}: {e}"));
-        1
-    })
-}
-
-/// True if `dir` is a directory holding all three THFST member files.
-fn is_thfst_dir(dir: &Path) -> bool {
-    dir.is_dir() && THFST_MEMBERS.iter().all(|m| dir.join(m).is_file())
-}
-
-/// What `path` holds as a pack source: a ready THFST directory's members,
-/// or the file's bytes. A file that cannot be read fails as the transducer
-/// stream it was taken for.
-fn source_input(common: &CommonOptions, path_str: &str) -> Result<SourceInput, i32> {
-    let path = Path::new(path_str);
-    if is_thfst_dir(path) {
-        verbose_print(common, &format!("Using ready THFST directory {path_str}\n"));
-        let [alphabet, index, transition] =
-            THFST_MEMBERS.map(|m| std::fs::read(path.join(m)).unwrap_or_default());
-        return Ok(SourceInput::Thfst(ThfstMembers {
-            alphabet,
-            index,
-            transition,
-        }));
-    }
-    let read = if path.is_dir() {
-        HfstInputStream::new_filename(path_str).map(|_| Vec::new())
-    } else {
-        std::fs::read(path).map_err(|_| hfst::err!(NotTransducerStream, "file could not be opened"))
-    };
-    read.map(SourceInput::Bytes).map_err(|e| {
-        error(common, 1, 0, &format!("cannot open {path_str}: {e}"));
-        1
-    })
-}
-
-/// Ready the source `input`, named `origin`, as an acceptor or error model,
-/// reporting a failure.
-fn resolve(
-    common: &CommonOptions,
-    origin: &str,
-    input: SourceInput,
-    wanted: DhfstType,
-) -> Result<PackSource, i32> {
-    match resolve_source(origin, input, wanted, &mut |m| verbose_print(common, m)) {
-        Ok(source) => Ok(source),
-        Err(e) => Err(report(common, e)),
-    }
-}
-
-/// Resolve `-X`/`-m` to a metadata source, reading the named file.
-fn meta_source(common: &CommonOptions, options: &Options) -> Result<MetaSource, i32> {
-    match (&options.index_xml, &options.meta) {
-        (Some(xml_path), None) => {
-            verbose_print(
-                common,
-                &format!("Converting {xml_path} (index.xml) to meta.json...\n"),
-            );
-            Ok(MetaSource::IndexXml {
-                origin: xml_path.clone(),
-                bytes: read_file(common, xml_path)?,
-            })
-        }
-        (None, Some(meta_path)) => Ok(MetaSource::Verbatim {
-            origin: meta_path.clone(),
-            bytes: read_file(common, meta_path)?,
-        }),
-        (Some(_), Some(_)) => {
-            error(
-                common,
-                1,
-                0,
-                "--index-xml and --meta are mutually exclusive",
-            );
-            Err(1)
-        }
-        (None, None) => Ok(MetaSource::None),
-    }
-}
-
-/// The speller runtime configuration for this run: an explicit `-c` file
-/// wins, otherwise the zhfst's `speller-config.json` member when `-z`
-/// carried one, otherwise none.
-// [spec:hfst:sem:thfst-backend.speller-config]
-fn speller_config(
-    common: &CommonOptions,
-    options: &Options,
-    from_zhfst: Option<(String, Vec<u8>)>,
-) -> Result<Option<SpellerConfig>, i32> {
-    let (origin, bytes) = if let Some(path) = &options.speller_config {
-        verbose_print(
-            common,
-            &format!("Reading speller configuration from {path}...\n"),
-        );
-        (path.clone(), read_file(common, path)?)
-    } else if let Some((origin, bytes)) = from_zhfst {
-        verbose_print(
-            common,
-            &format!("Carrying the speller configuration from {origin}...\n"),
-        );
-        (origin, bytes)
-    } else {
-        return Ok(None);
-    };
-    parse_speller_config(&origin, &bytes)
-        .map(Some)
-        .map_err(|e| report(common, e))
-}
-
-/// Pack the archive and write it to `output`.
-fn pack_into(
-    common: &CommonOptions,
-    meta_json: Option<Vec<u8>>,
-    (acceptor, errmodel): (&PackSource, &PackSource),
-    output: &str,
-) -> i32 {
-    let packed = pack(meta_json.as_deref(), acceptor, errmodel, &mut |m| {
-        verbose_print(common, m)
-    });
+/// Write the archive `packed` to the output file, or report why there is
+/// none.
+fn write_archive(common: &CommonOptions, packed: Result<Vec<u8>, BhfstError>) -> i32 {
     let archive = match packed {
         Ok(archive) => archive,
         Err(e) => return report(common, e),
     };
+    let output = &common.output_filename;
     if let Err(e) = std::fs::write(output, archive) {
         error(common, 1, 0, &format!("cannot create {output}: {e}"));
         return 1;
@@ -308,90 +182,34 @@ fn pack_into(
 
 // [spec:hfst:sem:thfst-backend.zhfst-input]
 fn convert_zhfst(common: &CommonOptions, options: &Options, zhfst_path: &str) -> i32 {
-    let output = common.output_filename.clone();
-    verbose_print(common, &format!("Opening {zhfst_path} (zhfst)...\n"));
-    let Ok(bytes) = std::fs::read(zhfst_path).map_err(|e| {
-        error(common, 1, 0, &format!("cannot open {zhfst_path}: {e}"));
-    }) else {
-        return 1;
-    };
-    let zhfst = match read_zhfst(zhfst_path, &bytes, &mut |m| verbose_print(common, m)) {
-        Ok(zhfst) => zhfst,
-        Err(e) => return report(common, e),
-    };
-    let config_member = zhfst
-        .speller_config
-        .clone()
-        .map(|bytes| (format!("{zhfst_path}: {SPELLER_CONFIG_MEMBER}"), bytes));
-    let Ok(config) = speller_config(common, options, config_member) else {
-        return 1;
-    };
-    let ids = dhfst_meta_ids(is_dhfst(&zhfst.acceptor.1), is_dhfst(&zhfst.errmodel.1));
-    let index_xml = MetaSource::IndexXml {
-        origin: format!("{zhfst_path}: {INDEX_XML_MEMBER}"),
-        bytes: zhfst.index_xml,
-    };
-    let meta_json = match build_meta_json(index_xml, config, ids) {
-        Ok(meta_json) => meta_json,
-        Err(e) => return report(common, e),
-    };
-    let (acceptor_name, acceptor_bytes) = zhfst.acceptor;
-    let (errmodel_name, errmodel_bytes) = zhfst.errmodel;
-    let sources = resolve(
-        common,
-        &acceptor_name,
-        SourceInput::Bytes(acceptor_bytes),
-        DhfstType::Acceptor,
-    )
-    .and_then(|acceptor| {
-        let errmodel = resolve(
-            common,
-            &errmodel_name,
-            SourceInput::Bytes(errmodel_bytes),
-            DhfstType::ErrorModel,
-        )?;
-        Ok((acceptor, errmodel))
-    });
-    match sources {
-        Ok((acceptor, errmodel)) => pack_into(common, meta_json, (&acceptor, &errmodel), &output),
-        Err(code) => code,
-    }
-}
-
-fn file_is_dhfst(path: &str) -> bool {
-    let mut head = Vec::new();
-    std::fs::File::open(path)
-        .and_then(|f| std::io::Read::read_to_end(&mut std::io::Read::take(f, 5), &mut head))
-        .is_ok_and(|_| is_dhfst(&head))
+    let packed = pack_zhfst(
+        zhfst_path,
+        options.speller_config.as_deref(),
+        &FsResolver,
+        &mut |m| verbose_print(common, m),
+    );
+    write_archive(common, packed)
 }
 
 // [spec:hfst:sem:thfst-backend.bhfst-tool]
-fn pack_files(
+fn pack_speller(
     common: &CommonOptions,
     options: &Options,
     (acceptor, errmodel): (&str, &str),
 ) -> i32 {
-    let output = common.output_filename.clone();
-    let meta_and_config = meta_source(common, options)
-        .and_then(|source| Ok((source, speller_config(common, options, None)?)));
-    let Ok((source, config)) = meta_and_config else {
-        return 1;
+    let meta = match (&options.index_xml, &options.meta) {
+        (Some(xml), _) => MetaFile::IndexXml(xml.clone()),
+        (None, Some(meta)) => MetaFile::Meta(meta.clone()),
+        (None, None) => MetaFile::None,
     };
-    let ids = dhfst_meta_ids(file_is_dhfst(acceptor), file_is_dhfst(errmodel));
-    let meta_json = match build_meta_json(source, config, ids) {
-        Ok(meta_json) => meta_json,
-        Err(e) => return report(common, e),
+    let speller = SpellerFiles {
+        acceptor: acceptor.to_string(),
+        errmodel: errmodel.to_string(),
+        meta,
+        speller_config: options.speller_config.clone(),
     };
-    let sources = source_input(common, acceptor)
-        .and_then(|input| resolve(common, acceptor, input, DhfstType::Acceptor))
-        .and_then(|a| {
-            let input = source_input(common, errmodel)?;
-            Ok((a, resolve(common, errmodel, input, DhfstType::ErrorModel)?))
-        });
-    match sources {
-        Ok((a, e)) => pack_into(common, meta_json, (&a, &e), &output),
-        Err(code) => code,
-    }
+    let packed = pack_files(&speller, &FsResolver, &mut |m| verbose_print(common, m));
+    write_archive(common, packed)
 }
 
 // [spec:hfst:sem:thfst-backend.bhfst-tool]
@@ -530,7 +348,7 @@ pub(super) fn execute(args: Vec<String>) -> ToolResult {
         return Err(1);
     }
 
-    cli::from_code(pack_files(
+    cli::from_code(pack_speller(
         &common,
         &options,
         (acceptor_path, errmodel_path),
@@ -539,77 +357,84 @@ pub(super) fn execute(args: Vec<String>) -> ToolResult {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        Options, SourceInput, file_is_dhfst, is_thfst_dir, meta_source, source_input,
-        speller_config,
-    };
+    use super::{Options, convert_zhfst, pack_speller};
     use crate::globals::CommonOptions;
-    use hfst::tools::bhfst::MetaSource;
+    use std::io::Write;
+    use std::path::Path;
 
-    fn common() -> CommonOptions {
-        crate::hfst_commandline::hfst_set_program_name("hfst-bhfst", "0.1", "HfstBhfst")
+    const INDEX_XML: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<hfstspeller dtdversion="1.0" hfstversion="3">
+  <info><locale>se</locale><title>T</title><description>D</description><producer>p</producer></info>
+  <acceptor type="general" id="acceptor.default.hfst"><title>A</title><description>a</description></acceptor>
+  <errmodel id="errmodel.default.hfst"><title>E</title><description>e</description></errmodel>
+</hfstspeller>
+"#;
+
+    fn fixture(name: &str) -> String {
+        format!("{}/tests/fixtures/dhfst/{name}", env!("CARGO_MANIFEST_DIR"))
     }
 
-    // [spec:hfst:sem:dhfst.bhfst-member+2/test]
-    #[test]
-    fn tells_dhfst_files_by_their_header() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let dhfst = dir.path().join("errmodel.dhfst");
-        let hfst = dir.path().join("errmodel.hfst");
-        let short = dir.path().join("short");
-        std::fs::write(&dhfst, b"DHFST\x01\x01\0").expect("write errmodel.dhfst");
-        std::fs::write(&hfst, b"HFST\0\0\0\0").expect("write errmodel.hfst");
-        std::fs::write(&short, b"DHF").expect("write short");
-        assert!(file_is_dhfst(&dhfst.to_string_lossy()));
-        for not_dhfst in [&hfst, &short, &dir.path().join("missing")] {
-            assert!(!file_is_dhfst(&not_dhfst.to_string_lossy()));
-        }
+    fn writing_to(output: &Path) -> CommonOptions {
+        let mut common =
+            crate::hfst_commandline::hfst_set_program_name("hfst-bhfst", "0.1", "HfstBhfst");
+        common.output_filename = output.to_string_lossy().into_owned();
+        common.output_named = true;
+        common
     }
 
     // [spec:hfst:sem:thfst-backend.bhfst-tool/test]
+    // The archive the library packs from the named files is written to the
+    // output file.
     #[test]
-    fn ready_thfst_directories_are_read_whole() {
+    fn loose_files_pack_into_the_output() {
         let dir = tempfile::tempdir().expect("tempdir");
-        let thfst = dir.path().join("a.thfst");
-        std::fs::create_dir(&thfst).expect("mkdir");
-        assert!(!is_thfst_dir(&thfst));
-        for (member, bytes) in [("alphabet", "{}"), ("index", "ix"), ("transition", "tr")] {
-            std::fs::write(thfst.join(member), bytes).expect("write a member");
-        }
-        assert!(is_thfst_dir(&thfst));
-        let Ok(SourceInput::Thfst(members)) = source_input(&common(), &thfst.to_string_lossy())
-        else {
-            panic!("a ready THFST directory was not read as one");
-        };
-        assert_eq!(
-            (members.alphabet, members.index, members.transition),
-            (b"{}".to_vec(), b"ix".to_vec(), b"tr".to_vec())
-        );
-        let file = dir.path().join("t.hfst");
-        std::fs::write(&file, b"bytes").expect("write a file");
-        let read = source_input(&common(), &file.to_string_lossy());
-        assert!(matches!(read, Ok(SourceInput::Bytes(bytes)) if bytes == b"bytes"));
-    }
-
-    // [spec:hfst:sem:thfst-backend.speller-config/test]
-    #[test]
-    fn explicit_speller_config_wins() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let config = dir.path().join("c.json");
-        std::fs::write(&config, br#"{"beam": 1}"#).expect("write config");
+        let index_xml = dir.path().join("index.xml");
+        std::fs::write(&index_xml, INDEX_XML).expect("write index.xml");
+        let out = dir.path().join("s.bhfst");
         let options = Options {
-            speller_config: Some(config.to_string_lossy().into_owned()),
+            index_xml: Some(index_xml.to_string_lossy().into_owned()),
             ..Options::default()
         };
-        let zhfst = Some((
-            "z: speller-config.json".to_string(),
-            br#"{"beam": 2}"#.to_vec(),
-        ));
-        let chosen = speller_config(&common(), &options, zhfst.clone()).expect("a config");
-        assert_eq!(chosen.map(|c| c["beam"].clone()), Some(1.into()));
-        let carried = speller_config(&common(), &Options::default(), zhfst).expect("a config");
-        assert_eq!(carried.map(|c| c["beam"].clone()), Some(2.into()));
-        let source = meta_source(&common(), &Options::default()).expect("a source");
-        assert!(matches!(source, MetaSource::None));
+        let (acceptor, errmodel) = (fixture("acceptor.hfst"), fixture("errmodel.dhfst"));
+        let code = pack_speller(&writing_to(&out), &options, (&acceptor, &errmodel));
+        assert_eq!(code, 0);
+        let archive = std::fs::read(&out).expect("the archive");
+        let meta = hfst::tools::bhfst::meta_json_of("s.bhfst", &archive).expect("meta.json");
+        let meta: serde_json::Value = serde_json::from_slice(&meta).expect("JSON");
+        assert_eq!(meta["errmodel"]["id"], "errmodel.default.dhfst");
+        assert_eq!(meta["acceptor"]["id"], "acceptor.default.thfst");
+    }
+
+    // [spec:hfst:sem:thfst-backend.zhfst-input/test]
+    // A zhfst is packed whole, its speller configuration carried.
+    #[test]
+    fn a_zhfst_packs_into_the_output() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let zhfst = dir.path().join("s.zhfst");
+        let acceptor = std::fs::read(fixture("acceptor.hfst")).expect("the acceptor");
+        let errmodel = std::fs::read(fixture("errmodel.hfst")).expect("the error model");
+        let mut zip = zip::ZipWriter::new(std::fs::File::create(&zhfst).expect("create"));
+        for (name, bytes) in [
+            ("index.xml", INDEX_XML.as_bytes()),
+            ("acceptor.default.hfst", &acceptor),
+            ("errmodel.default.hfst", &errmodel),
+            ("speller-config.json", br#"{"beam": 2}"#),
+        ] {
+            zip.start_file(name, zip::write::SimpleFileOptions::default())
+                .expect("a member");
+            zip.write_all(bytes).expect("written");
+        }
+        zip.finish().expect("a zip");
+        let out = dir.path().join("s.bhfst");
+        let code = convert_zhfst(
+            &writing_to(&out),
+            &Options::default(),
+            &zhfst.to_string_lossy(),
+        );
+        assert_eq!(code, 0);
+        let archive = std::fs::read(&out).expect("the archive");
+        let meta = hfst::tools::bhfst::meta_json_of("s.bhfst", &archive).expect("meta.json");
+        let meta: serde_json::Value = serde_json::from_slice(&meta).expect("JSON");
+        assert_eq!(meta["spellerConfig"]["beam"], 2);
     }
 }

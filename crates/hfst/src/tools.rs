@@ -11,9 +11,11 @@ pub mod check_alpha;
 pub mod compare;
 pub mod compose_intersect;
 pub mod conversion;
+pub mod dhfst;
 pub mod dump_alphabets;
 pub mod format;
 pub mod fst2strings;
+pub mod fst2txt;
 pub mod grep;
 pub mod guess;
 pub mod kill_paths;
@@ -42,3 +44,5 @@ mod report_tests;
 mod surface_tests;
 #[cfg(test)]
 mod test_support;
+#[cfg(test)]
+mod writer_tests;

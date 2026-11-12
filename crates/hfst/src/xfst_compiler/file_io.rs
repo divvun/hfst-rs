@@ -212,7 +212,7 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
     // @brief Save top networks dot form in @a outfile
     pub fn write_dot(&mut self, oss: &mut dyn std::io::Write) -> CmdResult {
         let tmp = self.top()?;
-        crate::hfst_print_dot::print_dot_os(oss, self.net(tmp));
+        crate::hfst_print_dot::print_dot_os(oss, self.net(tmp))?;
         oss.flush()?;
         self.prompt();
         Ok(())

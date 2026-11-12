@@ -625,3 +625,77 @@ fn pmatch_marks_up_and_locates() {
     };
     assert!(locations.iter().all(|l| l.output != "@_NONMATCHING_@"));
 }
+
+// [spec:hfst:req:embed.writers/test]
+// Text, DHFST and THFST come out of any type, and a transducer that is not
+// THFST is converted to write its directory.
+#[test]
+fn writers_take_every_type() {
+    let words = regex("{cat}:{dog}::1 | {cow}");
+    for t in [words.copy().expect("copies"), {
+        let mut t = words.copy().expect("copies");
+        t.convert(Format::Foma, false).expect("converts");
+        t
+    }] {
+        let att = t.to_text(&TextOptions::default()).expect("AT&T");
+        assert!(String::from_utf8_lossy(&att).contains("\tc\td"));
+        let errmodel = t
+            .to_dhfst(&DhfstOptions::new(DhfstKind::ErrorModel))
+            .expect("an error model");
+        assert!(errmodel.starts_with(b"DHFST\x01"));
+        let files = hfst::file_resolver::MemoryFiles::default();
+        t.write_thfst("w.thfst", false, &files).expect("THFST");
+        assert!(files.get("w.thfst/alphabet").is_some());
+    }
+    let stream = text(
+        &[&words, &regex("a")],
+        &TextOptions {
+            format: TextFormat::Prolog,
+            ..TextOptions::default()
+        },
+    )
+    .expect("Prolog");
+    let stream = String::from_utf8(stream).expect("utf8");
+    assert!(stream.contains("network(NO_NAME_1)."), "{stream}");
+    assert!(stream.contains("--\nnetwork(NO_NAME_2)."), "{stream}");
+}
+
+// [spec:hfst:req:embed.writers/test]
+// A speller is packed from named files, and the refusals come back with
+// codes.
+#[cfg(feature = "bhfst")]
+#[test]
+fn spellers_pack_from_named_files() {
+    let files = hfst::file_resolver::MemoryFiles::default();
+    let acceptor = regex("{cat} | {dog}")
+        .to_bytes(&WriteOptions::default())
+        .expect("bytes");
+    let errmodel = regex("[a:b | b:a | a | b]*")
+        .to_dhfst(&DhfstOptions::new(DhfstKind::ErrorModel))
+        .expect("DHFST");
+    files.insert("a.hfst", acceptor);
+    files.insert("e.dhfst", errmodel.clone());
+    files.insert("meta.json", br#"{"id": "x"}"#.to_vec());
+    let speller = SpellerFiles {
+        acceptor: "a.hfst".to_string(),
+        errmodel: "e.dhfst".to_string(),
+        meta: MetaFile::Meta("meta.json".to_string()),
+        speller_config: None,
+    };
+    let archive = pack_bhfst(&speller, &files).expect("packs");
+    assert_eq!(
+        bhfst_metadata(&archive).expect("metadata"),
+        br#"{"id": "x"}"#
+    );
+    files.insert("c.json", br#"{"beam": 1}"#.to_vec());
+    let unmetadated = SpellerFiles {
+        meta: MetaFile::None,
+        speller_config: Some("c.json".to_string()),
+        ..speller.clone()
+    };
+    let refused = pack_bhfst(&unmetadated, &files).expect_err("no metadata to carry it");
+    assert_eq!(refused.code().name(), "invalid-argument");
+    let missing = pack_zhfst("absent.zhfst", None, &files).expect_err("no such file");
+    assert_eq!(missing.code().name(), "failed");
+    assert!(bhfst_metadata(b"not an archive").is_err());
+}

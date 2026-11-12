@@ -576,6 +576,7 @@ assertions (
     {id predict.embed, kind @complete, author "brendan@necessary.nu", at 2026-11-11T16:38:32.468048Z}
     {id predict.kal-check, kind @complete, author "brendan@necessary.nu", at 2026-11-11T23:10:10.064972Z}
     {id predict.spec, kind @complete, author "brendan@necessary.nu", at 2026-11-11T12:36:15.313631Z}
+    {id predict.whole-words-spec, kind @complete, author "brendan@necessary.nu", at 2026-11-12T15:30:22.23091Z}
     {id python.embed, kind @complete, author "brendan@necessary.nu", at 2026-11-10T15:14:12.551711Z}
     {id python.spec, kind @complete, author "brendan@necessary.nu", at 2026-11-10T15:00:49.230155Z}
     {id python.wheel-contents, kind @complete, author "brendan@necessary.nu", at 2026-11-10T15:48:25.575704Z}
@@ -715,7 +716,6 @@ assertions (
     {id xre-intermediate-optimization, kind @complete, author "brendan@necessary.nu", at 2026-08-19T23:55:03.286981Z}
     {id zip-upgrade.divvunspell, kind @complete, author "brendan@necessary.nu", at 2026-10-31T18:02:55.139381Z}
     {id zip-upgrade.hfst, kind @complete, author "brendan@necessary.nu", at 2026-10-31T19:37:53.145211Z}
-    {id predict.whole-words-spec, kind @complete, author "brendan@necessary.nu", at 2026-11-12T15:30:22.23091Z}
 )
 
 impl_evidence (
@@ -732,6 +732,11 @@ impl_evidence (
     ), covered_claims (
         {impl_name target-impl, rule embed.operations}
         {impl_name target-impl, rule embed.transducer}
+    )}
+    {id compile-surface.embed-writers, covered_rules (
+        embed.writers
+    ), covered_claims (
+        {impl_name target-impl, rule embed.writers}
     )}
     {id compile-surface.no-panic, covered_rules (
         embed.no-panic

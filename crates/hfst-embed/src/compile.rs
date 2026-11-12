@@ -13,10 +13,12 @@
 mod operations;
 mod queries;
 mod transducer;
+mod writers;
 
 pub use operations::*;
 pub use queries::*;
 pub use transducer::{Operand, Transducer, WriteOptions, read_transducers};
+pub use writers::*;
 
 #[cfg(test)]
 mod tests;

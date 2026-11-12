@@ -123,11 +123,20 @@ fn arc_label(old_label: &str, arc: &HfstBasicTransition, coder: &SymbolCoder) ->
     sl
 }
 
+/// The final weight of `s`, or `None` when it is not final.
+fn final_weight(t: &HfstBasicTransducer, s: HfstState) -> Option<f32> {
+    if t.is_final_state(s) {
+        t.get_final_weight(s).ok()
+    } else {
+        None
+    }
+}
+
 // [spec:hfst:def:hfst-print-dot.hfst.print-dot-fn]
 // [spec:hfst:sem:hfst-print-dot.hfst.print-dot-fn]
 pub fn print_dot_file<B: crate::backend::Backend>(
     out: &mut dyn Write,
-    t: &mut HfstTransducer<B>,
+    t: &HfstTransducer<B>,
 ) -> std::io::Result<()> {
     //fprintf(out, "// This graph generated with hfst-fst2txt\n");
     if t.get_name() != "" {
@@ -139,31 +148,18 @@ pub fn print_dot_file<B: crate::backend::Backend>(
     writeln!(out, "rankdir = LR;")?;
     writeln!(out, "node [shape=circle,style=filled,fillcolor=yellow]")?;
     // C++: 'HfstBasicTransducer mutt {t};' — the conversion constructor.
-    let mutt: HfstBasicTransducer = t
-        .to_basic()
-        .expect("to_basic on a valid transducer cannot fail");
+    let mutt: HfstBasicTransducer = t.to_basic().map_err(std::io::Error::other)?;
     let mut s: HfstState = 0;
     // for some reason, dot works nicer if I first have all nodes, then arcs
     for _state in mutt.iter() {
-        if mutt.is_final_state(s) {
-            if mutt
-                .get_final_weight(s)
-                .expect("state was confirmed final via is_final_state")
-                > 0.0
-            {
-                writeln!(
-                    out,
-                    "q{} [shape=doublecircle,label=\"q{}/\\n{:.2}\"] ",
-                    s,
-                    s,
-                    mutt.get_final_weight(s)
-                        .expect("state was confirmed final via is_final_state")
-                )?;
-            } else {
-                writeln!(out, "q{} [shape=doublecircle,label=\"q{}\"] ", s, s)?;
-            }
-        } else {
-            writeln!(out, "q{} [label=\"q{}\"] ", s, s)?;
+        match final_weight(&mutt, s) {
+            Some(weight) if weight > 0.0 => writeln!(
+                out,
+                "q{} [shape=doublecircle,label=\"q{}/\\n{:.2}\"] ",
+                s, s, weight
+            )?,
+            Some(_) => writeln!(out, "q{} [shape=doublecircle,label=\"q{}\"] ", s, s)?,
+            None => writeln!(out, "q{} [label=\"q{}\"] ", s, s)?,
         }
         s += 1;
     } // each state
@@ -187,7 +183,10 @@ pub fn print_dot_file<B: crate::backend::Backend>(
     writeln!(out, "}}")
 }
 
-pub fn print_dot_os<B: crate::backend::Backend>(out: &mut dyn Write, t: &HfstTransducer<B>) {
+pub fn print_dot_os<B: crate::backend::Backend>(
+    out: &mut dyn Write,
+    t: &HfstTransducer<B>,
+) -> std::io::Result<()> {
     // C++ 'out.precision(2)' sets the stream's general-format precision to 2
     // significant figures for '<<'-printed floats (the final-state weight
     // below). That is neither '%.2f' nor Rust '{}'; per the port convention we
@@ -196,38 +195,25 @@ pub fn print_dot_os<B: crate::backend::Backend>(out: &mut dyn Write, t: &HfstTra
 
     //out << "// This graph generated with hfst-fst2txt" << std::endl;
     if t.get_name() != "" {
-        let _ = writeln!(out, "digraph \"{}\" {{", t.get_name());
+        writeln!(out, "digraph \"{}\" {{", t.get_name())?;
     } else {
-        let _ = writeln!(out, "digraph H {{");
+        writeln!(out, "digraph H {{")?;
     }
     let _ = writeln!(out, "charset = UTF8;");
     let _ = writeln!(out, "rankdir = LR;");
-    let _ = writeln!(out, "node [shape=circle,style=filled,fillcolor=yellow]");
-    let mutt: HfstBasicTransducer = t
-        .to_basic()
-        .expect("to_basic on a valid transducer cannot fail");
+    writeln!(out, "node [shape=circle,style=filled,fillcolor=yellow]")?;
+    let mutt: HfstBasicTransducer = t.to_basic().map_err(std::io::Error::other)?;
     let mut s: HfstState = 0;
     // for some reason, dot works nicer if I first have all nodes, then arcs
     for _state in mutt.iter() {
-        if mutt.is_final_state(s) {
-            if mutt
-                .get_final_weight(s)
-                .expect("state was confirmed final via is_final_state")
-                > 0.0
-            {
-                let _ = writeln!(
-                    out,
-                    "q{} [shape=doublecircle,label=\"q{}/\\n{}\"] ",
-                    s,
-                    s,
-                    mutt.get_final_weight(s)
-                        .expect("state was confirmed final via is_final_state")
-                );
-            } else {
-                let _ = writeln!(out, "q{} [shape=doublecircle,label=\"q{} \"] ", s, s);
-            }
-        } else {
-            let _ = writeln!(out, "q{} [label=\"q{}\"] ", s, s);
+        match final_weight(&mutt, s) {
+            Some(weight) if weight > 0.0 => writeln!(
+                out,
+                "q{} [shape=doublecircle,label=\"q{}/\\n{}\"] ",
+                s, s, weight
+            )?,
+            Some(_) => writeln!(out, "q{} [shape=doublecircle,label=\"q{} \"] ", s, s)?,
+            None => writeln!(out, "q{} [label=\"q{}\"] ", s, s)?,
         }
         s += 1;
     } // each state
@@ -243,10 +229,11 @@ pub fn print_dot_os<B: crate::backend::Backend>(out: &mut dyn Write, t: &HfstTra
             target_labels.insert(arc.get_target_state(), sl);
         } // each arc
         for (key, value) in &target_labels {
-            let _ = write!(out, "q{} -> q{} ", s, key);
+            write!(out, "q{} -> q{} ", s, key)?;
             let _ = writeln!(out, "[label=\"{} \"];", value);
         }
         s += 1;
     } // each state
-    let _ = writeln!(out, "}}");
+    writeln!(out, "}}")?;
+    Ok(())
 }

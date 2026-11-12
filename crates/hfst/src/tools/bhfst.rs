@@ -12,6 +12,7 @@ use std::io::Read;
 use std::num::NonZeroU64;
 
 use crate::dhfst_header::DhfstType;
+use crate::file_resolver::FileResolver;
 use crate::hfst_data_types::ImplementationType;
 use crate::hfst_input_stream::HfstInputStream;
 use crate::hfst_transducer::AnyTransducer;
@@ -212,7 +213,8 @@ fn thfst_of_stream(origin: &str, bytes: &[u8]) -> Result<ThfstMembers, BhfstErro
             "internal error: THFST conversion did not yield a THFST transducer".to_string(),
         );
     };
-    ThfstMembers::of(&thfst.fst.0)
+    thfst
+        .thfst_members()
         .map_err(|e| BhfstError::Message(format!("cannot write THFST: {e}")))
 }
 
@@ -610,4 +612,194 @@ pub fn meta_json_of(origin: &str, archive: &[u8]) -> Result<Vec<u8>, BhfstError>
     reader
         .decompress(file, data)
         .map_err(|e| BhfstError::Message(format!("cannot read meta.json: {e}")))
+}
+
+// -----------------------------------------------------------------------------
+// Packing from files
+// -----------------------------------------------------------------------------
+
+/// The three files of a THFST directory.
+pub const THFST_MEMBERS: [&str; 3] = ["alphabet", "index", "transition"];
+
+/// The file meta.json comes from.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub enum MetaFile {
+    /// No meta.json.
+    #[default]
+    None,
+    /// A zhfst index.xml, converted: `--index-xml`.
+    IndexXml(String),
+    /// A meta.json embedded as it is: `--meta`.
+    Meta(String),
+}
+
+/// The files `hfst bhfst` packs a speller from, by the names its file
+/// resolver knows them by.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct SpellerFiles {
+    /// A DHFST acceptor, a THFST directory, or any transducer stream:
+    /// `--acceptor`.
+    pub acceptor: String,
+    /// The same for the error model: `--errmodel`.
+    pub errmodel: String,
+    pub meta: MetaFile,
+    /// The speller runtime configuration: `--speller-config`.
+    pub speller_config: Option<String>,
+}
+
+fn read_named(files: &dyn FileResolver, name: &str) -> Result<Vec<u8>, BhfstError> {
+    files
+        .read(name)
+        .map_err(|e| BhfstError::Message(format!("cannot read {name}: {e}")))
+}
+
+/// The members of the THFST directory `name`, or `None` when it is not one
+/// holding all three.
+fn thfst_dir(files: &dyn FileResolver, name: &str) -> Option<ThfstMembers> {
+    let [alphabet, index, transition] =
+        THFST_MEMBERS.map(|member| files.read(&format!("{name}/{member}")).ok());
+    Some(ThfstMembers {
+        alphabet: alphabet?,
+        index: index?,
+        transition: transition?,
+    })
+}
+
+/// What the file `name` holds as a pack source. A file that does not read
+/// fails as the transducer stream it was taken for.
+fn source_file(files: &dyn FileResolver, name: &str) -> Result<SourceInput, BhfstError> {
+    if let Some(members) = thfst_dir(files, name) {
+        return Ok(SourceInput::Thfst(members));
+    }
+    let read = match files.read(name) {
+        Ok(bytes) => Ok(bytes),
+        Err(_) => match files.local_path(name).filter(|path| path.is_dir()) {
+            Some(_) => HfstInputStream::new_filename(name).map(|_| Vec::new()),
+            None => Err(crate::err!(NotTransducerStream, "file could not be opened")),
+        },
+    };
+    read.map(SourceInput::Bytes)
+        .map_err(|e| BhfstError::Message(format!("cannot open {name}: {e}")))
+}
+
+/// Whether `input` is a DHFST file, which meta.json names by its member.
+fn input_is_dhfst(input: &Result<SourceInput, BhfstError>) -> bool {
+    matches!(input, Ok(SourceInput::Bytes(bytes)) if is_dhfst(bytes))
+}
+
+/// Ready `input`, from the file `name`, to pack as `wanted`.
+fn resolve_file(
+    name: &str,
+    input: Result<SourceInput, BhfstError>,
+    wanted: DhfstType,
+    progress: Progress<'_>,
+) -> Result<PackSource, BhfstError> {
+    let input = input?;
+    if matches!(input, SourceInput::Thfst(_)) {
+        progress(&format!("Using ready THFST directory {name}\n"));
+    }
+    resolve_source(name, input, wanted, progress)
+}
+
+/// The speller runtime configuration to pack: the file `explicit` names
+/// when there is one, else `carried`, a zhfst's own, else none.
+// [spec:hfst:sem:thfst-backend.speller-config]
+fn chosen_config(
+    files: &dyn FileResolver,
+    explicit: Option<&str>,
+    carried: Option<(String, Vec<u8>)>,
+    progress: Progress<'_>,
+) -> Result<Option<SpellerConfig>, BhfstError> {
+    let (origin, bytes) = match (explicit, carried) {
+        (Some(name), _) => {
+            progress(&format!("Reading speller configuration from {name}...\n"));
+            (name.to_string(), read_named(files, name)?)
+        }
+        (None, Some((origin, bytes))) => {
+            progress(&format!(
+                "Carrying the speller configuration from {origin}...\n"
+            ));
+            (origin, bytes)
+        }
+        (None, None) => return Ok(None),
+    };
+    parse_speller_config(&origin, &bytes).map(Some)
+}
+
+// [spec:hfst:sem:thfst-backend.bhfst-tool]
+// [spec:hfst:req:embed.tools-in-library]
+// [spec:hfst:req:embed.writers]
+/// The BHFST archive `hfst bhfst` packs from `speller`, each file read
+/// through `files`.
+pub fn pack_files(
+    speller: &SpellerFiles,
+    files: &dyn FileResolver,
+    progress: Progress<'_>,
+) -> Result<Vec<u8>, BhfstError> {
+    let source = match &speller.meta {
+        MetaFile::None => MetaSource::None,
+        MetaFile::IndexXml(name) => {
+            progress(&format!("Converting {name} (index.xml) to meta.json...\n"));
+            MetaSource::IndexXml {
+                origin: name.clone(),
+                bytes: read_named(files, name)?,
+            }
+        }
+        MetaFile::Meta(name) => MetaSource::Verbatim {
+            origin: name.clone(),
+            bytes: read_named(files, name)?,
+        },
+    };
+    let config = chosen_config(files, speller.speller_config.as_deref(), None, progress)?;
+    let acceptor = source_file(files, &speller.acceptor);
+    let errmodel = source_file(files, &speller.errmodel);
+    let ids = dhfst_meta_ids(input_is_dhfst(&acceptor), input_is_dhfst(&errmodel));
+    let meta_json = build_meta_json(source, config, ids)?;
+    let acceptor = resolve_file(&speller.acceptor, acceptor, DhfstType::Acceptor, progress)?;
+    let errmodel = resolve_file(&speller.errmodel, errmodel, DhfstType::ErrorModel, progress)?;
+    pack(meta_json.as_deref(), &acceptor, &errmodel, progress)
+}
+
+// [spec:hfst:sem:thfst-backend.zhfst-input]
+// [spec:hfst:req:embed.tools-in-library]
+// [spec:hfst:req:embed.writers]
+/// The BHFST archive `hfst bhfst --zhfst` makes of the zhfst `zhfst`, with
+/// the speller configuration in the file `speller_config` in place of the
+/// zhfst's own, each file read through `files`.
+pub fn pack_zhfst(
+    zhfst: &str,
+    speller_config: Option<&str>,
+    files: &dyn FileResolver,
+    progress: Progress<'_>,
+) -> Result<Vec<u8>, BhfstError> {
+    progress(&format!("Opening {zhfst} (zhfst)...\n"));
+    let bytes = files
+        .read(zhfst)
+        .map_err(|e| BhfstError::Message(format!("cannot open {zhfst}: {e}")))?;
+    let archive = read_zhfst(zhfst, &bytes, progress)?;
+    let carried = archive
+        .speller_config
+        .map(|bytes| (format!("{zhfst}: {SPELLER_CONFIG_MEMBER}"), bytes));
+    let config = chosen_config(files, speller_config, carried, progress)?;
+    let ids = dhfst_meta_ids(is_dhfst(&archive.acceptor.1), is_dhfst(&archive.errmodel.1));
+    let index_xml = MetaSource::IndexXml {
+        origin: format!("{zhfst}: {INDEX_XML_MEMBER}"),
+        bytes: archive.index_xml,
+    };
+    let meta_json = build_meta_json(index_xml, config, ids)?;
+    let (acceptor_name, acceptor_bytes) = archive.acceptor;
+    let (errmodel_name, errmodel_bytes) = archive.errmodel;
+    let acceptor = resolve_source(
+        &acceptor_name,
+        SourceInput::Bytes(acceptor_bytes),
+        DhfstType::Acceptor,
+        progress,
+    )?;
+    let errmodel = resolve_source(
+        &errmodel_name,
+        SourceInput::Bytes(errmodel_bytes),
+        DhfstType::ErrorModel,
+        progress,
+    )?;
+    pack(meta_json.as_deref(), &acceptor, &errmodel, progress)
 }

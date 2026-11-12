@@ -37,7 +37,7 @@ sysinfo = { version = "0.37.2", default-features = false, features = ["system"] 
 [dev-dependencies]
 # The parity tests run each tool and hfst-embed's compile surface on the same
 # inputs and compare what they give.
-hfst-embed = { workspace = true, features = ["compile"] }
+hfst-embed = { workspace = true, features = ["bhfst"] }
 box-format = { git = "https://github.com/bbqsrc/box", rev = "3d3818ce6251201916f2ce99a2aedfef321ba3ad", default-features = false, features = ["writer", "reader"] }
 serde_json = "1"
 tempfile = "3"

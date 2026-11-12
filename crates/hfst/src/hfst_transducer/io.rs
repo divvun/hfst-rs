@@ -60,7 +60,7 @@ impl<B: Backend> HfstTransducer<B> {
     // [spec:hfst:def:hfst-transducer.hfst.hfst-transducer.write-in-prolog-format-fn]
     // [spec:hfst:sem:hfst-transducer.hfst.hfst-transducer.write-in-prolog-format-fn]
     pub fn write_in_prolog_format(
-        &mut self,
+        &self,
         file: &mut dyn std::io::Write,
         name: &str,
         write_weights: bool,

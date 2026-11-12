@@ -328,6 +328,34 @@ impl ThfstMembers {
             transition,
         })
     }
+
+    // [spec:hfst:req:embed.writers]
+    /// Write the members as the directory `dir` through `files`, in the
+    /// order [`write_dir`] writes them, creating the directory first when
+    /// `files` keeps it on the filesystem.
+    pub fn write_to(
+        &self,
+        dir: &str,
+        files: &dyn crate::file_resolver::FileResolver,
+    ) -> crate::error::Result<()> {
+        if let Some(path) = files.local_path(dir) {
+            std::fs::create_dir_all(&path).map_err(|e| {
+                crate::err!(Hfst, format!("THFST: cannot create dir {path:?}: {e}"))
+            })?;
+        }
+        for (member, bytes) in [
+            ("transition", &self.transition),
+            ("index", &self.index),
+            ("alphabet", &self.alphabet),
+        ] {
+            let name = format!("{dir}/{member}");
+            files
+                .create(&name)
+                .and_then(|mut out| out.write_all(bytes).and_then(|()| out.flush()))
+                .map_err(|e| crate::err!(Hfst, format!("THFST: cannot write {name:?}: {e}")))?;
+        }
+        Ok(())
+    }
 }
 
 fn write_file(path: &Path, bytes: &[u8]) -> crate::error::Result<()> {

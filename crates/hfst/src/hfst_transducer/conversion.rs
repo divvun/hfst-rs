@@ -121,6 +121,12 @@ impl HfstTransducer<crate::backend_thfst::ThfstTransducer> {
     pub fn into_olw(self) -> HfstTransducer<Transducer<WeightedTables>> {
         rewrap_facade(self, |b| b.into_ol())
     }
+
+    // [spec:hfst:req:embed.writers]
+    /// The three files the `.thfst` directory of this transducer holds.
+    pub fn thfst_members(&self) -> crate::error::Result<crate::thfst_io::ThfstMembers> {
+        crate::thfst_io::ThfstMembers::of(&self.fst.0)
+    }
 }
 
 // -----------------------------------------------------------------------------

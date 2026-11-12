@@ -121,7 +121,13 @@ impl<B: AlgebraBackend + FromAnyTransducer> XfstCompiler<B> {
                     e
                 ))
             })?;
-            crate::hfst_print_dot::print_dot_os(&mut dotfile, self.net(tmp));
+            crate::hfst_print_dot::print_dot_os(&mut dotfile, self.net(tmp)).map_err(|e| {
+                CommandError::new(format!(
+                    "could not write '{}': {}",
+                    dotfilename.display(),
+                    e
+                ))
+            })?;
         }
         let cmd1 = format!(
             "dot -Tpng {} > {} 2> /dev/null",

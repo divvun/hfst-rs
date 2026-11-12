@@ -9178,6 +9178,14 @@ children (
                     target-impl ([spec:hfst:req:embed.writers])
                 }
                 deps (compile-surface.embed-transducer)
+                log (
+                    {
+                        at 2026-11-12T15:26:49.080096Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
+                )
             }
 
             {
