@@ -366,18 +366,16 @@ fn the_preview_completes_with_the_first_ranked_ending() {
     assert_eq!(walker.preview(&joined, &[], &GeneratorWeightOrder), None);
 }
 
-// [spec:hfst:sem:prediction.preview/test]
-#[test]
-fn a_preview_from_the_walk_is_the_preview() {
+/// Calls `check` with the start, words after a stem and some units, and
+/// each of those one offered unit further, over two small generators, with
+/// the word's stem.
+fn for_each_word(
+    mut check: impl FnMut(&Walker<'_, crate::transducer::WeightedTables>, &str, &Word),
+) {
     let nouns = lexc(NOUNS);
     let nouns_grammar = grammar(NOUNS_GRAMMAR);
     let derivations = lexc(DERIVATIONS);
     let derivations_grammar = grammar(DERIVATIONS_GRAMMAR);
-    let orders: [&dyn CandidateOrder; 3] = [
-        &GeneratorWeightOrder,
-        &Prefer("+N+Sg+Gen"),
-        &Prefer("+N+Abs+Sg"),
-    ];
     let cases = [
         (&nouns, &nouns_grammar, "girji", &[][..]),
         (&nouns, &nouns_grammar, "girji", &["+N+Pl+Nom"][..]),
@@ -392,7 +390,6 @@ fn a_preview_from_the_walk_is_the_preview() {
             &["+NIQ+Der/vn"][..],
         ),
     ];
-    let mut previews = 0;
     for (generator, grammar, stem, units) in cases {
         let walker = walker(generator, grammar);
         let built = word_after(&walker, stem, units);
@@ -404,20 +401,63 @@ fn a_preview_from_the_walk_is_the_preview() {
             .collect();
         words.extend([walker.start(), built]);
         for word in &words {
-            let next = walker.next(word);
-            for order in orders {
-                let context = [UnitKey::from(stem)];
-                let preview = walker.preview(word, &context, order);
-                assert_eq!(
-                    walker.preview_from(word, &next, &context, order),
-                    preview,
-                    "{stem} {units:?}"
-                );
-                previews += usize::from(preview.is_some());
-            }
+            check(&walker, stem, word);
         }
     }
+}
+
+const ORDERS: [&dyn CandidateOrder; 3] = [
+    &GeneratorWeightOrder,
+    &Prefer("+N+Sg+Gen"),
+    &Prefer("+N+Abs+Sg"),
+];
+
+// [spec:hfst:sem:prediction.preview/test]
+#[test]
+fn a_preview_from_the_walk_is_the_preview() {
+    let mut previews = 0;
+    for_each_word(|walker, stem, word| {
+        let next = walker.next(word);
+        let context = [UnitKey::from(stem)];
+        for order in ORDERS {
+            let preview = walker.preview(word, &context, order);
+            assert_eq!(
+                walker.preview_from(word, &next, &context, order),
+                preview,
+                "{:?}",
+                word.units()
+            );
+            previews += usize::from(preview.is_some());
+        }
+    });
     assert!(previews > 30, "{previews}");
+}
+
+// [spec:hfst:sem:prediction.preview/test]
+#[test]
+fn previews_start_as_the_word_has_written() {
+    for_each_word(|walker, stem, word| {
+        let starts = walker.preview_starts(word);
+        let started = |text: &str| starts.iter().any(|start| text.starts_with(start.as_str()));
+        let mut written = surfaces(walker, word);
+        for order in ORDERS {
+            written.extend(walker.preview(word, &[UnitKey::from(stem)], order));
+        }
+        for offered in &walker.next(word).candidates {
+            let further = word.pick(offered);
+            written.extend(surfaces(walker, &further));
+            written.extend(walker.preview(&further, &[], &GeneratorWeightOrder));
+        }
+        for text in &written {
+            assert!(started(text), "{text:?} {starts:?}");
+        }
+    });
+    let generator = lexc(NOUNS);
+    let grammar = grammar(NOUNS_GRAMMAR);
+    let walker = walker(&generator, &grammar);
+    assert_eq!(walker.preview_starts(&walker.start()), [""]);
+    let plural = word_after(&walker, "girji", &["+N+Pl+Nom"]);
+    assert_eq!(walker.preview_starts(&plural), ["girjat"]);
 }
 
 #[test]

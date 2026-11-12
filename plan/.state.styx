@@ -574,6 +574,7 @@ assertions (
     {id predict.cli, kind @complete, author "brendan@necessary.nu", at 2026-11-11T22:27:14.34017Z}
     {id predict.derivations, kind @complete, author "brendan@necessary.nu", at 2026-11-11T16:32:14.938372Z}
     {id predict.embed, kind @complete, author "brendan@necessary.nu", at 2026-11-11T16:38:32.468048Z}
+    {id predict.eval-speed, kind @complete, author "brendan@necessary.nu", at 2026-11-12T16:31:45.138221Z}
     {id predict.kal-check, kind @complete, author "brendan@necessary.nu", at 2026-11-11T23:10:10.064972Z}
     {id predict.preview-reuse, kind @complete, author "brendan@necessary.nu", at 2026-11-12T15:59:00.144891Z}
     {id predict.spec, kind @complete, author "brendan@necessary.nu", at 2026-11-11T12:36:15.313631Z}

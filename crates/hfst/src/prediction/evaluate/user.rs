@@ -1,26 +1,25 @@
-use std::collections::HashMap;
+use std::collections::hash_map::Entry;
+use std::collections::{HashMap, HashSet};
 
 use super::Variant;
 use super::corpus::{Target, characters, is_character};
 use super::report::Typed;
+use super::walks::{Building, Steps, Walks};
 use crate::error::Result;
 use crate::prediction::model::Model;
-use crate::prediction::session::Session;
 use crate::prediction::units::{Label, SymbolClass, Unit, UnitKey, UnitKind};
 use crate::prediction::walk::{Candidate, WalkLimits, Walker, Word};
 use crate::transducer::{Transducer, TransducerTablesInterface, Weight};
 
-/// The simulated user of unit prediction. It types one word after another
-/// into one session, knowing each word's target.
+/// The simulated user of unit prediction. It types one word after another,
+/// knowing each word's target, and builds each as a session would.
 pub(super) struct UnitTypist<'a, 'm, T: TransducerTablesInterface> {
-    session: Session<'a, T>,
+    building: Building,
     eyes: Eyes<'a, 'm, T>,
 }
 
-/// What the user reads off the keyboard. Its walker is a second one over
-/// the session's generator: the session's offer borrows the session, and
-/// previews and forms are read while it is held.
-struct Eyes<'a, 'm, T: TransducerTablesInterface> {
+/// What the user reads off the keyboard.
+pub(super) struct Eyes<'a, 'm, T: TransducerTablesInterface> {
     walker: Walker<'a, T>,
     model: &'m Model<'m>,
     variant: &'m Variant,
@@ -28,16 +27,23 @@ struct Eyes<'a, 'm, T: TransducerTablesInterface> {
 
 /// The user's search for one unit of the word.
 #[derive(Default)]
-struct Slot {
+pub(super) struct Slot {
     /// True for a stem or a prefix, which entry offers for letters typed.
-    entry: bool,
+    pub(super) entry: bool,
     /// Letters typed since the last unit.
-    typed: usize,
+    pub(super) typed: usize,
     /// For a unit that entry does not match, the start of the word that
     /// suggestions' previews must start with: what the generator has written
-    /// of the word, then the letters typed.
-    filter: Option<String>,
-    previews: HashMap<UnitKey, Option<String>>,
+    /// of the word, then the letters typed. It only grows while the unit is
+    /// looked for.
+    pub(super) filter: Option<String>,
+    /// Each read once for the slot: the word and what is on offer stay as
+    /// they are while the unit is looked for.
+    pub(super) previews: HashMap<UnitKey, Option<String>>,
+    /// Suggestions ruled out by what their paths have written: each of
+    /// those disagrees with the filter, and so with every longer one. Their
+    /// previews are never read.
+    pub(super) ruled_out: HashSet<UnitKey>,
 }
 
 enum Outcome {
@@ -49,9 +55,17 @@ enum Outcome {
 
 /// A key the user presses, and what it costs.
 struct Choice {
-    key: UnitKey,
+    candidate: Candidate,
     taps: usize,
     writes_word: bool,
+}
+
+/// Where the user looks from: the word in progress, the steps that reached
+/// it, and what the model ranks the next unit after.
+pub(super) struct View<'w> {
+    pub(super) word: &'w Word,
+    pub(super) steps: &'w Steps,
+    pub(super) ranking: &'w [UnitKey],
 }
 
 /// What one look at the keyboard found.
@@ -74,32 +88,31 @@ impl<'a, 'm, T: TransducerTablesInterface> UnitTypist<'a, 'm, T> {
         model: &'m Model<'m>,
         variant: &'m Variant,
     ) -> Result<Self> {
+        let walker = Walker::new(generator, grammar, limits)?;
         Ok(UnitTypist {
-            session: Session::new(Walker::new(generator, grammar, limits)?, 0),
-            eyes: Eyes {
-                walker: Walker::new(generator, grammar, limits)?,
-                model,
-                variant,
-            },
+            building: Building::new(&walker),
+            eyes: Eyes::new(walker, model, variant),
         })
     }
 
-    /// Type one word, given the keys of the units before it. A word the user
-    /// cannot finish through units costs its characters, as if typed in
-    /// full from its start, and leaves the session at an empty word.
+    /// Type one word, given the keys of the units before it, from an empty
+    /// word. A word the user cannot finish through units costs its
+    /// characters, as if typed in full from its start. `walks` holds what
+    /// was walked for the word so far, by this user or another.
     // [spec:hfst:def:prediction-evaluation.keystrokes]
     pub(super) fn type_word(
         &mut self,
         surface: &str,
         target: &Target,
         context: &[UnitKey],
+        walks: &mut Walks<'_, T>,
     ) -> Result<Typed> {
         let mut typed = Typed::default();
-        if self.build(surface, target, context, &mut typed)? {
-            self.session.commit()?;
+        let built = self.build(surface, target, context, walks, &mut typed)?;
+        self.building.start_over();
+        if built {
             return Ok(typed);
         }
-        while self.session.backspace() {}
         Ok(Typed {
             taps: characters(surface),
             in_full: true,
@@ -112,19 +125,20 @@ impl<'a, 'm, T: TransducerTablesInterface> UnitTypist<'a, 'm, T> {
         surface: &str,
         target: &Target,
         context: &[UnitKey],
+        walks: &mut Walks<'_, T>,
         typed: &mut Typed,
     ) -> Result<bool> {
         for (unit, key) in target.units.iter().zip(&target.keys) {
-            if self.eyes.writes(self.session.word(), surface) {
+            if self.eyes.writes(self.building.word(), surface) {
                 return Ok(true);
             }
-            match self.slot(surface, unit, key, context, typed)? {
+            match self.slot(surface, unit, key, context, walks, typed)? {
                 Outcome::Picked => {}
                 Outcome::Written => return Ok(true),
                 Outcome::GaveUp => return Ok(false),
             }
         }
-        Ok(self.session.word().is_complete())
+        Ok(self.building.word().is_complete())
     }
 
     /// Look, then pick or type a letter, until the unit is picked or no
@@ -137,6 +151,7 @@ impl<'a, 'm, T: TransducerTablesInterface> UnitTypist<'a, 'm, T> {
         unit: &Unit,
         key: &UnitKey,
         context: &[UnitKey],
+        walks: &mut Walks<'_, T>,
         typed: &mut Typed,
     ) -> Result<Outcome> {
         let entry_letters = self.eyes.entry_letters(unit);
@@ -147,14 +162,14 @@ impl<'a, 'm, T: TransducerTablesInterface> UnitTypist<'a, 'm, T> {
         };
         let mut judged = (false, false);
         let outcome = loop {
-            let look = self.look(surface, key, context, &mut slot)?;
+            let look = self.look(surface, key, context, &mut slot, walks)?;
             typed.truncated |= look.truncated;
             if slot.typed == judged_at {
                 judged = (look.first, look.shown);
             }
             if let Some(choice) = look.choice {
                 typed.taps += choice.taps;
-                self.session.pick(&choice.key)?;
+                self.building.pick(&choice.candidate);
                 break if choice.writes_word {
                     Outcome::Written
                 } else {
@@ -168,13 +183,13 @@ impl<'a, 'm, T: TransducerTablesInterface> UnitTypist<'a, 'm, T> {
                 Some(letters) => letters.get(slot.typed).copied(),
                 None => self
                     .eyes
-                    .next_letter(self.session.word(), surface, &mut slot),
+                    .next_letter(self.building.word(), surface, &mut slot),
             };
             let Some(letter) = letter else {
                 break Outcome::GaveUp;
             };
             if entry_letters.is_some() {
-                self.session.type_letters(letter.encode_utf8(&mut [0; 4]))?;
+                self.building.type_letter(&self.eyes.walker, letter)?;
             }
             typed.taps += usize::from(is_character(letter));
             slot.typed += 1;
@@ -184,17 +199,18 @@ impl<'a, 'm, T: TransducerTablesInterface> UnitTypist<'a, 'm, T> {
     }
 
     fn look(
-        &mut self,
+        &self,
         surface: &str,
         key: &UnitKey,
         context: &[UnitKey],
         slot: &mut Slot,
+        walks: &mut Walks<'_, T>,
     ) -> Result<Look> {
-        let word = self.session.word().clone();
+        let word = self.building.word();
         let grammar = self.eyes.walker.grammar();
         let mut ranking = context.to_vec();
         ranking.extend(word.units().iter().map(|unit| grammar.key(unit)));
-        let next = self.session.candidates()?;
+        let next = walks.offer(self.building.steps(), word)?;
         let reachable = slot.entry
             || slot.typed > 0
             || next
@@ -205,20 +221,33 @@ impl<'a, 'm, T: TransducerTablesInterface> UnitTypist<'a, 'm, T> {
                 matches!(candidate.unit.kind, UnitKind::Ending | UnitKind::Enclitic)
                     && self.eyes.writes(&word.pick(candidate), surface)
             });
-        let shown = self.eyes.shown(&word, &ranking, &next.candidates, slot);
+        let view = View {
+            word,
+            steps: self.building.steps(),
+            ranking: &ranking,
+        };
+        let shown = self.eyes.shown(&view, &next.candidates, slot, walks)?;
         Ok(Look {
             reachable,
             first: shown.first().is_some_and(|candidate| &candidate.key == key),
             shown: shown.iter().any(|candidate| &candidate.key == key),
             choice: self
                 .eyes
-                .choose(&word, &shown, &next.candidates, key, surface),
+                .choose(word, &shown, &next.candidates, key, surface),
             truncated: next.truncated,
         })
     }
 }
 
-impl<T: TransducerTablesInterface> Eyes<'_, '_, T> {
+impl<'a, 'm, T: TransducerTablesInterface> Eyes<'a, 'm, T> {
+    pub(super) fn new(walker: Walker<'a, T>, model: &'m Model<'m>, variant: &'m Variant) -> Self {
+        Eyes {
+            walker,
+            model,
+            variant,
+        }
+    }
+
     /// The letters entry matches a stem or a prefix by: a stem's own
     /// letters, which may differ from the word's surface, and a prefix's
     /// label. None for a unit entry does not offer.
@@ -243,47 +272,87 @@ impl<T: TransducerTablesInterface> Eyes<'_, '_, T> {
 
     /// The N suggestions shown: the first candidates in the model's order.
     /// Once letters are typed for a unit entry does not offer, only the
-    /// candidates whose preview starts with the slot's filter count.
+    /// candidates whose preview starts with the slot's filter count. Their
+    /// previews are read in the model's order, and none after the Nth that
+    /// fits.
     // [spec:hfst:def:prediction-evaluation.keystrokes]
-    fn shown<'n>(
+    pub(super) fn shown<'n>(
         &self,
-        word: &Word,
-        ranking: &[UnitKey],
+        view: &View<'_>,
         offered: &'n [Candidate],
         slot: &mut Slot,
-    ) -> Vec<&'n Candidate> {
+        walks: &mut Walks<'_, T>,
+    ) -> Result<Vec<&'n Candidate>> {
         let pairs: Vec<(UnitKey, Weight)> = offered
             .iter()
             .map(|candidate| (candidate.key.clone(), candidate.weight))
             .collect();
         let mut shown = Vec::new();
-        for index in self.model.rank(ranking, &pairs) {
+        for index in self.model.rank(view.ranking, &pairs) {
             if shown.len() == self.variant.shown {
                 break;
             }
             let candidate = &offered[index];
-            if let Some(filter) = &slot.filter {
-                let preview = slot
-                    .previews
-                    .entry(candidate.key.clone())
-                    .or_insert_with(|| self.preview(word, ranking, candidate));
-                if !preview
-                    .as_deref()
-                    .is_some_and(|preview| starts_with(preview, filter))
-                {
-                    continue;
-                }
+            if self.fits(view, candidate, slot, walks)? {
+                shown.push(candidate);
             }
-            shown.push(candidate);
         }
-        shown
+        Ok(shown)
     }
 
-    fn preview(&self, word: &Word, ranking: &[UnitKey], candidate: &Candidate) -> Option<String> {
-        let mut context = ranking.to_vec();
+    /// True when there is no filter, or the candidate's preview starts with
+    /// it. A preview is read at most once for a slot, and only when what
+    /// the candidate's paths have written agrees with the filter: a preview
+    /// starts with what one of them has written.
+    // [spec:hfst:def:prediction-evaluation.keystrokes]
+    fn fits(
+        &self,
+        view: &View<'_>,
+        candidate: &Candidate,
+        slot: &mut Slot,
+        walks: &mut Walks<'_, T>,
+    ) -> Result<bool> {
+        let Some(filter) = &slot.filter else {
+            return Ok(true);
+        };
+        if slot.ruled_out.contains(&candidate.key) {
+            return Ok(false);
+        }
+        let preview = match slot.previews.entry(candidate.key.clone()) {
+            Entry::Occupied(read) => read.into_mut(),
+            Entry::Vacant(unread) => {
+                let picked = view.word.pick(candidate);
+                let starts = self.walker.preview_starts(&picked);
+                if !starts.iter().any(|start| agree(start, filter)) {
+                    slot.ruled_out.insert(candidate.key.clone());
+                    return Ok(false);
+                }
+                unread.insert(self.preview(view, &picked, candidate, walks)?)
+            }
+        };
+        Ok(preview
+            .as_deref()
+            .is_some_and(|preview| starts_with(preview, filter)))
+    }
+
+    /// The preview of `picked`, the word with `candidate` picked, from the
+    /// walk `walks` holds for it.
+    fn preview(
+        &self,
+        view: &View<'_>,
+        picked: &Word,
+        candidate: &Candidate,
+        walks: &mut Walks<'_, T>,
+    ) -> Result<Option<String>> {
+        let mut context = view.ranking.to_vec();
         context.push(candidate.key.clone());
-        self.walker
-            .preview(&word.pick(candidate), &context, self.model)
+        if picked.is_complete() {
+            return Ok(self.walker.preview(picked, &context, self.model));
+        }
+        let next = walks.offer(&view.steps.then(&candidate.key), picked)?;
+        Ok(self
+            .walker
+            .preview_from(picked, &next, &context, self.model))
     }
 
     /// The cheapest key that is the word's next unit or that writes the
@@ -308,7 +377,7 @@ impl<T: TransducerTablesInterface> Eyes<'_, '_, T> {
             });
             if better && (writes_word || &candidate.key == key) {
                 best = Some(Choice {
-                    key: candidate.key.clone(),
+                    candidate: candidate.clone(),
                     taps,
                     writes_word,
                 });
@@ -434,6 +503,11 @@ fn starts_with(text: &str, start: &str) -> bool {
             .next()
             .is_some_and(|letter| same_letter(letter, wanted))
     })
+}
+
+/// True when one of the texts starts with the other, capitals aside.
+fn agree(a: &str, b: &str) -> bool {
+    a.chars().zip(b.chars()).all(|(a, b)| same_letter(a, b))
 }
 
 fn same_text(a: &str, b: &str) -> bool {

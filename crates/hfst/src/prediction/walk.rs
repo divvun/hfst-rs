@@ -481,4 +481,20 @@ impl<'a, T: TransducerTablesInterface> Walker<'a, T> {
             .next()
             .map(|form| form.surface)
     }
+
+    /// What the word's paths have written by its last unit, each surface
+    /// once. A path only adds to what it has written, so every form and
+    /// every preview of the word, and of each word built on from it, starts
+    /// with one of these. A caller can rule out a preview by them without
+    /// walking for it.
+    pub fn preview_starts(&self, word: &Word) -> Vec<String> {
+        let mut starts: Vec<String> = word
+            .seeds
+            .iter()
+            .map(|config| self.machine.render(&config.output))
+            .collect();
+        starts.sort_unstable();
+        starts.dedup();
+        starts
+    }
 }

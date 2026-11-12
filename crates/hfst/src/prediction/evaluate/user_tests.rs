@@ -1,8 +1,11 @@
 use super::fixture::*;
 use super::report::{Row, Tally};
+use super::user::{Eyes, Slot, UnitTypist, View};
+use super::walks::{Building, Walks};
 use super::{Faces, Harness, RunSettings, Variant};
 use crate::prediction::model::Model;
-use crate::prediction::walk::WalkLimits;
+use crate::prediction::units::UnitKey;
+use crate::prediction::walk::{WalkLimits, Walker};
 use crate::transducer::Transducer;
 
 /// The text the hand-counted models are built from.
@@ -36,11 +39,13 @@ fn score(
     let model = Model::from_bytes(&bytes, &grammar).unwrap();
     let harness = Harness::new(generator, &grammar, settings).unwrap();
     let corpus = harness.corpus(scored).unwrap();
-    let mut row = Row::new(&variant.name, true);
+    let mut rows = [Row::new(&variant.name, true)];
+    let all = 0..corpus.tokens().len();
     harness
         .scorer()
-        .score(&corpus, 0..corpus.tokens().len(), &model, variant, &mut row)
+        .score(&corpus, all.clone(), all, &[(&model, variant)], &mut rows)
         .unwrap();
+    let [row] = rows;
     row
 }
 
@@ -226,4 +231,112 @@ fn unreachable_words_are_typed_in_full() {
     );
     assert_eq!(roomy.overall.typed_in_full, 0);
     assert_eq!(roomy.overall.truncated, 0);
+}
+
+/// What one look after `nanoq` shows with the filter `filter` and N =
+/// `shown`, under a model of [`nanoq_training`], which ranks `+N+Abs+Sg`
+/// first and `+QAR+Der/nv` second: the keys shown, the keys whose previews
+/// were read, and the keys ruled out without one.
+fn look_after_nanoq(shown: usize, filter: &str) -> [Vec<String>; 3] {
+    let generator = generator();
+    let grammar = grammar();
+    let settings = model_settings(2, 0);
+    let bytes = model_of(&generator, &grammar, settings, &nanoq_training());
+    let model = Model::from_bytes(&bytes, &grammar).unwrap();
+    let variant = variant("v", settings, shown, None);
+    let walker = || Walker::new(&generator, &grammar, WalkLimits::default()).unwrap();
+    let eyes = Eyes::new(walker(), &model, &variant);
+    let mut walks = Walks::new(walker());
+    let mut building = Building::new(&walker());
+    for letter in "nanoq".chars() {
+        building.type_letter(&walker(), letter).unwrap();
+    }
+    let entered = walks.offer(building.steps(), building.word()).unwrap();
+    let stem = entered
+        .candidates
+        .iter()
+        .find(|candidate| candidate.key.as_str() == "nanoq")
+        .unwrap();
+    building.pick(stem);
+    let next = walks.offer(building.steps(), building.word()).unwrap();
+    let mut slot = Slot {
+        filter: Some(filter.to_owned()),
+        ..Slot::default()
+    };
+    let view = View {
+        word: building.word(),
+        steps: building.steps(),
+        ranking: &[UnitKey::from("nanoq")],
+    };
+    let looked = eyes
+        .shown(&view, &next.candidates, &mut slot, &mut walks)
+        .unwrap();
+    let sorted = |keys: Vec<&UnitKey>| {
+        let mut keys: Vec<String> = keys.iter().map(|key| key.as_str().to_owned()).collect();
+        keys.sort();
+        keys
+    };
+    [
+        sorted(looked.iter().map(|candidate| &candidate.key).collect()),
+        sorted(slot.previews.keys().collect()),
+        sorted(slot.ruled_out.iter().collect()),
+    ]
+}
+
+/// Previews are read in the model's order and none after the Nth that
+/// fits. A suggestion whose paths have written something the filter does
+/// not start with, as `nanoqt` and `nanoqp` against `nanoqq`, is ruled out
+/// without its preview.
+// [spec:hfst:def:prediction-evaluation.keystrokes/test]
+#[test]
+fn previews_are_read_only_up_to_the_cut() {
+    let none: Vec<String> = Vec::new();
+    let [shown, walked, ruled_out] = look_after_nanoq(1, "nanoq");
+    assert_eq!(
+        (shown, walked),
+        (vec!["+N+Abs+Sg".to_owned()], vec!["+N+Abs+Sg".to_owned()])
+    );
+    assert_eq!(ruled_out, none);
+    let [shown, walked, ruled_out] = look_after_nanoq(1, "nanoqq");
+    assert_eq!(shown, ["+QAR+Der/nv"]);
+    assert_eq!(walked, ["+N+Abs+Sg", "+QAR+Der/nv"]);
+    assert_eq!(ruled_out, none);
+    let [shown, walked, ruled_out] = look_after_nanoq(2, "nanoqq");
+    assert_eq!(shown, ["+QAR+Der/nv"]);
+    assert_eq!(walked, ["+N+Abs+Sg", "+QAR+Der/nv"]);
+    assert_eq!(ruled_out, ["+N+Abs+Pl", "+N+Erg+Sg", "+N+Rel+Sg"]);
+}
+
+/// Variants typing the same word share its walks. With N = 2 the user
+/// reaches only places the user with N = 1 has walked, so the second walks
+/// nothing where alone it walks four, and types the word as it would
+/// alone.
+// [spec:hfst:def:prediction-evaluation.keystrokes/test]
+#[test]
+fn variants_typing_a_word_share_its_walks() {
+    let generator = generator();
+    let grammar = grammar();
+    let settings = model_settings(2, 0);
+    let bytes = model_of(&generator, &grammar, settings, &nanoq_training());
+    let model = Model::from_bytes(&bytes, &grammar).unwrap();
+    let harness = Harness::new(&generator, &grammar, RunSettings::default()).unwrap();
+    let text = lookup(&[("nanoqqarput", &["nanoq+QAR+Der/nv+V+Ind+3Pl"])]);
+    let corpus = harness.corpus(&text).unwrap();
+    let target = corpus.target(0).unwrap();
+    let limits = WalkLimits::default();
+    let type_with = |shown: usize, walks: &mut Walks<'_, _>| {
+        let variant = variant("v", settings, shown, None);
+        let mut typist = UnitTypist::new(&generator, &grammar, limits, &model, &variant).unwrap();
+        typist.type_word("nanoqqarput", target, &[], walks).unwrap()
+    };
+    let walker = || Walker::new(&generator, &grammar, limits).unwrap();
+    let mut shared = Walks::new(walker());
+    assert_eq!(type_with(1, &mut shared).taps, 8);
+    let walked = shared.walked();
+    let typed = type_with(2, &mut shared);
+    assert_eq!(shared.walked(), walked);
+    assert_eq!(typed.taps, 4);
+    let mut alone = Walks::new(walker());
+    assert_eq!(type_with(2, &mut alone), typed);
+    assert_eq!(alone.walked(), 4);
 }

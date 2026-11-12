@@ -117,3 +117,37 @@ fn k_is_ten_when_not_given() {
         "{refused}"
     );
 }
+
+/// A fold typed in parts of one token scores as it does typed whole: each
+/// part's context is that of the tokens before it in the fold, and a word
+/// is typed from an empty word. Nouns and verbs take turns, so only a
+/// model that ranks after the word before tells which unit follows `nanoq`.
+// [spec:hfst:def:prediction-evaluation.keystrokes/test]
+#[test]
+fn typing_in_parts_scores_as_typing_whole() {
+    let generator = generator();
+    let grammar = grammar();
+    let settings = RunSettings {
+        folds: 2,
+        threads: 3,
+        ..RunSettings::default()
+    };
+    let harness = Harness::new(&generator, &grammar, settings).unwrap();
+    let noun: (&str, &[&str]) = ("nanoq", &["nanoq+N+Abs+Sg"]);
+    let verb: (&str, &[&str]) = ("nanoqqarpoq", &["nanoq+QAR+Der/nv+V+Ind+3Sg"]);
+    let text = lookup(&[noun, verb].repeat(6));
+    let corpus = harness.corpus(&text).unwrap();
+    let variants = [
+        variant("order 2, N 1", model_settings(2, 0), 1, None),
+        variant("order 3, N 1", model_settings(3, 0), 1, None),
+        variant("order 3, N 2", model_settings(3, 0), 2, None),
+    ];
+    let whole = harness
+        .run_in_parts(&corpus, &variants, &[], usize::MAX)
+        .unwrap();
+    let in_parts = harness.run_in_parts(&corpus, &variants, &[], 1).unwrap();
+    assert_eq!(in_parts, whole);
+    assert_eq!(harness.run(&corpus, &variants, &[]).unwrap(), whole);
+    let taps: Vec<usize> = whole.rows.iter().map(|row| row.overall.taps).collect();
+    assert!(taps[1] < taps[0], "{taps:?}");
+}

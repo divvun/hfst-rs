@@ -9649,6 +9649,22 @@ children (
                 title "Make the harness fast enough to measure lang-kal and North Sámi: with the complete walk, 3,000 kal tokens did not finish in 17 hours (the truncated walk took 10 minutes), because filtering suggestions by preview walks every candidate on every typed letter; check previews in rank order and stop at N, and keep what a word's walk found across its steps, with results identical to the slow path"
                 kind @perf
                 deps (predict.evaluation predict.preview-reuse)
+                sealed true
+                log (
+                    {
+                        at 2026-11-12T15:59:23.436418Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
+
+                    {
+                        at 2026-11-12T16:31:45.138221Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan complete)"
+                    }
+                )
             }
         )
     }

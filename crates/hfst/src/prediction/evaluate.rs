@@ -7,6 +7,7 @@ mod external;
 mod report;
 mod run;
 mod user;
+mod walks;
 
 #[cfg(test)]
 mod corpus_tests;
