@@ -198,6 +198,22 @@ impl HfstBasicTransducer {
         epsilon_symbol: &str,
         warn_negs: bool,
     ) -> crate::error::Result<()> {
+        self.add_att_line_noting(line, epsilon_symbol, &mut |weight| {
+            if warn_negs {
+                tracing::warn!("Negative weight {:.6} found :-(", weight);
+            }
+        })
+    }
+
+    // [spec:hfst:req:embed.compile-diagnostics]
+    /// [`Self::add_att_line`], telling `negative` of a negative weight
+    /// rather than warning of it.
+    pub fn add_att_line_noting(
+        &mut self,
+        line: &str,
+        epsilon_symbol: &str,
+        negative: &mut dyn FnMut(f32),
+    ) -> crate::error::Result<()> {
         let tokens: Vec<&str> = line.split_whitespace().collect();
         let n = tokens.len().min(5);
         let a = |i: usize| -> &str { tokens.get(i).copied().unwrap_or("") };
@@ -212,8 +228,8 @@ impl HfstBasicTransducer {
             // a transition line with weight
             weight = parse_weight(a(4)) as f32;
         }
-        if (weight < 0.0) && warn_negs {
-            tracing::warn!("Negative weight {:.6} found :-(", weight);
+        if weight < 0.0 {
+            negative(weight);
         }
 
         if n == 1 || n == 2 {
@@ -299,6 +315,23 @@ impl HfstBasicTransducer {
         linecount: &mut u32,
         warn_negs: bool,
     ) -> crate::error::Result<HfstBasicTransducer> {
+        Self::read_in_att_format_noting(is, epsilon_symbol, linecount, &mut |weight, _| {
+            if warn_negs {
+                tracing::warn!("Negative weight {:.6} found :-(", weight);
+            }
+        })
+    }
+
+    // [spec:hfst:req:embed.compile-diagnostics]
+    /// [`Self::read_in_att_format`], telling `negative` of each negative
+    /// weight and the number of its line, counted as `linecount` counts,
+    /// rather than warning of it.
+    pub fn read_in_att_format_noting(
+        is: &mut dyn BufRead,
+        epsilon_symbol: &str,
+        linecount: &mut u32,
+        negative: &mut dyn FnMut(f32, u32),
+    ) -> crate::error::Result<HfstBasicTransducer> {
         if is_eof(is) {
             crate::bail!(EndOfStream);
         }
@@ -329,7 +362,9 @@ impl HfstBasicTransducer {
                 return Ok(retval);
             }
 
-            retval.add_att_line(&line, epsilon_symbol, warn_negs)?;
+            let at = *linecount;
+            retval
+                .add_att_line_noting(&line, epsilon_symbol, &mut |weight| negative(weight, at))?;
         }
         Ok(retval)
     }

@@ -262,8 +262,9 @@ pub mod pmatch2fst {
     use crate::hfst_commandline::{hfst_set_program_name, verbose_print};
     use hfst::hfst_data_types::ImplementationType;
     use hfst::hfst_output_stream::HfstOutputStream;
-    use hfst::hfst_transducer::HfstTransducer;
-    use hfst::pmatch_compiler::PmatchCompiler;
+    use hfst::tools::pmatch2fst::{
+        ArchiveError, Pmatch2FstOptions, compile_ruleset, write_ruleset,
+    };
     use std::io::Read;
 
     /// hfst-pmatch2fst's command line.
@@ -339,28 +340,16 @@ pub mod pmatch2fst {
 
     // [spec:hfst:def:hfst-pmatch2fst.process-stream-fn]
     // [spec:hfst:sem:hfst-pmatch2fst.process-stream-fn]
+    // [spec:hfst:req:embed.tools-in-library]
     //
-    // The output is opened only once the script has compiled to something
-    // writable, so a failed compile leaves no empty archive behind for a
-    // build to pick up.
+    // The compiling and the archive are the library's. The output is opened
+    // only once the script has compiled to something writable, so a failed
+    // compile leaves no empty archive behind for a build to pick up.
     fn process_stream(
         common: &CommonOptions,
         options: &Options,
         input: &mut dyn Read,
     ) -> ToolResult {
-        // pmatch is pinned to the tropical backend (the C++ compilation_format);
-        // the former format argument is the type parameter now.
-        let mut comp = PmatchCompiler::<hfst_openfst::StdVectorFst>::new();
-        comp.set_diagnostic_sink(crate::hfst_commandline::stderr_sink());
-        comp.set_verbose(common.verbose);
-        comp.set_flatten(options.flatten);
-        comp.set_include_cosine_distances(options.include_cosine_distances);
-        let mut file_bytes: Vec<u8> = Vec::new();
-        let mut definitions: std::collections::HashMap<
-            String,
-            HfstTransducer<hfst_openfst::StdVectorFst>,
-        > = std::collections::HashMap::new();
-
         let mut includedir = String::new();
         let inputfilename_str = &common.input_filename;
         // C: 'inputfile != stdin'. A real input file is in use only when the
@@ -383,25 +372,27 @@ pub mod pmatch2fst {
                 }
             }
         }
-        comp.set_include_path(includedir);
+        let pmatch_options = Pmatch2FstOptions {
+            flatten: options.flatten,
+            include_cosine_distances: options.include_cosine_distances,
+            include_path: includedir,
+            verbose: common.verbose,
+        };
+        let mut comp = pmatch_options.compiler();
+        comp.set_diagnostic_sink(crate::hfst_commandline::stderr_sink());
 
+        let mut file_bytes: Vec<u8> = Vec::new();
         // C: fgetc loop reading the whole input; read_to_end is the equivalent.
         let _ = input.read_to_end(&mut file_bytes);
         // C: std::string holds bytes; reinterpret the collected bytes as UTF-8.
         let file_contents = String::from_utf8_lossy(&file_bytes).into_owned();
-        if file_contents.len() > 1 {
-            definitions = match comp.compile(&file_contents) {
-                Ok(d) => d,
-                Err(e) => {
-                    eprintln!("{}: {e}", common.program_name);
-                    return Err(1);
-                }
-            };
-        }
-        if !has_archive(&definitions) {
-            eprintln!("{}: Empty ruleset, nothing to write", common.program_name);
-            return Err(1);
-        }
+        let mut definitions = match compile_ruleset(&mut comp, &file_contents) {
+            Ok(d) => d,
+            Err(e) => {
+                eprintln!("{}: {e}", common.program_name);
+                return Err(1);
+            }
+        };
 
         let mut outstream = match HfstOutputStream::new_filename(
             &common.output_filename,
@@ -414,39 +405,24 @@ pub mod pmatch2fst {
                 return Err(1);
             }
         };
-        // Harmonization + archive writing live in the library
-        // ('hfst::pmatch_compiler::write_archive'); verbose progress goes to
-        // stderr as before.
-        match hfst::pmatch_compiler::write_archive(
+        match write_ruleset(
             &mut definitions,
             &mut outstream,
             common.verbose,
             &mut std::io::stderr(),
         ) {
-            Ok(true) => {}
-            Ok(false) => {
-                eprintln!("{}: Empty ruleset, nothing to write", common.program_name);
+            Ok(()) => {}
+            Err(e @ ArchiveError::Write(_)) => {
+                eprintln!("{e}");
                 return Err(1);
             }
             Err(e) => {
-                eprintln!("{e}");
+                eprintln!("{}: {e}", common.program_name);
                 return Err(1);
             }
         }
         outstream.close();
         Ok(())
-    }
-
-    /// Whether a compiled ruleset makes an archive: it has a TOP, and its
-    /// definitions carry at least one symbol.
-    fn has_archive(
-        definitions: &std::collections::HashMap<String, HfstTransducer<hfst_openfst::StdVectorFst>>,
-    ) -> bool {
-        definitions.contains_key("TOP")
-            && matches!(
-                hfst::pmatch_compiler::build_archive_harmonizer(definitions),
-                Ok(Some(_))
-            )
     }
 
     // [spec:hfst:def:hfst-pmatch2fst.main-fn]
@@ -477,25 +453,6 @@ pub mod pmatch2fst {
         };
         process_stream(&common, &options, &mut *input)
     }
-
-    #[cfg(test)]
-    mod tests {
-        use super::has_archive;
-        use hfst::hfst_transducer::HfstTransducer;
-        use hfst_openfst::StdVectorFst;
-        use std::collections::HashMap;
-
-        #[test]
-        fn only_a_ruleset_with_top_makes_archive() -> Result<(), hfst::error::Error> {
-            let mut definitions: HashMap<String, HfstTransducer<StdVectorFst>> = HashMap::new();
-            assert!(!has_archive(&definitions));
-            definitions.insert("Word".to_string(), HfstTransducer::new_symbol("a")?);
-            assert!(!has_archive(&definitions), "a ruleset with no TOP");
-            definitions.insert("TOP".to_string(), HfstTransducer::new_symbol("b")?);
-            assert!(has_archive(&definitions));
-            Ok(())
-        }
-    }
 }
 
 pub mod twolc {
@@ -518,7 +475,7 @@ pub mod twolc {
     use crate::globals::CommonOptions;
     use hfst::hfst_data_types::ImplementationType;
     use hfst::hfst_output_stream::HfstOutputStream;
-    use hfst::twolc::TwolcCompiler;
+    use hfst::tools::twolc::{TwolcOptions, compile_twolc};
     use std::io::{Read, Write};
 
     // The 'PROGRAM_NAME' macro of the C++ CommandLine ("hfst-twolc"): the name
@@ -913,38 +870,21 @@ pub mod twolc {
         } else {
             String::from("<twolc>")
         };
-        let compiled = match command_line.format {
-            #[cfg(feature = "foma")]
-            ImplementationType::FOMA_TYPE => {
-                let mut comp =
-                    TwolcCompiler::<hfst::backend_foma::FomaTransducer>::new_with_options(
-                        command_line.be_quiet,
-                        command_line.be_verbose,
-                        command_line.resolve_left_conflicts,
-                        command_line.resolve_right_conflicts,
-                    );
-                comp.set_diagnostic_sink(crate::hfst_commandline::stderr_sink());
-                comp.set_source_name(&source_name);
-                comp.compile_and_store(&input, &mut out)
-            }
-            _ => {
-                let mut comp = TwolcCompiler::<hfst_openfst::StdVectorFst>::new_with_options(
-                    command_line.be_quiet,
-                    command_line.be_verbose,
-                    command_line.resolve_left_conflicts,
-                    command_line.resolve_right_conflicts,
-                );
-                comp.set_diagnostic_sink(crate::hfst_commandline::stderr_sink());
-                comp.set_source_name(&source_name);
-                comp.compile_and_store(&input, &mut out)
-            }
+        let twolc_options = TwolcOptions {
+            quiet: command_line.be_quiet,
+            verbose: command_line.be_verbose,
+            resolve_left_conflicts: command_line.resolve_left_conflicts,
+            resolve_right_conflicts: command_line.resolve_right_conflicts,
         };
-        match compiled {
-            Some(()) => {}
-            None => {
-                // A pass failing made the C++ driver exit(1).
-                return Err(1);
-            }
+        let compiled = compile_twolc(
+            (&input, &source_name),
+            &twolc_options,
+            &mut out,
+            Some(crate::hfst_commandline::stderr_sink()),
+        );
+        if compiled.is_err() {
+            // A pass failing made the C++ driver exit(1).
+            return Err(1);
         }
         if command_line.has_output_file {
             if let Err(e) = out.flush() {
@@ -954,5 +894,46 @@ pub mod twolc {
             out.close();
         }
         Ok(())
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::{Args, CommandLine};
+        use clap::Parser;
+        use hfst::hfst_data_types::ImplementationType;
+
+        fn args(argv: &[&str]) -> Args {
+            Args::try_parse_from(argv).expect("the options parse")
+        }
+
+        // [spec:hfst:sem:command-line.command-line.parse-options-fn/test]
+        // `--format` names the type the library compiles the rules in, and the
+        // rule file comes from '-i' or the one free argument.
+        #[test]
+        fn the_command_line_chooses_type_and_file() {
+            for (name, ty) in [
+                (
+                    "openfst-tropical",
+                    ImplementationType::TROPICAL_OPENFST_TYPE,
+                ),
+                ("weighted", ImplementationType::TROPICAL_OPENFST_TYPE),
+                ("foma", ImplementationType::FOMA_TYPE),
+                ("unweighted", ImplementationType::FOMA_TYPE),
+            ] {
+                assert_eq!(args(&["hfst-twolc", "-f", name]).format(), Ok(ty), "{name}");
+            }
+            assert_eq!(
+                args(&["hfst-twolc"]).format(),
+                Ok(ImplementationType::TROPICAL_OPENFST_TYPE)
+            );
+            assert_eq!(args(&["hfst-twolc", "-f", "tropical"]).format(), Err(1));
+            let named = CommandLine::from_args(&args(&["hfst-twolc", "-R", "-D", "g.twolc"]))
+                .unwrap_or_else(|_| panic!("the options resolve"));
+            assert!(named.has_input_file);
+            assert_eq!(named.input_file_name, "g.twolc");
+            assert!(named.resolve_left_conflicts);
+            assert!(!named.resolve_right_conflicts);
+            assert_eq!(args(&["hfst-twolc", "-i", "a", "b"]).input_file(), Err(1));
+        }
     }
 }

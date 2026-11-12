@@ -9169,6 +9169,14 @@ children (
                     target-impl ([spec:hfst:req:embed.compile] [spec:hfst:req:embed.compile-diagnostics])
                 }
                 deps (compile-surface.embed-transducer compile-surface.xfst-files)
+                log (
+                    {
+                        at 2026-11-12T15:56:46.001221Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
+                )
             }
 
             {

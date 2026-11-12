@@ -17,6 +17,7 @@ use crate::hfst_commandline::{
     print_version, skip_elapsed, verbose_print, version_line,
 };
 use hfst::hfst_data_types::ImplementationType;
+use hfst::tools::xfst::XfstOptions;
 use hfst::xfst_compiler::{Completion, Flow, LineSource, XfstCompiler, complete};
 use rustyline::completion::{Completer, FilenameCompleter, Pair};
 use rustyline::error::ReadlineError;
@@ -594,26 +595,27 @@ fn run_compiler<B: hfst::backend::AlgebraBackend + hfst::hfst_transducer::FromAn
     common: &CommonOptions,
     options: &Options,
 ) -> i32 {
-    let mut comp = XfstCompiler::<B>::new();
+    let session_options = XfstOptions {
+        print_weight: options.print_weight,
+        restricted_mode: options.restricted_mode,
+        silent: common.silent,
+    };
+    let mut comp = match session_options.session::<B>() {
+        Ok(comp) => comp,
+        Err(e) => {
+            error(common, EXIT_FAILURE, 0, &format!("{}\n", e.message));
+            return EXIT_FAILURE;
+        }
+    };
     comp.set_diagnostic_sink(crate::hfst_commandline::stderr_sink());
+    // What setting the session up printed, before it had a writer.
+    let _ = std::io::stdout().write_all(&comp.take_output());
     // The session holds the stdin lock, and this driver reads its own input
     // through the session, so the commands that read input share the stream.
     comp.set_output_stream(std::io::stdout());
     comp.set_input_stream(std::io::stdin().lock());
     // HAVE_READLINE is not defined in this port.
     comp.set_readline(false);
-    comp.set_verbosity(!common.silent);
-
-    if options.print_weight {
-        comp.set_prompt_verbosity(false);
-        comp.set("print-weight", "ON")
-            .expect("print-weight is a variable every session has");
-        comp.set_prompt_verbosity(true);
-    }
-
-    if options.restricted_mode {
-        comp.set_restricted_mode(true);
-    }
 
     if !options.pipe_output {
         comp.set_output_to_console(true);

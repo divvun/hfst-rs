@@ -1393,4 +1393,11 @@ impl_evidence (
     ), rule_versions_seen (
         {id xre-finalization.root-optimize, version 0}
     )}
+    {id compile-surface.embed-compile, covered_rules (
+        embed.compile
+        embed.compile-diagnostics
+    ), covered_claims (
+        {impl_name target-impl, rule embed.compile}
+        {impl_name target-impl, rule embed.compile-diagnostics}
+    )}
 )

@@ -10,11 +10,13 @@
 //!
 //! None of this is linked without the `compile` feature.
 
+mod compilers;
 mod operations;
 mod queries;
 mod transducer;
 mod writers;
 
+pub use compilers::*;
 pub use operations::*;
 pub use queries::*;
 pub use transducer::{Operand, Transducer, WriteOptions, read_transducers};

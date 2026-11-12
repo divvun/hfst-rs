@@ -16,12 +16,15 @@ hfst = { workspace = true }
 # The tropical backend's type, which the compile feature names.
 hfst-openfst = { workspace = true, optional = true }
 tracing = { version = "0.1.44", optional = true }
+# A compile keeps what the library says through tracing as diagnostics, with
+# a layer on a registry of its own for the length of the compile.
+tracing-subscriber = { version = "0.3.23", default-features = false, features = ["registry", "std"], optional = true }
 
 [features]
 # Compiling, transforming, inspecting and writing transducers of every type
 # the library reads, foma included. Off by default, so a binding that only
 # reads and runs, as crates/hfst-wasm does, links none of it.
-compile = ["hfst/foma", "dep:hfst-openfst", "dep:tracing"]
+compile = ["hfst/foma", "dep:hfst-openfst", "dep:tracing", "dep:tracing-subscriber"]
 # Packing a BHFST speller. The library's packer needs box-format's writer,
 # which does not build for wasm32-unknown-unknown at the revision pinned, so
 # it is a feature of its own.

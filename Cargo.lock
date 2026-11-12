@@ -977,6 +977,7 @@ dependencies = [
  "hfst",
  "hfst-openfst",
  "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]

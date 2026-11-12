@@ -699,3 +699,291 @@ fn spellers_pack_from_named_files() {
     assert_eq!(missing.code().name(), "failed");
     assert!(bhfst_metadata(b"not an archive").is_err());
 }
+
+fn memory(files: &[(&str, &str)]) -> std::sync::Arc<hfst::file_resolver::MemoryFiles> {
+    let memory = hfst::file_resolver::MemoryFiles::default();
+    for (name, text) in files {
+        memory.insert(*name, text.as_bytes().to_vec());
+    }
+    std::sync::Arc::new(memory)
+}
+
+fn source<'a>(name: &'a str, text: &'a str) -> Source<'a> {
+    Source { name, text }
+}
+
+// [spec:hfst:req:embed.compile-diagnostics/test]
+// [spec:hfst:req:embed.compile-files/test]
+// A regex that does not compile fails with diagnostics pointing into the
+// source, and a file it names is read through the resolver.
+#[test]
+fn regexps_fail_with_diagnostics_and_read_resolved_files() {
+    let failed = compile_regexps(
+        source("in.xre", "a b\n[c |\n"),
+        Format::OpenFstTropical,
+        &RegexpOptions::default(),
+        memory(&[]),
+    )
+    .err()
+    .expect("a parse error");
+    assert_eq!(failed.error.to_string(), "in.xre:2: XRE parsing failed");
+    let error = failed
+        .diagnostics
+        .iter()
+        .find(|d| d.is_error())
+        .expect("an error diagnostic");
+    assert_eq!(error.source_name(), "in.xre");
+    assert!(error.primary_span().is_some());
+
+    let compiled = compile_regexps(
+        source("in.xre", "@txt\"words.txt\"\n"),
+        Format::OpenFstTropical,
+        &RegexpOptions::default(),
+        memory(&[("words.txt", "cat\ndog\n")]),
+    )
+    .expect("compiles");
+    let found = compiled.value[0]
+        .lookup("dog", None, None)
+        .expect("looks up");
+    assert_eq!(found[0].output, "dog");
+}
+
+// [spec:hfst:req:embed.compile-diagnostics/test]
+// lexc warnings come back with the transducer, and fail the compile with
+// warnings_as_errors.
+#[test]
+fn lexc_warnings_come_back_or_fail_the_compile() {
+    let lexicon = "LEXICON Root\ncat # ;\ndog Nowhere ;\n";
+    let warning = LexcOptions {
+        warn_missing_lexicons: true,
+        ..LexcOptions::default()
+    };
+    let compiled = compile_lexc(
+        &[source("a.lexc", lexicon)],
+        Format::Foma,
+        &warning,
+        memory(&[]),
+    )
+    .expect("compiles");
+    assert_eq!(compiled.value.format(), Format::Foma);
+    assert_eq!(compiled.value.name(), "lexc(a.lexc)");
+    assert!(
+        compiled
+            .diagnostics
+            .iter()
+            .any(|d| d.severity() == Severity::Warning && d.message().contains("Nowhere")),
+        "{:?}",
+        compiled.diagnostics
+    );
+    let strict = LexcOptions {
+        warnings_as_errors: true,
+        ..warning
+    };
+    let failed = compile_lexc(
+        &[source("a.lexc", lexicon)],
+        Format::OpenFstTropical,
+        &strict,
+        memory(&[]),
+    )
+    .err()
+    .expect("a warning fails it");
+    assert!(!failed.diagnostics.is_empty());
+}
+
+// [spec:hfst:req:embed.compile-diagnostics/test]
+// A twolc grammar that does not compile gives its diagnostics and no rules;
+// optimized lookup is not a type it compiles to.
+#[test]
+fn twolc_failures_give_diagnostics() {
+    let failed = compile_twolc(
+        source(
+            "g.twolc",
+            "Alphabet a b ;\nRules\n\"R1\"\na:b <=> _ \"c ;\n",
+        ),
+        Format::OpenFstTropical,
+        &TwolcOptions::default(),
+    )
+    .err()
+    .expect("a lex error");
+    assert!(failed.diagnostics.iter().any(Diagnostic::is_error));
+    let compiled = compile_twolc(
+        source(
+            "g.twolc",
+            "Alphabet a b ;\nSets\nVow = a ;\nRules\n\"R1\"\na:b <=> vow _ # ;\n",
+        ),
+        Format::Foma,
+        &TwolcOptions::default(),
+    )
+    .expect("compiles");
+    assert_eq!(compiled.value.len(), 1);
+    assert!(
+        compiled
+            .diagnostics
+            .iter()
+            .any(|d| d.message().contains("is not declared")),
+        "{:?}",
+        compiled.diagnostics
+    );
+    let refused = compile_twolc(
+        source("g.twolc", "Alphabet a ;\nRules\n"),
+        Format::OptimizedLookupWeighted,
+        &TwolcOptions::default(),
+    )
+    .err()
+    .expect("refused");
+    assert_eq!(refused.error.code().name(), "invalid-argument");
+}
+
+// [spec:hfst:req:embed.compile-diagnostics/test]
+// Negative weights are warnings on their lines, or errors when warnings are
+// errors.
+#[test]
+fn negative_weights_are_diagnostics_on_their_lines() {
+    let text = "cat\ndog\t-2\n";
+    let compiled = compile_strings(
+        source("s.txt", text),
+        Format::OpenFstTropical,
+        &StringsOptions::default(),
+    )
+    .expect("compiles");
+    assert_eq!(compiled.value.len(), 2);
+    let warning = &compiled.diagnostics[0];
+    assert_eq!(warning.severity(), Severity::Warning);
+    assert_eq!(warning.primary_span(), Some(4..10));
+    let failed = compile_strings(
+        source("s.txt", text),
+        Format::OpenFstTropical,
+        &StringsOptions {
+            warnings_are_errors: true,
+            ..StringsOptions::default()
+        },
+    )
+    .err()
+    .expect("an error");
+    assert_eq!(failed.diagnostics[0].primary_span(), Some(4..10));
+
+    let att = "0\t1\ta\tb\t-1.5\n1\n";
+    let compiled = compile_text(
+        source("t.att", att),
+        Format::OptimizedLookupUnweighted,
+        &Txt2FstOptions::default(),
+    )
+    .expect("reads");
+    assert_eq!(
+        compiled.value[0].format(),
+        Format::OptimizedLookupUnweighted
+    );
+    assert_eq!(compiled.diagnostics[0].primary_span(), Some(0..12));
+    assert_eq!(
+        compiled.diagnostics[0].message(),
+        "Negative weight -1.500000 found :-("
+    );
+    let failed = compile_text(
+        source("t.prolog", "nonsense\n"),
+        Format::OpenFstTropical,
+        &Txt2FstOptions {
+            prolog: true,
+            ..Txt2FstOptions::default()
+        },
+    )
+    .err()
+    .expect("not Prolog");
+    assert_eq!(failed.error.code().name(), "invalid-format");
+}
+
+// [spec:hfst:req:embed.compile-diagnostics/test]
+// A pmatch script that does not parse, or compiles to nothing, makes no
+// archive, and one with no TOP warns of the root it took instead.
+#[test]
+fn pmatch_scripts_without_an_archive_fail() {
+    let failed = compile_pmatch(
+        source("p.pmatch", "Define TOP {cat ;\n"),
+        &Pmatch2FstOptions::default(),
+        memory(&[]),
+    )
+    .expect_err("a parse error");
+    assert!(failed.diagnostics.iter().any(Diagnostic::is_error));
+    let empty = compile_pmatch(
+        source("p.pmatch", "\n"),
+        &Pmatch2FstOptions::default(),
+        memory(&[]),
+    )
+    .expect_err("nothing to compile");
+    assert_eq!(empty.error.to_string(), "Empty ruleset, nothing to write");
+    let rooted = compile_pmatch(
+        source("p.pmatch", "Define Word {cat} ;\n"),
+        &Pmatch2FstOptions::default(),
+        memory(&[]),
+    )
+    .expect("Word is the root");
+    assert!(
+        rooted.diagnostics.iter().any(
+            |d| d.severity() == Severity::Warning && d.message().contains("using Word as root")
+        ),
+        "{:?}",
+        rooted.diagnostics
+    );
+    let archive = compile_pmatch(
+        source("p.pmatch", "Define TOP {cat} EndTag(animal) ;\n"),
+        &Pmatch2FstOptions::default(),
+        memory(&[]),
+    )
+    .expect("an archive");
+    let mut tokeniser = crate::tokenise::read_tokeniser(&archive.value, &crate::TEST_PACKAGE)
+        .expect("the archive reads");
+    let located = pmatch(
+        &mut tokeniser,
+        "a cat",
+        &PmatchOptions {
+            locate: true,
+            ..PmatchOptions::default()
+        },
+    );
+    let PmatchResult::Located(found) = &located[0].1 else {
+        panic!("in locate mode");
+    };
+    assert_eq!(found[0].tag, "<animal>");
+}
+
+// [spec:hfst:req:embed.compile-files/test]
+// [spec:hfst:req:embed.compile-diagnostics/test]
+// An xfst script reads and writes through the resolver, and what it warns
+// of comes back with what it printed.
+#[test]
+fn xfst_scripts_read_and_write_through_the_resolver() {
+    let files = memory(&[("words.txt", "cat\ndog\n")]);
+    let compiled = compile_xfst(
+        source(
+            "s.xfst",
+            "read text words.txt\nsave stack out.hfst\napply up dog\n",
+        ),
+        "",
+        Format::OpenFstTropical,
+        &XfstOptions::default(),
+        files.clone(),
+    )
+    .expect("runs");
+    assert_eq!(compiled.value.written, ["out.hfst"]);
+    assert!(files.get("out.hfst").is_some());
+    assert!(
+        compiled.value.output.ends_with("dog\n"),
+        "{}",
+        compiled.value.output
+    );
+    let warning = compiled
+        .diagnostics
+        .iter()
+        .find(|d| d.severity() == Severity::Warning)
+        .expect("apply up warns");
+    assert_eq!(warning.source_name(), "s.xfst");
+    let refused = compile_xfst(
+        source("s.xfst", "regex a ;\n"),
+        "",
+        Format::OptimizedLookupUnweighted,
+        &XfstOptions::default(),
+        files,
+    )
+    .err()
+    .expect("refused");
+    assert_eq!(refused.error.code().name(), "invalid-argument");
+}

@@ -3,14 +3,13 @@
 //! weights they read.
 
 use super::format::{format_description, parse_format_name, parse_weight};
-use super::regexp2fst::{RegexpError, RegexpEvent, Separation, compile_regexps};
+use super::regexp2fst::{RegexpError, RegexpEvent, RegexpOptions, Separation, compile_regexps};
 use super::strings2fst::{
     LogBase, StringsCompiler, StringsError, StringsOptions, compile_strings, multichar_symbols,
 };
 use super::test_support::{Tropical, paths_of, regex};
 use crate::hfst_data_types::ImplementationType;
 use crate::lexc::LexcCompiler;
-use crate::xre::XreCompiler;
 use hfst_openfst::StdVectorFst;
 
 fn same(t: &Tropical, src: &str) -> bool {
@@ -152,24 +151,22 @@ fn regexps(
     separation: Separation,
     disjunct: bool,
 ) -> (Result<(), RegexpError>, Vec<Tropical>, Vec<String>) {
-    let mut xre = XreCompiler::<StdVectorFst>::new();
-    xre.set_source_name("in.xre");
+    let options = RegexpOptions {
+        separation,
+        disjunct,
+        ..RegexpOptions::default()
+    };
+    let mut xre = options.compiler::<StdVectorFst>("in.xre");
     let mut compiled = Vec::new();
     let mut progress = Vec::new();
     let mut input = text.as_bytes();
-    let result = compile_regexps(
-        &mut xre,
-        &mut input,
-        separation,
-        (disjunct, true),
-        &mut |event| {
-            match event {
-                RegexpEvent::Progress(message) => progress.push(message),
-                RegexpEvent::Compiled(t) => compiled.push(t),
-            }
-            Ok(())
-        },
-    );
+    let result = compile_regexps(&mut xre, &mut input, &options, &mut |event| {
+        match event {
+            RegexpEvent::Progress(message) => progress.push(message),
+            RegexpEvent::Compiled(t) => compiled.push(t),
+        }
+        Ok(())
+    });
     (result, compiled, progress)
 }
 

@@ -188,26 +188,87 @@ fn compile_semicolon_separated<B: AlgebraBackend>(
 // [spec:hfst:sem:hfst-regexp2fst.process-stream-fn]
 // [spec:hfst:req:embed.tools-in-library]
 /// Compile the expressions `input` holds with `xre`, as `hfst regexp2fst`
-/// does, handing `each` every transducer to write, named `xre(?)`, as it is
-/// compiled: one per expression, or with `disjunct` their disjunction at the
-/// end, harmonized when `harmonize`. `each` hears the tool's progress
+/// does with `options`, handing `each` every transducer to write, named
+/// `xre(?)`, as it is compiled: one per expression, or with `disjunct` their
+/// disjunction at the end. `each` hears the tool's progress
 /// messages too. Failures name the source as `xre`'s source name.
 pub fn compile_regexps<B: AlgebraBackend>(
     xre: &mut XreCompiler<B>,
     input: &mut dyn BufRead,
-    separation: Separation,
-    (disjunct, harmonize): (bool, bool),
+    options: &RegexpOptions,
     each: &mut dyn FnMut(RegexpEvent<B>) -> crate::error::Result<()>,
 ) -> Result<(), RegexpError> {
     let mut results = Results {
-        disjunction: disjunct.then(HfstTransducer::new),
-        harmonize,
+        disjunction: options.disjunct.then(HfstTransducer::new),
+        harmonize: options.harmonize,
         each,
     };
-    match separation {
+    match options.separation {
         Separation::Lines => compile_lines(xre, input, &mut results)?,
         Separation::Semicolons => compile_semicolon_separated(xre, input, &mut results)?,
     }
     results.finish()?;
     Ok(())
+}
+
+/// `hfst regexp2fst`'s options that change what it compiles.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RegexpOptions {
+    /// One expression a line, or `--semicolon`.
+    pub separation: Separation,
+    /// One transducer, the union of the expressions: `--disjunct`.
+    pub disjunct: bool,
+    /// Harmonize the symbols of what an expression combines, unless
+    /// `--do-not-harmonize`.
+    pub harmonize: bool,
+    /// `--harmonize-flags`.
+    pub harmonize_flags: bool,
+    /// Minimize each result, unless `--do-not-minimize`.
+    pub minimize: bool,
+    /// `--xfst flag-is-epsilon`.
+    pub flag_is_epsilon: bool,
+    /// `--xerox-composition`.
+    pub xerox_composition: bool,
+    /// `--encode-weights` when minimizing.
+    pub encode_weights: bool,
+    /// `--replace-pass`.
+    pub replace_pass: bool,
+    /// Info diagnostics too: `--verbose`.
+    pub verbose: bool,
+}
+
+impl Default for RegexpOptions {
+    fn default() -> Self {
+        RegexpOptions {
+            separation: Separation::Lines,
+            disjunct: false,
+            harmonize: true,
+            harmonize_flags: false,
+            minimize: true,
+            flag_is_epsilon: false,
+            xerox_composition: false,
+            encode_weights: false,
+            replace_pass: false,
+            verbose: false,
+        }
+    }
+}
+
+impl RegexpOptions {
+    // [spec:hfst:req:embed.tools-in-library]
+    /// A compiler set as `hfst regexp2fst` sets one with these options, its
+    /// diagnostics naming the source `source_name`.
+    pub fn compiler<B: AlgebraBackend>(&self, source_name: &str) -> XreCompiler<B> {
+        let mut xre = XreCompiler::<B>::new();
+        xre.set_source_name(source_name);
+        xre.set_verbosity(self.verbose);
+        xre.set_harmonization(self.harmonize);
+        xre.set_flag_harmonization(self.harmonize_flags);
+        xre.set_minimize_result(self.minimize);
+        xre.set_flag_is_epsilon(self.flag_is_epsilon);
+        xre.set_xerox_composition(self.xerox_composition);
+        xre.set_encode_weights(self.encode_weights);
+        xre.set_replace_pass(self.replace_pass);
+        xre
+    }
 }

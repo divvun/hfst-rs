@@ -9,12 +9,9 @@ use crate::globals::CommonOptions;
 use crate::hfst_commandline::{
     hfst_error, hfst_parse_format_name, hfst_set_program_name, hfst_warning, verbose_print,
 };
-use hfst::convert_transducer_format::ConversionFunctions;
-use hfst::hfst_basic_transducer::HfstBasicTransducer;
 use hfst::hfst_data_types::ImplementationType;
 use hfst::hfst_output_stream::HfstOutputStream;
-use hfst::hfst_transducer::HfstTransducer;
-use hfst::tools::metadata::{hfst_set_formula, hfst_set_name};
+use hfst::tools::txt2fst::{TextEvent, Txt2FstOptions, read_text};
 use std::io::BufRead;
 
 /// hfst-txt2fst's command line.
@@ -137,208 +134,48 @@ struct Options {
     disjunct_multiple_transducers: bool,
 }
 
-// Equivalent of the C++ 'feof(inputfile)': no bytes remain on the buffered
-// reader (the readers' own EndOfStreamException paths panic_any internally).
-fn is_eof(input: &mut dyn BufRead) -> bool {
-    match input.fill_buf() {
-        Ok(b) => b.is_empty(),
-        Err(_) => true,
-    }
-}
-
 // [spec:hfst:def:hfst-txt2fst.process-stream-fn]
 // [spec:hfst:sem:hfst-txt2fst.process-stream-fn]
+// [spec:hfst:req:embed.tools-in-library]
+// Every --format reads at tropical and converts at each write
+// ([dec:hfst:monomorphic-backends]); the reading is the library's
+// read_text, and the tool writes and prints what it is handed.
 fn process_stream(
     common: &CommonOptions,
     options: &Options,
     outstream: &mut HfstOutputStream,
     input: &mut dyn BufRead,
 ) -> i32 {
-    // The parsed --format is matched ONCE into the backend type
-    // ([dec:hfst:monomorphic-backends]); optimized-lookup formats build
-    // through the basic transducer at tropical and convert at each write,
-    // as the C++ HfstTransducer(net, HFST_OL*_TYPE) constructor did.
-    match options.output_format {
-        ImplementationType::SFST_TYPE
-        | ImplementationType::TROPICAL_OPENFST_TYPE
-        | ImplementationType::FOMA_TYPE
-        | ImplementationType::XFSM_TYPE
-        | ImplementationType::HFST_OL_TYPE
-        | ImplementationType::HFST_OLW_TYPE
-        | ImplementationType::THFST_TYPE
-        | ImplementationType::HFST2_TYPE
-        | ImplementationType::UNSPECIFIED_TYPE
-        | ImplementationType::ERROR_TYPE => {
-            process_stream_typed::<hfst_openfst::StdVectorFst>(common, options, outstream, input)
-        }
-    }
-}
-
-fn process_stream_typed<B: hfst::backend::AlgebraBackend>(
-    common: &CommonOptions,
-    options: &Options,
-    outstream: &mut HfstOutputStream,
-    input: &mut dyn BufRead,
-) -> i32 {
-    let mut transducer_n: usize = 0;
-    let mut linecount: u32 = 0;
-
-    let inputfilename = common.input_filename.clone();
-    let epsilonname = options.epsilonname.clone().unwrap_or_default();
-
-    // outstream.open();
-    while !is_eof(input) {
-        transducer_n += 1;
-        if transducer_n < 2 {
-            verbose_print(common, "Reading transducer table...\n");
-        } else {
-            verbose_print(
-                common,
-                &format!("Reading transducer table {}...\n", transducer_n),
-            );
-        }
-        if options.read_prolog_format {
-            // C: catches NotValidPrologFormatException; the Rust readers
-            // panic_any rather than throw, so the catch arm is not reproduced.
-            let fsm = match HfstBasicTransducer::read_in_prolog_format(input, &mut linecount) {
-                Ok(v) => v,
-                Err(e) => {
-                    hfst_error(common, 1, 0, &format!("{}", e));
-                    return 1;
-                }
-            };
-
-            if options.check_negative_epsilon_cycles {
-                verbose_print(
-                    common,
-                    "Checking if the transducer has epsilon cycles with a negative weight...\n",
-                );
-                if fsm.has_negative_epsilon_cycles() {
-                    if !common.silent {
-                        hfst_warning(
-                            common,
-                            0,
-                            0,
-                            "Transducer has epsilon cycles with a negative weight.\n",
-                        );
-                    }
-                } else {
-                    verbose_print(
+    let text_options = Txt2FstOptions {
+        prolog: options.read_prolog_format,
+        epsilon: options.epsilonname.clone().unwrap_or_default(),
+        check_negative_epsilon_cycles: options.check_negative_epsilon_cycles,
+        warn_negative_weights: options.warn_negative_weights,
+        disjunct: options.disjunct_multiple_transducers,
+    };
+    let mut each = |event: TextEvent<hfst_openfst::StdVectorFst>| {
+        match event {
+            TextEvent::Progress(message) => verbose_print(common, &message),
+            TextEvent::NegativeWeight { weight, .. } => {
+                tracing::warn!("Negative weight {:.6} found :-(", weight);
+            }
+            TextEvent::NegativeEpsilonCycles => {
+                if !common.silent {
+                    hfst_warning(
                         common,
-                        "No epsilon cycles with a negative weight detected...\n",
+                        0,
+                        0,
+                        "Transducer has epsilon cycles with a negative weight.\n",
                     );
                 }
             }
-
-            let mut t: HfstTransducer<B> = match HfstTransducer::new_from_basic(&fsm) {
-                Ok(v) => v,
-                Err(e) => {
-                    hfst_error(common, 1, 0, &format!("{}", e));
-                    return 1;
-                }
-            };
-            hfst_set_name(&mut t, &inputfilename, "text");
-            hfst_set_formula(&mut t, &inputfilename, "T");
-            if let Err(e) = outstream.write_converted(&t) {
-                hfst_error(common, 1, 0, &format!("{}", e));
-                return 1;
-            }
-        } else if options.disjunct_multiple_transducers {
-            let mut transducers: Vec<HfstTransducer<B>> = Vec::new();
-            // C: catches NotValidAttFormatException and prints an error; the
-            // Rust readers panic_any rather than throw, so the catch arm is
-            // not reproduced here.
-            while !is_eof(input) {
-                // C: HfstTransducer(inputfile, type, epsilon, warn) — read the
-                // basic graph from the AT&T file then build the typed transducer.
-                let net = match HfstBasicTransducer::read_in_att_format(
-                    input,
-                    &epsilonname,
-                    &mut linecount,
-                    options.warn_negative_weights,
-                ) {
-                    Ok(v) => v,
-                    Err(e) => {
-                        hfst_error(common, 1, 0, &format!("{}", e));
-                        return 1;
-                    }
-                };
-                let t: HfstTransducer<B> = match HfstTransducer::new_from_basic(&net) {
-                    Ok(v) => v,
-                    Err(e) => {
-                        hfst_error(common, 1, 0, &format!("{}", e));
-                        return 1;
-                    }
-                };
-                transducers.push(t);
-            }
-            let mut joined: HfstTransducer<B> = HfstTransducer::new();
-            for it in transducers.iter() {
-                if let Err(e) = joined.disjunct(it, true) {
-                    hfst_error(common, 1, 0, &format!("{}", e));
-                    return 1;
-                }
-            }
-            // joined.remove_epsilons(); // remove epsilons from the unioned
-            // transducers
-            if let Err(e) = outstream.write_converted(&joined) {
-                hfst_error(common, 1, 0, &format!("{}", e));
-                return 1;
-            }
-        } else {
-            // C: catches NotValidAttFormatException; the Rust readers panic_any
-            // rather than throw, so the catch arm is not reproduced here.
-            // C: HfstTransducer(inputfile, type, epsilon, linecount, warn).
-            let net = match HfstBasicTransducer::read_in_att_format(
-                input,
-                &epsilonname,
-                &mut linecount,
-                options.warn_negative_weights,
-            ) {
-                Ok(v) => v,
-                Err(e) => {
-                    hfst_error(common, 1, 0, &format!("{}", e));
-                    return 1;
-                }
-            };
-            let mut t: HfstTransducer<B> = match HfstTransducer::new_from_basic(&net) {
-                Ok(v) => v,
-                Err(e) => {
-                    hfst_error(common, 1, 0, &format!("{}", e));
-                    return 1;
-                }
-            };
-            hfst_set_name(&mut t, &inputfilename, "text");
-            hfst_set_formula(&mut t, &inputfilename, "T");
-            if options.check_negative_epsilon_cycles {
-                verbose_print(
-                    common,
-                    "Checking if the transducer has epsilon cycles with a negative weight...\n",
-                );
-                let fsm = ConversionFunctions::hfst_transducer_to_hfst_basic_transducer(&t).expect(
-                    "hfst_transducer_to_hfst_basic_transducer on a valid transducer cannot fail",
-                );
-                if fsm.has_negative_epsilon_cycles() {
-                    if !common.silent {
-                        hfst_warning(
-                            common,
-                            0,
-                            0,
-                            "Transducer has epsilon cycles with a negative weight.\n",
-                        );
-                    }
-                } else {
-                    verbose_print(
-                        common,
-                        "No epsilon cycles with a negative weight detected...\n",
-                    );
-                }
-            }
-            if let Err(e) = outstream.write_converted(&t) {
-                hfst_error(common, 1, 0, &format!("{}", e));
-                return 1;
-            }
+            TextEvent::Read(t) => outstream.write_converted(&t)?,
         }
+        Ok(())
+    };
+    if let Err(e) = read_text(input, &common.input_filename, &text_options, &mut each) {
+        hfst_error(common, 1, 0, &format!("{}", e));
+        return 1;
     }
     outstream.close();
     0
@@ -443,4 +280,65 @@ pub(super) fn execute(args: Vec<String>) -> ToolResult {
     };
     process_stream(&common, &options, &mut outstream, &mut *input);
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Options, process_stream};
+    use hfst::file_resolver::{FileResolver, MemoryFiles};
+    use hfst::hfst_data_types::ImplementationType;
+    use hfst::hfst_input_stream::HfstInputStream;
+    use hfst::hfst_output_stream::HfstOutputStream;
+
+    fn options(prolog: bool, disjunct: bool) -> Options {
+        Options {
+            output_format: ImplementationType::TROPICAL_OPENFST_TYPE,
+            read_prolog_format: prolog,
+            use_numbers: false,
+            epsilonname: Some("@0@".to_string()),
+            check_negative_epsilon_cycles: true,
+            warn_negative_weights: false,
+            warnings_are_errors: false,
+            disjunct_multiple_transducers: disjunct,
+        }
+    }
+
+    /// The names of the transducers the tool writes of `text`.
+    fn written(text: &str, options: &Options) -> Vec<String> {
+        let mut common =
+            crate::hfst_commandline::hfst_set_program_name("hfst-txt2fst", "0.1", "HfstTxt2Fst");
+        common.input_filename = "in.att".to_string();
+        common.silent = true;
+        let files = MemoryFiles::default();
+        let sink = files.create("out").expect("a file");
+        let mut out =
+            HfstOutputStream::from_writer(sink, options.output_format, true).expect("a stream");
+        assert_eq!(
+            process_stream(&common, options, &mut out, &mut text.as_bytes()),
+            0
+        );
+        let bytes = files.get("out").expect("written");
+        let mut cursor = std::io::Cursor::new(bytes);
+        let mut stream = HfstInputStream::read_from(&mut cursor).expect("a stream");
+        let mut names = Vec::new();
+        while stream.is_good() {
+            names.push(stream.read().expect("a transducer").get_name());
+        }
+        names
+    }
+
+    // [spec:hfst:sem:hfst-txt2fst.process-stream-fn/test]
+    // Each transducer the library reads is written, named after the input;
+    // joined, they are written as one.
+    #[test]
+    fn each_transducer_read_is_written() {
+        let att = "0\t1\ta\tb\n1\n--\n0\t1\tc\tc\t0.5\n1\n";
+        assert_eq!(
+            written(att, &options(false, false)),
+            ["text(in.att)", "text(in.att)"]
+        );
+        assert_eq!(written(att, &options(false, true)), [""]);
+        let prolog = "network(n).\nsymbol(n, \"a\").\narc(n, 0, 1, \"a\").\nfinal(n, 1).\n";
+        assert_eq!(written(prolog, &options(true, false)), ["text(in.att)"]);
+    }
 }

@@ -26,14 +26,20 @@ pub mod operations;
 pub mod optimized_lookup;
 pub mod pair_test;
 pub mod pmatch;
+pub mod pmatch2fst;
 pub mod regexp2fst;
 pub mod reweight;
 pub mod strings2fst;
 pub mod substitute;
 pub mod summarize;
+pub mod twolc;
+pub mod txt2fst;
+pub mod xfst;
 
 #[cfg(all(test, feature = "bhfst"))]
 mod bhfst_tests;
+#[cfg(test)]
+mod compile_entry_tests;
 #[cfg(test)]
 mod compiler_tests;
 #[cfg(test)]

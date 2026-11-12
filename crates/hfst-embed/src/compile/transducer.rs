@@ -85,7 +85,7 @@ fn held(t: AnyTransducer) -> AnyTransducer {
 }
 
 /// The bytes `write` writes to a stream of type `ty`.
-fn stream_bytes(
+pub(crate) fn stream_bytes(
     ty: ImplementationType,
     header: bool,
     write: impl FnOnce(&mut HfstOutputStream) -> hfst::error::Result<()>,
@@ -130,6 +130,11 @@ impl Transducer {
             AnyTransducer::Tropical(_) => Format::OpenFstTropical,
             AnyTransducer::Foma(_) => Format::Foma,
             AnyTransducer::OlU(_) => Format::OptimizedLookupUnweighted,
+            // A conversion to unweighted optimized lookup gives weighted
+            // tables that are unweighted, which a stream writes as such.
+            AnyTransducer::OlW(_) if self.inner.get_type() == ImplementationType::HFST_OL_TYPE => {
+                Format::OptimizedLookupUnweighted
+            }
             AnyTransducer::OlW(_) | AnyTransducer::Thfst(_) => Format::OptimizedLookupWeighted,
         }
     }

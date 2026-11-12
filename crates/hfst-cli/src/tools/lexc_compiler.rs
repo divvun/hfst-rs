@@ -16,7 +16,7 @@ use crate::hfst_commandline::{
 use hfst::hfst_data_types::ImplementationType;
 use hfst::hfst_output_stream::HfstOutputStream;
 use hfst::lexc::LexcCompiler;
-use hfst::tools::lexc::LexcSourcesError;
+use hfst::tools::lexc::{LexcOptions, LexcSourcesError, LexcVerbosity};
 use std::io::Write;
 
 /// hfst-lexc-compiler's own options (the former tool-specific `static mut`s).
@@ -502,28 +502,33 @@ fn run_typed<B: hfst::backend::AlgebraBackend>(
     options: &Options,
     outstream: &mut HfstOutputStream,
 ) -> i32 {
-    let mut lexc = LexcCompiler::<B>::new_with_flags(options.with_flags, options.align_strings);
-    lexc.set_diagnostic_sink(crate::hfst_commandline::stderr_sink());
-    lexc.set_minimize_flags(options.minimize_flags);
-    lexc.set_rename_flags(options.rename_flags);
-    lexc.set_flag_is_epsilon(options.flag_is_epsilon);
-    lexc.set_xerox_composition(options.xerox_composition);
-    lexc.set_encode_weights(options.encode_weights);
-    // lexc.with_flags = with_flags;
-    if common.silent {
-        lexc.set_verbosity(0);
+    let verbosity = if common.silent {
+        LexcVerbosity::Quiet
+    } else if common.verbose {
+        LexcVerbosity::Verbose
     } else {
-        lexc.set_verbosity(if common.verbose { 2 } else { 1 });
-    }
-    if options.treat_warnings_as_errors {
-        lexc.set_treat_warnings_as_errors(true);
-    }
-    lexc.set_warning("-Wone-sided-flags", options.warn_one_sided_flags);
-    lexc.set_warning("-Wunused-lexicons", options.warn_unused_lexicons);
-    lexc.set_warning("-Wrepeated-lexicons", options.warn_repeated_lexicons);
-    lexc.set_warning("-Wmissing-lexicons", options.warn_missing_lexicons);
-    lexc.set_warning("-Wmissing-alphabets", options.warn_missing_alphabets);
-    lexc.set_warning("-Wunnecessary-escapes", options.warn_unnecessary_escapes);
+        LexcVerbosity::Normal
+    };
+    let lexc_options = LexcOptions {
+        align_strings: options.align_strings,
+        with_flags: options.with_flags,
+        minimize_flags: options.minimize_flags,
+        rename_flags: options.rename_flags,
+        warnings_as_errors: options.treat_warnings_as_errors,
+        warn_one_sided_flags: options.warn_one_sided_flags,
+        warn_unused_lexicons: options.warn_unused_lexicons,
+        warn_repeated_lexicons: options.warn_repeated_lexicons,
+        warn_missing_lexicons: options.warn_missing_lexicons,
+        warn_missing_alphabets: options.warn_missing_alphabets,
+        warn_unnecessary_escapes: options.warn_unnecessary_escapes,
+        xerox_composition: options.xerox_composition,
+        encode_weights: options.encode_weights,
+        flag_is_epsilon: options.flag_is_epsilon,
+        split_characters: options.split_characters,
+        verbosity,
+    };
+    let mut lexc = lexc_options.compiler::<B>();
+    lexc.set_diagnostic_sink(crate::hfst_commandline::stderr_sink());
     if !common.silent && common.verbose {
         let mut line = String::from("Warning settings: ");
         if options.treat_warnings_as_errors {
@@ -552,7 +557,6 @@ fn run_typed<B: hfst::backend::AlgebraBackend>(
     }
     if options.split_characters {
         eput("Warningn: Disabling unicode character tokenisation\n");
-        lexc.set_split_characters(true);
     }
     // The C++ also frees the filename buffers here; the Rust owners drop
     // automatically.

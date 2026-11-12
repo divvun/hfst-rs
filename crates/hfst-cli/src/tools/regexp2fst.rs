@@ -9,8 +9,9 @@ use crate::hfst_commandline::{
 };
 use hfst::hfst_data_types::ImplementationType;
 use hfst::hfst_output_stream::HfstOutputStream;
-use hfst::tools::regexp2fst::{RegexpError, RegexpEvent, Separation, compile_regexps};
-use hfst::xre::XreCompiler;
+use hfst::tools::regexp2fst::{
+    RegexpError, RegexpEvent, RegexpOptions, Separation, compile_regexps,
+};
 use std::io::BufRead;
 
 /// hfst-regexp2fst's command line.
@@ -217,23 +218,24 @@ fn process_stream_typed<B: hfst::backend::AlgebraBackend>(
     outstream: &mut HfstOutputStream,
     input: &mut dyn BufRead,
 ) -> i32 {
-    let mut comp = XreCompiler::<B>::new();
-    comp.set_source_name(&common.input_filename);
-    comp.set_diagnostic_sink(crate::hfst_commandline::stderr_sink());
-    comp.set_verbosity(common.verbose);
-    comp.set_error_stream(());
-    comp.set_harmonization(options.harmonize);
-    comp.set_flag_harmonization(options.harmonize_flags);
-    comp.set_minimize_result(options.minimize_result);
-    comp.set_flag_is_epsilon(options.flag_is_epsilon);
-    comp.set_xerox_composition(options.xerox_composition);
-    comp.set_encode_weights(options.encode_weights);
-    comp.set_replace_pass(options.replace_pass);
-    let separation = if options.line_separated {
-        Separation::Lines
-    } else {
-        Separation::Semicolons
+    let regexp_options = RegexpOptions {
+        separation: if options.line_separated {
+            Separation::Lines
+        } else {
+            Separation::Semicolons
+        },
+        disjunct: options.disjunct_expressions,
+        harmonize: options.harmonize,
+        harmonize_flags: options.harmonize_flags,
+        minimize: options.minimize_result,
+        flag_is_epsilon: options.flag_is_epsilon,
+        xerox_composition: options.xerox_composition,
+        encode_weights: options.encode_weights,
+        replace_pass: options.replace_pass,
+        verbose: common.verbose,
     };
+    let mut comp = regexp_options.compiler::<B>(&common.input_filename);
+    comp.set_diagnostic_sink(crate::hfst_commandline::stderr_sink());
     let mut each = |event: RegexpEvent<B>| match event {
         RegexpEvent::Progress(message) => {
             verbose_print(common, &message);
@@ -241,13 +243,7 @@ fn process_stream_typed<B: hfst::backend::AlgebraBackend>(
         }
         RegexpEvent::Compiled(t) => outstream.write_converted(&t),
     };
-    let compiled = compile_regexps(
-        &mut comp,
-        input,
-        separation,
-        (options.disjunct_expressions, options.harmonize),
-        &mut each,
-    );
+    let compiled = compile_regexps(&mut comp, input, &regexp_options, &mut each);
     match compiled {
         Ok(()) => 0,
         Err(e @ RegexpError::LineFailed { line }) => {
@@ -325,4 +321,31 @@ pub(super) fn execute(args: Vec<String>) -> ToolResult {
     process_stream(&common, &options, &mut outstream, &mut *input);
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Args;
+    use clap::Parser;
+
+    fn common() -> crate::globals::CommonOptions {
+        crate::hfst_commandline::hfst_set_program_name("hfst-regexp2fst", "0.2", "Regexp2Fst")
+    }
+
+    // [spec:hfst:sem:hfst-regexp2fst.process-stream-fn/test]
+    // The values `--xerox-composition` and `--xfst` take, which set the
+    // library's compiler.
+    #[test]
+    fn option_values_read_as_the_tool_reads_them() {
+        for (value, on) in [("yes", true), ("ON", true), ("no", false), ("OFF", false)] {
+            let args = Args::try_parse_from(["hfst-regexp2fst", "-x", value]).expect("parses");
+            assert_eq!(args.xerox_composition(&common()), Ok(on), "{value}");
+        }
+        let args = Args::try_parse_from(["hfst-regexp2fst"]).expect("parses");
+        assert_eq!(args.xerox_composition(&common()), Ok(false));
+        assert_eq!(args.flag_is_epsilon(&common()), Ok(false));
+        let flags =
+            Args::try_parse_from(["hfst-regexp2fst", "-X", "flag-is-epsilon"]).expect("parses");
+        assert_eq!(flags.flag_is_epsilon(&common()), Ok(true));
+    }
 }

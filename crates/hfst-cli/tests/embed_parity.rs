@@ -1496,3 +1496,440 @@ fn bhfst_is_what_the_tool_packs() {
     }
     assert_eq!(metadata, printed);
 }
+
+fn filesystem() -> std::sync::Arc<dyn hfst::file_resolver::FileResolver> {
+    std::sync::Arc::new(hfst::file_resolver::FsResolver)
+}
+
+/// The bytes of a stream of `ts`, as written.
+fn stream(ts: &[Transducer]) -> Vec<u8> {
+    ts.iter().flat_map(written).collect()
+}
+
+/// The text of the file at `path`, and the path, as a compile's source.
+fn read_source(path: &str) -> String {
+    std::fs::read_to_string(path).unwrap_or_else(|e| panic!("{path}: {e}"))
+}
+
+const FORMATS: [(&str, Format); 4] = [
+    ("openfst-tropical", Format::OpenFstTropical),
+    ("foma", Format::Foma),
+    ("olw", Format::OptimizedLookupWeighted),
+    ("olu", Format::OptimizedLookupUnweighted),
+];
+
+// [spec:hfst:req:embed.compile/test]
+// Each file of expressions compiles in every type to what regexp2fst writes.
+#[test]
+fn regexps_compile_as_regexp2fst_compiles_them() {
+    let cases: Vec<(Vec<&str>, RegexpOptions)> = vec![
+        (vec![], RegexpOptions::default()),
+        (
+            vec!["-j"],
+            RegexpOptions {
+                disjunct: true,
+                ..RegexpOptions::default()
+            },
+        ),
+        (
+            vec!["-S"],
+            RegexpOptions {
+                separation: Separation::Semicolons,
+                ..RegexpOptions::default()
+            },
+        ),
+        (
+            vec!["-H", "-F", "-E", "-M"],
+            RegexpOptions {
+                harmonize: false,
+                harmonize_flags: true,
+                encode_weights: true,
+                minimize: false,
+                ..RegexpOptions::default()
+            },
+        ),
+        (
+            vec!["--xerox-composition=yes", "-X", "flag-is-epsilon"],
+            RegexpOptions {
+                xerox_composition: true,
+                flag_is_epsilon: true,
+                ..RegexpOptions::default()
+            },
+        ),
+    ];
+    for name in ["words", "flags", "weights", "many", "unify", "nonascii"] {
+        let path = fixture(&format!("js/test/fixtures/{name}.regexp"));
+        let path = path.to_str().expect("utf8");
+        let text = read_source(path);
+        for (args, options) in &cases {
+            for (flag, format) in FORMATS {
+                let mut argv = vec!["regexp2fst", "-f", flag];
+                argv.extend(args.iter().copied());
+                argv.push(path);
+                let expected = tool(&argv, b"");
+                let compiled = compile_regexps(
+                    Source {
+                        name: path,
+                        text: &text,
+                    },
+                    format,
+                    options,
+                    filesystem(),
+                )
+                .unwrap_or_else(|e| panic!("hfst {argv:?}: {e}"));
+                assert_eq!(stream(&compiled.value), expected, "hfst {argv:?}");
+            }
+        }
+    }
+}
+
+// [spec:hfst:req:embed.compile/test]
+// lexc sources compile in every type to what lexc writes, named after the
+// first.
+#[test]
+fn lexc_compiles_as_the_tool_compiles() {
+    let dir = tempfile::tempdir().expect("a directory");
+    let second = dir.path().join("more.lexc");
+    std::fs::write(&second, "LEXICON Root\nmouse # ;\n").expect("write a source");
+    let second = second.to_str().expect("utf8").to_string();
+    let first = fixture("crates/hfst/tests/fixtures/test_lexc.lexc");
+    let first = first.to_str().expect("utf8").to_string();
+    let cases: Vec<(Vec<&str>, LexcOptions)> = vec![
+        (vec![], LexcOptions::default()),
+        (
+            vec!["-A", "-F"],
+            LexcOptions {
+                align_strings: true,
+                with_flags: true,
+                ..LexcOptions::default()
+            },
+        ),
+        (
+            vec!["-F", "-M", "-R"],
+            LexcOptions {
+                with_flags: true,
+                minimize_flags: true,
+                rename_flags: true,
+                ..LexcOptions::default()
+            },
+        ),
+    ];
+    for files in [vec![first.clone()], vec![first.clone(), second.clone()]] {
+        let texts: Vec<String> = files.iter().map(|f| read_source(f)).collect();
+        let sources: Vec<Source<'_>> = files
+            .iter()
+            .zip(&texts)
+            .map(|(name, text)| Source { name, text })
+            .collect();
+        for (args, options) in &cases {
+            for (flag, format) in FORMATS {
+                let mut argv = vec!["lexc", "-q", "-f", flag];
+                argv.extend(args.iter().copied());
+                argv.extend(files.iter().map(String::as_str));
+                let expected = tool(&argv, b"");
+                let quiet = LexcOptions {
+                    verbosity: LexcVerbosity::Quiet,
+                    ..options.clone()
+                };
+                let compiled = compile_lexc(&sources, format, &quiet, filesystem())
+                    .unwrap_or_else(|e| panic!("hfst {argv:?}: {e}"));
+                assert_eq!(written(&compiled.value), expected, "hfst {argv:?}");
+            }
+        }
+    }
+}
+
+// [spec:hfst:req:embed.compile/test]
+// A twolc grammar's rule transducers are what twolc writes, in either
+// algebra type.
+#[test]
+fn twolc_rules_are_what_twolc_writes() {
+    let grammars = [
+        "Alphabet a b ;\nRules\n\"R1\"\na:b <=> _ # ;\n",
+        "Alphabet a b c a:b ;\nSets\nCns = a b ;\nRules\n\"R1\"\nCns:0 <=> _ c ;\n\"R2\"\na:b => c _ ;\n",
+    ];
+    for grammar in grammars {
+        for (flag, format, args, options) in [
+            (
+                "openfst",
+                Format::OpenFstTropical,
+                vec![],
+                TwolcOptions::default(),
+            ),
+            ("foma", Format::Foma, vec![], TwolcOptions::default()),
+            (
+                "openfst",
+                Format::OpenFstTropical,
+                vec!["-R", "-D"],
+                TwolcOptions {
+                    resolve_left_conflicts: true,
+                    resolve_right_conflicts: false,
+                    ..TwolcOptions::default()
+                },
+            ),
+        ] {
+            let mut argv = vec!["twolc", "-q", "-f", flag];
+            argv.extend(args);
+            let expected = tool(&argv, grammar.as_bytes());
+            let quiet = TwolcOptions {
+                quiet: true,
+                ..options
+            };
+            let compiled = compile_twolc(
+                Source {
+                    name: "<twolc>",
+                    text: grammar,
+                },
+                format,
+                &quiet,
+            )
+            .unwrap_or_else(|e| panic!("hfst {argv:?}: {e}"));
+            assert_eq!(stream(&compiled.value), expected, "hfst {argv:?}");
+        }
+    }
+}
+
+// [spec:hfst:req:embed.compile/test]
+// A pmatch script's archive is what pmatch2fst writes.
+#[test]
+fn pmatch_archives_are_what_pmatch2fst_writes() {
+    let dir = tempfile::tempdir().expect("a directory");
+    let out = dir.path().join("out.pmhfst");
+    let out = out.to_str().expect("utf8");
+    for name in ["animals", "tokenise"] {
+        let path = fixture(&format!("js/test/fixtures/{name}.pmatch"));
+        let path = path.to_str().expect("utf8");
+        for (args, options) in [
+            (vec![], Pmatch2FstOptions::default()),
+            (
+                vec!["--flatten"],
+                Pmatch2FstOptions {
+                    flatten: true,
+                    ..Pmatch2FstOptions::default()
+                },
+            ),
+        ] {
+            let mut argv = vec!["pmatch2fst"];
+            argv.extend(args);
+            argv.extend([path, "-o", out]);
+            tool(&argv, b"");
+            let expected = std::fs::read(out).expect("the archive");
+            let text = read_source(path);
+            let compiled = compile_pmatch(
+                Source {
+                    name: path,
+                    text: &text,
+                },
+                &options,
+                filesystem(),
+            )
+            .unwrap_or_else(|e| panic!("hfst {argv:?}: {e}"));
+            assert_eq!(compiled.value, expected, "hfst {argv:?}");
+        }
+    }
+}
+
+// [spec:hfst:req:embed.compile/test]
+// Strings, and AT&T and Prolog text, compile in every type to what
+// strings2fst and txt2fst write.
+#[test]
+fn strings_and_text_compile_as_the_tools_do() {
+    let dir = tempfile::tempdir().expect("a directory");
+    let strings = dir.path().join("s.txt");
+    std::fs::write(&strings, "cat\ndog\t1.5\nc:d a t\t2\n").expect("write strings");
+    let strings = strings.to_str().expect("utf8").to_string();
+    let text = read_source(&strings);
+    for (flag, format) in FORMATS {
+        for (args, options) in [
+            (vec![], StringsOptions::default()),
+            (
+                vec!["-j", "--norm"],
+                StringsOptions {
+                    disjunct: true,
+                    normalize: true,
+                    ..StringsOptions::default()
+                },
+            ),
+            (
+                vec!["-p", "-S"],
+                StringsOptions {
+                    pairstrings: true,
+                    has_spaces: true,
+                    ..StringsOptions::default()
+                },
+            ),
+        ] {
+            let mut argv = vec!["strings2fst", "-f", flag];
+            argv.extend(args);
+            argv.push(&strings);
+            let expected = tool(&argv, b"");
+            let compiled = compile_strings(
+                Source {
+                    name: &strings,
+                    text: &text,
+                },
+                format,
+                &options,
+            )
+            .unwrap_or_else(|e| panic!("hfst {argv:?}: {e}"));
+            assert_eq!(stream(&compiled.value), expected, "hfst {argv:?}");
+        }
+    }
+
+    let prolog = dir.path().join("t.prolog");
+    let words = inputs_text(&["fst2txt", "-f", "prolog"], "words");
+    std::fs::write(&prolog, words).expect("write Prolog");
+    let prolog = prolog.to_str().expect("utf8").to_string();
+    let att = fixture("crates/hfst/tests/fixtures/test_transducers.att");
+    let att = att.to_str().expect("utf8").to_string();
+    for (flag, format) in FORMATS {
+        for (path, args, options) in [
+            (&att, vec![], Txt2FstOptions::default()),
+            (
+                &att,
+                vec!["-j"],
+                Txt2FstOptions {
+                    disjunct: true,
+                    ..Txt2FstOptions::default()
+                },
+            ),
+            (
+                &prolog,
+                vec!["-p"],
+                Txt2FstOptions {
+                    prolog: true,
+                    ..Txt2FstOptions::default()
+                },
+            ),
+        ] {
+            let mut argv = vec!["txt2fst", "-f", flag];
+            argv.extend(args);
+            argv.push(path);
+            let expected = tool(&argv, b"");
+            let text = read_source(path);
+            let compiled = compile_text(
+                Source {
+                    name: path,
+                    text: &text,
+                },
+                format,
+                &options,
+            )
+            .unwrap_or_else(|e| panic!("hfst {argv:?}: {e}"));
+            assert_eq!(stream(&compiled.value), expected, "hfst {argv:?}");
+        }
+    }
+}
+
+/// What `hfst ARGS` prints of the input transducer `name`.
+fn inputs_text(args: &[&str], name: &str) -> Vec<u8> {
+    let inputs = Inputs::new();
+    let path = inputs.path(name);
+    let mut argv = args.to_vec();
+    argv.push(&path);
+    tool(&argv, b"")
+}
+
+/// What `hfst xfst ARGS -F s.xfst` prints of `script` in a directory of its
+/// own, whether it succeeded, and the directory.
+fn xfst_tool(args: &[&str], script: &str) -> (bool, Vec<u8>, tempfile::TempDir) {
+    let dir = tempfile::tempdir().expect("a directory");
+    std::fs::write(dir.path().join("s.xfst"), script).expect("write the script");
+    let out = std::process::Command::new(env!("CARGO_BIN_EXE_hfst"))
+        .arg("xfst")
+        .args(args)
+        .args(["-F", "s.xfst"])
+        .current_dir(dir.path())
+        .stdin(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .output()
+        .expect("hfst xfst");
+    (out.status.success(), out.stdout, dir)
+}
+
+// [spec:hfst:req:embed.compile/test]
+// [spec:hfst:req:embed.compile-files/test]
+// An xfst script prints what `hfst xfst -F` prints, and writes the files it
+// writes, through the resolver rather than to the working directory. A
+// command that fails is an error among the diagnostics, and stops the
+// script only when quit-on-fail is on.
+#[test]
+fn xfst_scripts_run_as_the_tool_runs_them() {
+    let script = "regex a b c ;\nprint words\ndefine X [d|e] ;\nregex X ;\nprint net\n\
+        push defined X\nprint stack\nsave stack out.hfst\nsave defined defs.hfst\n\
+        set quit-on-fail OFF\nregex a:b ;\nset print-weight ON\nprint words\n\
+        pop stack\npop stack\npop stack\npop stack\npop stack\nregex c ;\nprint size\n";
+    for (flag, format, args, options) in [
+        (
+            "openfst-tropical",
+            Format::OpenFstTropical,
+            vec![],
+            XfstOptions::default(),
+        ),
+        ("foma", Format::Foma, vec![], XfstOptions::default()),
+        (
+            "openfst-tropical",
+            Format::OpenFstTropical,
+            vec!["-w"],
+            XfstOptions {
+                print_weight: true,
+                ..XfstOptions::default()
+            },
+        ),
+    ] {
+        let mut argv = vec!["-f", flag];
+        argv.extend(args);
+        let (ok, printed, dir) = xfst_tool(&argv, script);
+        assert!(ok, "xfst {argv:?}");
+        let memory = hfst::file_resolver::MemoryFiles::default();
+        let compiled = compile_xfst(
+            Source {
+                name: "s.xfst",
+                text: script,
+            },
+            "",
+            format,
+            &options,
+            std::sync::Arc::new(memory.clone()),
+        )
+        .unwrap_or_else(|e| panic!("xfst {argv:?}: {e}"));
+        let result = compiled.value;
+        assert_eq!(
+            result.output,
+            String::from_utf8_lossy(&printed),
+            "xfst {argv:?}"
+        );
+        assert_eq!(result.written, ["out.hfst", "defs.hfst"]);
+        for name in &result.written {
+            let on_disk = std::fs::read(dir.path().join(name)).expect("the tool wrote");
+            assert_eq!(memory.get(name), Some(on_disk), "{name}");
+        }
+        assert_eq!(result.stack.len(), 1);
+        assert_eq!(result.definitions.len(), 1);
+        assert_eq!(result.definitions[0].0, "X");
+        assert!(
+            compiled
+                .diagnostics
+                .iter()
+                .any(|d| d.is_error() && d.message().contains("empty stack")),
+            "{:?}",
+            compiled.diagnostics
+        );
+    }
+    let stopping = "regex a ;\npop stack\npop stack\nregex b ;\nprint words\n";
+    let (ok, _, _) = xfst_tool(&[], stopping);
+    assert!(!ok);
+    let failed = compile_xfst(
+        Source {
+            name: "s.xfst",
+            text: stopping,
+        },
+        "",
+        Format::OpenFstTropical,
+        &XfstOptions::default(),
+        std::sync::Arc::new(hfst::file_resolver::MemoryFiles::default()),
+    )
+    .err()
+    .expect("the script stops");
+    assert!(failed.diagnostics.iter().any(Diagnostic::is_error));
+}
