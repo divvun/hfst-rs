@@ -239,7 +239,8 @@ impl<'a, T: TransducerTablesInterface> Walker<'a, T> {
     /// configuration is final is an enclitic. A run that only a boundary
     /// tag can still make a unit goes on only while one is in reach, so a
     /// generator that lets a Der tag be left out does not send the walk
-    /// through every ending after every morpheme name.
+    /// through every ending after every morpheme name. With `endings_only`,
+    /// only runs that can still be endings are walked.
     // [spec:hfst:req:prediction.generator-decides]
     // [spec:hfst:sem:prediction-units.boundary+3]
     // [spec:hfst:sem:prediction-units.ending+1]
@@ -249,6 +250,7 @@ impl<'a, T: TransducerTablesInterface> Walker<'a, T> {
         seeds: &[Live],
         complete: bool,
         place: Place,
+        endings_only: bool,
         pass: &mut Pass<'_, 'a, T>,
         offers: &mut Offers,
     ) {
@@ -283,6 +285,9 @@ impl<'a, T: TransducerTablesInterface> Walker<'a, T> {
                 let Some(extension) = self.extend(&run, symbol, after_stem) else {
                     continue;
                 };
+                if endings_only && !extension.ending {
+                    continue;
+                }
                 if run.symbols.len() >= self.limits.max_unit_symbols {
                     pass.budget.search_cut = true;
                     continue;

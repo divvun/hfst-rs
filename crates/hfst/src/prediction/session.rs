@@ -4,7 +4,7 @@
 use super::entry::Relaxation;
 use super::realise::{Script, realise};
 use super::units::{AnalysisTokenizer, SymbolClass, Unit, UnitKey, UnitKind};
-use super::walk::{CandidateOrder, Next, Walker, Word};
+use super::walk::{CandidateOrder, Next, Suggest, Suggestion, Walker, Word};
 use crate::error::Result;
 use crate::hfst_data_types::Symbol;
 use crate::transducer::TransducerTablesInterface;
@@ -143,6 +143,54 @@ impl<'a, T: TransducerTablesInterface> Session<'a, T> {
             })?;
         let word = self.word().pick(&candidate);
         self.words.push(word);
+        self.typed.clear();
+        self.offered = None;
+        Ok(())
+    }
+
+    /// The suggestions to show: the units on offer and, where stems are on
+    /// offer, their complete words, ranked by `order` after
+    /// [`Session::ranking_context`].
+    // [spec:hfst:sem:prediction.whole-words]
+    pub fn suggestions(
+        &mut self,
+        order: &dyn CandidateOrder,
+        settings: Suggest,
+    ) -> Result<Vec<Suggestion<'_>>> {
+        self.candidates()?;
+        let context = self.ranking_context();
+        let next = self
+            .offered
+            .as_ref()
+            .expect("candidates() leaves the offer it found");
+        Ok(self
+            .walker
+            .suggest(self.word(), &next.candidates, &context, order, settings))
+    }
+
+    /// Append the stem and the ending of the complete word with `key`
+    /// ([`WholeWord::key`](super::walk::WholeWord::key)), whose stem is on
+    /// offer. The word is then complete, and the letters typed for it are
+    /// spent. Backspace removes the ending first.
+    // [spec:hfst:sem:prediction.whole-words]
+    pub fn pick_word(&mut self, key: &str) -> Result<()> {
+        self.candidates()?;
+        let next = self
+            .offered
+            .as_ref()
+            .expect("candidates() leaves the offer it found");
+        let whole = self
+            .walker
+            .whole_word(self.word(), &next.candidates, key)
+            .ok_or_else(|| {
+                crate::err!(
+                    FaultyStringInput,
+                    format!("complete word {key:?} is not offered here")
+                )
+            })?;
+        let stem = self.word().pick(whole.stem());
+        let complete = stem.pick(whole.ending());
+        self.words.extend([stem, complete]);
         self.typed.clear();
         self.offered = None;
         Ok(())
@@ -362,6 +410,60 @@ mod tests {
         assert!(!session.backspace());
     }
 
+    fn suggested(session: &mut Session<'_, crate::transducer::WeightedTables>) -> Vec<String> {
+        let settings = Suggest {
+            whole_words: 1,
+            limit: None,
+        };
+        session
+            .suggestions(&GeneratorWeightOrder, settings)
+            .unwrap()
+            .iter()
+            .map(|suggestion| match suggestion {
+                Suggestion::Unit(candidate) => candidate.key.as_str().to_owned(),
+                Suggestion::Word(word) => format!("[{}]", word.surface()),
+            })
+            .collect()
+    }
+
+    // [spec:hfst:sem:prediction.whole-words/test]
+    // [spec:hfst:sem:prediction.session/test]
+    #[test]
+    fn a_complete_word_is_picked_in_one_step() {
+        let generator = lexc(NOUNS);
+        let grammar = grammar(NOUNS_GRAMMAR);
+        let mut session = Session::new(walker(&generator, &grammar), 2);
+        assert!(suggested(&mut session).is_empty());
+        session.type_letters("gu").unwrap();
+        assert_eq!(suggested(&mut session), ["guolli", "[guoli]"]);
+        session.pick_word("guolli+N+Sg+Nom").unwrap();
+        assert_eq!(session.typed(), "");
+        assert!(session.word().is_complete());
+        assert_eq!(keys_of(&mut session), ["+Qst"]);
+        assert!(session.backspace());
+        assert_eq!(session.word().units().len(), 1);
+        assert!(session.backspace());
+        session.type_letters("gi").unwrap();
+        session.pick_word("girji+N+Pl+Nom").unwrap();
+        assert_eq!(session.commit().unwrap(), "girjat");
+        assert_eq!(context(&session), ["girji", "+N+Pl+Nom"]);
+    }
+
+    // [spec:hfst:sem:prediction.whole-words/test]
+    #[test]
+    fn only_a_complete_word_on_offer_is_picked() {
+        let generator = lexc(NOUNS);
+        let grammar = grammar(NOUNS_GRAMMAR);
+        let mut session = Session::new(walker(&generator, &grammar), 2);
+        session.type_letters("gu").unwrap();
+        for refused in ["girji+N+Pl+Nom", "guolli+N+Cmp#", "guolli", "guolli+X"] {
+            let error = session.pick_word(refused).expect_err(refused);
+            assert_eq!(error.kind, ErrorKind::FaultyStringInput, "{refused}");
+        }
+        assert_eq!(session.typed(), "gu");
+        assert!(session.word().units().is_empty());
+    }
+
     // [spec:hfst:sem:prediction.session/test]
     #[test]
     fn only_a_complete_word_commits() {
@@ -396,9 +498,21 @@ mod tests {
     struct Recorder(RefCell<Vec<String>>);
 
     impl CandidateOrder for Recorder {
-        fn order(&self, context: &[UnitKey], candidates: &[(UnitKey, Weight)]) -> Vec<usize> {
+        fn scores(
+            &self,
+            context: &[UnitKey],
+            candidates: &[(UnitKey, Weight)],
+        ) -> Vec<Option<f64>> {
             *self.0.borrow_mut() = context.iter().map(|key| key.as_str().to_owned()).collect();
-            GeneratorWeightOrder.order(context, candidates)
+            GeneratorWeightOrder.scores(context, candidates)
+        }
+
+        fn shares(
+            &self,
+            context: &[UnitKey],
+            candidates: &[(UnitKey, Weight)],
+        ) -> Vec<Option<f64>> {
+            self.scores(context, candidates)
         }
     }
 

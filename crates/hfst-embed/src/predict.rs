@@ -16,35 +16,46 @@ use hfst::prediction::realise::{Script, Transliterate, realise};
 pub use hfst::prediction::units::UnitKind;
 use hfst::prediction::units::{Label, UnitGrammar, UnitKey};
 pub use hfst::prediction::walk::WalkLimits;
-use hfst::prediction::walk::{Candidate as Offered, CandidateOrder, Next, Walker, Word};
+use hfst::prediction::walk::{Candidate as Offered, Next, Suggest, Suggestion, Walker, Word};
 use hfst::transducer::{
-    OlMember, Transducer, TransducerTablesInterface, UnweightedTables, Weight, WeightedTables,
+    OlMember, Transducer, TransducerTablesInterface, UnweightedTables, WeightedTables,
 };
 
 use crate::Package;
 use crate::error::{Code, Error};
 use crate::stream;
 
-/// Every kind of unit, so a binding can list the names [`kind_name`] gives.
-pub const UNIT_KINDS: [UnitKind; 6] = [
-    UnitKind::Stem,
-    UnitKind::Prefix,
-    UnitKind::Boundary,
-    UnitKind::Ending,
-    UnitKind::Enclitic,
-    UnitKind::Filter,
+/// What a candidate on offer is: one unit, or a complete word, which is a
+/// stem and one of its endings picked together.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum CandidateKind {
+    Unit(UnitKind),
+    Word,
+}
+
+/// Every kind of candidate, so a binding can list the names [`kind_name`]
+/// gives.
+pub const CANDIDATE_KINDS: [CandidateKind; 7] = [
+    CandidateKind::Unit(UnitKind::Stem),
+    CandidateKind::Unit(UnitKind::Prefix),
+    CandidateKind::Unit(UnitKind::Boundary),
+    CandidateKind::Unit(UnitKind::Ending),
+    CandidateKind::Unit(UnitKind::Enclitic),
+    CandidateKind::Unit(UnitKind::Filter),
+    CandidateKind::Word,
 ];
 
-/// The name both packages give a kind of unit. It does not change between
-/// releases, so callers may test it.
-pub fn kind_name(kind: UnitKind) -> &'static str {
+/// The name both packages give a kind of candidate. It does not change
+/// between releases, so callers may test it.
+pub fn kind_name(kind: CandidateKind) -> &'static str {
     match kind {
-        UnitKind::Stem => "stem",
-        UnitKind::Prefix => "prefix",
-        UnitKind::Boundary => "boundary",
-        UnitKind::Ending => "ending",
-        UnitKind::Enclitic => "enclitic",
-        UnitKind::Filter => "filter",
+        CandidateKind::Unit(UnitKind::Stem) => "stem",
+        CandidateKind::Unit(UnitKind::Prefix) => "prefix",
+        CandidateKind::Unit(UnitKind::Boundary) => "boundary",
+        CandidateKind::Unit(UnitKind::Ending) => "ending",
+        CandidateKind::Unit(UnitKind::Enclitic) => "enclitic",
+        CandidateKind::Unit(UnitKind::Filter) => "filter",
+        CandidateKind::Word => "word",
     }
 }
 
@@ -100,6 +111,9 @@ pub struct PredictorOptions<'a> {
     /// Applied to the word a session commits.
     pub output_transliterator: Option<&'a [u8]>,
     pub limits: WalkLimits,
+    /// How many of its highest-ranked endings complete each stem on offer
+    /// as a complete word (`prediction.whole-words`). 0 offers none.
+    pub whole_words: usize,
 }
 
 /// A language's generator, unit grammar and model, read and checked against
@@ -116,6 +130,7 @@ pub struct Predictor {
     input: Option<Tables>,
     output: Option<Tables>,
     limits: WalkLimits,
+    whole_words: usize,
 }
 
 impl Predictor {
@@ -162,6 +177,7 @@ impl Predictor {
             model,
             context_len: order.saturating_sub(1),
             limits: options.limits,
+            whole_words: options.whole_words,
         })
     }
 
@@ -200,22 +216,15 @@ impl Predictor {
     }
 }
 
-/// The model's ranking, as the walk's [`CandidateOrder`].
-struct ModelOrder<'m>(Model<'m>);
-
-impl CandidateOrder for ModelOrder<'_> {
-    fn order(&self, context: &[UnitKey], candidates: &[(UnitKey, Weight)]) -> Vec<usize> {
-        self.0.rank(context, candidates)
-    }
-}
-
 /// What a session offers next, as a keyboard shows it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Offer {
-    /// The units to show, best first: those the model scores after the
-    /// context first, then the rest by the generator's weight.
+    /// The units and complete words to show, best first: those the model
+    /// scores after the context first, then the rest by the generator's
+    /// weight.
     pub candidates: Vec<Candidate>,
-    /// How many units are on offer, shown or not.
+    /// How many units are on offer, shown or not. Complete words are not
+    /// counted: only those that may be shown are drawn.
     pub total: usize,
     /// A stem can start here, so typed letters offer stems.
     pub stem_next: bool,
@@ -223,16 +232,17 @@ pub struct Offer {
     pub truncated: bool,
 }
 
-/// A unit on offer.
+/// A unit or a complete word on offer.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Candidate {
-    /// What [`Session::pick`] takes to pick the unit.
+    /// What [`Session::pick`] takes to pick it. A complete word's key is its
+    /// stem's key then its ending's key.
     pub key: String,
-    pub kind: UnitKind,
+    pub kind: CandidateKind,
     /// What a keyboard shows: the grammar's label, or for an ending without
-    /// one, the word it completes.
+    /// one and for a complete word, the word it completes.
     pub label: String,
-    /// Picking the unit makes the word complete, so it can be committed.
+    /// Picking it makes the word complete, so it can be committed.
     pub completes: bool,
 }
 
@@ -283,7 +293,8 @@ impl State {
         Ok(walker.entry(word, &spelled, predictor.relaxation())?)
     }
 
-    /// The units of `next` to show, ranked after the context and the word.
+    /// The units of `next` to show, with the complete words of the stems
+    /// among them, ranked after the context and the word.
     fn shown<T: TransducerTablesInterface>(
         &self,
         predictor: &Predictor,
@@ -291,26 +302,37 @@ impl State {
         next: &Next,
         limit: Option<usize>,
     ) -> Offer {
-        let ranked: Vec<(UnitKey, Weight)> = next
-            .candidates
-            .iter()
-            .map(|candidate| (candidate.key.clone(), candidate.weight))
-            .collect();
         let context = self.ranking_context(&predictor.grammar);
-        let order = ModelOrder(predictor.model()).order(&context, &ranked);
+        let settings = Suggest {
+            whole_words: predictor.whole_words,
+            limit,
+        };
         let word = self.word();
-        let candidates = order
+        let candidates = walker
+            .suggest(
+                word,
+                &next.candidates,
+                &context,
+                &predictor.model(),
+                settings,
+            )
             .into_iter()
-            .take(limit.unwrap_or(usize::MAX))
-            .filter_map(|index| next.candidates.get(index))
-            .map(|offered| {
-                let picked = word.pick(offered);
-                Candidate {
-                    key: offered.key.as_str().to_owned(),
-                    kind: offered.unit.kind,
-                    label: label(walker, offered, &picked),
-                    completes: picked.is_complete(),
+            .map(|suggestion| match suggestion {
+                Suggestion::Unit(offered) => {
+                    let picked = word.pick(offered);
+                    Candidate {
+                        key: offered.key.as_str().to_owned(),
+                        kind: CandidateKind::Unit(offered.unit.kind),
+                        label: label(walker, offered, &picked),
+                        completes: picked.is_complete(),
+                    }
                 }
+                Suggestion::Word(whole) => Candidate {
+                    key: whole.key(),
+                    kind: CandidateKind::Word,
+                    label: whole.surface().to_owned(),
+                    completes: true,
+                },
             })
             .collect();
         Offer {
@@ -386,8 +408,11 @@ impl Session {
         &self.state.typed
     }
 
-    /// The units on offer, the first `limit` of them when there is a limit,
-    /// ranked by the model after the context and the word's own units.
+    /// The units on offer, and where stems are on offer their complete
+    /// words, the first `limit` of them when there is a limit, ranked by the
+    /// model after the context and the word's own units. With complete
+    /// words, give a limit: without one every stem on offer is completed,
+    /// at a walk for each.
     pub fn candidates(&mut self, limit: Option<usize>) -> Result<Offer, Error> {
         let predictor = &*self.predictor;
         walking!(predictor, walker => {
@@ -400,30 +425,41 @@ impl Session {
         })
     }
 
-    /// Appends the unit on offer with `key` to the word, spending the
-    /// letters typed for it. A key not on offer is refused with
+    /// Appends the unit on offer with `key` to the word, or the stem and
+    /// the ending of the complete word with `key`, whose stem is on offer,
+    /// spending the letters typed for it. A key not on offer is refused with
     /// `invalid-argument`.
+    // [spec:hfst:sem:prediction.whole-words]
     pub fn pick(&mut self, key: &str) -> Result<(), Error> {
+        let predictor = &*self.predictor;
         let next = match self.offered.take() {
             Some(next) => next,
-            None => {
-                let predictor = &*self.predictor;
-                walking!(predictor, walker => self.state.offer(predictor, &walker))?
-            }
+            None => walking!(predictor, walker => self.state.offer(predictor, &walker))?,
         };
-        let found = next
+        let word = self.state.word();
+        let found = match next
             .candidates
             .iter()
             .find(|candidate| candidate.key.as_str() == key)
-            .map(|candidate| self.state.word().pick(candidate));
-        let Some(word) = found else {
+        {
+            Some(candidate) => vec![word.pick(candidate)],
+            None => walking!(predictor, walker => {
+                walker.whole_word(word, &next.candidates, key).map(|whole| {
+                    let stem = word.pick(whole.stem());
+                    let complete = stem.pick(whole.ending());
+                    vec![stem, complete]
+                })
+            })
+            .unwrap_or_default(),
+        };
+        if found.is_empty() {
             self.offered = Some(next);
             return Err(Error::new(
                 Code::InvalidArgument,
-                format!("unit {key:?} is not on offer here"),
+                format!("unit or complete word {key:?} is not on offer here"),
             ));
-        };
-        self.state.picked.push(word);
+        }
+        self.state.picked.extend(found);
         self.state.typed.clear();
         Ok(())
     }
@@ -483,7 +519,7 @@ impl Session {
     /// [`Session::candidates`] share one walk, whichever comes first.
     pub fn preview(&mut self) -> Option<String> {
         let predictor = &*self.predictor;
-        let order = ModelOrder(predictor.model());
+        let order = predictor.model();
         let context = self.state.ranking_context(&predictor.grammar);
         let word = self.state.word();
         walking!(predictor, walker => {

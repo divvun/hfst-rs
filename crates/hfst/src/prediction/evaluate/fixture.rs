@@ -102,6 +102,7 @@ pub(super) fn variant(
         model,
         shown,
         faces,
+        whole_words: 0,
     }
 }
 

@@ -8,7 +8,9 @@ use super::walks::{Building, Steps, Walks};
 use crate::error::Result;
 use crate::prediction::model::Model;
 use crate::prediction::units::{Label, SymbolClass, Unit, UnitKey, UnitKind};
-use crate::prediction::walk::{Candidate, WalkLimits, Walker, Word};
+use crate::prediction::walk::{
+    Candidate, Suggest, Suggestion, WalkLimits, Walker, WholeWord, Word,
+};
 use crate::transducer::{Transducer, TransducerTablesInterface, Weight};
 
 /// The simulated user of unit prediction. It types one word after another,
@@ -53,9 +55,15 @@ enum Outcome {
     GaveUp,
 }
 
+/// What a key the user presses picks: a unit, or a stem and its ending.
+enum Chosen {
+    Unit(Candidate),
+    Word(WholeWord),
+}
+
 /// A key the user presses, and what it costs.
 struct Choice {
-    candidate: Candidate,
+    chosen: Chosen,
     taps: usize,
     writes_word: bool,
 }
@@ -169,7 +177,13 @@ impl<'a, 'm, T: TransducerTablesInterface> UnitTypist<'a, 'm, T> {
             }
             if let Some(choice) = look.choice {
                 typed.taps += choice.taps;
-                self.building.pick(&choice.candidate);
+                match &choice.chosen {
+                    Chosen::Unit(candidate) => self.building.pick(candidate),
+                    Chosen::Word(word) => {
+                        self.building.pick(word.stem());
+                        self.building.pick(word.ending());
+                    }
+                }
                 break if choice.writes_word {
                     Outcome::Written
                 } else {
@@ -227,13 +241,17 @@ impl<'a, 'm, T: TransducerTablesInterface> UnitTypist<'a, 'm, T> {
             ranking: &ranking,
         };
         let shown = self.eyes.shown(&view, &next.candidates, slot, walks)?;
+        let hit = |suggestion: &Suggestion<'_>| match suggestion {
+            Suggestion::Unit(candidate) => &candidate.key == key,
+            Suggestion::Word(whole) => same_text(whole.surface(), surface),
+        };
         Ok(Look {
             reachable,
-            first: shown.first().is_some_and(|candidate| &candidate.key == key),
-            shown: shown.iter().any(|candidate| &candidate.key == key),
+            first: shown.first().is_some_and(hit),
+            shown: shown.iter().any(hit),
             choice: self
                 .eyes
-                .choose(word, &shown, &next.candidates, key, surface),
+                .choose(word, shown, &next.candidates, key, surface),
             truncated: next.truncated,
         })
     }
@@ -270,19 +288,35 @@ impl<'a, 'm, T: TransducerTablesInterface> Eyes<'a, 'm, T> {
         }
     }
 
-    /// The N suggestions shown: the first candidates in the model's order.
-    /// Once letters are typed for a unit entry does not offer, only the
-    /// candidates whose preview starts with the slot's filter count. Their
-    /// previews are read in the model's order, and none after the Nth that
-    /// fits.
+    /// The N suggestions shown: the first in the model's order, with
+    /// complete words beside the stems when the variant offers them. Once
+    /// letters are typed for a unit entry does not offer, which is never a
+    /// stem, only the candidates whose preview starts with the slot's filter
+    /// count. Their previews are read in the model's order, and none after
+    /// the Nth that fits.
     // [spec:hfst:def:prediction-evaluation.keystrokes]
+    // [spec:hfst:sem:prediction.whole-words]
     pub(super) fn shown<'n>(
         &self,
         view: &View<'_>,
         offered: &'n [Candidate],
         slot: &mut Slot,
         walks: &mut Walks<'_, T>,
-    ) -> Result<Vec<&'n Candidate>> {
+    ) -> Result<Vec<Suggestion<'n>>> {
+        if slot.filter.is_none() {
+            let settings = Suggest {
+                whole_words: self.variant.whole_words,
+                limit: Some(self.variant.shown),
+            };
+            return self.walker.suggest_with(
+                view.word,
+                offered,
+                view.ranking,
+                self.model,
+                settings,
+                |stem, picked| Ok(walks.endings(view.steps, stem, picked)),
+            );
+        }
         let pairs: Vec<(UnitKey, Weight)> = offered
             .iter()
             .map(|candidate| (candidate.key.clone(), candidate.weight))
@@ -294,7 +328,7 @@ impl<'a, 'm, T: TransducerTablesInterface> Eyes<'a, 'm, T> {
             }
             let candidate = &offered[index];
             if self.fits(view, candidate, slot, walks)? {
-                shown.push(candidate);
+                shown.push(Suggestion::Unit(candidate));
             }
         }
         Ok(shown)
@@ -361,23 +395,38 @@ impl<'a, 'm, T: TransducerTablesInterface> Eyes<'a, 'm, T> {
     fn choose(
         &self,
         word: &Word,
-        shown: &[&Candidate],
+        shown: Vec<Suggestion<'_>>,
         offered: &[Candidate],
         key: &UnitKey,
         surface: &str,
     ) -> Option<Choice> {
-        let mut options: Vec<(&Candidate, usize)> =
-            shown.iter().map(|&candidate| (candidate, 1)).collect();
-        options.extend(self.face_keys(word, offered, key));
+        let mut options: Vec<(Suggestion<'_>, usize)> = shown
+            .into_iter()
+            .map(|suggestion| (suggestion, 1))
+            .collect();
+        options.extend(
+            self.face_keys(word, offered, key)
+                .into_iter()
+                .map(|(candidate, taps)| (Suggestion::Unit(candidate), taps)),
+        );
         let mut best: Option<Choice> = None;
-        for (candidate, taps) in options {
-            let writes_word = self.writes(&word.pick(candidate), surface);
+        for (suggestion, taps) in options {
+            let (writes_word, next_unit) = match &suggestion {
+                Suggestion::Unit(candidate) => (
+                    self.writes(&word.pick(candidate), surface),
+                    &candidate.key == key,
+                ),
+                Suggestion::Word(whole) => (same_text(whole.surface(), surface), false),
+            };
             let better = best.as_ref().is_none_or(|best| {
                 taps < best.taps || (taps == best.taps && writes_word && !best.writes_word)
             });
-            if better && (writes_word || &candidate.key == key) {
+            if better && (writes_word || next_unit) {
                 best = Some(Choice {
-                    candidate: candidate.clone(),
+                    chosen: match suggestion {
+                        Suggestion::Unit(candidate) => Chosen::Unit(candidate.clone()),
+                        Suggestion::Word(whole) => Chosen::Word(*whole),
+                    },
                     taps,
                     writes_word,
                 });

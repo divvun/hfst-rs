@@ -87,6 +87,16 @@ struct Args {
     )]
     faces: Vec<Faces>,
 
+    /// How many endings complete each stem on offer as a complete word, to
+    /// score, separated by commas; 0 offers none
+    #[arg(
+        long = "whole-words",
+        value_name = "K,...",
+        value_delimiter = ',',
+        default_value = "0"
+    )]
+    whole_words: Vec<usize>,
+
     /// Suggestions recorded from another system, scored beside the variants:
     /// NAME=FILE, the file holding a word, a prefix and the suggestions
     /// shown for it on each tab-separated line. May be given more than once.
@@ -151,11 +161,19 @@ impl Args {
             for &backoff in &self.backoffs {
                 for &ambiguity in &self.ambiguities {
                     for &shown in &self.shown {
-                        variants.extend(
-                            faces.iter().map(|&faces| {
-                                self.variant(order, backoff, ambiguity, shown, faces)
-                            }),
-                        );
+                        for &whole_words in &self.whole_words {
+                            variants.extend(faces.iter().map(|&faces| {
+                                let mut variant =
+                                    self.variant(order, backoff, ambiguity, shown, faces);
+                                if whole_words > 0 {
+                                    variant.name = format!("{} words {whole_words}", variant.name);
+                                }
+                                Variant {
+                                    whole_words,
+                                    ..variant
+                                }
+                            }));
+                        }
                     }
                 }
             }
@@ -191,6 +209,7 @@ impl Args {
             },
             shown,
             faces,
+            whole_words: 0,
         }
     }
 
@@ -324,6 +343,22 @@ mod tests {
         );
         assert_eq!(args.variants()[0].faces, None);
         assert_eq!(args.variants()[0].model.face_size, 0);
+    }
+
+    // [spec:hfst:sem:prediction.whole-words/test]
+    #[test]
+    fn complete_words_are_a_setting_of_each_variant() {
+        let args = args(&["-n", "3", "--whole-words", "0,2"]);
+        assert_eq!(
+            names(&args),
+            ["o3 stupid-backoff n3", "o3 stupid-backoff n3 words 2"]
+        );
+        let counts: Vec<usize> = args
+            .variants()
+            .iter()
+            .map(|variant| variant.whole_words)
+            .collect();
+        assert_eq!(counts, [0, 2]);
     }
 
     #[test]

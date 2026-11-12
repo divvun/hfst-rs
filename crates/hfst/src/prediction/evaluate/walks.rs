@@ -34,6 +34,8 @@ impl Steps {
 pub(super) struct Walks<'a, T: TransducerTablesInterface> {
     walker: Walker<'a, T>,
     found: HashMap<Steps, Rc<Next>>,
+    /// The endings after each stem whose complete words were offered.
+    endings: HashMap<Steps, Rc<Next>>,
 }
 
 impl<'a, T: TransducerTablesInterface> Walks<'a, T> {
@@ -41,7 +43,25 @@ impl<'a, T: TransducerTablesInterface> Walks<'a, T> {
         Walks {
             walker,
             found: HashMap::new(),
+            endings: HashMap::new(),
         }
+    }
+
+    /// The endings after `stem`, on offer at `steps`, which reach `picked`
+    /// once it is picked. A stem a bound did not cut reaches the same
+    /// configurations whatever letters were typed for it, so its endings are
+    /// walked once for all of them.
+    pub(super) fn endings(&mut self, steps: &Steps, stem: &Candidate, picked: &Word) -> Rc<Next> {
+        let mut at = steps.then(&stem.key);
+        if !picked.truncated()
+            && let Some((typed, _)) = at.picks.last_mut()
+        {
+            typed.clear();
+        }
+        self.endings
+            .entry(at)
+            .or_insert_with(|| Rc::new(self.walker.endings(picked)))
+            .clone()
     }
 
     /// What is on offer at `steps`, which reach `word`, as a session offers
@@ -63,11 +83,17 @@ impl<'a, T: TransducerTablesInterface> Walks<'a, T> {
     /// Called between words, so that only one word's walks are held.
     pub(super) fn clear(&mut self) {
         self.found.clear();
+        self.endings.clear();
     }
 
     #[cfg(test)]
     pub(super) fn walked(&self) -> usize {
-        self.found.len()
+        self.found.len() + self.endings.len()
+    }
+
+    #[cfg(test)]
+    pub(super) fn walked_endings(&self) -> usize {
+        self.endings.len()
     }
 }
 

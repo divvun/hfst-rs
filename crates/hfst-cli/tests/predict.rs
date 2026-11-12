@@ -234,6 +234,47 @@ fn a_model_ranks_the_units() {
     );
 }
 
+/// nuna was counted four times, three of them in the relative case, and
+/// nanoq never, so after n the model ranks the complete word nunap first,
+/// then nuna with what nunap leaves of it, then nanoq and its word unseen,
+/// by the generator's weight.
+// [spec:hfst:sem:prediction.whole-words/test]
+#[test]
+fn typed_letters_offer_stems_and_complete_words() {
+    let fixture = Fixture::new();
+    let model = fixture.build_model();
+    let model = model.to_str().expect("a UTF-8 path");
+    let output = stdout(&fixture.tool(
+        "predict",
+        &["--model", model, "--whole-words", "1"],
+        "\tn\nnuna+N+Rel+Sg\n",
+    ));
+    let blocks: Vec<&str> = output.split_terminator("\n\n").collect();
+    assert_eq!(
+        blocks[0],
+        "analysis\t\tcomplete=no\tstem-next=yes\ttruncated=no\tunits=2\ttyped=n\n\
+         unit\tnuna+N+Rel+Sg\tword\tnunap\t2\n\
+         unit\tnuna\tstem\tnuna\t0\n\
+         unit\tnanoq\tstem\tnanoq\t0\n\
+         unit\tnanoq+N+Rel+Sg\tword\tnanoqp\t2"
+    );
+    assert!(
+        blocks[1].contains("complete=yes") && blocks[1].ends_with("form\tnunap\t2"),
+        "{}",
+        blocks[1]
+    );
+    let units = stdout(&fixture.tool("predict", &["--model", model], "\tn\n"));
+    assert_eq!(unit_keys(&units, ""), ["nuna", "nanoq"]);
+    let json = stdout(&fixture.tool(
+        "predict",
+        &["--json", "--whole-words", "1", "-n", "1"],
+        "nuna\tn\n",
+    ));
+    let value: serde_json::Value = serde_json::from_str(json.trim()).expect("a JSON object");
+    let refused = value["error"].as_str().unwrap_or_default();
+    assert!(refused.contains("no stem can start"), "{value}");
+}
+
 #[test]
 fn a_refused_analysis_leaves_the_rest_answered() {
     let fixture = Fixture::new();
@@ -332,6 +373,8 @@ fn predict_eval_reports_variants_beside_recordings() {
             "1",
             "--faces",
             "1+1",
+            "--whole-words",
+            "0,1",
             "--threads",
             "1",
             "--recording",
@@ -342,6 +385,7 @@ fn predict_eval_reports_variants_beside_recordings() {
     for name in [
         "o1 stupid-backoff n1 faces 1+1",
         "o2 stupid-backoff n1 faces 1+1",
+        "o2 stupid-backoff n1 faces 1+1 words 1",
         "speller",
         "saved",
     ] {

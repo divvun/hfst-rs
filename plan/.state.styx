@@ -1018,6 +1018,13 @@ impl_evidence (
         {impl_name target-impl, rule prediction.unit}
         {impl_name target-impl, rule prediction.views}
     )}
+    {id predict.whole-words, covered_rules (
+        prediction-model.word-score
+        prediction.whole-words
+    ), covered_claims (
+        {impl_name target-impl, rule prediction-model.word-score}
+        {impl_name target-impl, rule prediction.whole-words}
+    )}
     {id python.bindings, covered_rules (
         python.dhfst
         python.errors

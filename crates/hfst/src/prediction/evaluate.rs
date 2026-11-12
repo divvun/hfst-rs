@@ -27,10 +27,8 @@ pub use external::Recording;
 pub use report::{Report, Row, Tally};
 pub use run::Harness;
 
-use super::model::{Model, ModelSettings};
-use super::units::UnitKey;
-use super::walk::{CandidateOrder, WalkLimits};
-use crate::transducer::Weight;
+use super::model::ModelSettings;
+use super::walk::WalkLimits;
 
 /// One way of predicting, scored on the same text as the others in a run.
 #[derive(Clone, Debug, PartialEq)]
@@ -42,6 +40,9 @@ pub struct Variant {
     /// How many suggestions the keyboard shows: N.
     pub shown: usize,
     pub faces: Option<Faces>,
+    /// How many of its highest-ranked endings complete each stem on offer
+    /// as a complete word (`prediction.whole-words`). 0 offers none.
+    pub whole_words: usize,
 }
 
 /// Which units of a class's face (`prediction-model.faces`) a keyboard
@@ -76,11 +77,5 @@ impl Default for RunSettings {
             limits: WalkLimits::default(),
             threads: std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get),
         }
-    }
-}
-
-impl CandidateOrder for Model<'_> {
-    fn order(&self, context: &[UnitKey], candidates: &[(UnitKey, Weight)]) -> Vec<usize> {
-        self.rank(context, candidates)
     }
 }

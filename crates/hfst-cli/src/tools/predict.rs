@@ -18,7 +18,8 @@ use hfst::pmatch::PmatchContainer;
 use hfst::prediction::model::{Ambiguity, Backoff, Model};
 use hfst::prediction::units::{AnalysisTokenizer, Label, UnitGrammar, UnitKey, UnitKind};
 use hfst::prediction::walk::{
-    Candidate, CandidateOrder, Form, GeneratorWeightOrder, WalkLimits, Walker, Word,
+    Candidate, CandidateOrder, Form, GeneratorWeightOrder, Suggest, Suggestion, WalkLimits, Walker,
+    Word,
 };
 use hfst::transducer::{
     OlMember, Transducer, TransducerTablesInterface, UnweightedTables, Weight, WeightedTables,
@@ -206,9 +207,15 @@ struct Args {
     #[arg(short = 'm', long = "model", value_name = "FILE")]
     model: Option<String>,
 
-    /// Write at most N units for each analysis; all when not given
+    /// Write at most N units and complete words for each analysis; all when
+    /// not given, which with --whole-words walks the endings of every stem
     #[arg(short = 'n', long = "shown", value_name = "N")]
     shown: Option<usize>,
+
+    /// Where letters are typed, offer each stem's K highest-ranked endings
+    /// with it as complete words; 0 offers none
+    #[arg(long = "whole-words", value_name = "K", default_value_t = 0)]
+    whole_words: usize,
 
     /// Write each answer as one JSON object on a line of its own
     #[arg(short = 'j', long = "json")]
@@ -226,21 +233,26 @@ struct Args {
 const OUTPUT_HELP: &str = "\
 Each line read is the start of an analysis in the generator's notation, such
 as oqar, oqar+NIQ+Der/vn or oqar+NIQ+Der/vn+N+Abs+Sg. An empty line is the
-start of a word. For each, the tab-separated output is a block ended by an
-empty line:
+start of a word. A tab and letters after the analysis are letters typed
+where a stem can start: the units offered are then the prefixes, filters and
+stems the letters match. For each line, the tab-separated output is a block
+ended by an empty line:
 
-  analysis  ANALYSIS  complete=yes|no  stem-next=yes|no  truncated=yes|no  units=TOTAL
-  unit      KEY  KIND  LABEL  WEIGHT      one line for each unit, best first
+  analysis  ANALYSIS  complete=yes|no  stem-next=yes|no  truncated=yes|no  units=TOTAL  [typed=LETTERS]
+  unit      KEY  KIND  LABEL  WEIGHT      one line for each unit or complete word, best first
   form      SURFACE  WEIGHT               one line for each form of a complete word
 
 or, when the generator does not accept the analysis, the one line
 
   error     ANALYSIS  REASON
 
-stem-next=yes says a stem can come next; stems are not listed. truncated=yes
-says a walk limit cut the search short, so units may be missing. TOTAL counts
-the units before -n cuts them. With --json each analysis is one JSON object
-with the same fields, or the analysis and an error.";
+stem-next=yes says a stem can come next; stems are listed only for letters
+typed. With --whole-words K each stem listed brings its K highest-ranked
+endings as complete words, of the kind word, whose key is the stem's key then
+the ending's and whose label is the word they write. truncated=yes says a
+walk limit cut the search short, so units may be missing. TOTAL counts the
+units before -n cuts them; complete words are not counted. With --json each
+line is one JSON object with the same fields, or the analysis and an error.";
 
 impl ToolArgs for Args {
     fn common(&self) -> &CommonArgs {
@@ -250,18 +262,20 @@ impl ToolArgs for Args {
     fn apply_io(&self, _opts: &mut CommonOptions) {}
 }
 
-/// A unit offered after an analysis.
+/// A unit or a complete word offered after an analysis.
 #[derive(Clone, Debug, PartialEq)]
 struct Shown {
     key: String,
-    kind: UnitKind,
+    /// A unit's kind, or `word` for a complete word.
+    kind: &'static str,
     label: String,
     weight: Weight,
 }
 
-/// What the walk found after an analysis.
+/// What the walk found after an analysis and the letters typed after it.
 #[derive(Clone, Debug, PartialEq)]
 struct Offer {
+    typed: String,
     complete: bool,
     stem_next: bool,
     truncated: bool,
@@ -307,13 +321,13 @@ impl Answer {
             yes_no(offer.truncated),
             offer.total
         );
+        if !offer.typed.is_empty() {
+            text.insert_str(text.len() - 1, &format!("\ttyped={}", offer.typed));
+        }
         for unit in &offer.units {
             text.push_str(&format!(
                 "unit\t{}\t{}\t{}\t{}\n",
-                unit.key,
-                kind_name(unit.kind),
-                unit.label,
-                unit.weight
+                unit.key, unit.kind, unit.label, unit.weight
             ));
         }
         for form in &offer.forms {
@@ -328,13 +342,14 @@ impl Answer {
             Err(why) => serde_json::json!({ "analysis": self.analysis, "error": why }),
             Ok(offer) => serde_json::json!({
                 "analysis": self.analysis,
+                "typed": offer.typed,
                 "complete": offer.complete,
                 "stem_next": offer.stem_next,
                 "truncated": offer.truncated,
                 "total": offer.total,
                 "units": offer.units.iter().map(|unit| serde_json::json!({
                     "key": unit.key,
-                    "kind": kind_name(unit.kind),
+                    "kind": unit.kind,
                     "label": unit.label,
                     "weight": unit.weight,
                 })).collect::<Vec<_>>(),
@@ -353,41 +368,50 @@ struct Predictor<'a, T: TransducerTablesInterface> {
     walker: Walker<'a, T>,
     tokenizer: AnalysisTokenizer,
     order: &'a dyn CandidateOrder,
-    shown: usize,
+    settings: Suggest,
 }
 
 impl<T: TransducerTablesInterface> Predictor<'_, T> {
-    fn answer(&self, analysis: &str) -> Answer {
+    /// The answer for a line: an analysis, and after a tab, letters typed.
+    fn answer(&self, line: &str) -> Answer {
+        let (analysis, typed) = line.split_once('\t').unwrap_or((line, ""));
         Answer {
             analysis: analysis.to_owned(),
-            offer: self.offer(analysis).map_err(|e| reason(&e)),
+            offer: self.offer(analysis, typed).map_err(|e| reason(&e)),
         }
     }
 
-    fn offer(&self, analysis: &str) -> hfst::error::Result<Offer> {
+    // [spec:hfst:sem:prediction.whole-words]
+    fn offer(&self, analysis: &str, typed: &str) -> hfst::error::Result<Offer> {
         let word = self.walker.word_from_analysis(analysis, &self.tokenizer)?;
-        let next = self.walker.next(&word);
+        let next = if typed.is_empty() {
+            self.walker.next(&word)
+        } else {
+            self.walker.entry(&word, typed, None)?
+        };
         let grammar = self.walker.grammar();
         let context: Vec<UnitKey> = word.units().iter().map(|unit| grammar.key(unit)).collect();
-        let ranked: Vec<(UnitKey, Weight)> = next
-            .candidates
-            .iter()
-            .map(|candidate| (candidate.key.clone(), candidate.weight))
-            .collect();
         let units = self
-            .order
-            .order(&context, &ranked)
+            .walker
+            .suggest(&word, &next.candidates, &context, self.order, self.settings)
             .into_iter()
-            .take(self.shown)
-            .filter_map(|index| next.candidates.get(index))
-            .map(|candidate| Shown {
-                key: candidate.key.as_str().to_owned(),
-                kind: candidate.unit.kind,
-                label: self.label(&word, candidate),
-                weight: candidate.weight,
+            .map(|suggestion| match suggestion {
+                Suggestion::Unit(candidate) => Shown {
+                    key: candidate.key.as_str().to_owned(),
+                    kind: kind_name(candidate.unit.kind),
+                    label: self.label(&word, candidate),
+                    weight: candidate.weight,
+                },
+                Suggestion::Word(whole) => Shown {
+                    key: whole.key(),
+                    kind: "word",
+                    label: whole.surface().to_owned(),
+                    weight: whole.weight(),
+                },
             })
             .collect();
         Ok(Offer {
+            typed: typed.to_owned(),
             complete: word.is_complete(),
             stem_next: next.stem_next,
             truncated: next.truncated,
@@ -429,7 +453,10 @@ fn predict_all<T: TransducerTablesInterface>(
         walker: Walker::new(generator, grammar, args.limits.walk()).map_err(|e| reason(&e))?,
         tokenizer: AnalysisTokenizer::new(generator.get_alphabet().get_symbol_table()),
         order,
-        shown: args.shown.unwrap_or(usize::MAX),
+        settings: Suggest {
+            whole_words: args.whole_words,
+            limit: args.shown,
+        },
     };
     let mut out = common
         .output_writer()
@@ -489,6 +516,7 @@ mod tests {
         Answer {
             analysis: "oqar+NIQ+Der/vn".to_owned(),
             offer: Ok(Offer {
+                typed: String::new(),
                 complete: false,
                 stem_next: false,
                 truncated: true,
@@ -496,13 +524,13 @@ mod tests {
                 units: vec![
                     Shown {
                         key: "+N+Abs+Sg".to_owned(),
-                        kind: UnitKind::Ending,
+                        kind: "ending",
                         label: "oqarneq".to_owned(),
                         weight: 0.5,
                     },
                     Shown {
                         key: "+KIP+Der/nv".to_owned(),
-                        kind: UnitKind::Boundary,
+                        kind: "boundary",
                         label: "+KIP+Der/nv".to_owned(),
                         weight: 0.0,
                     },
@@ -524,6 +552,31 @@ mod tests {
              unit\t+KIP+Der/nv\tboundary\t+KIP+Der/nv\t0\n\
              form\toqar\"neq\t1\n\n"
         );
+    }
+
+    // [spec:hfst:sem:prediction.whole-words/test]
+    #[test]
+    fn letters_typed_and_complete_words_are_written() {
+        let mut typed = answer();
+        let Ok(offer) = &mut typed.offer else {
+            panic!("the answer has an offer");
+        };
+        offer.typed = "oq".to_owned();
+        offer.units = vec![Shown {
+            key: "oqar+V+Ind+3Sg".to_owned(),
+            kind: "word",
+            label: "oqarpoq".to_owned(),
+            weight: 0.0,
+        }];
+        offer.forms.clear();
+        assert_eq!(
+            typed.tsv(),
+            "analysis\toqar+NIQ+Der/vn\tcomplete=no\tstem-next=no\ttruncated=yes\tunits=3\ttyped=oq\n\
+             unit\toqar+V+Ind+3Sg\tword\toqarpoq\t0\n\n"
+        );
+        let value: serde_json::Value = serde_json::from_str(&typed.json()).unwrap();
+        assert_eq!(value["typed"], "oq");
+        assert_eq!(value["units"][0]["kind"], "word");
     }
 
     #[test]

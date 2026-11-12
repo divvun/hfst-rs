@@ -213,7 +213,7 @@ impl<'a> Model<'a> {
         ids.map_or(0.0, |ids| self.run_count(&ids))
     }
 
-    fn context_count(&self, context: &[Option<u32>]) -> f64 {
+    pub(crate) fn context_count(&self, context: &[Option<u32>]) -> f64 {
         let ids: Option<Vec<u32>> = context.iter().copied().collect();
         ids.map_or(0.0, |ids| self.run_count(&ids))
     }

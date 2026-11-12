@@ -8,6 +8,7 @@ mod machine;
 mod pass;
 mod reach;
 mod runs;
+mod words;
 
 #[cfg(test)]
 mod accept_tests;
@@ -15,6 +16,8 @@ mod accept_tests;
 pub(super) mod fixtures_test;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod words_tests;
 
 use std::collections::{BTreeMap, HashMap};
 
@@ -24,7 +27,9 @@ pub(super) use machine::Machine;
 pub(super) use pass::{Live, Pass};
 use reach::Role;
 pub(super) use runs::Offers;
+pub use words::{Suggest, Suggestion, WholeWord};
 
+use super::rank::rank_scored;
 use super::units::{SymbolClass, Unit, UnitGrammar, UnitKey, UnitKind};
 use crate::error::Result;
 use crate::hfst_data_types::Symbol;
@@ -135,26 +140,39 @@ pub struct Next {
     pub truncated: bool,
 }
 
-/// Puts candidates in the order to show them.
+/// Scores candidates after a context, which puts them in the order to show
+/// them.
 pub trait CandidateOrder {
-    /// Indices into `candidates`, in the order to show them.
-    fn order(&self, context: &[UnitKey], candidates: &[(UnitKey, Weight)]) -> Vec<usize>;
+    /// Each candidate's score after the context, none for a candidate it
+    /// does not score. A higher score ranks first.
+    fn scores(&self, context: &[UnitKey], candidates: &[(UnitKey, Weight)]) -> Vec<Option<f64>>;
+
+    /// Each candidate's share of what follows the context: none where
+    /// [`CandidateOrder::scores`] gives none, otherwise at most 1, and in the
+    /// order of the scores. A complete word scores its stem's score times
+    /// its ending's share after the stem.
+    fn shares(&self, context: &[UnitKey], candidates: &[(UnitKey, Weight)]) -> Vec<Option<f64>>;
+
+    /// Indices into `candidates`, in the order to show them: scored first,
+    /// highest first, then the rest by the generator's weight, lowest first,
+    /// then by the bytes of the key.
+    fn order(&self, context: &[UnitKey], candidates: &[(UnitKey, Weight)]) -> Vec<usize> {
+        rank_scored(&self.scores(context, candidates), candidates)
+    }
 }
 
-/// Orders by the generator's weight, lowest first, then by the bytes of the
-/// key.
+/// Scores nothing, so it orders by the generator's weight, lowest first,
+/// then by the bytes of the key.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct GeneratorWeightOrder;
 
 impl CandidateOrder for GeneratorWeightOrder {
-    fn order(&self, _context: &[UnitKey], candidates: &[(UnitKey, Weight)]) -> Vec<usize> {
-        let mut order: Vec<usize> = (0..candidates.len()).collect();
-        order.sort_by(|&a, &b| {
-            let (a, b) = (&candidates[a], &candidates[b]);
-            a.1.total_cmp(&b.1)
-                .then_with(|| a.0.as_str().as_bytes().cmp(b.0.as_str().as_bytes()))
-        });
-        order
+    fn scores(&self, _context: &[UnitKey], candidates: &[(UnitKey, Weight)]) -> Vec<Option<f64>> {
+        vec![None; candidates.len()]
+    }
+
+    fn shares(&self, _context: &[UnitKey], candidates: &[(UnitKey, Weight)]) -> Vec<Option<f64>> {
+        vec![None; candidates.len()]
     }
 }
 
@@ -373,13 +391,38 @@ impl<'a, T: TransducerTablesInterface> Walker<'a, T> {
                 self.prefixes(&seeds, &mut pass, &mut offers);
                 self.filters(&seeds, &mut pass, &mut offers);
             }
-            Place::AfterStem { .. } | Place::Complete => {
-                self.tag_runs(&seeds, word.is_complete(), place, &mut pass, &mut offers)
-            }
+            Place::AfterStem { .. } | Place::Complete => self.tag_runs(
+                &seeds,
+                word.is_complete(),
+                place,
+                false,
+                &mut pass,
+                &mut offers,
+            ),
         }
         let stem_next = place.stem_may_start()
             && pass.can_read(&seeds, &|symbol| self.class(symbol) == SymbolClass::Letter);
         self.found(word, offers, &pass, stem_next)
+    }
+
+    /// The endings among what [`Walker::next`] offers, found without walking
+    /// the runs that can only become boundary units, which after a stem of
+    /// a language with long chains of derivations are most of the walk.
+    /// Where a bound cuts the full walk short, this one may find endings it
+    /// missed. A word with no stem yet has none.
+    // [spec:hfst:sem:prediction.whole-words]
+    pub fn endings(&self, word: &Word) -> Next {
+        let mut pass = self.pass();
+        let seeds = self.seeds(&mut pass, word);
+        let mut offers = Offers::default();
+        let place = Place::of(&word.units);
+        match place {
+            Place::AfterStem { .. } => {
+                self.tag_runs(&seeds, false, place, true, &mut pass, &mut offers)
+            }
+            Place::BeforeStem | Place::Complete => {}
+        }
+        self.found(word, offers, &pass, false)
     }
 
     pub(super) fn found(

@@ -329,10 +329,15 @@ fn a_stem_can_follow_a_compound_join() {
 struct Prefer(&'static str);
 
 impl CandidateOrder for Prefer {
-    fn order(&self, _context: &[UnitKey], candidates: &[(UnitKey, Weight)]) -> Vec<usize> {
-        let mut order: Vec<usize> = (0..candidates.len()).collect();
-        order.sort_by_key(|&at| candidates[at].0.as_str() != self.0);
-        order
+    fn scores(&self, _context: &[UnitKey], candidates: &[(UnitKey, Weight)]) -> Vec<Option<f64>> {
+        candidates
+            .iter()
+            .map(|(key, _)| (key.as_str() == self.0).then_some(1.0))
+            .collect()
+    }
+
+    fn shares(&self, context: &[UnitKey], candidates: &[(UnitKey, Weight)]) -> Vec<Option<f64>> {
+        self.scores(context, candidates)
     }
 }
 

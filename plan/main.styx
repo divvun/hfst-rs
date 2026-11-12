@@ -9501,7 +9501,7 @@ children (
                 id predict.sme-evaluation
                 title "Write up unit prediction for North Sámi: keystrokes saved on held-out analysed text for each model order and backoff, against ranking whole word forms, to show whether a language with short unit chains gains enough to ship"
                 kind @docs
-                deps (predict.cli predict.eval-speed)
+                deps (predict.cli predict.eval-speed predict.whole-words)
             }
 
             {
@@ -9657,7 +9657,15 @@ children (
                 implements {
                     target-impl ([spec:hfst:sem:prediction.whole-words] [spec:hfst:sem:prediction-model.word-score])
                 }
-                deps (predict.whole-words-spec predict.preview-reuse)
+                deps (predict.whole-words-spec predict.preview-reuse predict.eval-speed)
+                log (
+                    {
+                        at 2026-11-12T17:04:39.574521Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
+                )
             }
 
             {

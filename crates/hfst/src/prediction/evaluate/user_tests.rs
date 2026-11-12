@@ -5,7 +5,7 @@ use super::walks::{Building, Walks};
 use super::{Faces, Harness, RunSettings, Variant};
 use crate::prediction::model::Model;
 use crate::prediction::units::UnitKey;
-use crate::prediction::walk::{WalkLimits, Walker};
+use crate::prediction::walk::{Suggestion, WalkLimits, Walker};
 use crate::transducer::Transducer;
 
 /// The text the hand-counted models are built from.
@@ -121,6 +121,75 @@ fn the_measure_counts_taps_by_hand() {
         }
     );
     assert_eq!(row.by_units[&0], tally(1, 3, 3, 1));
+}
+
+/// With N = 2 and the model of [`training`], counted by hand with one
+/// complete word for each stem, and without:
+///
+/// - `nuna`: `n` (1) shows `[nuna]`, nuna's commonest ending already
+///   picked, first; pick it (1). 2 taps for 4 characters, where without
+///   complete words a stem and an ending cost 3.
+/// - `nunat`: `n` (1) shows `[nuna]` and `nanoq`, since `nuna` keeps
+///   nothing beside its word, so `u` (1) and pick `nuna` (1), then
+///   `+N+Abs+Pl` (1). 4 taps for 5 characters, where without complete
+///   words `nuna` is shown at once and the word costs 3.
+// [spec:hfst:def:prediction-evaluation.keystrokes/test]
+// [spec:hfst:sem:prediction.whole-words/test]
+#[test]
+fn a_short_word_is_picked_in_one_tap() {
+    let generator = generator();
+    let scored = lookup(&[("nuna", &["nuna+N+Abs+Sg"]), ("nunat", &["nuna+N+Abs+Pl"])]);
+    let units = variant("units", model_settings(2, 0), 2, None);
+    let words = Variant {
+        whole_words: 1,
+        ..variant("words", model_settings(2, 0), 2, None)
+    };
+    let typed = |variant: &Variant| {
+        score(
+            &generator,
+            RunSettings::default(),
+            variant,
+            &training(),
+            &scored,
+        )
+    };
+    let by_units = typed(&units);
+    assert_eq!(
+        by_units.overall,
+        Tally {
+            units: 4,
+            first: 3,
+            shown: 4,
+            ..tally(2, 9, 6, 0)
+        }
+    );
+    assert_eq!(by_units.by_units[&2].taps, 6);
+    let by_words = typed(&words);
+    assert_eq!(
+        by_words.overall,
+        Tally {
+            units: 3,
+            first: 1,
+            shown: 2,
+            ..tally(2, 9, 6, 0)
+        }
+    );
+    let one = score(
+        &generator,
+        RunSettings::default(),
+        &words,
+        &training(),
+        &lookup(&[("nuna", &["nuna+N+Abs+Sg"])]),
+    );
+    assert_eq!(
+        one.overall,
+        Tally {
+            units: 1,
+            first: 1,
+            shown: 1,
+            ..tally(1, 4, 2, 0)
+        }
+    );
 }
 
 /// `nunap` is read `+N+Erg+Sg`, which the model never saw, but the first
@@ -277,7 +346,11 @@ fn look_after_nanoq(shown: usize, filter: &str) -> [Vec<String>; 3] {
         keys
     };
     [
-        sorted(looked.iter().map(|candidate| &candidate.key).collect()),
+        {
+            let mut keys: Vec<String> = looked.iter().map(Suggestion::key).collect();
+            keys.sort();
+            keys
+        },
         sorted(slot.previews.keys().collect()),
         sorted(slot.ruled_out.iter().collect()),
     ]
@@ -339,4 +412,44 @@ fn variants_typing_a_word_share_its_walks() {
     let mut alone = Walks::new(walker());
     assert_eq!(type_with(2, &mut alone), typed);
     assert_eq!(alone.walked(), 4);
+}
+
+/// The endings a stem's complete words are drawn from are walked once for
+/// all the letters typed before the stem and all the variants that type the
+/// word. With N = 1, `[nanoq]` hides the stem `nanoq`, so the user types
+/// every letter of it and gives up, but its endings are walked once.
+// [spec:hfst:def:prediction-evaluation.keystrokes/test]
+// [spec:hfst:sem:prediction.whole-words/test]
+#[test]
+fn complete_words_share_their_walks() {
+    let generator = generator();
+    let grammar = grammar();
+    let settings = model_settings(2, 0);
+    let bytes = model_of(&generator, &grammar, settings, &nanoq_training());
+    let model = Model::from_bytes(&bytes, &grammar).unwrap();
+    let harness = Harness::new(&generator, &grammar, RunSettings::default()).unwrap();
+    let text = lookup(&[("nanoqqarput", &["nanoq+QAR+Der/nv+V+Ind+3Pl"])]);
+    let corpus = harness.corpus(&text).unwrap();
+    let target = corpus.target(0).unwrap();
+    let limits = WalkLimits::default();
+    let walker = || Walker::new(&generator, &grammar, limits).unwrap();
+    let type_with = |whole_words: usize, walks: &mut Walks<'_, _>| {
+        let variant = Variant {
+            whole_words,
+            ..variant("v", settings, 1, None)
+        };
+        let mut typist = UnitTypist::new(&generator, &grammar, limits, &model, &variant).unwrap();
+        typist.type_word("nanoqqarput", target, &[], walks).unwrap()
+    };
+    let mut alone = Walks::new(walker());
+    let by_units = type_with(0, &mut alone);
+    assert_eq!(alone.walked_endings(), 0);
+    let mut shared = Walks::new(walker());
+    let by_words = type_with(2, &mut shared);
+    assert!(by_words.in_full);
+    assert_eq!(shared.walked_endings(), 1);
+    let walked = shared.walked();
+    assert_eq!(type_with(2, &mut shared), by_words);
+    assert_eq!(shared.walked(), walked);
+    assert_eq!(type_with(0, &mut shared), by_units);
 }

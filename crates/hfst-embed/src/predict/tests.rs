@@ -485,8 +485,59 @@ fn a_predictor_is_shared_between_threads() {
 
 #[test]
 fn every_kind_has_its_own_name() {
-    let mut names: Vec<&str> = UNIT_KINDS.iter().map(|&kind| kind_name(kind)).collect();
+    let mut names: Vec<&str> = CANDIDATE_KINDS
+        .iter()
+        .map(|&kind| kind_name(kind))
+        .collect();
     names.sort_unstable();
     names.dedup();
-    assert_eq!(names.len(), UNIT_KINDS.len());
+    assert_eq!(names.len(), CANDIDATE_KINDS.len());
+    assert_eq!(kind_name(CandidateKind::Word), "word");
+}
+
+/// The model counted guolli four times, three of them +N+Sg+Nom, and girji
+/// twice, always +N+Pl+Nom. So [guoli] scores 4/12 × 3/4 and [girjat] 2/12,
+/// guolli keeps 1/12 beside its word, and girji nothing.
+// [spec:hfst:sem:prediction.whole-words/test]
+// [spec:hfst:sem:prediction-model.word-score/test]
+#[test]
+fn complete_words_are_offered_and_picked() {
+    let options = PredictorOptions {
+        whole_words: 1,
+        ..PredictorOptions::default()
+    };
+    let mut session = session(&language(), options);
+    session.type_letters("g").unwrap();
+    let offer = session.candidates(Some(4)).unwrap();
+    assert_eq!(
+        shown(&offer),
+        [
+            "guolli+N+Sg+Nom word guoli true",
+            "girji+N+Pl+Nom word girjat true",
+            "guolli stem guolli false",
+            "girji stem girji false",
+        ]
+    );
+    assert_eq!(offer.total, 3);
+    let all = session.candidates(None).unwrap();
+    assert_eq!(
+        shown(&all)[4..],
+        [
+            "gáhkku stem gáhkku false",
+            "gáhkku+N+Sg+Nom word gáhkki true"
+        ]
+    );
+    assert_eq!(code(session.pick("girji+N+Sg+Gen+X")), "invalid-argument");
+    session.pick("girji+N+Pl+Nom").unwrap();
+    assert!(session.is_complete());
+    assert_eq!(session.typed(), "");
+    assert!(session.backspace());
+    assert!(!session.is_complete());
+    assert_eq!(keys(&mut session)[0], "+N+Pl+Nom");
+    session.pick("+N+Pl+Nom").unwrap();
+    assert_eq!(session.commit().unwrap(), "girjat");
+    session.type_letters("gu").unwrap();
+    session.pick("guolli+N+Sg+Gen").unwrap();
+    assert_eq!(session.commit().unwrap(), "guola");
+    assert_eq!(context(&session), ["guolli", "+N+Sg+Gen"]);
 }
