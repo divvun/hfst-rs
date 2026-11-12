@@ -1,6 +1,6 @@
 schema_version 7
 
-last_sync_at 2026-11-11T11:38:42.455952Z
+last_sync_at 2026-11-12T22:32:56.114005Z
 
 rule_versions (
     {id determinize-envelope.bounded-strategies, version 0}
@@ -76,6 +76,46 @@ rule_versions (
     {id ol-lookup-enumeration.no-internal-work-cap, version 0}
     {id ol-lookup-enumeration.out-of-alphabet-input, version 0}
     {id ol-lookup-enumeration.representation-independence, version 0}
+    {id prediction-evaluation.external, version 0}
+    {id prediction-evaluation.held-out, version 0}
+    {id prediction-evaluation.keystrokes, version 0}
+    {id prediction-evaluation.report, version 0}
+    {id prediction-model.budget, version 0}
+    {id prediction-model.faces, version 0}
+    {id prediction-model.file, version 1}
+    {id prediction-model.form-score, version 0}
+    {id prediction-model.format, version 0}
+    {id prediction-model.input, version 0}
+    {id prediction-model.order, version 0}
+    {id prediction-model.rank-only, version 0}
+    {id prediction-model.same-grammar, version 0}
+    {id prediction-model.word-forms, version 0}
+    {id prediction-model.word-score, version 0}
+    {id prediction-units.boundary, version 3}
+    {id prediction-units.classes, version 0}
+    {id prediction-units.enclitic, version 0}
+    {id prediction-units.ending, version 1}
+    {id prediction-units.filter, version 0}
+    {id prediction-units.format, version 2}
+    {id prediction-units.grammar, version 2}
+    {id prediction-units.hidden, version 0}
+    {id prediction-units.labels, version 0}
+    {id prediction-units.prefix, version 0}
+    {id prediction-units.stem, version 0}
+    {id prediction.bounded, version 0}
+    {id prediction.complete, version 0}
+    {id prediction.entry, version 0}
+    {id prediction.flags, version 0}
+    {id prediction.generator-decides, version 0}
+    {id prediction.preview, version 0}
+    {id prediction.realise, version 0}
+    {id prediction.script-edges, version 0}
+    {id prediction.seen-forms, version 0}
+    {id prediction.session, version 0}
+    {id prediction.state, version 0}
+    {id prediction.unit, version 0}
+    {id prediction.views, version 0}
+    {id prediction.whole-words, version 0}
     {id python.compile, version 0}
     {id python.compile-errors, version 0}
     {id python.compile-parity, version 0}
@@ -87,7 +127,7 @@ rule_versions (
     {id python.module, version 0}
     {id python.operations, version 0}
     {id python.parity, version 0}
-    {id python.threads, version 0}
+    {id python.threads, version 1}
     {id python.tokenise, version 0}
     {id python.transducer, version 0}
     {id python.typed, version 0}
@@ -155,6 +195,7 @@ derived_priorities (
     {id clippy-deny-gate, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
     {id compile-surface.cli-logic, priority 1, derived_at 2026-11-11T11:38:42.455952Z}
     {id compile-surface.embed-compile, priority 3, derived_at 2026-11-11T11:38:42.455952Z}
+    {id compile-surface.embed-gaps, priority 3, derived_at 2026-11-12T22:32:56.114005Z}
     {id compile-surface.embed-transducer, priority 2, derived_at 2026-11-11T11:38:42.455952Z}
     {id compile-surface.embed-writers, priority 3, derived_at 2026-11-11T11:38:42.455952Z}
     {id compile-surface.no-panic, priority 1, derived_at 2026-11-11T11:38:42.455952Z}
@@ -241,6 +282,7 @@ derived_priorities (
     {id lexc-diagnostic-accuracy, priority 1, derived_at 2026-08-21T21:18:14.374864Z}
     {id lexc-morphotax-memory, priority 1, derived_at 2026-08-21T21:18:14.374864Z}
     {id librarify2, priority 2, derived_at 2026-08-21T21:18:14.374864Z}
+    {id lookup-state-reuse-slowdown, priority 0, derived_at 2026-11-12T22:32:56.114005Z}
     {id lookup-state-split, priority 1, derived_at 2026-09-15T19:46:58.963189Z}
     {id minimize-consume-input, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
     {id mono.backend-traits, priority 0, derived_at 2026-07-11T20:19:58.119495Z}
@@ -265,6 +307,35 @@ derived_priorities (
     {id pmatch-quotient-subtract, priority 0, derived_at 2026-10-06T21:03:19.004443Z}
     {id pmatch-shared-core, priority 2, derived_at 2026-09-15T19:46:58.963189Z}
     {id pmatch2fst-syntax-error-exit-zero, priority 0, derived_at 2026-10-06T21:03:19.004443Z}
+    {id predict.accept-speed, priority 3, derived_at 2026-11-12T22:32:56.114005Z}
+    {id predict.cli, priority 3, derived_at 2026-11-12T22:32:56.114005Z}
+    {id predict.crk-comparison, priority 3, derived_at 2026-11-12T22:32:56.114005Z}
+    {id predict.crk-whole-words, priority 3, derived_at 2026-11-12T22:32:56.114005Z}
+    {id predict.derivations, priority 3, derived_at 2026-11-12T22:32:56.114005Z}
+    {id predict.display-script, priority 3, derived_at 2026-11-12T22:32:56.114005Z}
+    {id predict.embed, priority 3, derived_at 2026-11-12T22:32:56.114005Z}
+    {id predict.embed-builder, priority 3, derived_at 2026-11-12T22:32:56.114005Z}
+    {id predict.eval-speed, priority 3, derived_at 2026-11-12T22:32:56.114005Z}
+    {id predict.evaluation, priority 3, derived_at 2026-11-12T22:32:56.114005Z}
+    {id predict.filter-scoring, priority 3, derived_at 2026-11-12T22:32:56.114005Z}
+    {id predict.kal-check, priority 3, derived_at 2026-11-12T22:32:56.114005Z}
+    {id predict.kal-check-runner, priority 3, derived_at 2026-11-12T22:32:56.114005Z}
+    {id predict.kal-grammar, priority 3, derived_at 2026-11-12T22:32:56.114005Z}
+    {id predict.model, priority 2, derived_at 2026-11-12T22:32:56.114005Z}
+    {id predict.noun-filters, priority 3, derived_at 2026-11-12T22:32:56.114005Z}
+    {id predict.preview-reuse, priority 3, derived_at 2026-11-12T22:32:56.114005Z}
+    {id predict.recording-format, priority 3, derived_at 2026-11-12T22:32:56.114005Z}
+    {id predict.sme-evaluation, priority 3, derived_at 2026-11-12T22:32:56.114005Z}
+    {id predict.spec, priority 0, derived_at 2026-11-12T22:32:56.114005Z}
+    {id predict.stem-slot, priority 3, derived_at 2026-11-12T22:32:56.114005Z}
+    {id predict.units, priority 1, derived_at 2026-11-12T22:32:56.114005Z}
+    {id predict.walk, priority 2, derived_at 2026-11-12T22:32:56.114005Z}
+    {id predict.walk-speed, priority 3, derived_at 2026-11-12T22:32:56.114005Z}
+    {id predict.whole-words, priority 3, derived_at 2026-11-12T22:32:56.114005Z}
+    {id predict.whole-words-spec, priority 0, derived_at 2026-11-12T22:32:56.114005Z}
+    {id predict.word-forms, priority 3, derived_at 2026-11-12T22:32:56.114005Z}
+    {id predict.word-forms-measure, priority 3, derived_at 2026-11-12T22:32:56.114005Z}
+    {id predict.word-forms-spec, priority 0, derived_at 2026-11-12T22:32:56.114005Z}
     {id python.bindings, priority 2, derived_at 2026-11-11T11:38:42.455952Z}
     {id python.embed, priority 1, derived_at 2026-11-11T11:38:42.455952Z}
     {id python.package, priority 3, derived_at 2026-11-11T11:38:42.455952Z}
@@ -734,6 +805,9 @@ impl_evidence (
     ), covered_claims (
         {impl_name target-impl, rule embed.tools}
         {impl_name target-impl, rule embed.tools-in-library}
+    ), rule_versions_seen (
+        {id embed.tools, version 0}
+        {id embed.tools-in-library, version 0}
     )}
     {id compile-surface.embed-compile, covered_rules (
         embed.compile
@@ -741,6 +815,9 @@ impl_evidence (
     ), covered_claims (
         {impl_name target-impl, rule embed.compile}
         {impl_name target-impl, rule embed.compile-diagnostics}
+    ), rule_versions_seen (
+        {id embed.compile, version 0}
+        {id embed.compile-diagnostics, version 0}
     )}
     {id compile-surface.embed-transducer, covered_rules (
         embed.operations
@@ -748,16 +825,23 @@ impl_evidence (
     ), covered_claims (
         {impl_name target-impl, rule embed.operations}
         {impl_name target-impl, rule embed.transducer}
+    ), rule_versions_seen (
+        {id embed.operations, version 0}
+        {id embed.transducer, version 0}
     )}
     {id compile-surface.embed-writers, covered_rules (
         embed.writers
     ), covered_claims (
         {impl_name target-impl, rule embed.writers}
+    ), rule_versions_seen (
+        {id embed.writers, version 0}
     )}
     {id compile-surface.no-panic, covered_rules (
         embed.no-panic
     ), covered_claims (
         {impl_name target-impl, rule embed.no-panic}
+    ), rule_versions_seen (
+        {id embed.no-panic, version 0}
     )}
     {id compile-surface.python-compile, covered_rules (
         python.compile
@@ -765,11 +849,16 @@ impl_evidence (
     ), covered_claims (
         {impl_name target-impl, rule python.compile}
         {impl_name target-impl, rule python.compile-errors}
+    ), rule_versions_seen (
+        {id python.compile, version 0}
+        {id python.compile-errors, version 0}
     )}
     {id compile-surface.python-parity, covered_rules (
         python.compile-parity
     ), covered_claims (
         {impl_name target-impl, rule python.compile-parity}
+    ), rule_versions_seen (
+        {id python.compile-parity, version 0}
     )}
     {id compile-surface.python-transducer, covered_rules (
         python.load
@@ -781,16 +870,26 @@ impl_evidence (
         {impl_name target-impl, rule python.operations}
         {impl_name target-impl, rule python.threads}
         {impl_name target-impl, rule python.transducer}
+    ), rule_versions_seen (
+        {id python.load, version 1}
+        {id python.operations, version 0}
+        {id python.threads, version 1}
+        {id python.transducer, version 0}
     )}
     {id compile-surface.python-writers, covered_rules (
         python.writers
     ), covered_claims (
         {impl_name target-impl, rule python.writers}
+    ), rule_versions_seen (
+        {id python.writers, version 0}
     )}
+    {id compile-surface.wasm-compile}
     {id compile-surface.xfst-files, covered_rules (
         embed.compile-files
     ), covered_claims (
         {impl_name target-impl, rule embed.compile-files}
+    ), rule_versions_seen (
+        {id embed.compile-files, version 0}
     )}
     {id dead-not-implemented-surface, covered_rules (
         xfst-cmd.no-dead-surface
@@ -980,11 +1079,15 @@ impl_evidence (
         {impl_name target-impl, rule prediction-evaluation.held-out}
         {impl_name target-impl, rule prediction-evaluation.keystrokes}
         {impl_name target-impl, rule prediction-evaluation.report}
+    ), rule_versions_seen (
+        {id prediction-evaluation.external, version 0}
+        {id prediction-evaluation.held-out, version 0}
+        {id prediction-evaluation.keystrokes, version 0}
+        {id prediction-evaluation.report, version 0}
     )}
     {id predict.model, covered_rules (
         prediction-model.budget
         prediction-model.faces
-        prediction-model.file
         prediction-model.format
         prediction-model.input
         prediction-model.order
@@ -993,12 +1096,20 @@ impl_evidence (
     ), covered_claims (
         {impl_name target-impl, rule prediction-model.budget}
         {impl_name target-impl, rule prediction-model.faces}
-        {impl_name target-impl, rule prediction-model.file}
         {impl_name target-impl, rule prediction-model.format}
         {impl_name target-impl, rule prediction-model.input}
         {impl_name target-impl, rule prediction-model.order}
         {impl_name target-impl, rule prediction-model.rank-only}
         {impl_name target-impl, rule prediction-model.same-grammar}
+    ), rule_versions_seen (
+        {id prediction-model.budget, version 0}
+        {id prediction-model.faces, version 0}
+        {id prediction-model.file, version 0}
+        {id prediction-model.format, version 0}
+        {id prediction-model.input, version 0}
+        {id prediction-model.order, version 0}
+        {id prediction-model.rank-only, version 0}
+        {id prediction-model.same-grammar, version 0}
     )}
     {id predict.units, covered_rules (
         prediction-units.boundary
@@ -1024,6 +1135,18 @@ impl_evidence (
         {impl_name target-impl, rule prediction-units.labels}
         {impl_name target-impl, rule prediction-units.prefix}
         {impl_name target-impl, rule prediction-units.stem}
+    ), rule_versions_seen (
+        {id prediction-units.boundary, version 1}
+        {id prediction-units.classes, version 0}
+        {id prediction-units.enclitic, version 0}
+        {id prediction-units.ending, version 0}
+        {id prediction-units.filter, version 0}
+        {id prediction-units.format, version 1}
+        {id prediction-units.grammar, version 1}
+        {id prediction-units.hidden, version 0}
+        {id prediction-units.labels, version 0}
+        {id prediction-units.prefix, version 0}
+        {id prediction-units.stem, version 0}
     )}
     {id predict.walk, covered_rules (
         prediction.bounded
@@ -1051,6 +1174,19 @@ impl_evidence (
         {impl_name target-impl, rule prediction.state}
         {impl_name target-impl, rule prediction.unit}
         {impl_name target-impl, rule prediction.views}
+    ), rule_versions_seen (
+        {id prediction.bounded, version 0}
+        {id prediction.complete, version 0}
+        {id prediction.entry, version 0}
+        {id prediction.flags, version 0}
+        {id prediction.generator-decides, version 0}
+        {id prediction.preview, version 0}
+        {id prediction.realise, version 0}
+        {id prediction.script-edges, version 0}
+        {id prediction.session, version 0}
+        {id prediction.state, version 0}
+        {id prediction.unit, version 0}
+        {id prediction.views, version 0}
     )}
     {id predict.whole-words, covered_rules (
         prediction-model.word-score
@@ -1058,6 +1194,9 @@ impl_evidence (
     ), covered_claims (
         {impl_name target-impl, rule prediction-model.word-score}
         {impl_name target-impl, rule prediction.whole-words}
+    ), rule_versions_seen (
+        {id prediction-model.word-score, version 0}
+        {id prediction.whole-words, version 0}
     )}
     {id python.bindings, covered_rules (
         python.dhfst

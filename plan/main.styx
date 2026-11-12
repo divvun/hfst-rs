@@ -9889,6 +9889,13 @@ children (
                 kind @docs
                 deps (predict.word-forms)
             }
+
+            {
+                id predict.embed-memo
+                title "Keep the walk's memo in hfst-embed between calls: a kept walker makes kal's next() about four times faster (mean 117 to 39 ms), but hfst-embed builds a fresh walker for every call and gets only 147 to 104 ms; keep one memo per Predictor or per Session, with a small additive Walker API to hand it over"
+                kind @perf
+                deps (predict.walk-speed predict.embed)
+            }
         )
     }
 
