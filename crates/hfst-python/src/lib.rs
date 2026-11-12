@@ -16,6 +16,7 @@ mod queries;
 mod results;
 mod tokenise;
 mod transducer;
+mod writers;
 
 // [spec:hfst:req:python.parity]
 // Every reader and every call reaches hfst-embed, the code @divvun/hfst runs
@@ -66,6 +67,8 @@ mod module {
         LookupResult, Transducer, load_transducer, load_transducers, read_transducer,
         read_transducers,
     };
+    #[pymodule_export]
+    use crate::writers::pack_bhfst;
 
     #[pymodule_init]
     fn init(m: &Bound<'_, PyModule>) -> PyResult<()> {

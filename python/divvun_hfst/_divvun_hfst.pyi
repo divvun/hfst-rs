@@ -432,6 +432,73 @@ class Transducer:
         first when the transducer has any, or when the options of a call set
         `tokenize_multichar`."""
 
+    # Writers: each writes the transducer as the hfst tool it names writes
+    # it.
+
+    def to_bytes(
+        self,
+        type: TransducerType | None = None,
+        /,
+        *,
+        use_backend_format: bool = False,
+        quick: bool = False,
+    ) -> bytes:
+        """The bytes of a stream holding the transducer, as `hfst fst2fst`
+        writes it: in `type`, converted and named as `--format` converts and
+        names it, or as it is, in its own type, when `type` is None.
+        `use_backend_format` leaves out the HFST3 header, and `quick` packs
+        optimized-lookup tables less tightly."""
+    def to_att(
+        self,
+        /,
+        *,
+        print_weights: bool = False,
+        do_not_print_weights: bool = False,
+        use_numbers: bool = False,
+    ) -> str:
+        """The AT&T text `hfst fst2txt` writes of the transducer. Weights are
+        written for every type but foma, which has none, unless
+        `do_not_print_weights`; `print_weights` writes them for foma too.
+        `use_numbers` writes symbol numbers rather than names."""
+    def to_prolog(
+        self, /, *, print_weights: bool = False, do_not_print_weights: bool = False
+    ) -> str:
+        """The Prolog text `hfst fst2txt -f prolog` writes of the transducer
+        alone in its stream, so a transducer with no name is `NO_NAME_1`."""
+    def to_dot(self, /, *, print_weights: bool = False, do_not_print_weights: bool = False) -> str:
+        """The Graphviz text `hfst fst2txt -f dot` writes of the
+        transducer."""
+    def to_pckimmo(
+        self, /, *, print_weights: bool = False, do_not_print_weights: bool = False
+    ) -> str:
+        """The PC-KIMMO text `hfst fst2txt -f pckimmo` writes of the
+        transducer."""
+    def to_dhfst_acceptor(self, /, *, quick: bool = False, source_name: str = "") -> bytes:
+        """The DHFST acceptor (type 2) `hfst fst2fst -f dhfst --dhfst-type
+        acceptor` writes of the transducer. `source_name` is the file name,
+        without its directory, the tool would have read it from, which the
+        file's meta section names; `quick` packs the conversion's tables less
+        tightly."""
+    def to_dhfst_error_model(
+        self,
+        /,
+        *,
+        max_fallback_depth: int | None = 4,
+        quick: bool = False,
+        source_name: str = "",
+    ) -> bytes:
+        """The DHFST error model (type 1) `hfst fst2fst -f dhfst --dhfst-type
+        errmodel` writes of the transducer, its fallback chains at most
+        `max_fallback_depth` long, as `--max-fallback-depth`, or unbounded
+        when it is None, as `--unbounded-fallback`. `source_name` and `quick`
+        are to_dhfst_acceptor's."""
+    def write_thfst(self, path: str | PathLike[str], /, *, quick: bool = False) -> None:
+        """Writes the transducer as the THFST directory at `path`,
+        divvunspell's format, as `hfst fst2fst -f thfst -o PATH` writes it:
+        the directory and its three files `alphabet`, `index` and
+        `transition`. `quick` packs the tables less tightly. A directory that
+        cannot be written raises HfstError."""
+
 @final
 class OptimisedTransducer:
     """An optimized-lookup transducer read for the optimised lookup, which is
@@ -913,4 +980,21 @@ def parse_prolog(
     `source`, named after `name`. A text of more than one network raises
     CompileError with code `transducer-count`. Prolog text names no file, so
     `files` has none to supply."""
+
+def pack_bhfst(
+    acceptor: bytes | bytearray,
+    error_model: bytes | bytearray,
+    metadata: str | bytes | bytearray | None = None,
+    /,
+    *,
+    index_xml: bool = False,
+    speller_config: str | bytes | bytearray | None = None,
+) -> bytes:
+    """The BHFST archive `hfst bhfst` packs of a speller: `acceptor` and
+    `error_model` each the bytes of a DHFST file, packed as they are, or of a
+    transducer stream, converted to THFST; and `metadata`, the text of the
+    archive's meta.json, or with `index_xml` of a zhfst index.xml to convert,
+    as `--meta` and `--index-xml` take them. `speller_config` is the text of
+    the speller runtime configuration `--speller-config` adds to
+    meta.json."""
 

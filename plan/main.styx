@@ -9264,6 +9264,14 @@ children (
                     target-impl ([spec:hfst:req:python.writers])
                 }
                 deps (compile-surface.embed-writers compile-surface.python-transducer)
+                log (
+                    {
+                        at 2026-11-12T21:50:42.337443Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
+                )
             }
 
             {

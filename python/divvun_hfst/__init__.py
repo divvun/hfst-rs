@@ -2,8 +2,8 @@
 
 Reads transducers of every type the hfst library reads, pmatch tokenisers and
 DHFST spellers; looks words up, tokenises text and checks words against DHFST
-acceptors with them; and compiles, transforms and reports on transducers as
-the hfst tools do, giving the results the tools give.
+acceptors with them; and compiles, transforms, reports on and writes
+transducers as the hfst tools do, giving the results the tools give.
 """
 
 # [spec:hfst:req:python.module]
@@ -43,6 +43,7 @@ from divvun_hfst._divvun_hfst import (
     load_transducers,
     lookup_report,
     optimized_lookup_report,
+    pack_bhfst,
     pair_test,
     parse_att,
     parse_prolog,
@@ -146,6 +147,7 @@ __all__ = [
     "load_transducers",
     "lookup_report",
     "optimized_lookup_report",
+    "pack_bhfst",
     "pair_test",
     "parse_att",
     "parse_prolog",

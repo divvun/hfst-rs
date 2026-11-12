@@ -21,8 +21,9 @@ doctest = false
 [dependencies]
 hfst = { workspace = true }
 # The compile feature brings the compilers, the algebra and both of its
-# backends, foma among them.
-hfst-embed = { workspace = true, features = ["compile"] }
+# backends, foma among them; bhfst adds packing spellers, which needs
+# box-format's writer.
+hfst-embed = { workspace = true, features = ["bhfst"] }
 # The stable ABI from CPython 3.11, so one wheel per platform serves every
 # release from 3.11 on. A transducer's methods are spread over a module for
 # each kind of call, which needs more than one `#[pymethods]` block.

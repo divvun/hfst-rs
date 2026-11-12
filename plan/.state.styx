@@ -1432,4 +1432,9 @@ impl_evidence (
         {impl_name target-impl, rule python.compile}
         {impl_name target-impl, rule python.compile-errors}
     )}
+    {id compile-surface.python-writers, covered_rules (
+        python.writers
+    ), covered_claims (
+        {impl_name target-impl, rule python.writers}
+    )}
 )
