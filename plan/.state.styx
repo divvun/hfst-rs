@@ -1,6 +1,6 @@
 schema_version 7
 
-last_sync_at 2026-11-12T23:10:56.770133Z
+last_sync_at 2026-11-12T23:27:44.227437Z
 
 rule_versions (
     {id determinize-envelope.bounded-strategies, version 0}
@@ -1079,6 +1079,13 @@ impl_evidence (
         {impl_name target-impl, rule hfst-ol-transducer.hfst.implementations.hfst-ol-transducer.extract-paths-fn}
         {impl_name target-impl, rule tropical-weight-transducer.hfst.implementations.extract-paths-fn}
         {impl_name target-impl, rule tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.extract-paths-fn}
+    ), rule_versions_seen (
+        {id hfst-extract-strings.hfst.extract-strings-cb.operator-fn, version 1}
+        {id hfst-fst2strings.callback.operator-fn, version 1}
+        {id hfst-ol-transducer.hfst.implementations.extract-paths-fn, version 2}
+        {id hfst-ol-transducer.hfst.implementations.hfst-ol-transducer.extract-paths-fn, version 2}
+        {id tropical-weight-transducer.hfst.implementations.extract-paths-fn, version 2}
+        {id tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.extract-paths-fn, version 2}
     )}
     {id pmatch-quotient-subtract, covered_rules (
         xfst-cmd.pmatch-quotient-subtract
