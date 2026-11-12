@@ -9240,6 +9240,21 @@ children (
                     target-impl ([spec:hfst:req:python.compile] [spec:hfst:req:python.compile-errors])
                 }
                 deps (compile-surface.embed-compile compile-surface.python-transducer)
+                log (
+                    {
+                        at 2026-11-12T21:38:08.161604Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
+
+                    {
+                        at 2026-11-12T21:47:09.458446Z
+                        author "brendan@necessary.nu"
+                        kind @decision
+                        text "python.compile says regex, compile_strings, parse_att and parse_prolog return one Transducer, while their tools write one transducer per expression, line or `--` network. Each returns the one transducer of a source that compiles to one, and the union with the options' disjunct field (disjunct, disjunct_strings, AttOptions.disjunct); a source that compiles to several raises CompileError with code transducer-count, its message naming the disjunct field. The tool's several-transducer stream is what compiling each expression, line or network alone gives, which the parity suite checks. If lists are wanted instead, only these four return types change. Other readings: each compiler takes a keyword-only `name` (`<stdin>`, or `<twolc>` for twolc, as the tools call standard input), and compile_lexc `names`, since the tools name results and diagnostics after their files; every compiler takes `files`, as the node title asks, though twolc, strings, AT&T and Prolog name no file for it to supply; compile_pmatch finds a relative @bin/@txt beside `name`, as pmatch2fst finds one beside its input, since include_path is no option of the tool; the -W switches are fields named warn_<switch> and werror; StringsOptions.multichar_symbols holds the symbols rather than the name of the tool's file; a compile's errors that did not fail it (xfst commands) are issued as CompileWarning too, and its info diagnostics go to the `hfst` logger at the info level; Diagnostic.labels holds every label, the primary first, beside `span`."
+                    }
+                )
             }
 
             {

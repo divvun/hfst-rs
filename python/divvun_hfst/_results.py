@@ -7,8 +7,9 @@ so they hold plain values: none is a handle that needs another call to read.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Literal
 
-from divvun_hfst._divvun_hfst import LookupResult, TransducerType
+from divvun_hfst._divvun_hfst import LookupResult, Transducer, TransducerType
 
 
 # [spec:hfst:req:python.operations]
@@ -216,3 +217,52 @@ class PmatchResult:
     """The piece with its matches marked up, unless `locate`."""
     located: tuple[PmatchLocation, ...] | None
     """Its matches, with `locate`."""
+
+
+# [spec:hfst:req:python.compile-errors]
+@dataclass(frozen=True, slots=True)
+class DiagnosticLabel:
+    """A piece of a compile's source a diagnostic points at."""
+
+    span: tuple[int, int]
+    """Where the piece starts and ends in the source, in code points, as `str`
+    indices count."""
+    message: str
+
+
+# [spec:hfst:req:python.compile-errors]
+@dataclass(frozen=True, slots=True)
+class Diagnostic:
+    """Something a compile said about its source: an error, a warning or a
+    note."""
+
+    severity: Literal["error", "warning", "info"]
+    message: str
+    source_name: str
+    """The name of the source it is about, as the compile was given it."""
+    span: tuple[int, int] | None
+    """Where its primary label is in the source, in code points, as `str`
+    indices count; None when it points at no piece of the source."""
+    labels: tuple[DiagnosticLabel, ...]
+    """Every label, the primary one first."""
+    notes: tuple[str, ...]
+    help: str | None
+    rendered: str
+    """The report the hfst tools print for it, without colour."""
+
+
+# [spec:hfst:req:python.compile]
+@dataclass(frozen=True, slots=True)
+class XfstResult:
+    """What an xfst script left behind."""
+
+    output: str
+    """What it printed: the tool's standard output."""
+    stack: tuple[Transducer, ...]
+    """Its stack, the bottom first."""
+    definitions: dict[str, Transducer]
+    """The networks it defined, by name."""
+    written: dict[str, bytes]
+    """Each file it wrote, by name, in the order it first wrote each, holding
+    what the script left in it."""
+

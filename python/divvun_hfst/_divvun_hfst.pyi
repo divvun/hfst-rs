@@ -8,10 +8,22 @@ from collections.abc import Mapping, Sequence
 from os import PathLike
 from typing import ClassVar, Final, Literal, TypeAlias, final
 
-from divvun_hfst._options import FormatOptions, TokeniseOptions
+from divvun_hfst._options import (
+    AttOptions,
+    FormatOptions,
+    LexcOptions,
+    PmatchOptions,
+    PrologOptions,
+    RegexOptions,
+    StringsOptions,
+    TokeniseOptions,
+    TwolcOptions,
+    XfstOptions,
+)
 from divvun_hfst._results import (
     AlphabetComparison,
     Alphabets,
+    Diagnostic,
     ExtractedPath,
     GrepReport,
     GuessReport,
@@ -20,6 +32,7 @@ from divvun_hfst._results import (
     PairTestResult,
     PmatchResult,
     Summary,
+    XfstResult,
 )
 
 __version__: Final[str]
@@ -80,6 +93,19 @@ class FormatError(HfstError):
     that are not well formed in the format they claim, a stream mixing types,
     or more transducers than the reader takes. `code` says which."""
 
+class CompileError(HfstError):
+    """A compile that failed. `diagnostics` holds every diagnostic it made,
+    as Diagnostic objects, and `code` names the failure as HfstError's
+    does."""
+
+    diagnostics: tuple[Diagnostic, ...]
+
+class CompileWarning(UserWarning):
+    """A warning of a compile that succeeded, issued through warnings.warn.
+    `diagnostic` is the Diagnostic it stands for."""
+
+    diagnostic: Diagnostic
+
 @final
 class LookupResult:
     """One path a lookup found: its output symbols, joined and one by one, and
@@ -100,7 +126,7 @@ class Transducer:
     Threads may share one: an operation holds it for its length, and a call on
     a transducer another thread is changing waits until that change is done.
     Every call releases the GIL while the library works. Make one with
-    read_transducers, read_transducer or their load_ forms."""
+    read_transducers, read_transducer, their load_ forms or a compiler."""
 
     @property
     def type(self) -> TransducerType:
@@ -657,6 +683,19 @@ def load_dhfst(path: str | PathLike[str]) -> DhfstAcceptor | DhfstErrorModel:
     """The DHFST file at `path`, as read_dhfst reads its bytes. A file that
     cannot be read raises the OSError open() raises."""
 
+def _check_compile_options(
+    options: RegexOptions
+    | LexcOptions
+    | TwolcOptions
+    | XfstOptions
+    | PmatchOptions
+    | StringsOptions
+    | AttOptions
+    | PrologOptions,
+) -> None:
+    """Checks one of the compile option dataclasses as it is made, raising
+    what a compiler reading its fields would raise."""
+
 def _check_tokenise_options(options: TokeniseOptions) -> None:
     """Checks a TokeniseOptions as it is made, raising what a call reading its
     fields would raise."""
@@ -755,3 +794,123 @@ def grep(
     `invert_match` those that do not, their matches marked with `{{{ }}}` or
     with `color` colour codes, at most `max_count` of them unless it is 0.
     `word_regexp` matches only between spaces, `line_regexp` whole lines."""
+
+def regex(
+    source: str,
+    /,
+    options: RegexOptions | None = None,
+    *,
+    name: str = "<stdin>",
+    files: Mapping[str, str | bytes] | None = None,
+) -> Transducer:
+    """The transducer `hfst regexp2fst` writes of the regular expression
+    `source`. With RegexOptions(disjunct=True) a source of several
+    expressions, one a line or with `semicolon` each ending in `;`, compiles
+    to their union; without it, a source of more than one raises CompileError
+    with code `transducer-count`. `name` is the file name the tool would read
+    the source from, which diagnostics give it. Each file the expression
+    reads comes from `files` when it is given, and from the filesystem
+    otherwise. A source that does not compile raises CompileError, and each
+    warning of one that does is issued as a CompileWarning."""
+
+def compile_lexc(
+    sources: Sequence[str],
+    /,
+    options: LexcOptions | None = None,
+    *,
+    names: Sequence[str] | None = None,
+    files: Mapping[str, str | bytes] | None = None,
+) -> Transducer:
+    """The transducer `hfst lexc` writes of the lexc `sources`, compiled
+    together and named after the first. `names` are the file names the tool
+    would read them from, which diagnostics and the result's name give them;
+    each is `<stdin>` unless given. Each file their regular expressions read
+    comes from `files` when it is given, and from the filesystem otherwise."""
+
+def compile_twolc(
+    source: str,
+    /,
+    options: TwolcOptions | None = None,
+    *,
+    name: str = "<twolc>",
+    files: Mapping[str, str | bytes] | None = None,
+) -> list[Transducer]:
+    """The rule transducers `hfst twolc` writes of the twolc grammar
+    `source`, in tropical OpenFst or foma. `name` is the file name the tool
+    would read it from, `<twolc>` for its standard input. A twolc grammar
+    names no file, so `files` has none to supply."""
+
+def compile_xfst(
+    source: str,
+    /,
+    options: XfstOptions | None = None,
+    *,
+    input: str = "",
+    name: str = "<stdin>",
+    files: Mapping[str, str | bytes] | None = None,
+) -> XfstResult:
+    """Runs the xfst script `source` as `hfst xfst -F` runs it, in tropical
+    OpenFst or foma, with `input` as the standard input its commands read:
+    what it printed, its stack, its defined networks and the files it wrote.
+    Each file it reads comes from `files` when it is given, and each it
+    writes lands there; without `files`, it reads and writes the filesystem.
+    Either way `XfstResult.written` holds each file it wrote. A command that
+    fails is a warning, and the script raises CompileError only when it
+    stops on one."""
+
+def compile_pmatch(
+    source: str,
+    /,
+    options: PmatchOptions | None = None,
+    *,
+    name: str = "<stdin>",
+    files: Mapping[str, str | bytes] | None = None,
+) -> bytes:
+    """The archive `hfst pmatch2fst` writes of the pmatch script `source`,
+    which read_tokeniser reads. `name` is the file name the tool would read
+    it from: a relative `@bin"FILE"` or `@txt"FILE"` is found beside it, as
+    the tool finds one beside its input. Each file the script reads comes
+    from `files` when it is given, and from the filesystem otherwise."""
+
+def compile_strings(
+    source: str,
+    /,
+    options: StringsOptions | None = None,
+    *,
+    name: str = "<stdin>",
+    files: Mapping[str, str | bytes] | None = None,
+) -> Transducer:
+    """The transducer `hfst strings2fst` writes of the strings `source`, one
+    a line, each with an optional tab and weight. With
+    StringsOptions(disjunct_strings=True) the lines compile to their union;
+    without it, a source of more than one line raises CompileError with code
+    `transducer-count`. Strings name no file, so `files` has none to
+    supply."""
+
+def parse_att(
+    source: str,
+    /,
+    options: AttOptions | None = None,
+    *,
+    name: str = "<stdin>",
+    files: Mapping[str, str | bytes] | None = None,
+) -> Transducer:
+    """The transducer `hfst txt2fst` writes of the AT&T text `source`, named
+    after `name`. With AttOptions(disjunct=True) a text of several
+    transducers, separated by `--` lines, reads as their union; without it, a
+    text of more than one raises CompileError with code `transducer-count`.
+    AT&T text names no file, so `files` has none to supply."""
+
+def parse_prolog(
+    source: str,
+    /,
+    options: PrologOptions | None = None,
+    *,
+    name: str = "<stdin>",
+    files: Mapping[str, str | bytes] | None = None,
+) -> Transducer:
+    """The transducer `hfst txt2fst --prolog` writes of the Prolog text
+    `source`, named after `name`. A text of more than one network raises
+    CompileError with code `transducer-count`. Prolog text names no file, so
+    `files` has none to supply."""
+

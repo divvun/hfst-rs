@@ -1425,4 +1425,11 @@ impl_evidence (
     ), rule_versions_seen (
         {id xre-finalization.root-optimize, version 0}
     )}
+    {id compile-surface.python-compile, covered_rules (
+        python.compile
+        python.compile-errors
+    ), covered_claims (
+        {impl_name target-impl, rule python.compile}
+        {impl_name target-impl, rule python.compile-errors}
+    )}
 )

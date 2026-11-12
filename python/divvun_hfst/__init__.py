@@ -2,8 +2,8 @@
 
 Reads transducers of every type the hfst library reads, pmatch tokenisers and
 DHFST spellers; looks words up, tokenises text and checks words against DHFST
-acceptors with them; and transforms transducers and reports on them as the
-hfst tools do, giving the results the tools give.
+acceptors with them; and compiles, transforms and reports on transducers as
+the hfst tools do, giving the results the tools give.
 """
 
 # [spec:hfst:req:python.module]
@@ -11,6 +11,8 @@ hfst tools do, giving the results the tools give.
 # crates/hfst-python carries, apart from the library's.
 from divvun_hfst._divvun_hfst import (
     AcceptorInfo,
+    CompileError,
+    CompileWarning,
     DhfstAcceptor,
     DhfstErrorModel,
     FormatError,
@@ -27,6 +29,11 @@ from divvun_hfst._divvun_hfst import (
     Transducer,
     TransducerType,
     __version__,
+    compile_lexc,
+    compile_pmatch,
+    compile_strings,
+    compile_twolc,
+    compile_xfst,
     flookup_report,
     grep,
     load_dhfst,
@@ -37,16 +44,32 @@ from divvun_hfst._divvun_hfst import (
     lookup_report,
     optimized_lookup_report,
     pair_test,
+    parse_att,
+    parse_prolog,
     read_dhfst,
     read_optimised_transducer,
     read_tokeniser,
     read_transducer,
     read_transducers,
+    regex,
 )
-from divvun_hfst._options import FormatOptions, TokeniseOptions
+from divvun_hfst._options import (
+    AttOptions,
+    FormatOptions,
+    LexcOptions,
+    PmatchOptions,
+    PrologOptions,
+    RegexOptions,
+    StringsOptions,
+    TokeniseOptions,
+    TwolcOptions,
+    XfstOptions,
+)
 from divvun_hfst._results import (
     AlphabetComparison,
     Alphabets,
+    Diagnostic,
+    DiagnosticLabel,
     ExtractedPath,
     GrepLine,
     GrepReport,
@@ -59,14 +82,20 @@ from divvun_hfst._results import (
     RuleFailure,
     Summary,
     SummaryDetails,
+    XfstResult,
 )
 
 __all__ = [
     "AcceptorInfo",
     "AlphabetComparison",
     "Alphabets",
+    "AttOptions",
+    "CompileError",
+    "CompileWarning",
     "DhfstAcceptor",
     "DhfstErrorModel",
+    "Diagnostic",
+    "DiagnosticLabel",
     "ExtractedPath",
     "FormatError",
     "FormatOptions",
@@ -75,6 +104,7 @@ __all__ = [
     "GuessReport",
     "HfstError",
     "HfstErrorCode",
+    "LexcOptions",
     "LookupInputFormat",
     "LookupReport",
     "LookupResult",
@@ -82,10 +112,14 @@ __all__ = [
     "OptimizedLookupReport",
     "PairTestResult",
     "PmatchLocation",
+    "PmatchOptions",
     "PmatchResult",
+    "PrologOptions",
     "Reading",
+    "RegexOptions",
     "ReweightFunction",
     "RuleFailure",
+    "StringsOptions",
     "Summary",
     "SummaryDetails",
     "Token",
@@ -94,7 +128,15 @@ __all__ = [
     "Tokeniser",
     "Transducer",
     "TransducerType",
+    "TwolcOptions",
+    "XfstOptions",
+    "XfstResult",
     "__version__",
+    "compile_lexc",
+    "compile_pmatch",
+    "compile_strings",
+    "compile_twolc",
+    "compile_xfst",
     "flookup_report",
     "grep",
     "load_dhfst",
@@ -105,9 +147,12 @@ __all__ = [
     "lookup_report",
     "optimized_lookup_report",
     "pair_test",
+    "parse_att",
+    "parse_prolog",
     "read_dhfst",
     "read_optimised_transducer",
     "read_tokeniser",
     "read_transducer",
     "read_transducers",
+    "regex",
 ]

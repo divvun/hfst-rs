@@ -173,9 +173,8 @@ def test_one_wheel_serves_cpython_311_on(wheel: Path) -> None:
 def test_the_stub_declares_the_whole_api() -> None:
     assert (PACKAGE / "py.typed").is_file()
     results = {node.name for node in RESULTS.body if isinstance(node, ast.ClassDef)}
-    assert set(divvun_hfst.__all__) <= (
-        set(stub_names()) | {"TokeniseOptions", "FormatOptions"} | results
-    )
+    options = {node.name for node in OPTIONS.body if isinstance(node, ast.ClassDef)}
+    assert set(divvun_hfst.__all__) <= set(stub_names()) | options | results
     declared = {n for n in stub_names() if not n.startswith("_")} | {"__version__"}
     native = {n for n in dir(divvun_hfst._divvun_hfst) if not n.startswith("_")} | {"__version__"}
     assert declared == native

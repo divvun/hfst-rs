@@ -6,6 +6,7 @@
 
 mod args;
 mod call;
+mod compile;
 mod dhfst;
 mod error;
 mod log;
@@ -40,6 +41,11 @@ mod module {
     use pyo3::prelude::*;
     use pyo3::types::PyTuple;
 
+    #[pymodule_export]
+    use crate::compile::{
+        CompileError, CompileWarning, check_compile_options, compile_lexc, compile_pmatch,
+        compile_strings, compile_twolc, compile_xfst, parse_att, parse_prolog, regex,
+    };
     #[pymodule_export]
     use crate::dhfst::{AcceptorInfo, DhfstAcceptor, DhfstErrorModel, load_dhfst, read_dhfst};
     #[pymodule_export]

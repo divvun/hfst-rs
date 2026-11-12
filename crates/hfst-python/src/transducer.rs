@@ -86,7 +86,7 @@ impl LookupResult {
 /// share one: an operation holds it for its length, and a call on a
 /// transducer another thread is changing waits until that change is done.
 /// Every call releases the GIL while the library works. Make one with
-/// read_transducers, read_transducer or their load_ forms.
+/// read_transducers, read_transducer, their load_ forms or a compiler.
 #[pyclass(frozen, module = "divvun_hfst")]
 pub struct Transducer {
     machine: RwLock<Machine>,
