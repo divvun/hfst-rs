@@ -9717,6 +9717,22 @@ children (
                 title "Measure whole-word offers on the Plains Cree comparison text: units alone saved 25.9% with three suggestions against 29.4% for lang-crk's speller with fairly counted weights; add the hybrid's numbers to docs/prediction/crk-comparison.md"
                 kind @docs
                 deps (predict.crk-comparison predict.whole-words)
+                sealed true
+                log (
+                    {
+                        at 2026-11-12T18:47:21.890802Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
+
+                    {
+                        at 2026-11-12T18:59:35.789814Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan complete)"
+                    }
+                )
             }
         )
     }

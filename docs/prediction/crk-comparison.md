@@ -30,7 +30,9 @@ were counted from the Ahenakew-Wolfart-Bloomfield corpus, the same corpus
 the words here come from.
 
 Versions measured: hfst d472f02 (the harness and the tools), lang-crk
-edd4d027 built with hfst 23ad222, divvunspell 1.0.0-beta.13 (e31b55c).
+edd4d027 built with hfst 23ad222, divvunspell 1.0.0-beta.13 (e31b55c). The
+whole-word numbers were measured with hfst de85176, whose results without
+whole words equal d472f02's on this text, row for row.
 
 ## The data and its limits
 
@@ -360,13 +362,70 @@ overwrites the `@U` value the filter set, so every possessor stays open.
 
 ## Whole-word offers
 
-The spec now adds whole-word offers beside stems (`prediction.whole-words`).
-They are being implemented and were not part of this measurement. They will
-be measured on this same text, against the same recordings, when they land.
-The two-unit words are where unit prediction is furthest behind the speller
-with 3 shown: there a word with no inflection, such as `êkwa`, takes a pick
-for its stem and another for its tag, where the speller offers the whole
-word in one.
+The spec offers complete words beside the stems (`prediction.whole-words`):
+while a stem can be picked, each stem on offer also comes as up to K
+complete words, the stem with each of its K highest-ranked endings. Picking
+one writes the word. This was measured on the same text, parts and 5,000
+typed tokens, with order 3, K = 0, 1 and 2, and 3 and 10 shown:
+
+```sh
+$HFST predict-eval -g $G -G $U --folds 10 --order 3 -n 3,10 \
+    --whole-words 0,1,2 $W/corpus/text.txt
+```
+
+K = 0 offers no complete words and gives the order-3 numbers above
+exactly. Keystrokes saved, with the held-out speller beside them:
+
+| units | words | chars | K=0, 3 shown | K=1, 3 | K=2, 3 | speller held out, 3 | K=0, 10 shown | K=1, 10 | K=2, 10 | speller held out, 10 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| all | 5000 | 36719 | 25.9% | 32.4% | 31.8% | 29.4% | 43.8% | 51.5% | 51.5% | 41.2% |
+| 2 | 3839 | 22710 | 28.3% | 40.4% | 40.3% | 34.7% | 40.2% | 52.9% | 53.2% | 45.4% |
+| 3 | 818 | 9066 | 23.2% | 20.4% | 18.8% | 21.1% | 50.0% | 49.6% | 49.0% | 33.2% |
+| 4 | 283 | 3841 | 19.6% | 18.0% | 17.2% | 21.4% | 50.0% | 49.3% | 48.7% | 35.8% |
+| 5 | 49 | 855 | 15.1% | 14.2% | 11.6% | 19.3% | 43.0% | 43.2% | 43.2% | 36.2% |
+| 6 | 10 | 224 | 40.6% | 36.6% | 32.6% | 17.9% | 59.8% | 56.2% | 55.4% | 36.2% |
+| 7 | 1 | 23 | 21.7% | 21.7% | 13.0% | 13.0% | 47.8% | 34.8% | 39.1% | 34.8% |
+
+Words typed in full: 24, 41 and 47 with 3 shown; 3, 5 and 5 with 10.
+
+The harness's first and shown rates fall with whole words (with 3 shown,
+first 48.7%, 27.3% and 27.0%; shown 67.4%, 52.2% and 49.2%). They do not
+compare across K: a complete word picked ends the word, so the look for
+its ending is never made, and the rates count a different set of looks.
+
+Reading:
+
+- Whole words help Cree overall. K = 1 adds 6.5 points with 3 shown and 7.7
+  with 10. With 3 shown, unit prediction then saves more than the held-out
+  speller (32.4% to 29.4%), though less than the shipped speller with its
+  leaked weights (34.0%). With 10 shown it saves 51.5%, against 41.2% held
+  out and 44.5% shipped.
+- K = 2 is no better than K = 1: 0.6 points worse with 3 shown, equal with
+  10.
+- The whole gain is on two-unit words, 77% of the tokens and 62% of the
+  characters: 12.1 points with 3 shown and 12.7 with 10 at K = 1. These are
+  words of a stem and one ending, with no prefix or derivation, where a
+  complete word saves the pick of the ending.
+- On words of three or more units Cree behaves like Greenlandic, where
+  whole words cost 0.6 to 1.6 points: they lose here too. Taken together
+  (14,009 characters, worked out from the rows above), those words save
+  22.0% at K = 0, 19.6% at K = 1 and 18.1% at K = 2 with 3 shown, and
+  49.7%, 49.2% and 48.7% with 10. The cost is larger with 3 shown, where
+  places are scarce, and grows with K.
+- The Greenlandic reason holds for Cree: a stem ranks below its own words
+  and drops out of what is shown. At the 462 distinct starts of one to three
+  letters of the typed words, with 3 shown and a model built from the whole
+  text, 1,290 stems are shown without complete words. With K = 1, 602 of
+  them are still shown, 459 have given their place to one of their own
+  complete words, and 229 have been pushed out by other suggestions. With
+  K = 2 the numbers are 477, 507 and 306. A longer word on such a stem has
+  to be found with more letters, which fits the losses above. Cree differs
+  from Greenlandic only in that most of its running words are two units
+  long, so the gain there outweighs the loss.
+
+The starts were counted with `hfst predict -j -m MODEL -n 3 --whole-words K`
+over a file of lines each holding a tab and one start, lower-cased, the
+model built by `hfst predict-model --order 3` from the whole text.
 
 ## What this does and does not show
 
@@ -377,8 +436,13 @@ It shows, on words of this corpus typed one at a time:
   saves 25.9%.
 - With 10 shown, unit prediction saves 43.8% and the held-out speller
   41.2%.
-- Unit prediction gains most over the speller on words of three or more
-  units when 10 are shown, and is behind on two-unit words.
+- Without complete words, unit prediction gains most over the speller on
+  words of three or more units when 10 are shown, and is behind on
+  two-unit words.
+- With one complete word for each stem (K = 1), unit prediction saves
+  32.4% with 3 shown and 51.5% with 10, more than the held-out speller in
+  both. The gain is on two-unit words; words of three or more units lose a
+  little, as on Greenlandic.
 - Order 2 and order 3 are within 0.1 point of each other here; order 1 is
   3.8 points behind at 3 shown.
 - The shipped speller scores 4.6 points more than the held-out one at 3
@@ -418,8 +482,16 @@ It does not show:
   lenient numbers show the rule as written adds about a point.
 - Speed: on d472f02 the harness took about 0.17 CPU seconds per word per
   variant on this text, and divvunspell about 0.4 CPU seconds per start.
-  The harness is faster on main since (f0cfb77); these numbers were not
-  measured with it.
+  On de85176 the six whole-word variants took under six minutes together.
+- With complete words on offer, a stem often gives its place to one of its
+  own complete words, and words of three or more units lose points. How a
+  stem should rank against its own words is open, as on Greenlandic.
+- Some complete words do not start with the letters typed, because the
+  word a Cree stem writes can begin with a person prefix or another form of
+  the stem: after `apw` the offer holds `nitapwêsin`, after `at` it holds
+  `otêma`. At the starts counted above, 31 of the 702 complete words shown
+  at K = 1, and 47 of 832 at K = 2, are like this. Whether a keyboard
+  should offer them in place of what was typed is a question for speakers.
 - The tagged frequency lists use an older tag set than today's lang-crk and
   had to be analysed again. Today's normative analyser does not know some
   frequent words in them, such as `êwako`, `namôya`, `êkonik` and `kotak`.
