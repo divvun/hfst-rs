@@ -4,6 +4,7 @@
 
 mod corpus;
 mod external;
+mod forms;
 mod report;
 mod run;
 mod user;
@@ -15,6 +16,8 @@ mod corpus_tests;
 mod external_tests;
 #[cfg(test)]
 mod fixture;
+#[cfg(test)]
+mod forms_tests;
 #[cfg(test)]
 mod report_tests;
 #[cfg(test)]
@@ -43,6 +46,31 @@ pub struct Variant {
     /// How many of its highest-ranked endings complete each stem on offer
     /// as a complete word (`prediction.whole-words`). 0 offers none.
     pub whole_words: usize,
+    /// Offer the word forms the model counted (`prediction.seen-forms`).
+    pub forms: bool,
+    /// Offer units, and complete words built from them. Without them the
+    /// user completes counted forms alone, as on an ordinary keyboard.
+    pub units: bool,
+    /// What the score of a unit or a complete word built from units is
+    /// multiplied by beside counted forms (`prediction-model.form-score`),
+    /// from 0 to 1.
+    pub unit_weight: f64,
+}
+
+impl Variant {
+    /// A variant of units alone, with no faces and no complete words.
+    pub fn units(name: &str, model: ModelSettings, shown: usize) -> Variant {
+        Variant {
+            name: name.to_owned(),
+            model,
+            shown,
+            faces: None,
+            whole_words: 0,
+            forms: false,
+            units: true,
+            unit_weight: 1.0,
+        }
+    }
 }
 
 /// Which units of a class's face (`prediction-model.faces`) a keyboard

@@ -541,3 +541,102 @@ fn complete_words_are_offered_and_picked() {
     assert_eq!(session.commit().unwrap(), "guola");
     assert_eq!(context(&session), ["guolli", "+N+Sg+Gen"]);
 }
+
+fn forms_before(session: &Session) -> Vec<&str> {
+    session.before().collect()
+}
+
+/// The model counted guoli three times in six forms, girjat twice and guola
+/// once; guola followed girjat.
+// [spec:hfst:sem:prediction.seen-forms/test]
+// [spec:hfst:sem:prediction-model.form-score/test]
+#[test]
+fn counted_forms_are_offered_and_picked_by_key() {
+    let options = PredictorOptions {
+        forms: true,
+        ..PredictorOptions::default()
+    };
+    let mut session = session(&language(), options);
+    let offer = session.candidates(Some(2)).unwrap();
+    assert_eq!(
+        shown(&offer),
+        ["form:guoli form guoli true", "form:girjat form girjat true"]
+    );
+    session.type_letters("gi").unwrap();
+    assert_eq!(
+        shown(&session.candidates(Some(2)).unwrap()),
+        ["form:girjat form girjat true", "girji stem girji false"]
+    );
+    assert_eq!(code(session.pick("form:guoli")), "invalid-argument");
+    session.pick("form:girjat").unwrap();
+    assert!(session.is_complete());
+    assert_eq!(session.typed(), "");
+    assert_eq!(session.preview().as_deref(), Some("girjat"));
+    assert!(session.candidates(None).unwrap().candidates.is_empty());
+    assert_eq!(code(session.type_letters("g")), "invalid-argument");
+    assert_eq!(code(session.pick("form:girjat")), "invalid-argument");
+    assert!(session.backspace());
+    assert!(!session.is_complete());
+    session.pick("form:girjat").unwrap();
+    assert_eq!(session.commit().unwrap(), "girjat");
+    assert_eq!(context(&session), ["girji", "+N+Pl+Nom"]);
+    assert_eq!(forms_before(&session), ["girjat"]);
+    assert_eq!(
+        shown(&session.candidates(Some(1)).unwrap()),
+        ["form:guola form guola true"]
+    );
+}
+
+// [spec:hfst:sem:prediction.seen-forms/test]
+#[test]
+fn units_off_offers_counted_forms_alone() {
+    let options = PredictorOptions {
+        forms: true,
+        units: false,
+        ..PredictorOptions::default()
+    };
+    let mut session = session(&language(), options);
+    session.type_letters("g").unwrap();
+    let offer = session.candidates(None).unwrap();
+    assert_eq!(
+        shown(&offer),
+        [
+            "form:guoli form guoli true",
+            "form:girjat form girjat true",
+            "form:guola form guola true"
+        ]
+    );
+    assert_eq!(offer.total, 0);
+    assert_eq!(code(session.pick("guolli")), "invalid-argument");
+    session.pick("form:GUOLA").unwrap();
+    assert_eq!(session.commit().unwrap(), "guola");
+    assert_eq!(forms_before(&session), ["guola"]);
+}
+
+// [spec:hfst:sem:prediction.seen-forms/test]
+#[test]
+fn units_built_words_join_the_forms_before() {
+    let mut session = session(&language(), PredictorOptions::default());
+    session.type_letters("gu").unwrap();
+    assert!(
+        keys(&mut session)
+            .iter()
+            .all(|key| !key.starts_with(FORM_KEY_PREFIX))
+    );
+    session.pick("guolli").unwrap();
+    session.pick("+N+Sg+Gen").unwrap();
+    assert_eq!(session.commit().unwrap(), "guola");
+    assert_eq!(forms_before(&session), ["guola"]);
+}
+
+#[test]
+fn unit_weights_outside_0_to_1_are_refused() {
+    let language = language();
+    for unit_weight in [-0.5, 1.5, f64::NAN] {
+        let options = PredictorOptions {
+            unit_weight,
+            ..PredictorOptions::default()
+        };
+        assert_eq!(code(predictor(&language, options)), "invalid-argument");
+    }
+}

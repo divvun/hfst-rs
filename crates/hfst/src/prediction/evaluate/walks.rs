@@ -17,6 +17,11 @@ pub(super) struct Steps {
 }
 
 impl Steps {
+    /// The letters typed since the last unit picked.
+    pub(super) fn typed(&self) -> &str {
+        &self.typed
+    }
+
     /// The steps that pick `key` from here, with the letters typed so far.
     pub(super) fn then(&self, key: &UnitKey) -> Steps {
         let mut picks = self.picks.clone();

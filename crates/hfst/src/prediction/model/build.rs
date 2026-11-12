@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, HashMap};
 
 use super::input::{Token, tokens};
-use super::{Ambiguity, ModelSettings};
+use super::{Ambiguity, ModelSettings, fold};
 use crate::error::Result;
 use crate::prediction::units::{AnalysisTokenizer, UnitGrammar, UnitKey};
 
@@ -23,7 +23,7 @@ pub struct BuildReport {
     /// left out.
     pub refused_by_grammar: usize,
     /// Tokens with no reading left to count. Such a token breaks the text:
-    /// no counted run spans it.
+    /// no counted run spans it, and its form is not counted.
     pub tokens_without_reading: usize,
 }
 
@@ -62,6 +62,17 @@ pub(super) struct Counts {
     pub class_names: Vec<String>,
     /// The runs of each length from 2 to the order, at index length - 2.
     pub runs: Vec<HashMap<Vec<u32>, f64>>,
+    /// The word forms, capitals folded, numbered in the order they were
+    /// first seen.
+    pub forms: Vec<String>,
+    form_ids: HashMap<String, u32>,
+    pub form_counts: Vec<f64>,
+    /// For each form, the units of each reading it was counted with, by
+    /// unit id, and how much of its count went to that reading.
+    pub form_readings: Vec<Vec<(Vec<u32>, f64)>>,
+    /// The runs of forms of each length from 2 to the order, at index
+    /// length - 2.
+    pub form_runs: Vec<HashMap<Vec<u32>, f64>>,
 }
 
 /// One reading the model can count: its units' keys and classes.
@@ -83,6 +94,7 @@ impl<'g> ModelBuilder<'g> {
         }
         let counts = Counts {
             runs: vec![HashMap::new(); settings.order - 1],
+            form_runs: vec![HashMap::new(); settings.order - 1],
             ..Counts::default()
         };
         Ok(ModelBuilder {
@@ -94,12 +106,15 @@ impl<'g> ModelBuilder<'g> {
         })
     }
 
-    /// Count the readings of hfst-lookup output. Each call is a text of its
-    /// own: no run spans two calls.
+    /// Count the readings of hfst-lookup output, and the surface forms of
+    /// the tokens counted. Each call is a text of its own: no run spans two
+    /// calls.
     // [spec:hfst:req:prediction-model.input]
+    // [spec:hfst:req:prediction-model.word-forms]
     pub fn add_text(&mut self, text: &str) -> Result<BuildReport> {
         let mut report = BuildReport::default();
         let mut histories = start_of_text();
+        let mut forms_before = Vec::new();
         for token in tokens(text)? {
             report.tokens += 1;
             report.readings += token.analyses.len();
@@ -107,12 +122,21 @@ impl<'g> ModelBuilder<'g> {
             if readings.is_empty() {
                 report.tokens_without_reading += 1;
                 histories = start_of_text();
+                forms_before.clear();
                 continue;
             }
             report.counted += readings.len();
-            histories = self.count_token(&histories, &readings);
+            let ids = self.count_units(&readings);
+            histories = self.count_runs(&histories, &ids);
+            self.count_form(&mut forms_before, token.surface, &ids);
         }
         Ok(report)
+    }
+
+    /// How many different word forms, capitals folded, have been counted.
+    // [spec:hfst:req:prediction-model.word-forms]
+    pub fn word_forms(&self) -> usize {
+        self.counts.forms.len()
     }
 
     /// The token's readings to count, in their order: the first the model
@@ -146,13 +170,10 @@ impl<'g> ModelBuilder<'g> {
         counted
     }
 
-    /// Count the runs that end in this token's units. `histories` holds the
-    /// last units before the token, at most order - 1 of them, each with the
-    /// share of the text's readings that ends with them; the shares sum to
-    /// one. The histories after the token are returned.
+    /// Count each reading's units, at its share of the token, and give
+    /// each reading's unit ids.
     // [spec:hfst:req:prediction-model.input]
-    // [spec:hfst:sem:prediction-model.order]
-    fn count_token(&mut self, histories: &Histories, readings: &[Reading<'g>]) -> Histories {
+    fn count_units(&mut self, readings: &[Reading<'g>]) -> Vec<Vec<u32>> {
         let share = 1.0 / readings.len() as f64;
         let mut runs = Vec::with_capacity(readings.len());
         for reading in readings {
@@ -165,10 +186,22 @@ impl<'g> ModelBuilder<'g> {
             }
             runs.push(ids);
         }
+        runs
+    }
+
+    /// Count the runs that end in this token's units, given each reading's
+    /// unit ids. `histories` holds the last units before the token, at most
+    /// order - 1 of them, each with the share of the text's readings that
+    /// ends with them; the shares sum to one. The histories after the token
+    /// are returned.
+    // [spec:hfst:req:prediction-model.input]
+    // [spec:hfst:sem:prediction-model.order]
+    fn count_runs(&mut self, histories: &Histories, runs: &[Vec<u32>]) -> Histories {
+        let share = 1.0 / runs.len() as f64;
         let keep = self.settings.order - 1;
         let mut after = Histories::new();
         for (history, &weight) in histories {
-            for ids in &runs {
+            for ids in runs {
                 let weight = weight * share;
                 let mut window = history.clone();
                 for &id in ids {
@@ -185,6 +218,34 @@ impl<'g> ModelBuilder<'g> {
             }
         }
         after
+    }
+
+    /// Count the token's surface form, capitals folded, once, with each
+    /// reading counted for it at the reading's share, and the runs of forms
+    /// that end with it. `before` holds the forms of the tokens before it
+    /// since the last break, at most order - 1 of them, and is moved on.
+    // [spec:hfst:req:prediction-model.word-forms]
+    fn count_form(&mut self, before: &mut Vec<u32>, surface: &str, readings: &[Vec<u32>]) {
+        let form = self.counts.form_id(&fold(surface));
+        let share = 1.0 / readings.len() as f64;
+        self.counts.form_counts[form as usize] += 1.0;
+        let tally = &mut self.counts.form_readings[form as usize];
+        for ids in readings {
+            match tally.iter_mut().find(|(known, _)| known == ids) {
+                Some((_, count)) => *count += share,
+                None => tally.push((ids.clone(), share)),
+            }
+        }
+        before.push(form);
+        for length in 2..=before.len().min(self.settings.order) {
+            let run = &before[before.len() - length..];
+            let table = &mut self.counts.form_runs[length - 2];
+            *table.entry(run.to_vec()).or_default() += 1.0;
+        }
+        let keep = self.settings.order - 1;
+        if before.len() > keep {
+            before.drain(..before.len() - keep);
+        }
     }
 }
 
@@ -207,6 +268,18 @@ impl Counts {
         self.ids.insert(key.clone(), id);
         self.units.push(0.0);
         self.unit_classes.push(Vec::new());
+        id
+    }
+
+    fn form_id(&mut self, form: &str) -> u32 {
+        if let Some(&id) = self.form_ids.get(form) {
+            return id;
+        }
+        let id = u32::try_from(self.forms.len()).expect("fewer than 2^32 word forms");
+        self.forms.push(form.to_owned());
+        self.form_ids.insert(form.to_owned(), id);
+        self.form_counts.push(0.0);
+        self.form_readings.push(Vec::new());
         id
     }
 

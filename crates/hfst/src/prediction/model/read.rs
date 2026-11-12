@@ -2,28 +2,29 @@ use std::cmp::Ordering;
 
 use super::format::{
     AMBIGUITY_AT, BACKOFF_AT, CLASS_RECORD, DIRECTORY_AT, DIRECTORY_ENTRY, FACE_RECORD,
-    FIXED_TABLES, HASH_AT, MAGIC, NO_CLASS, ORDER_AT, TOTAL_AT, UNIT_RECORD, VERSION, VERSION_AT,
-    ambiguity_from_code, backoff_from_code, hex, le_f64, le_u32, run_record,
+    FIXED_TABLES, FORM_RECORD, FORM_UNIT_RECORD, FORMS_TOTAL_AT, HASH_AT, MAGIC, NO_CLASS,
+    ORDER_AT, TOTAL_AT, UNIT_RECORD, VERSION, VERSION_AT, ambiguity_from_code, backoff_from_code,
+    hex, le_f64, le_u32, run_record,
 };
 use super::{Ambiguity, Backoff};
 use crate::error::Result;
 use crate::prediction::units::{UnitGrammar, UnitKey};
 
-/// What stupid backoff multiplies a score by for each unit it drops from the
-/// context.
-const BACKOFF_FACTOR: f64 = 0.4;
+/// What stupid backoff multiplies a score by for each unit or form it drops
+/// from the context.
+pub(super) const BACKOFF_FACTOR: f64 = 0.4;
 
 /// A table's place in the file. [`Model::from_bytes`] checks that every
 /// record lies inside the file, so reading one cannot go out of bounds.
 #[derive(Clone, Copy, Debug)]
-struct Table {
+pub(super) struct Table {
     at: usize,
-    records: usize,
+    pub(super) records: usize,
     record: usize,
 }
 
 impl Table {
-    fn record<'a>(&self, bytes: &'a [u8], index: usize) -> &'a [u8] {
+    pub(super) fn record<'a>(&self, bytes: &'a [u8], index: usize) -> &'a [u8] {
         let start = self.at + index * self.record;
         &bytes[start..start + self.record]
     }
@@ -32,20 +33,25 @@ impl Table {
 /// A model file, read where it lies. Only the header is read when it is
 /// loaded; each count is found by binary search over the file's bytes. A
 /// file damaged past its header gives wrong answers, never a panic.
-// [spec:hfst:def:prediction-model.file]
+// [spec:hfst:def:prediction-model.file+1]
 #[derive(Clone, Debug)]
 pub struct Model<'a> {
-    bytes: &'a [u8],
+    pub(super) bytes: &'a [u8],
     order: usize,
     backoff: Backoff,
     ambiguity: Ambiguity,
     total: f64,
+    pub(super) forms_total: f64,
     strings: Table,
     units: Table,
     classes: Table,
     faces: Table,
+    pub(super) forms: Table,
+    pub(super) form_units: Table,
     /// One for each run length from 2 to the order.
     runs: Vec<Table>,
+    /// Runs of forms, one table for each length from 2 to the order.
+    pub(super) form_runs: Vec<Table>,
 }
 
 fn invalid(cause: String) -> crate::error::Error {
@@ -85,8 +91,9 @@ impl<'a> Model<'a> {
         let ambiguity = ambiguity_from_code(ambiguity_code)
             .ok_or_else(|| invalid(format!("ambiguity rule {ambiguity_code} is not 0 or 1")))?;
         let mut tables = directory(bytes, order)?;
-        let runs = tables.split_off(FIXED_TABLES);
-        let [strings, units, classes, faces] = tables[..] else {
+        let mut runs = tables.split_off(FIXED_TABLES);
+        let form_runs = runs.split_off(order - 1);
+        let [strings, units, classes, faces, forms, form_units] = tables[..] else {
             return Err(invalid("the directory is short".to_owned()));
         };
         Ok(Model {
@@ -95,11 +102,15 @@ impl<'a> Model<'a> {
             backoff,
             ambiguity,
             total: le_f64(bytes, TOTAL_AT),
+            forms_total: le_f64(bytes, FORMS_TOTAL_AT),
             strings,
             units,
             classes,
             faces,
+            forms,
+            form_units,
             runs,
+            form_runs,
         })
     }
 
@@ -227,7 +238,7 @@ impl<'a> Model<'a> {
         u32::try_from(index).ok()
     }
 
-    fn key(&self, id: u32) -> Option<UnitKey> {
+    pub(super) fn key(&self, id: u32) -> Option<UnitKey> {
         let id = id as usize;
         if id >= self.units.records {
             return None;
@@ -268,8 +279,8 @@ impl<'a> Model<'a> {
         }
     }
 
-    /// The string a unit or class record's first two fields locate.
-    fn string(&self, record: &[u8]) -> Option<&'a [u8]> {
+    /// The string a unit, class or form record's first two fields locate.
+    pub(super) fn string(&self, record: &[u8]) -> Option<&'a [u8]> {
         let offset = le_u32(record, 0) as usize;
         let length = le_u32(record, 4) as usize;
         let end = offset.checked_add(length)?;
@@ -283,7 +294,11 @@ impl<'a> Model<'a> {
     /// Binary search over a table's records. `compare` orders a record
     /// against the one sought.
     // [spec:hfst:syn:prediction-model.format]
-    fn search(&self, table: Table, compare: impl Fn(&'a [u8]) -> Ordering) -> Option<usize> {
+    pub(super) fn search(
+        &self,
+        table: Table,
+        compare: impl Fn(&'a [u8]) -> Ordering,
+    ) -> Option<usize> {
         let (mut low, mut high) = (0, table.records);
         while low < high {
             let middle = low + (high - low) / 2;
@@ -304,15 +319,26 @@ fn directory(bytes: &[u8], order: usize) -> Result<Vec<Table>> {
             "the directory of a model of order {order} runs past the end of the file"
         ))
     };
-    let entries = (order - 1).checked_add(FIXED_TABLES).ok_or_else(too_long)?;
+    let entries = (order - 1)
+        .checked_mul(2)
+        .and_then(|runs| runs.checked_add(FIXED_TABLES))
+        .ok_or_else(too_long)?;
     let entries_end = entries
         .checked_mul(DIRECTORY_ENTRY)
         .and_then(|length| length.checked_add(DIRECTORY_AT))
         .filter(|&end| end <= bytes.len())
         .ok_or_else(too_long)?;
-    let record_sizes = [1, UNIT_RECORD, CLASS_RECORD, FACE_RECORD]
-        .into_iter()
-        .chain((2..=order).map(run_record));
+    let record_sizes = [
+        1,
+        UNIT_RECORD,
+        CLASS_RECORD,
+        FACE_RECORD,
+        FORM_RECORD,
+        FORM_UNIT_RECORD,
+    ]
+    .into_iter()
+    .chain((2..=order).map(run_record))
+    .chain((2..=order).map(run_record));
     let mut tables = Vec::with_capacity(entries);
     for (index, record) in record_sizes.enumerate() {
         let entry = DIRECTORY_AT + index * DIRECTORY_ENTRY;

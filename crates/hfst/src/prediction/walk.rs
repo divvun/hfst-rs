@@ -11,6 +11,7 @@ mod pass;
 mod reach;
 mod runs;
 mod seeds;
+mod seen;
 mod words;
 
 #[cfg(test)]
@@ -19,6 +20,8 @@ mod accept_tests;
 pub(super) mod fixtures_test;
 #[cfg(test)]
 mod memo_tests;
+#[cfg(test)]
+mod seen_tests;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]
@@ -35,7 +38,8 @@ pub(super) use pass::{Live, Pass};
 use reach::{Marks, Role};
 pub(super) use runs::Offers;
 use seeds::{Finals, Seeds};
-pub use words::{Suggest, Suggestion, WholeWord};
+pub use seen::{SeenForm, SeenForms};
+pub use words::{Ranking, Suggest, Suggestion, WholeWord};
 
 use super::rank::rank_scored;
 use super::units::{SymbolClass, Unit, UnitGrammar, UnitKey, UnitKind};
@@ -166,6 +170,18 @@ pub trait CandidateOrder {
     /// then by the bytes of the key.
     fn order(&self, context: &[UnitKey], candidates: &[(UnitKey, Weight)]) -> Vec<usize> {
         rank_scored(&self.scores(context, candidates), candidates)
+    }
+
+    /// The word forms the order counted that start with `typed`, capitals
+    /// folded, scored after `before`, the forms of the words before, oldest
+    /// first (`prediction.seen-forms`). None from an order that counts no
+    /// forms.
+    fn seen_forms<'s>(
+        &'s self,
+        _before: &[String],
+        _typed: &str,
+    ) -> Option<Box<dyn SeenForms + 's>> {
+        None
     }
 }
 

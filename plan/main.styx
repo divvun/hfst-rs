@@ -9881,6 +9881,14 @@ children (
                     target-impl ([spec:hfst:sem:prediction.seen-forms] [spec:hfst:req:prediction-model.word-forms] [spec:hfst:sem:prediction-model.form-score])
                 }
                 deps (predict.word-forms-spec predict.whole-words)
+                log (
+                    {
+                        at 2026-11-12T21:33:29.458385Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
+                )
             }
 
             {

@@ -11,12 +11,15 @@
 use std::sync::Arc;
 
 use hfst::prediction::entry::Relaxation;
-use hfst::prediction::model::Model;
+use hfst::prediction::model::{Model, fold};
 use hfst::prediction::realise::{Script, Transliterate, realise};
 pub use hfst::prediction::units::UnitKind;
 use hfst::prediction::units::{Label, UnitGrammar, UnitKey};
 pub use hfst::prediction::walk::WalkLimits;
-use hfst::prediction::walk::{Candidate as Offered, Next, Suggest, Suggestion, Walker, Word};
+use hfst::prediction::walk::{
+    Candidate as Offered, CandidateOrder, Form, Next, Ranking, SeenForm, Suggest, Suggestion,
+    Walker, Word,
+};
 use hfst::transducer::{
     OlMember, Transducer, TransducerTablesInterface, UnweightedTables, WeightedTables,
 };
@@ -25,17 +28,23 @@ use crate::Package;
 use crate::error::{Code, Error};
 use crate::stream;
 
-/// What a candidate on offer is: one unit, or a complete word, which is a
-/// stem and one of its endings picked together.
+/// What a candidate on offer is: one unit, a complete word, which is a
+/// stem and one of its endings picked together, or a word form the model
+/// counted (`prediction.seen-forms`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum CandidateKind {
     Unit(UnitKind),
     Word,
+    Form,
 }
+
+/// What the key of a counted form starts with, before the form itself, so
+/// that it is not taken for the key of a stem with the same letters.
+pub const FORM_KEY_PREFIX: &str = "form:";
 
 /// Every kind of candidate, so a binding can list the names [`kind_name`]
 /// gives.
-pub const CANDIDATE_KINDS: [CandidateKind; 7] = [
+pub const CANDIDATE_KINDS: [CandidateKind; 8] = [
     CandidateKind::Unit(UnitKind::Stem),
     CandidateKind::Unit(UnitKind::Prefix),
     CandidateKind::Unit(UnitKind::Boundary),
@@ -43,6 +52,7 @@ pub const CANDIDATE_KINDS: [CandidateKind; 7] = [
     CandidateKind::Unit(UnitKind::Enclitic),
     CandidateKind::Unit(UnitKind::Filter),
     CandidateKind::Word,
+    CandidateKind::Form,
 ];
 
 /// The name both packages give a kind of candidate. It does not change
@@ -56,6 +66,7 @@ pub fn kind_name(kind: CandidateKind) -> &'static str {
         CandidateKind::Unit(UnitKind::Enclitic) => "enclitic",
         CandidateKind::Unit(UnitKind::Filter) => "filter",
         CandidateKind::Word => "word",
+        CandidateKind::Form => "form",
     }
 }
 
@@ -100,7 +111,7 @@ macro_rules! walking {
 
 /// What a language may add to its generator, grammar and model. Each
 /// transducer is the bytes of one optimized-lookup transducer.
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug)]
 pub struct PredictorOptions<'a> {
     /// From typed letters to the letters they may stand for, so that letters
     /// typed without their diacritics still match.
@@ -114,6 +125,32 @@ pub struct PredictorOptions<'a> {
     /// How many of its highest-ranked endings complete each stem on offer
     /// as a complete word (`prediction.whole-words`). 0 offers none.
     pub whole_words: usize,
+    /// Offer the word forms the model counted before a word's first unit
+    /// (`prediction.seen-forms`).
+    pub forms: bool,
+    /// Offer units and the complete words built from them. Without them only
+    /// counted forms are offered, as on an ordinary keyboard.
+    pub units: bool,
+    /// What the scores of units and complete words built from them are
+    /// multiplied by beside counted forms, from 0 to 1
+    /// (`prediction-model.form-score`).
+    pub unit_weight: f64,
+}
+
+impl Default for PredictorOptions<'_> {
+    /// Units alone, with no transducers beside the generator.
+    fn default() -> Self {
+        PredictorOptions {
+            relaxation: None,
+            input_transliterator: None,
+            output_transliterator: None,
+            limits: WalkLimits::default(),
+            whole_words: 0,
+            forms: false,
+            units: true,
+            unit_weight: 1.0,
+        }
+    }
 }
 
 /// A language's generator, unit grammar and model, read and checked against
@@ -130,7 +167,8 @@ pub struct Predictor {
     input: Option<Tables>,
     output: Option<Tables>,
     limits: WalkLimits,
-    whole_words: usize,
+    /// What is offered, with no limit.
+    offered: Suggest,
 }
 
 impl Predictor {
@@ -140,7 +178,8 @@ impl Predictor {
     /// model built with another grammar are refused here, as malformed
     /// files are, with `invalid-format`. A transducer in a format the
     /// packages do not read is refused with `unsupported-format`, and bytes
-    /// holding more than one with `transducer-count`.
+    /// holding more than one with `transducer-count`. A unit weight outside
+    /// 0 to 1 is refused with `invalid-argument`.
     pub fn new(
         generator: &[u8],
         grammar: &[u8],
@@ -148,6 +187,15 @@ impl Predictor {
         options: PredictorOptions<'_>,
         package: &Package,
     ) -> Result<Predictor, Error> {
+        if !(0.0..=1.0).contains(&options.unit_weight) {
+            return Err(Error::new(
+                Code::InvalidArgument,
+                format!(
+                    "the unit weight is {}, not a weight from 0 to 1",
+                    options.unit_weight
+                ),
+            ));
+        }
         let generator = read_transducer("the generator", generator, package)?;
         let grammar = UnitGrammar::from_toml(grammar).map_err(invalid)?;
         // Making a walker checks the grammar against the generator's alphabet.
@@ -177,7 +225,13 @@ impl Predictor {
             model,
             context_len: order.saturating_sub(1),
             limits: options.limits,
-            whole_words: options.whole_words,
+            offered: Suggest {
+                whole_words: options.whole_words,
+                limit: None,
+                forms: options.forms,
+                units: options.units,
+                unit_weight: options.unit_weight,
+            },
         })
     }
 
@@ -232,15 +286,17 @@ pub struct Offer {
     pub truncated: bool,
 }
 
-/// A unit or a complete word on offer.
+/// A unit, a complete word or a counted form on offer.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Candidate {
     /// What [`Session::pick`] takes to pick it. A complete word's key is its
-    /// stem's key then its ending's key.
+    /// stem's key then its ending's key, and a counted form's is
+    /// [`FORM_KEY_PREFIX`] then the form.
     pub key: String,
     pub kind: CandidateKind,
-    /// What a keyboard shows: the grammar's label, or for an ending without
-    /// one and for a complete word, the word it completes.
+    /// What a keyboard shows: the grammar's label, for an ending without one
+    /// and for a complete word the word it completes, and for a counted form
+    /// the form, with capitals folded.
     pub label: String,
     /// Picking it makes the word complete, so it can be committed.
     pub completes: bool,
@@ -256,6 +312,10 @@ struct State {
     typed: String,
     /// The keys of the latest units of earlier words, oldest first.
     context: Vec<UnitKey>,
+    /// The forms of the latest earlier words, capitals folded, oldest first.
+    before: Vec<String>,
+    /// A counted form picked for the word, which makes it complete.
+    picked_form: Option<SeenForm>,
 }
 
 impl State {
@@ -278,6 +338,25 @@ impl State {
         predictor: &Predictor,
         walker: &Walker<'_, T>,
     ) -> Result<Next, Error> {
+        if let Some(seen) = &self.picked_form {
+            return Ok(Next {
+                candidates: Vec::new(),
+                forms: vec![Form {
+                    surface: seen.form.clone(),
+                    weight: 0.0,
+                }],
+                stem_next: false,
+                truncated: false,
+            });
+        }
+        if !predictor.offered.units {
+            return Ok(Next {
+                candidates: Vec::new(),
+                forms: Vec::new(),
+                stem_next: true,
+                truncated: false,
+            });
+        }
         let word = self.word();
         if self.typed.is_empty() {
             return Ok(walker.next(word));
@@ -294,7 +373,9 @@ impl State {
     }
 
     /// The units of `next` to show, with the complete words of the stems
-    /// among them, ranked after the context and the word.
+    /// among them, and before the word's first unit the counted forms that
+    /// start with the letters typed, ranked after the context and the word.
+    // [spec:hfst:sem:prediction.seen-forms]
     fn shown<T: TransducerTablesInterface>(
         &self,
         predictor: &Predictor,
@@ -303,19 +384,22 @@ impl State {
         limit: Option<usize>,
     ) -> Offer {
         let context = self.ranking_context(&predictor.grammar);
+        let spelled = predictor.script().typed(&self.typed);
         let settings = Suggest {
-            whole_words: predictor.whole_words,
             limit,
+            forms: predictor.offered.forms && spelled.is_some() && self.picked_form.is_none(),
+            ..predictor.offered
+        };
+        let model = predictor.model();
+        let ranking = Ranking {
+            order: &model,
+            context: &context,
+            before: &self.before,
+            typed: spelled.as_deref().unwrap_or_default(),
         };
         let word = self.word();
         let candidates = walker
-            .suggest(
-                word,
-                &next.candidates,
-                &context,
-                &predictor.model(),
-                settings,
-            )
+            .suggest(word, &next.candidates, &ranking, settings)
             .into_iter()
             .map(|suggestion| match suggestion {
                 Suggestion::Unit(offered) => {
@@ -333,6 +417,12 @@ impl State {
                     label: whole.surface().to_owned(),
                     completes: true,
                 },
+                Suggestion::Form(seen) => Candidate {
+                    key: format!("{FORM_KEY_PREFIX}{}", seen.form),
+                    kind: CandidateKind::Form,
+                    label: seen.form,
+                    completes: true,
+                },
             })
             .collect();
         Offer {
@@ -341,6 +431,22 @@ impl State {
             stem_next: next.stem_next,
             truncated: next.truncated,
         }
+    }
+}
+
+impl State {
+    /// The counted form `form`, capitals folded, when forms are on and it is
+    /// on offer: before the word's first unit, starting with the letters
+    /// typed.
+    // [spec:hfst:sem:prediction.seen-forms]
+    fn form_on_offer(&self, predictor: &Predictor, form: &str) -> Option<SeenForm> {
+        if !predictor.offered.forms || self.picked_form.is_some() || !self.picked.is_empty() {
+            return None;
+        }
+        let spelled = predictor.script().typed(&self.typed)?;
+        let model = predictor.model();
+        let offered = model.seen_forms(&self.before, &spelled)?;
+        offered.find(form).map(|(seen, _)| seen)
     }
 }
 
@@ -383,16 +489,21 @@ impl Session {
                 picked: Vec::new(),
                 typed: String::new(),
                 context: Vec::new(),
+                before: Vec::new(),
+                picked_form: None,
             },
             offered: None,
         }
     }
 
     /// Letters typed after the word's last unit. They are refused, with
-    /// `invalid-argument`, where no stem can start.
+    /// `invalid-argument`, where no stem can start and after a counted form
+    /// is picked.
     pub fn type_letters(&mut self, letters: &str) -> Result<(), Error> {
         let predictor = &*self.predictor;
-        if !walking!(predictor, walker => walker.stem_may_start(self.state.word())) {
+        if self.state.picked_form.is_some()
+            || !walking!(predictor, walker => walker.stem_may_start(self.state.word()))
+        {
             return Err(Error::new(
                 Code::InvalidArgument,
                 format!("letters {letters:?} are typed where no stem can start"),
@@ -409,10 +520,13 @@ impl Session {
     }
 
     /// The units on offer, and where stems are on offer their complete
-    /// words, the first `limit` of them when there is a limit, ranked by the
-    /// model after the context and the word's own units. With complete
-    /// words, give a limit: without one every stem on offer is completed,
-    /// at a walk for each.
+    /// words, and with forms on, before the word's first unit, the counted
+    /// forms that start with the letters typed, or with none typed the
+    /// likeliest after the words before, the first `limit` of them when
+    /// there is a limit, ranked by the model after the context and the
+    /// word's own units. With complete words or forms, give a limit: without
+    /// one every stem on offer is completed, at a walk for each, and every
+    /// form that matches is listed.
     pub fn candidates(&mut self, limit: Option<usize>) -> Result<Offer, Error> {
         let predictor = &*self.predictor;
         walking!(predictor, walker => {
@@ -427,11 +541,21 @@ impl Session {
 
     /// Appends the unit on offer with `key` to the word, or the stem and
     /// the ending of the complete word with `key`, whose stem is on offer,
-    /// spending the letters typed for it. A key not on offer is refused with
-    /// `invalid-argument`.
+    /// or picks the counted form on offer whose key is `key`, which
+    /// completes the word, spending the letters typed for it. A key not on
+    /// offer is refused with `invalid-argument`.
     // [spec:hfst:sem:prediction.whole-words]
+    // [spec:hfst:sem:prediction.seen-forms]
     pub fn pick(&mut self, key: &str) -> Result<(), Error> {
         let predictor = &*self.predictor;
+        if let Some(form) = key.strip_prefix(FORM_KEY_PREFIX)
+            && let Some(seen) = self.state.form_on_offer(predictor, form)
+        {
+            self.state.picked_form = Some(seen);
+            self.state.typed.clear();
+            self.offered = None;
+            return Ok(());
+        }
         let next = match self.offered.take() {
             Some(next) => next,
             None => walking!(predictor, walker => self.state.offer(predictor, &walker))?,
@@ -456,7 +580,7 @@ impl Session {
             self.offered = Some(next);
             return Err(Error::new(
                 Code::InvalidArgument,
-                format!("unit or complete word {key:?} is not on offer here"),
+                format!("unit, complete word or form {key:?} is not on offer here"),
             ));
         }
         self.state.picked.extend(found);
@@ -464,10 +588,13 @@ impl Session {
         Ok(())
     }
 
-    /// Removes the last letter typed, or the last unit picked when no letter
-    /// is typed after it. False when there is nothing to remove.
+    /// Removes the last letter typed, or the counted form or the last unit
+    /// picked when no letter is typed after it. False when there is nothing
+    /// to remove.
     pub fn backspace(&mut self) -> bool {
-        let removed = self.state.typed.pop().is_some() || self.state.picked.pop().is_some();
+        let removed = self.state.typed.pop().is_some()
+            || self.state.picked_form.take().is_some()
+            || self.state.picked.pop().is_some();
         if removed {
             self.offered = None;
         }
@@ -476,12 +603,14 @@ impl Session {
 
     /// True when the word can be committed.
     pub fn is_complete(&self) -> bool {
-        self.state.word().is_complete()
+        self.state.picked_form.is_some() || self.state.word().is_complete()
     }
 
-    /// Writes the word, keeps its units as context and starts an empty word.
-    /// An incomplete word, or letters typed with no unit picked for them,
-    /// are refused with `invalid-argument`.
+    /// Writes the word, keeps its units and its form as context and starts
+    /// an empty word. A counted form writes itself, and its units are those
+    /// it was counted with most often. An incomplete word, or letters typed
+    /// with no unit picked for them, are refused with `invalid-argument`.
+    // [spec:hfst:sem:prediction.seen-forms]
     pub fn commit(&mut self) -> Result<String, Error> {
         if !self.state.typed.is_empty() {
             return Err(Error::new(
@@ -493,22 +622,40 @@ impl Session {
             ));
         }
         let predictor = &*self.predictor;
-        let written = walking!(predictor, walker => {
-            realise(&walker, self.state.word(), &predictor.script())
-        })?;
-        let grammar = &predictor.grammar;
-        let keys: Vec<UnitKey> = self
-            .state
-            .word()
-            .units()
-            .iter()
-            .map(|unit| grammar.key(unit))
-            .collect();
-        let context = &mut self.state.context;
-        context.extend(keys);
-        let excess = context.len().saturating_sub(predictor.context_len);
-        context.drain(..excess);
-        self.state.picked.clear();
+        let (written, form, keys) = match &self.state.picked_form {
+            Some(seen) => {
+                let written = predictor.script().written(&seen.form).ok_or_else(|| {
+                    Error::new(
+                        Code::InvalidArgument,
+                        format!(
+                            "the output transliterator has no conversion for {:?}",
+                            seen.form
+                        ),
+                    )
+                })?;
+                (written, seen.form.clone(), seen.units.clone())
+            }
+            None => {
+                let word = self.state.word();
+                let (written, surface) = walking!(predictor, walker => {
+                    let surface = walker.forms(word).into_iter().next();
+                    realise(&walker, word, &predictor.script()).map(|written| (written, surface))
+                })?;
+                let grammar = &predictor.grammar;
+                let keys = word.units().iter().map(|unit| grammar.key(unit)).collect();
+                let form = surface.map_or_else(String::new, |form| fold(&form.surface));
+                (written, form, keys)
+            }
+        };
+        let state = &mut self.state;
+        state.context.extend(keys);
+        let excess = state.context.len().saturating_sub(predictor.context_len);
+        state.context.drain(..excess);
+        state.before.push(form);
+        let excess = state.before.len().saturating_sub(predictor.context_len);
+        state.before.drain(..excess);
+        state.picked.clear();
+        state.picked_form = None;
         self.offered = None;
         Ok(written)
     }
@@ -518,6 +665,9 @@ impl Session {
     /// ending is in reach. With no letters typed, the preview and
     /// [`Session::candidates`] share one walk, whichever comes first.
     pub fn preview(&mut self) -> Option<String> {
+        if let Some(seen) = &self.state.picked_form {
+            return Some(seen.form.clone());
+        }
         let predictor = &*self.predictor;
         let order = predictor.model();
         let context = self.state.ranking_context(&predictor.grammar);
@@ -547,6 +697,12 @@ impl Session {
     /// The keys of the latest units of committed words, oldest first.
     pub fn context(&self) -> impl Iterator<Item = &str> {
         self.state.context.iter().map(UnitKey::as_str)
+    }
+
+    /// The forms of the latest committed words, capitals folded, oldest
+    /// first.
+    pub fn before(&self) -> impl Iterator<Item = &str> {
+        self.state.before.iter().map(String::as_str)
     }
 }
 

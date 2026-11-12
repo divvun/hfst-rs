@@ -1230,6 +1230,15 @@ impl_evidence (
         {id prediction-model.word-score, version 0}
         {id prediction.whole-words, version 0}
     )}
+    {id predict.word-forms, covered_rules (
+        prediction-model.form-score
+        prediction-model.word-forms
+        prediction.seen-forms
+    ), covered_claims (
+        {impl_name target-impl, rule prediction-model.form-score}
+        {impl_name target-impl, rule prediction-model.word-forms}
+        {impl_name target-impl, rule prediction.seen-forms}
+    )}
     {id python.bindings, covered_rules (
         python.dhfst
         python.errors

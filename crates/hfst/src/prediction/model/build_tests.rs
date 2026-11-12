@@ -14,7 +14,7 @@ const AMBIGUOUS: &[&[&str]] = &[
 ];
 
 // [spec:hfst:req:prediction-model.input/test]
-// [spec:hfst:def:prediction-model.file/test]
+// [spec:hfst:def:prediction-model.file+1/test]
 #[test]
 fn runs_up_to_the_order_span_tokens() {
     let (bytes, report) = build(settings(3, Backoff::StupidBackoff), STORY);

@@ -1,7 +1,7 @@
-//! `hfst predict-model`: count the units of analysed text, as hfst-lookup
-//! writes it, into a prediction model. The counting and the file are
-//! [`hfst::prediction::model`]'s; this tool reads the texts and writes the
-//! model.
+//! `hfst predict-model`: count the units and word forms of analysed text,
+//! as hfst-lookup writes it, into a prediction model. The counting and the
+//! file are [`hfst::prediction::model`]'s; this tool reads the texts and
+//! writes the model.
 
 use std::io::{Read, Write};
 
@@ -74,7 +74,7 @@ impl Args {
 }
 
 /// The counts a build reports, one to a line.
-fn report_lines(report: &BuildReport, model_bytes: usize) -> String {
+fn report_lines(report: &BuildReport, word_forms: usize, model_bytes: usize) -> String {
     let lines = [
         ("tokens", report.tokens),
         ("readings", report.readings),
@@ -82,6 +82,7 @@ fn report_lines(report: &BuildReport, model_bytes: usize) -> String {
         ("refused by the generator", report.refused_by_generator),
         ("refused by the grammar", report.refused_by_grammar),
         ("tokens without a reading", report.tokens_without_reading),
+        ("word forms", word_forms),
         ("model bytes", model_bytes),
     ];
     lines
@@ -90,12 +91,13 @@ fn report_lines(report: &BuildReport, model_bytes: usize) -> String {
         .collect()
 }
 
-/// Count every input, each a text of its own, and the model's bytes.
+/// Count every input, each a text of its own, and give what was counted,
+/// how many word forms, and the model's bytes.
 fn build<T: TransducerTablesInterface>(
     args: &Args,
     generator: &Transducer<T>,
     grammar: &UnitGrammar,
-) -> Result<(BuildReport, Vec<u8>), String> {
+) -> Result<(BuildReport, usize, Vec<u8>), String> {
     // Making a walker checks the grammar against the generator's alphabet.
     Walker::new(generator, grammar, WalkLimits::default()).map_err(|e| reason(&e))?;
     let tokenizer = AnalysisTokenizer::new(generator.get_alphabet().get_symbol_table());
@@ -117,12 +119,12 @@ fn build<T: TransducerTablesInterface>(
             .map_err(|e| format!("{name}: {}", reason(&e)))?;
     }
     let model = builder.write().map_err(|e| reason(&e))?;
-    Ok((report, model))
+    Ok((report, builder.word_forms(), model))
 }
 
 fn run(common: &CommonOptions, args: &Args) -> Result<(), String> {
     let (generator, grammar) = args.sources.read()?;
-    let (report, model) = match &generator {
+    let (report, word_forms, model) = match &generator {
         Generator::Weighted(generator) => build(args, generator, &grammar)?,
         Generator::Unweighted(generator) => build(args, generator, &grammar)?,
     };
@@ -131,7 +133,7 @@ fn run(common: &CommonOptions, args: &Args) -> Result<(), String> {
     out.write_all(&model).map_err(written)?;
     out.flush().map_err(written)?;
     if !common.silent {
-        eprint!("{}", report_lines(&report, model.len()));
+        eprint!("{}", report_lines(&report, word_forms, model.len()));
     }
     Ok(())
 }
@@ -157,8 +159,9 @@ mod tests {
             refused_by_grammar: 1,
             tokens_without_reading: 1,
         };
-        let lines = report_lines(&report, 1234);
-        assert_eq!(lines.lines().count(), 7);
+        let lines = report_lines(&report, 5, 1234);
+        assert_eq!(lines.lines().count(), 8);
+        assert!(lines.contains("word forms                         5\n"));
         assert!(lines.starts_with("tokens                             9\n"));
         assert!(lines.contains("refused by the generator           2\n"));
         assert!(lines.ends_with("model bytes                     1234\n"));

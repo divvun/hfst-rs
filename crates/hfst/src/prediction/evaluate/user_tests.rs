@@ -336,6 +336,7 @@ fn look_after_nanoq(shown: usize, filter: &str) -> [Vec<String>; 3] {
         word: building.word(),
         steps: building.steps(),
         ranking: &[UnitKey::from("nanoq")],
+        before: &[],
     };
     let looked = eyes
         .shown(&view, &next.candidates, &mut slot, &mut walks)
@@ -400,7 +401,9 @@ fn variants_typing_a_word_share_its_walks() {
     let type_with = |shown: usize, walks: &mut Walks<'_, _>| {
         let variant = variant("v", settings, shown, None);
         let mut typist = UnitTypist::new(&generator, &grammar, limits, &model, &variant).unwrap();
-        typist.type_word("nanoqqarput", target, &[], walks).unwrap()
+        typist
+            .type_word("nanoqqarput", target, &[], &[], walks)
+            .unwrap()
     };
     let walker = || Walker::new(&generator, &grammar, limits).unwrap();
     let mut shared = Walks::new(walker());
@@ -439,7 +442,9 @@ fn complete_words_share_their_walks() {
             ..variant("v", settings, 1, None)
         };
         let mut typist = UnitTypist::new(&generator, &grammar, limits, &model, &variant).unwrap();
-        typist.type_word("nanoqqarput", target, &[], walks).unwrap()
+        typist
+            .type_word("nanoqqarput", target, &[], &[], walks)
+            .unwrap()
     };
     let mut alone = Walks::new(walker());
     let by_units = type_with(0, &mut alone);

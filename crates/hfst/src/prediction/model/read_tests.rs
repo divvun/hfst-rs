@@ -8,19 +8,20 @@ fn hex(bytes: &[u8]) -> String {
 }
 
 // [spec:hfst:syn:prediction-model.format/test]
-// [spec:hfst:def:prediction-model.file/test]
+// [spec:hfst:def:prediction-model.file+1/test]
 #[test]
 fn the_header_holds_hash_and_settings() {
     let mut equal = settings(3, Backoff::DropOldest);
     equal.ambiguity = Ambiguity::EqualShares;
     let (bytes, _) = build(equal, STORY);
     assert_eq!(&bytes[..8], b"HFSTPRED");
-    assert_eq!(bytes[8..12], 1u32.to_le_bytes());
+    assert_eq!(bytes[8..12], 2u32.to_le_bytes());
     assert_eq!(bytes[12..44], grammar().hash());
     assert_eq!(bytes[44..48], 3u32.to_le_bytes());
     assert_eq!(bytes[48..52], 0u32.to_le_bytes());
     assert_eq!(bytes[52..56], 1u32.to_le_bytes());
     assert_eq!(bytes[56..64], 10.0f64.to_le_bytes());
+    assert_eq!(bytes[64..72], 5.0f64.to_le_bytes());
     let model = Model::from_bytes(&bytes, &grammar()).unwrap();
     assert_eq!(model.order(), 3);
     assert_eq!(model.backoff(), Backoff::DropOldest);
@@ -32,7 +33,7 @@ fn the_header_holds_hash_and_settings() {
 fn tables_are_sorted_and_found_by_the_directory() {
     let (bytes, _) = build(settings(2, Backoff::StupidBackoff), STORY);
     let entry = |index: usize| {
-        let at = 64 + 8 * index;
+        let at = 72 + 8 * index;
         let word = |at: usize| u32::from_le_bytes(bytes[at..at + 4].try_into().unwrap()) as usize;
         (word(at), word(at + 4))
     };
@@ -58,7 +59,7 @@ fn tables_are_sorted_and_found_by_the_directory() {
             "sini"
         ]
     );
-    let (runs, run_count) = entry(4);
+    let (runs, run_count) = entry(6);
     assert_eq!(run_count, 7);
     let first_run = &bytes[runs..runs + 12];
     assert_eq!(first_run[..4], 0u32.to_le_bytes());
@@ -102,9 +103,9 @@ fn a_file_not_a_model_is_refused() {
     assert!(Model::from_bytes(b"", &grammar).is_err());
     assert!(Model::from_bytes(&[0; 200], &grammar).is_err());
     let (mut bytes, _) = build(settings(3, Backoff::StupidBackoff), STORY);
-    bytes[8] = 2;
+    bytes[8] = 3;
     let error = Model::from_bytes(&bytes, &grammar).unwrap_err();
-    assert!(error.to_string().contains("format version 2"), "{error}");
+    assert!(error.to_string().contains("format version 3"), "{error}");
 }
 
 fn exercise(model: &Model<'_>) {
@@ -121,6 +122,18 @@ fn exercise(model: &Model<'_>) {
         &context,
         &[(UnitKey::from("+N+Abs+Sg"), 0.0), (UnitKey::from("x"), 1.0)],
     );
+    let before = ["w1".to_owned(), "w2".to_owned()];
+    let scores = model.form_scores(&before);
+    for typed in ["", "w", "w3", "x"] {
+        let offered = scores.offered(typed);
+        for (id, _) in scores.best(&offered, Some(2)) {
+            scores.text(id);
+        }
+        scores.find(&offered, "w3");
+        model.forms_starting(typed).count();
+    }
+    model.form_units("w0");
+    model.form_count(&["w1", "w2", "w3"]);
 }
 
 // [spec:hfst:syn:prediction-model.format/test]

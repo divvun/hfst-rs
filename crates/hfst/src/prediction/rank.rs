@@ -6,7 +6,7 @@ use std::cmp::Ordering;
 
 use super::model::{Backoff, Model};
 use super::units::UnitKey;
-use super::walk::CandidateOrder;
+use super::walk::{CandidateOrder, SeenForms};
 use crate::transducer::Weight;
 
 /// Where a suggestion stands in a ranking. A complete word's key is its
@@ -162,6 +162,11 @@ impl CandidateOrder for Model<'_> {
 
     fn shares(&self, context: &[UnitKey], candidates: &[(UnitKey, Weight)]) -> Vec<Option<f64>> {
         Model::shares(self, context, candidates)
+    }
+
+    // [spec:hfst:sem:prediction-model.form-score]
+    fn seen_forms<'s>(&'s self, before: &[String], typed: &str) -> Option<Box<dyn SeenForms + 's>> {
+        Some(Box::new(self.form_scores(before).into_seen(typed)))
     }
 }
 

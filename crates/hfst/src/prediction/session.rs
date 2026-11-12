@@ -1,10 +1,16 @@
 //! A session: the word in progress, the letters typed after its last unit,
-//! and the units of the words before it (`prediction.session`).
+//! and the units and forms of the words before it (`prediction.session`,
+//! `prediction.seen-forms`).
+
+mod forms;
 
 use super::entry::Relaxation;
+use super::model::fold;
 use super::realise::{Script, realise};
 use super::units::{AnalysisTokenizer, SymbolClass, Unit, UnitKey, UnitKind};
-use super::walk::{CandidateOrder, Next, Suggest, Suggestion, Walker, Word};
+use super::walk::{
+    CandidateOrder, Form, Next, Ranking, SeenForm, Suggest, Suggestion, Walker, Word,
+};
 use crate::error::Result;
 use crate::hfst_data_types::Symbol;
 use crate::transducer::TransducerTablesInterface;
@@ -18,16 +24,21 @@ pub struct Session<'a, T: TransducerTablesInterface> {
     relaxation: Option<&'a dyn Relaxation>,
     context_len: usize,
     context: Vec<UnitKey>,
+    /// The forms of the latest words committed, capitals folded, oldest
+    /// first: as many as the context keeps units.
+    before: Vec<String>,
     /// The word after each unit picked, the empty word first, so backspace
     /// steps back without walking again.
     words: Vec<Word>,
+    /// A counted form picked for the word, which makes it complete.
+    picked_form: Option<SeenForm>,
     typed: String,
     offered: Option<Next>,
 }
 
 impl<'a, T: TransducerTablesInterface> Session<'a, T> {
-    /// `context_len` is how many of the latest units the context keeps: as
-    /// many as the model's order uses.
+    /// `context_len` is how many of the latest units, and of the latest
+    /// forms, the context keeps: as many as the model's order uses.
     pub fn new(walker: Walker<'a, T>, context_len: usize) -> Session<'a, T> {
         let empty = walker.start();
         Session {
@@ -36,7 +47,9 @@ impl<'a, T: TransducerTablesInterface> Session<'a, T> {
             relaxation: None,
             context_len,
             context: Vec::new(),
+            before: Vec::new(),
             words: vec![empty],
+            picked_form: None,
             typed: String::new(),
             offered: None,
         }
@@ -74,6 +87,12 @@ impl<'a, T: TransducerTablesInterface> Session<'a, T> {
         &self.context
     }
 
+    /// The forms of the latest earlier words, capitals folded, oldest
+    /// first.
+    pub fn before(&self) -> &[String] {
+        &self.before
+    }
+
     /// What a ranker ranks the next unit after: the context, then the keys
     /// of the word's own units.
     pub fn ranking_context(&self) -> Vec<UnitKey> {
@@ -98,6 +117,17 @@ impl<'a, T: TransducerTablesInterface> Session<'a, T> {
     }
 
     fn offer(&self) -> Result<Next> {
+        if let Some(seen) = &self.picked_form {
+            return Ok(Next {
+                candidates: Vec::new(),
+                forms: vec![Form {
+                    surface: seen.form.clone(),
+                    weight: 0.0,
+                }],
+                stem_next: false,
+                truncated: false,
+            });
+        }
         let word = self.word();
         if self.typed.is_empty() {
             return Ok(self.walker.next(word));
@@ -113,9 +143,10 @@ impl<'a, T: TransducerTablesInterface> Session<'a, T> {
         }
     }
 
-    /// Letters are refused where no stem can start.
+    /// Letters are refused where no stem can start, and after a counted
+    /// form is picked.
     pub fn type_letters(&mut self, letters: &str) -> Result<()> {
-        if !self.walker.stem_may_start(self.word()) {
+        if self.picked_form.is_some() || !self.walker.stem_may_start(self.word()) {
             crate::bail!(
                 FaultyStringInput,
                 format!("letters {letters:?} are typed where no stem can start")
@@ -149,23 +180,43 @@ impl<'a, T: TransducerTablesInterface> Session<'a, T> {
     }
 
     /// The suggestions to show: the units on offer and, where stems are on
-    /// offer, their complete words, ranked by `order` after
-    /// [`Session::ranking_context`].
+    /// offer, their complete words, and before the word's first unit, with
+    /// `settings.forms`, the counted forms that start with the letters
+    /// typed, all ranked by `order` after [`Session::ranking_context`] and
+    /// [`Session::before`]. With `settings.units` off, only counted forms
+    /// are given, and no walk is made.
     // [spec:hfst:sem:prediction.whole-words]
+    // [spec:hfst:sem:prediction.seen-forms]
     pub fn suggestions(
         &mut self,
         order: &dyn CandidateOrder,
         settings: Suggest,
     ) -> Result<Vec<Suggestion<'_>>> {
-        self.candidates()?;
+        if self.picked_form.is_some() {
+            return Ok(Vec::new());
+        }
+        let spelled = self.script.typed(&self.typed);
+        let settings = Suggest {
+            forms: settings.forms && spelled.is_some(),
+            ..settings
+        };
+        if settings.units {
+            self.candidates()?;
+        }
         let context = self.ranking_context();
-        let next = self
-            .offered
-            .as_ref()
-            .expect("candidates() leaves the offer it found");
+        let ranking = Ranking {
+            order,
+            context: &context,
+            before: &self.before,
+            typed: spelled.as_deref().unwrap_or_default(),
+        };
+        let offered = match (&self.offered, settings.units) {
+            (Some(next), true) => next.candidates.as_slice(),
+            (Some(_) | None, _) => &[],
+        };
         Ok(self
             .walker
-            .suggest(self.word(), &next.candidates, &context, order, settings))
+            .suggest(self.word(), offered, &ranking, settings))
     }
 
     /// Append the stem and the ending of the complete word with `key`
@@ -196,19 +247,25 @@ impl<'a, T: TransducerTablesInterface> Session<'a, T> {
         Ok(())
     }
 
-    /// Remove the last letter typed, or the last unit picked when no letter
-    /// is typed after it. False when there is nothing to remove.
+    /// Remove the last letter typed, or the counted form or the last unit
+    /// picked when no letter is typed after it. False when there is nothing
+    /// to remove.
     pub fn backspace(&mut self) -> bool {
-        let removed =
-            self.typed.pop().is_some() || (self.words.len() > 1 && self.words.pop().is_some());
+        let removed = self.typed.pop().is_some()
+            || self.picked_form.take().is_some()
+            || (self.words.len() > 1 && self.words.pop().is_some());
         if removed {
             self.offered = None;
         }
         removed
     }
 
-    /// Write the word, keep its units as context and start an empty word.
-    /// Only a complete word with no letters typed after it commits.
+    /// Write the word, keep its units and its form as context and start an
+    /// empty word. Only a complete word with no letters typed after it
+    /// commits. A counted form writes itself, and its units are the ones it
+    /// was counted with most often.
+    // [spec:hfst:sem:prediction.session]
+    // [spec:hfst:sem:prediction.seen-forms]
     pub fn commit(&mut self) -> Result<String> {
         if !self.typed.is_empty() {
             crate::bail!(
@@ -219,17 +276,31 @@ impl<'a, T: TransducerTablesInterface> Session<'a, T> {
                 )
             );
         }
-        let written = realise(&self.walker, self.word(), &self.script)?;
-        let grammar = self.walker.grammar();
-        let keys: Vec<UnitKey> = self
-            .word()
-            .units()
-            .iter()
-            .map(|unit| grammar.key(unit))
-            .collect();
+        let (written, form, keys) = match &self.picked_form {
+            Some(seen) => (
+                self.written_form(&seen.form)?,
+                seen.form.clone(),
+                seen.units.clone(),
+            ),
+            None => {
+                let written = realise(&self.walker, self.word(), &self.script)?;
+                let surface = self.walker.forms(self.word()).into_iter().next();
+                let grammar = self.walker.grammar();
+                let keys = self.word().units().iter().map(|unit| grammar.key(unit));
+                (
+                    written,
+                    surface.map_or_else(String::new, |form| fold(&form.surface)),
+                    keys.collect(),
+                )
+            }
+        };
         self.context.extend(keys);
         let excess = self.context.len().saturating_sub(self.context_len);
         self.context.drain(..excess);
+        self.before.push(form);
+        let excess = self.before.len().saturating_sub(self.context_len);
+        self.before.drain(..excess);
+        self.picked_form = None;
         self.words.truncate(1);
         self.offered = None;
         Ok(written)
@@ -240,6 +311,9 @@ impl<'a, T: TransducerTablesInterface> Session<'a, T> {
     /// walk, whichever comes first.
     // [spec:hfst:sem:prediction.preview]
     pub fn preview(&mut self, order: &dyn CandidateOrder) -> Option<String> {
+        if let Some(seen) = &self.picked_form {
+            return Some(seen.form.clone());
+        }
         let context = self.ranking_context();
         let word = self
             .words
@@ -323,6 +397,9 @@ fn refusal(analysis: &str, key: &UnitKey, spelled: &str, next: &Next) -> String 
         key.as_str()
     )
 }
+
+#[cfg(test)]
+mod forms_tests;
 
 #[cfg(test)]
 mod tests {
@@ -413,7 +490,7 @@ mod tests {
     fn suggested(session: &mut Session<'_, crate::transducer::WeightedTables>) -> Vec<String> {
         let settings = Suggest {
             whole_words: 1,
-            limit: None,
+            ..Suggest::default()
         };
         session
             .suggestions(&GeneratorWeightOrder, settings)
@@ -422,6 +499,7 @@ mod tests {
             .map(|suggestion| match suggestion {
                 Suggestion::Unit(candidate) => candidate.key.as_str().to_owned(),
                 Suggestion::Word(word) => format!("[{}]", word.surface()),
+                Suggestion::Form(seen) => format!("<{}>", seen.form),
             })
             .collect()
     }

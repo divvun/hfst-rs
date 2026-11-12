@@ -64,6 +64,30 @@ pub(crate) fn lookup(tokens: &[&[&str]]) -> String {
     text
 }
 
+/// hfst-lookup output for tokens given as a surface form and its readings.
+/// A token with no readings is written as hfst-lookup writes one it cannot
+/// analyse.
+pub(crate) fn lookup_forms(tokens: &[(&str, &[&str])]) -> String {
+    let mut text = String::new();
+    for (surface, readings) in tokens {
+        if readings.is_empty() {
+            text.push_str(&format!("{surface}\t{surface}+?\tinf\n"));
+        }
+        for reading in *readings {
+            text.push_str(&format!("{surface}\t{reading}\t0.000000\n"));
+        }
+        text.push('\n');
+    }
+    text
+}
+
+/// A model of `text`, with every reading accepted.
+pub(crate) fn build_text(settings: ModelSettings, text: &str) -> Vec<u8> {
+    let mut builder = builder(settings, |_| true).expect("the settings are valid");
+    builder.add_text(text).expect("the text reads");
+    builder.write().expect("the model writes")
+}
+
 static GRAMMAR_READ: LazyLock<UnitGrammar> = LazyLock::new(grammar);
 static TOKENIZER: LazyLock<AnalysisTokenizer> = LazyLock::new(tokenizer);
 

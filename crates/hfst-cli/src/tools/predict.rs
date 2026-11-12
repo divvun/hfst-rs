@@ -18,8 +18,8 @@ use hfst::pmatch::PmatchContainer;
 use hfst::prediction::model::{Ambiguity, Backoff, Model};
 use hfst::prediction::units::{AnalysisTokenizer, Label, UnitGrammar, UnitKey, UnitKind};
 use hfst::prediction::walk::{
-    Candidate, CandidateOrder, Form, GeneratorWeightOrder, Suggest, Suggestion, WalkLimits, Walker,
-    Word,
+    Candidate, CandidateOrder, Form, GeneratorWeightOrder, Ranking, Suggest, Suggestion,
+    WalkLimits, Walker, Word,
 };
 use hfst::transducer::{
     OlMember, Transducer, TransducerTablesInterface, UnweightedTables, Weight, WeightedTables,
@@ -123,6 +123,34 @@ impl AmbiguityName {
     }
 }
 
+/// A setting that is on or off.
+#[derive(clap::ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum Switch {
+    On,
+    Off,
+}
+
+impl Switch {
+    pub(super) fn on(self) -> bool {
+        match self {
+            Switch::On => true,
+            Switch::Off => false,
+        }
+    }
+}
+
+/// A unit weight. It scales units down beside counted forms, so it lies
+/// from 0 to 1; below 0 it would turn the order of the units around.
+pub(super) fn parse_unit_weight(text: &str) -> Result<f64, String> {
+    let weight: f64 = text
+        .parse()
+        .map_err(|_| format!("{text:?} is not a number"))?;
+    if !(0.0..=1.0).contains(&weight) {
+        return Err(format!("{text:?} is not a weight from 0 to 1"));
+    }
+    Ok(weight)
+}
+
 /// An optimized-lookup generator, in the table layout its header names.
 pub(super) enum Generator {
     Weighted(Transducer<WeightedTables>),
@@ -217,6 +245,26 @@ struct Args {
     #[arg(long = "whole-words", value_name = "K", default_value_t = 0)]
     whole_words: usize,
 
+    /// At the start of a word, offer the word forms the model counted that
+    /// start with the letters typed; needs --model
+    #[arg(long = "forms", value_enum, default_value = "off")]
+    forms: Switch,
+
+    /// Offer units and the complete words built from them; off offers
+    /// counted forms alone
+    #[arg(long = "units", value_enum, default_value = "on")]
+    units: Switch,
+
+    /// What the scores of units and complete words are multiplied by beside
+    /// counted forms, from 0 to 1
+    #[arg(
+        long = "unit-weight",
+        value_name = "W",
+        value_parser = parse_unit_weight,
+        default_value = "1"
+    )]
+    unit_weight: f64,
+
     /// Write each answer as one JSON object on a line of its own
     #[arg(short = 'j', long = "json")]
     json: bool,
@@ -235,8 +283,10 @@ Each line read is the start of an analysis in the generator's notation, such
 as oqar, oqar+NIQ+Der/vn or oqar+NIQ+Der/vn+N+Abs+Sg. An empty line is the
 start of a word. A tab and letters after the analysis are letters typed
 where a stem can start: the units offered are then the prefixes, filters and
-stems the letters match. For each line, the tab-separated output is a block
-ended by an empty line:
+stems the letters match. With --forms on, a second tab and words after it,
+separated by spaces, are the words before, which counted forms are ranked
+after. For each line, the tab-separated output is a block ended by an empty
+line:
 
   analysis  ANALYSIS  complete=yes|no  stem-next=yes|no  truncated=yes|no  units=TOTAL  [typed=LETTERS]
   unit      KEY  KIND  LABEL  WEIGHT      one line for each unit or complete word, best first
@@ -249,7 +299,11 @@ or, when the generator does not accept the analysis, the one line
 stem-next=yes says a stem can come next; stems are listed only for letters
 typed. With --whole-words K each stem listed brings its K highest-ranked
 endings as complete words, of the kind word, whose key is the stem's key then
-the ending's and whose label is the word they write. truncated=yes says a
+the ending's and whose label is the word they write. With --forms on, a word
+with no unit yet is offered the word forms the model counted that start with
+the letters typed, or with none typed the likeliest after the words before,
+of the kind form, whose key and label are the form with capitals folded and
+whose weight is 0. truncated=yes says a
 walk limit cut the search short, so units may be missing. TOTAL counts the
 units before -n cuts them; complete words are not counted. With --json each
 line is one JSON object with the same fields, or the analysis and an error.";
@@ -290,6 +344,9 @@ struct Answer {
     analysis: String,
     offer: Result<Offer, String>,
 }
+
+/// The kind name of a counted word form.
+const FORM_KIND: &str = "form";
 
 /// The name both hfst-embed's packages and this tool give a kind of unit.
 fn kind_name(kind: UnitKind) -> &'static str {
@@ -372,17 +429,27 @@ struct Predictor<'a, T: TransducerTablesInterface> {
 }
 
 impl<T: TransducerTablesInterface> Predictor<'_, T> {
-    /// The answer for a line: an analysis, and after a tab, letters typed.
+    /// The answer for a line: an analysis, and after a tab, letters typed,
+    /// and after another, the words before.
     fn answer(&self, line: &str) -> Answer {
-        let (analysis, typed) = line.split_once('\t').unwrap_or((line, ""));
+        let mut fields = line.splitn(3, '\t');
+        let analysis = fields.next().unwrap_or_default();
+        let typed = fields.next().unwrap_or_default();
+        let before: Vec<String> = fields
+            .next()
+            .unwrap_or_default()
+            .split_whitespace()
+            .map(str::to_owned)
+            .collect();
         Answer {
             analysis: analysis.to_owned(),
-            offer: self.offer(analysis, typed).map_err(|e| reason(&e)),
+            offer: self.offer(analysis, typed, &before).map_err(|e| reason(&e)),
         }
     }
 
     // [spec:hfst:sem:prediction.whole-words]
-    fn offer(&self, analysis: &str, typed: &str) -> hfst::error::Result<Offer> {
+    // [spec:hfst:sem:prediction.seen-forms]
+    fn offer(&self, analysis: &str, typed: &str, before: &[String]) -> hfst::error::Result<Offer> {
         let word = self.walker.word_from_analysis(analysis, &self.tokenizer)?;
         let next = if typed.is_empty() {
             self.walker.next(&word)
@@ -391,9 +458,15 @@ impl<T: TransducerTablesInterface> Predictor<'_, T> {
         };
         let grammar = self.walker.grammar();
         let context: Vec<UnitKey> = word.units().iter().map(|unit| grammar.key(unit)).collect();
+        let ranking = Ranking {
+            order: self.order,
+            context: &context,
+            before,
+            typed,
+        };
         let units = self
             .walker
-            .suggest(&word, &next.candidates, &context, self.order, self.settings)
+            .suggest(&word, &next.candidates, &ranking, self.settings)
             .into_iter()
             .map(|suggestion| match suggestion {
                 Suggestion::Unit(candidate) => Shown {
@@ -407,6 +480,12 @@ impl<T: TransducerTablesInterface> Predictor<'_, T> {
                     kind: "word",
                     label: whole.surface().to_owned(),
                     weight: whole.weight(),
+                },
+                Suggestion::Form(seen) => Shown {
+                    key: seen.form.clone(),
+                    kind: FORM_KIND,
+                    label: seen.form,
+                    weight: 0.0,
                 },
             })
             .collect();
@@ -456,6 +535,9 @@ fn predict_all<T: TransducerTablesInterface>(
         settings: Suggest {
             whole_words: args.whole_words,
             limit: args.shown,
+            forms: args.forms.on(),
+            units: args.units.on(),
+            unit_weight: args.unit_weight,
         },
     };
     let mut out = common
@@ -480,6 +562,9 @@ fn predict_all<T: TransducerTablesInterface>(
 }
 
 fn run(common: &CommonOptions, args: &Args) -> Result<(), String> {
+    if args.forms.on() && args.model.is_none() {
+        return Err("--forms on needs a model, which counts the forms".to_owned());
+    }
     let (generator, grammar) = args.sources.read()?;
     let model_bytes = match &args.model {
         Some(path) => {
@@ -577,6 +662,36 @@ mod tests {
         let value: serde_json::Value = serde_json::from_str(&typed.json()).unwrap();
         assert_eq!(value["typed"], "oq");
         assert_eq!(value["units"][0]["kind"], "word");
+    }
+
+    // [spec:hfst:sem:prediction.seen-forms/test]
+    #[test]
+    fn a_counted_form_is_written_as_a_form() {
+        let mut typed = answer();
+        let Ok(offer) = &mut typed.offer else {
+            panic!("the answer has an offer");
+        };
+        offer.units = vec![Shown {
+            key: "nunap".to_owned(),
+            kind: FORM_KIND,
+            label: "nunap".to_owned(),
+            weight: 0.0,
+        }];
+        offer.forms.clear();
+        assert!(typed.tsv().contains("\nunit\tnunap\tform\tnunap\t0\n"));
+        let value: serde_json::Value = serde_json::from_str(&typed.json()).unwrap();
+        assert_eq!(value["units"][0]["kind"], "form");
+    }
+
+    #[test]
+    fn a_unit_weight_lies_from_0_to_1() {
+        assert_eq!(parse_unit_weight("0.25"), Ok(0.25));
+        assert_eq!(parse_unit_weight("0"), Ok(0.0));
+        assert_eq!(parse_unit_weight("1"), Ok(1.0));
+        for refused in ["1.5", "-0.1", "half", "NaN"] {
+            assert!(parse_unit_weight(refused).is_err(), "{refused}");
+        }
+        assert!(Switch::On.on() && !Switch::Off.on());
     }
 
     #[test]

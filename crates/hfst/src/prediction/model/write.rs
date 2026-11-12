@@ -1,14 +1,17 @@
+use std::collections::HashMap;
+
 use super::ModelSettings;
 use super::build::{Counts, ModelBuilder};
 use super::format::{
-    CLASS_RECORD, FACE_RECORD, MAGIC, NO_CLASS, UNIT_RECORD, VERSION, ambiguity_code, backoff_code,
-    header_len, run_record,
+    CLASS_RECORD, FACE_RECORD, FORM_RECORD, FORM_UNIT_RECORD, MAGIC, NO_CLASS, UNIT_RECORD,
+    VERSION, ambiguity_code, backoff_code, header_len, run_record,
 };
 use crate::error::Result;
 
 impl ModelBuilder<'_> {
     /// The model file of everything counted so far, cut to the size limit.
-    // [spec:hfst:def:prediction-model.file]
+    // [spec:hfst:def:prediction-model.file+1]
+    // [spec:hfst:req:prediction-model.word-forms]
     pub fn write(&self) -> Result<Vec<u8>> {
         let mut tables = Tables::new(&self.counts, self.settings.face_size);
         tables.fit(self.settings.order, self.settings.size_limit)?;
@@ -30,6 +33,14 @@ struct Tables<'c> {
     /// The runs of each length from 2 to the order, at index length - 2,
     /// sorted by their ids.
     runs: Vec<Vec<(Vec<u32>, f64)>>,
+    /// Sorted by their bytes. A form's id is its index here.
+    forms: Vec<&'c str>,
+    form_counts: Vec<f64>,
+    /// The unit ids of the reading each form was counted with most often.
+    form_units: Vec<Vec<u32>>,
+    /// The runs of forms of each length from 2 to the order, at index
+    /// length - 2, sorted by their ids.
+    form_runs: Vec<Vec<(Vec<u32>, f64)>>,
 }
 
 impl<'c> Tables<'c> {
@@ -45,19 +56,12 @@ impl<'c> Tables<'c> {
                     .map_or(NO_CLASS, |class| class_id[class as usize])
             })
             .collect();
-        let runs = counts
-            .runs
+        let runs = renumbered(&counts.runs, &unit_id);
+        let form_order = sorted_by(counts.forms.len(), |i| counts.forms[i].as_str());
+        let form_id = inverse(&form_order);
+        let form_units = form_order
             .iter()
-            .map(|table| {
-                let mut runs: Vec<(Vec<u32>, f64)> = table
-                    .iter()
-                    .map(|(run, &count)| {
-                        (run.iter().map(|&u| unit_id[u as usize]).collect(), count)
-                    })
-                    .collect();
-                runs.sort_by(|a, b| a.0.cmp(&b.0));
-                runs
-            })
+            .map(|&old| main_reading(&counts.form_readings[old], &unit_id))
             .collect();
         let mut tables = Tables {
             keys: unit_order
@@ -72,6 +76,13 @@ impl<'c> Tables<'c> {
                 .collect(),
             faces: Vec::new(),
             runs,
+            forms: form_order
+                .iter()
+                .map(|&i| counts.forms[i].as_str())
+                .collect(),
+            form_counts: form_order.iter().map(|&i| counts.form_counts[i]).collect(),
+            form_units,
+            form_runs: renumbered(&counts.form_runs, &form_id),
         };
         tables.faces = tables.faces(face_size);
         tables
@@ -98,42 +109,51 @@ impl<'c> Tables<'c> {
             .collect()
     }
 
+    fn strings(&self) -> impl Iterator<Item = &&'c str> {
+        self.keys.iter().chain(&self.class_names).chain(&self.forms)
+    }
+
     fn strings_len(&self) -> usize {
-        self.keys
-            .iter()
-            .chain(&self.class_names)
-            .map(|s| s.len())
-            .sum()
+        self.strings().map(|s| s.len()).sum()
     }
 
     /// The size of the file with no runs.
     fn floor(&self, order: usize) -> usize {
         let face_entries: usize = self.faces.iter().map(Vec::len).sum();
+        let form_units: usize = self.form_units.iter().map(Vec::len).sum();
         header_len(order)
             + self.strings_len()
             + UNIT_RECORD * self.keys.len()
             + CLASS_RECORD * self.class_names.len()
             + FACE_RECORD * face_entries
+            + FORM_RECORD * self.forms.len()
+            + FORM_UNIT_RECORD * form_units
     }
 
     fn size(&self, order: usize) -> usize {
         let runs: usize = (2..=order)
-            .map(|length| run_record(length) * self.runs[length - 2].len())
+            .map(|length| {
+                run_record(length)
+                    * (self.runs[length - 2].len() + self.form_runs[length - 2].len())
+            })
             .sum();
         self.floor(order) + runs
     }
 
     /// Drop the least frequent runs, longest first, until the file fits in
-    /// `limit` bytes. Of runs counted equally, the one with the later key
-    /// goes first.
+    /// `limit` bytes. Runs of units and runs of forms of one length are
+    /// dropped together, least frequent first. Of runs counted equally, a
+    /// run of units goes before a run of forms, and of two runs of the same
+    /// kind the one with the later key goes first.
     // [spec:hfst:req:prediction-model.budget]
+    // [spec:hfst:req:prediction-model.word-forms]
     fn fit(&mut self, order: usize, limit: usize) -> Result<()> {
         let floor = self.floor(order);
         if floor > limit {
             crate::bail!(
                 Hfst,
                 format!(
-                    "prediction model: its unit keys alone take {floor} bytes, {} bytes more than the size limit of {limit}",
+                    "prediction model: its unit keys and word forms alone take {floor} bytes, {} bytes more than the size limit of {limit}",
                     floor - limit
                 )
             );
@@ -144,30 +164,34 @@ impl<'c> Tables<'c> {
                 break;
             }
             let record = run_record(length);
-            let runs = &mut self.runs[length - 2];
-            let dropping = (size - limit).div_ceil(record).min(runs.len());
-            let mut by_count: Vec<usize> = (0..runs.len()).collect();
+            let units = &mut self.runs[length - 2];
+            let forms = &mut self.form_runs[length - 2];
+            let dropping = (size - limit)
+                .div_ceil(record)
+                .min(units.len() + forms.len());
+            let run = |(form, at): (bool, usize)| if form { &forms[at] } else { &units[at] };
+            let mut by_count: Vec<(bool, usize)> = (0..units.len())
+                .map(|at| (false, at))
+                .chain((0..forms.len()).map(|at| (true, at)))
+                .collect();
             by_count.sort_by(|&a, &b| {
-                runs[a]
+                run(a)
                     .1
-                    .total_cmp(&runs[b].1)
-                    .then_with(|| runs[b].0.cmp(&runs[a].0))
+                    .total_cmp(&run(b).1)
+                    .then(a.0.cmp(&b.0))
+                    .then_with(|| run(b).0.cmp(&run(a).0))
             });
-            let mut dropped = vec![false; runs.len()];
-            for &run in &by_count[..dropping] {
-                dropped[run] = true;
-            }
-            let mut index = 0;
-            runs.retain(|_| {
-                index += 1;
-                !dropped[index - 1]
-            });
+            let dropped = &by_count[..dropping];
+            let unit_dropped: Vec<usize> = dropped.iter().filter(|r| !r.0).map(|r| r.1).collect();
+            let form_dropped: Vec<usize> = dropped.iter().filter(|r| r.0).map(|r| r.1).collect();
+            drop_runs(units, &unit_dropped);
+            drop_runs(forms, &form_dropped);
             size -= dropping * record;
         }
         Ok(())
     }
 
-    // [spec:hfst:def:prediction-model.file]
+    // [spec:hfst:def:prediction-model.file+1]
     // [spec:hfst:syn:prediction-model.format]
     fn serialize(&self, hash: [u8; 32], settings: &ModelSettings) -> Result<Vec<u8>> {
         let order = settings.order;
@@ -180,8 +204,10 @@ impl<'c> Tables<'c> {
         out.u32(ambiguity_code(settings.ambiguity));
         out.0
             .extend_from_slice(&self.counts.iter().sum::<f64>().to_le_bytes());
+        out.0
+            .extend_from_slice(&self.form_counts.iter().sum::<f64>().to_le_bytes());
         self.directory(&mut out, order)?;
-        for string in self.keys.iter().chain(&self.class_names) {
+        for string in self.strings() {
             out.0.extend_from_slice(string.as_bytes());
         }
         let mut string_at = 0;
@@ -204,7 +230,25 @@ impl<'c> Tables<'c> {
         for &unit in self.faces.iter().flatten() {
             out.u32(unit);
         }
-        for (ids, count) in self.runs.iter().flatten() {
+        let mut unit_at = 0;
+        for ((form, &count), units) in self
+            .forms
+            .iter()
+            .zip(&self.form_counts)
+            .zip(&self.form_units)
+        {
+            out.usize(string_at)?;
+            out.usize(form.len())?;
+            out.f32(count);
+            out.usize(unit_at)?;
+            out.usize(units.len())?;
+            string_at += form.len();
+            unit_at += units.len();
+        }
+        for &unit in self.form_units.iter().flatten() {
+            out.u32(unit);
+        }
+        for (ids, count) in self.runs.iter().chain(&self.form_runs).flatten() {
             for &id in ids {
                 out.u32(id);
             }
@@ -217,14 +261,19 @@ impl<'c> Tables<'c> {
     /// documentation lists them.
     fn directory(&self, out: &mut Writer, order: usize) -> Result<()> {
         let face_entries: usize = self.faces.iter().map(Vec::len).sum();
+        let form_units: usize = self.form_units.iter().map(Vec::len).sum();
         let mut tables = vec![
             (self.strings_len(), 1),
             (self.keys.len(), UNIT_RECORD),
             (self.class_names.len(), CLASS_RECORD),
             (face_entries, FACE_RECORD),
+            (self.forms.len(), FORM_RECORD),
+            (form_units, FORM_UNIT_RECORD),
         ];
-        for length in 2..=order {
-            tables.push((self.runs[length - 2].len(), run_record(length)));
+        for runs in [&self.runs, &self.form_runs] {
+            for length in 2..=order {
+                tables.push((runs[length - 2].len(), run_record(length)));
+            }
         }
         let mut at = header_len(order);
         for (records, record) in tables {
@@ -234,6 +283,50 @@ impl<'c> Tables<'c> {
         }
         Ok(())
     }
+}
+
+/// Each table of runs with its ids renumbered by `ids`, sorted by the new
+/// ids.
+fn renumbered(tables: &[HashMap<Vec<u32>, f64>], ids: &[u32]) -> Vec<Vec<(Vec<u32>, f64)>> {
+    tables
+        .iter()
+        .map(|table| {
+            let mut runs: Vec<(Vec<u32>, f64)> = table
+                .iter()
+                .map(|(run, &count)| (run.iter().map(|&id| ids[id as usize]).collect(), count))
+                .collect();
+            runs.sort_by(|a, b| a.0.cmp(&b.0));
+            runs
+        })
+        .collect()
+}
+
+/// Keep the runs whose indices `dropped` does not hold.
+fn drop_runs(runs: &mut Vec<(Vec<u32>, f64)>, dropped: &[usize]) {
+    let mut gone = vec![false; runs.len()];
+    for &at in dropped {
+        gone[at] = true;
+    }
+    let mut index = 0;
+    runs.retain(|_| {
+        index += 1;
+        !gone[index - 1]
+    });
+}
+
+/// The units, renumbered by `unit_id`, of the reading a form was counted
+/// with most often. Of readings counted equally, the one whose units come
+/// first by their keys.
+// [spec:hfst:req:prediction-model.word-forms]
+fn main_reading(tally: &[(Vec<u32>, f64)], unit_id: &[u32]) -> Vec<u32> {
+    let renumbered =
+        |ids: &[u32]| -> Vec<u32> { ids.iter().map(|&id| unit_id[id as usize]).collect() };
+    tally
+        .iter()
+        .map(|(ids, count)| (renumbered(ids), *count))
+        .max_by(|a, b| a.1.total_cmp(&b.1).then_with(|| b.0.cmp(&a.0)))
+        .map(|(ids, _)| ids)
+        .unwrap_or_default()
 }
 
 fn sorted_by<'k>(n: usize, key: impl Fn(usize) -> &'k str) -> Vec<usize> {

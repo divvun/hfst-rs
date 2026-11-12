@@ -2,7 +2,9 @@ use std::cell::Cell;
 use std::rc::Rc;
 
 use super::fixtures_test::*;
-use super::{CandidateOrder, GeneratorWeightOrder, Next, Suggest, Suggestion, Walker, Word};
+use super::{
+    CandidateOrder, GeneratorWeightOrder, Next, Ranking, Suggest, Suggestion, Walker, Word,
+};
 use crate::prediction::model::{
     Ambiguity, Backoff, Model, ModelBuilder, ModelSettings, generator_accepts,
 };
@@ -12,7 +14,7 @@ use crate::transducer::{Transducer, WeightedTables};
 /// Six nouns and a verb that start with n, two of the nouns heavier than
 /// the rest, three noun endings of different weights and a derivation to a
 /// verb. Nothing changes where morphemes meet.
-const STEMS: &str = r#"
+pub(super) const STEMS: &str = r#"
 Multichar_Symbols
 +N +V +Abs +Rel +Sg +Pl +Ind +3Sg +QAR +Der/nv
 
@@ -41,7 +43,7 @@ LEXICON V
 +V+Ind+3Sg:poq # ;
 "#;
 
-const STEMS_GRAMMAR: &str = r#"
+pub(super) const STEMS_GRAMMAR: &str = r#"
 boundary = ["+Der/*"]
 "#;
 
@@ -83,12 +85,17 @@ fn shown(suggestions: &[Suggestion<'_>]) -> Vec<String> {
         .map(|suggestion| match suggestion {
             Suggestion::Unit(candidate) => candidate.key.as_str().to_owned(),
             Suggestion::Word(word) => format!("[{}]", word.surface()),
+            Suggestion::Form(seen) => format!("<{}>", seen.form),
         })
         .collect()
 }
 
 fn whole_words(whole_words: usize, limit: Option<usize>) -> Suggest {
-    Suggest { whole_words, limit }
+    Suggest {
+        whole_words,
+        limit,
+        ..Suggest::default()
+    }
 }
 
 fn suggested(
@@ -99,7 +106,8 @@ fn suggested(
 ) -> Vec<String> {
     let start = walker.start();
     let next = walker.entry(&start, typed, None).unwrap();
-    shown(&walker.suggest(&start, &next.candidates, &[], order, settings))
+    let ranking = Ranking::after_units(order, &[]);
+    shown(&walker.suggest(&start, &next.candidates, &ranking, settings))
 }
 
 // [spec:hfst:sem:prediction.whole-words/test]
@@ -171,7 +179,8 @@ fn lazily(
     settings: Suggest,
 ) -> (Vec<String>, usize) {
     let completed = Cell::new(0);
-    let found = walker.suggest_with(word, &next.candidates, &[], order, settings, |_, picked| {
+    let ranking = Ranking::after_units(order, &[]);
+    let found = walker.suggest_with(word, &next.candidates, &ranking, settings, |_, picked| {
         completed.set(completed.get() + 1);
         Ok::<_, std::convert::Infallible>(Rc::new(walker.endings(picked)))
     });
@@ -230,8 +239,7 @@ fn a_complete_word_picks_stem_and_ending() {
     let suggestions = walker.suggest(
         &start,
         &next.candidates,
-        &[],
-        &GeneratorWeightOrder,
+        &Ranking::after_units(&GeneratorWeightOrder, &[]),
         whole_words(1, None),
     );
     let Some(Suggestion::Word(word)) = suggestions.get(1) else {
@@ -271,8 +279,7 @@ fn complete_words_follow_a_compound_join() {
     let suggestions = walker.suggest(
         &joined,
         &next.candidates,
-        &[],
-        &GeneratorWeightOrder,
+        &Ranking::after_units(&GeneratorWeightOrder, &[]),
         whole_words(1, None),
     );
     assert_eq!(shown(&suggestions), ["guolli", "[girjguoli]"]);

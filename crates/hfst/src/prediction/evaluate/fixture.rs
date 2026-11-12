@@ -98,11 +98,8 @@ pub(super) fn variant(
     faces: Option<Faces>,
 ) -> Variant {
     Variant {
-        name: name.to_owned(),
-        model,
-        shown,
         faces,
-        whole_words: 0,
+        ..Variant::units(name, model, shown)
     }
 }
 

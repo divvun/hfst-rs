@@ -63,11 +63,11 @@ fn sized(size_limit: usize) -> Result<Vec<u8>> {
 }
 
 /// The size of a record of each run length, and how many runs STORY has of
-/// each.
+/// each: runs of units, then runs of its forms, which are all different.
 const RUN3: usize = 16;
-const RUNS3: usize = 8;
+const RUNS3: usize = 8 + 3;
 const RUN2: usize = 12;
-const RUNS2: usize = 7;
+const RUNS2: usize = 7 + 4;
 
 // [spec:hfst:req:prediction-model.budget/test]
 #[test]
@@ -90,7 +90,8 @@ fn the_longest_runs_go_first_least_frequent_first() {
     let model = Model::from_bytes(&bytes, &grammar()).unwrap();
     let count = |run: &[&str]| model.count(&keys(run));
     assert_eq!(count(&["+N+Abs+Sg", "oqar", "+V+Ind+3Sg"]), 0.0);
-    // Of the runs of 2 counted once, sini +V+Ind+3Sg has the last key.
+    // Of the runs of 2 counted once, units go before forms, and sini
+    // +V+Ind+3Sg has the last key.
     assert_eq!(count(&["sini", "+V+Ind+3Sg"]), 0.0);
     assert_eq!(count(&["oqar", "+V+Ind+3Sg"]), 1.0);
     assert_eq!(count(&["nuna", "+N+Rel+Sg"]), 1.0);
@@ -122,4 +123,5 @@ fn too_small_a_limit_fails_by_its_shortfall() {
     let message = error.to_string();
     assert!(message.contains(&format!("{floor} bytes")), "{message}");
     assert!(message.contains("7 bytes more"), "{message}");
+    assert!(message.contains("unit keys and word forms"), "{message}");
 }

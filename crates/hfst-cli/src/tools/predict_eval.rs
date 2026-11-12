@@ -7,7 +7,8 @@
 use std::io::{Read, Write};
 
 use super::predict::{
-    AmbiguityName, BackoffName, Generator, Limits, Sources, fail, open_inputs, reason,
+    AmbiguityName, BackoffName, Generator, Limits, Sources, Switch, fail, open_inputs,
+    parse_unit_weight, reason,
 };
 use crate::cli::{self, CommonArgs, ToolArgs, ToolResult};
 use crate::globals::CommonOptions;
@@ -24,8 +25,11 @@ use hfst::transducer::{Transducer, TransducerTablesInterface};
 #[command(
     about = "Measure the keystrokes unit prediction saves on analysed text",
     after_help = "Every combination of the listed orders, backoffs, ambiguity rules, \
-                  numbers shown and faces is scored as a variant, side by side with \
-                  each recording."
+                  numbers shown, faces, complete words, forms, units and unit weights \
+                  is scored as a variant, side by side with each recording. A variant \
+                  with neither forms nor units is left out; unit weights vary only \
+                  where forms and units are both on, and complete words only where \
+                  units are."
 )]
 struct Args {
     #[command(flatten)]
@@ -97,6 +101,38 @@ struct Args {
     )]
     whole_words: Vec<usize>,
 
+    /// Whether the word forms the model counted are offered, to score,
+    /// separated by commas
+    #[arg(
+        long = "forms",
+        value_enum,
+        value_delimiter = ',',
+        default_value = "off"
+    )]
+    forms: Vec<Switch>,
+
+    /// Whether units and complete words built from them are offered, to
+    /// score, separated by commas; off leaves an ordinary keyboard that
+    /// completes counted forms
+    #[arg(
+        long = "units",
+        value_enum,
+        value_delimiter = ',',
+        default_value = "on"
+    )]
+    units: Vec<Switch>,
+
+    /// What the scores of units and complete words are multiplied by beside
+    /// counted forms, from 0 to 1, to score, separated by commas
+    #[arg(
+        long = "unit-weight",
+        value_name = "W,...",
+        value_delimiter = ',',
+        value_parser = parse_unit_weight,
+        default_value = "1"
+    )]
+    unit_weights: Vec<f64>,
+
     /// Suggestions recorded from another system, scored beside the variants:
     /// NAME=FILE, the file holding a word, a prefix and the suggestions
     /// shown for it on each tab-separated line. May be given more than once.
@@ -161,24 +197,61 @@ impl Args {
             for &backoff in &self.backoffs {
                 for &ambiguity in &self.ambiguities {
                     for &shown in &self.shown {
-                        for &whole_words in &self.whole_words {
-                            variants.extend(faces.iter().map(|&faces| {
-                                let mut variant =
-                                    self.variant(order, backoff, ambiguity, shown, faces);
-                                if whole_words > 0 {
-                                    variant.name = format!("{} words {whole_words}", variant.name);
-                                }
-                                Variant {
-                                    whole_words,
-                                    ..variant
-                                }
-                            }));
+                        for &faces in &faces {
+                            let variant = self.variant(order, backoff, ambiguity, shown, faces);
+                            variants.extend(self.offers(&variant));
                         }
                     }
                 }
             }
         }
         variants
+    }
+
+    /// `variant` with each listed way of offering forms, units, unit
+    /// weights and complete words that makes a difference.
+    fn offers(&self, variant: &Variant) -> Vec<Variant> {
+        let mut offers = Vec::new();
+        for &forms in &self.forms {
+            for &units in &self.units {
+                let (forms, units) = (forms.on(), units.on());
+                let weights = if forms && units {
+                    self.unit_weights.as_slice()
+                } else {
+                    &[1.0]
+                };
+                let whole_words = if units {
+                    self.whole_words.as_slice()
+                } else {
+                    &[0]
+                };
+                if !forms && !units {
+                    continue;
+                }
+                for &whole_words in whole_words {
+                    for &unit_weight in weights {
+                        let mut name = variant.name.clone();
+                        if whole_words > 0 {
+                            name = format!("{name} words {whole_words}");
+                        }
+                        if forms && units {
+                            name = format!("{name} forms w{unit_weight}");
+                        } else if forms {
+                            name = format!("{name} forms only");
+                        }
+                        offers.push(Variant {
+                            name,
+                            whole_words,
+                            forms,
+                            units,
+                            unit_weight,
+                            ..variant.clone()
+                        });
+                    }
+                }
+            }
+        }
+        offers
     }
 
     /// A variant named by its settings. The ambiguity rule is named only
@@ -198,18 +271,16 @@ impl Args {
         if let Some(faces) = faces {
             name = format!("{name} faces {}+{}", faces.keys, faces.long_press);
         }
+        let model = ModelSettings {
+            order,
+            backoff: backoff.backoff(),
+            ambiguity: ambiguity.ambiguity(),
+            face_size: faces.map_or(0, |faces| faces.keys + faces.long_press),
+            size_limit: usize::MAX,
+        };
         Variant {
-            name,
-            model: ModelSettings {
-                order,
-                backoff: backoff.backoff(),
-                ambiguity: ambiguity.ambiguity(),
-                face_size: faces.map_or(0, |faces| faces.keys + faces.long_press),
-                size_limit: usize::MAX,
-            },
-            shown,
             faces,
-            whole_words: 0,
+            ..Variant::units(&name, model, shown)
         }
     }
 
@@ -262,8 +333,12 @@ fn evaluate<T: TransducerTablesInterface + Sync>(
 ) -> Result<String, String> {
     let harness = Harness::new(generator, grammar, args.run_settings()).map_err(|e| reason(&e))?;
     let corpus = harness.corpus(text).map_err(|e| reason(&e))?;
+    let variants = args.variants();
+    if variants.is_empty() {
+        return Err("no variant offers forms or units".to_owned());
+    }
     let report = harness
-        .run(&corpus, &args.variants(), recordings)
+        .run(&corpus, &variants, recordings)
         .map_err(|e| reason(&e))?;
     Ok(report.table())
 }
@@ -359,6 +434,54 @@ mod tests {
             .map(|variant| variant.whole_words)
             .collect();
         assert_eq!(counts, [0, 2]);
+    }
+
+    // [spec:hfst:sem:prediction.seen-forms/test]
+    #[test]
+    fn forms_units_and_weights_vary_by_variant() {
+        let listed = args(&[
+            "--forms",
+            "off,on",
+            "--units",
+            "on,off",
+            "--unit-weight",
+            "1,0.5",
+            "--whole-words",
+            "0,1",
+        ]);
+        assert_eq!(
+            names(&listed),
+            [
+                "o3 stupid-backoff n3",
+                "o3 stupid-backoff n3 words 1",
+                "o3 stupid-backoff n3 forms w1",
+                "o3 stupid-backoff n3 forms w0.5",
+                "o3 stupid-backoff n3 words 1 forms w1",
+                "o3 stupid-backoff n3 words 1 forms w0.5",
+                "o3 stupid-backoff n3 forms only",
+            ]
+        );
+        let variants = listed.variants();
+        let settings: Vec<(bool, bool, f64, usize)> = variants
+            .iter()
+            .map(|v| (v.forms, v.units, v.unit_weight, v.whole_words))
+            .collect();
+        assert_eq!(settings[3], (true, true, 0.5, 0));
+        assert_eq!(settings[6], (true, false, 1.0, 0));
+        assert!(variants[..2].iter().all(|v| !v.forms && v.units));
+        assert!(args(&["--units", "off"]).variants().is_empty());
+        assert!(
+            <Args as clap::Parser>::try_parse_from([
+                "hfst predict-eval",
+                "-g",
+                "g",
+                "-G",
+                "g",
+                "--unit-weight",
+                "1.5"
+            ])
+            .is_err()
+        );
     }
 
     #[test]

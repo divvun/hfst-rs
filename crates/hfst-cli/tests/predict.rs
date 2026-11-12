@@ -397,6 +397,93 @@ fn predict_eval_reports_variants_beside_recordings() {
     );
 }
 
+/// The model counted the forms nunap three times, nuna once and oqarpoq
+/// once; after nunap came nunap once and nuna once. The stem nuna was
+/// counted in four of ten units.
+// [spec:hfst:sem:prediction.seen-forms/test]
+// [spec:hfst:sem:prediction-model.form-score/test]
+#[test]
+fn counted_forms_are_offered_beside_units() {
+    let fixture = Fixture::new();
+    let model = fixture.build_model();
+    let model = model.to_str().expect("a UTF-8 path");
+    let forms = |extra: &[&str], stdin: &str| {
+        let mut args = vec!["--model", model, "-n", "3", "--forms", "on"];
+        args.extend_from_slice(extra);
+        stdout(&fixture.tool("predict", &args, stdin))
+    };
+    let output = forms(&[], "\tn\n");
+    assert!(
+        output.contains(
+            "\nunit\tnunap\tform\tnunap\t0\n\
+             unit\tnuna\tstem\tnuna\t0\n\
+             unit\tnuna\tform\tnuna\t0\n"
+        ),
+        "{output}"
+    );
+    // Forms fold capitals; entry matches stems by the letters as typed.
+    let capital = forms(&[], "\tN\n");
+    assert_eq!(unit_keys(&capital, ""), ["nunap", "nuna"]);
+    let after = forms(&[], "\t\tnunap\n");
+    assert_eq!(unit_keys(&after, ""), ["nuna", "nunap", "oqarpoq"]);
+    let alone = forms(&["--units", "off"], "\tn\n");
+    assert_eq!(unit_keys(&alone, ""), ["nunap", "nuna"]);
+    let weighted = forms(&["--unit-weight", "0.1"], "\tn\n");
+    assert_eq!(unit_keys(&weighted, ""), ["nunap", "nuna", "nuna"]);
+    let without_model = fixture.tool("predict", &["--forms", "on"], "\tn\n");
+    assert!(!without_model.status.success());
+    let stderr = String::from_utf8_lossy(&without_model.stderr);
+    assert!(stderr.contains("needs a model"), "{stderr}");
+}
+
+#[test]
+fn predict_model_counts_word_forms() {
+    let fixture = Fixture::new();
+    let model = fixture.arg("model.hfstpred");
+    let output = fixture.tool("predict-model", &["--order", "2", "-o", &model], TEXT);
+    stdout(&output);
+    let report = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        report.contains("word forms                         3"),
+        "{report}"
+    );
+}
+
+// [spec:hfst:sem:prediction.seen-forms/test]
+#[test]
+fn predict_eval_scores_forms_beside_units() {
+    let fixture = Fixture::new();
+    let text = TEXT.repeat(3);
+    let table = stdout(&fixture.tool(
+        "predict-eval",
+        &[
+            "--folds",
+            "2",
+            "--order",
+            "2",
+            "-n",
+            "2",
+            "--forms",
+            "off,on",
+            "--units",
+            "on,off",
+            "--unit-weight",
+            "1,0.5",
+            "--threads",
+            "1",
+        ],
+        &text,
+    ));
+    for name in [
+        "o2 stupid-backoff n2 ",
+        "o2 stupid-backoff n2 forms w1",
+        "o2 stupid-backoff n2 forms w0.5",
+        "o2 stupid-backoff n2 forms only",
+    ] {
+        assert!(table.contains(name), "{name} in\n{table}");
+    }
+}
+
 #[test]
 fn each_tool_answers_to_its_hfst_name() {
     let tools = hfst_cli::tools::TOOLS;

@@ -9,7 +9,7 @@ use crate::error::Result;
 use crate::prediction::model::Model;
 use crate::prediction::units::{Label, SymbolClass, Unit, UnitKey, UnitKind};
 use crate::prediction::walk::{
-    Candidate, Suggest, Suggestion, WalkLimits, Walker, WholeWord, Word,
+    Candidate, Ranking, Suggest, Suggestion, WalkLimits, Walker, WholeWord, Word,
 };
 use crate::transducer::{Transducer, TransducerTablesInterface, Weight};
 
@@ -55,10 +55,12 @@ enum Outcome {
     GaveUp,
 }
 
-/// What a key the user presses picks: a unit, or a stem and its ending.
+/// What a key the user presses picks: a unit, a stem and its ending, or a
+/// counted form, which writes the word.
 enum Chosen {
     Unit(Candidate),
     Word(WholeWord),
+    Form,
 }
 
 /// A key the user presses, and what it costs.
@@ -69,11 +71,13 @@ struct Choice {
 }
 
 /// Where the user looks from: the word in progress, the steps that reached
-/// it, and what the model ranks the next unit after.
+/// it, and what the model ranks the next unit, and counted forms, after.
 pub(super) struct View<'w> {
     pub(super) word: &'w Word,
     pub(super) steps: &'w Steps,
     pub(super) ranking: &'w [UnitKey],
+    /// The forms of the words before, capitals folded, oldest first.
+    pub(super) before: &'w [String],
 }
 
 /// What one look at the keyboard found.
@@ -103,20 +107,22 @@ impl<'a, 'm, T: TransducerTablesInterface> UnitTypist<'a, 'm, T> {
         })
     }
 
-    /// Type one word, given the keys of the units before it, from an empty
-    /// word. A word the user cannot finish through units costs its
-    /// characters, as if typed in full from its start. `walks` holds what
-    /// was walked for the word so far, by this user or another.
+    /// Type one word, given the keys of the units before it and the forms
+    /// of the words before it, from an empty word. A word the user cannot
+    /// finish through units, or a counted form, costs its characters, as if
+    /// typed in full from its start. `walks` holds what was walked for the
+    /// word so far, by this user or another.
     // [spec:hfst:def:prediction-evaluation.keystrokes]
     pub(super) fn type_word(
         &mut self,
         surface: &str,
         target: &Target,
         context: &[UnitKey],
+        before: &[String],
         walks: &mut Walks<'_, T>,
     ) -> Result<Typed> {
         let mut typed = Typed::default();
-        let built = self.build(surface, target, context, walks, &mut typed)?;
+        let built = self.build(surface, target, (context, before), walks, &mut typed)?;
         self.building.start_over();
         if built {
             return Ok(typed);
@@ -132,7 +138,7 @@ impl<'a, 'm, T: TransducerTablesInterface> UnitTypist<'a, 'm, T> {
         &mut self,
         surface: &str,
         target: &Target,
-        context: &[UnitKey],
+        context: (&[UnitKey], &[String]),
         walks: &mut Walks<'_, T>,
         typed: &mut Typed,
     ) -> Result<bool> {
@@ -150,19 +156,32 @@ impl<'a, 'm, T: TransducerTablesInterface> UnitTypist<'a, 'm, T> {
     }
 
     /// Look, then pick or type a letter, until the unit is picked or no
-    /// letter is left to type. A unit is judged first or shown at the
-    /// user's first look for it; a stem, which entry offers only for typed
-    /// letters, after its first letter.
+    /// letter is left to type. Where counted forms are offered and the word
+    /// has no unit yet, the letters typed are the word's own
+    /// ([`as_written`]), and entry matches units against them; otherwise
+    /// they are the unit's, so a stem is entered by its lemma. A unit is
+    /// judged first or shown at the user's first look for it; a stem, which
+    /// entry offers only for typed letters, after its first letter, or at
+    /// the look before it when a counted form picked there writes the word.
+    // [spec:hfst:def:prediction-evaluation.keystrokes]
     fn slot(
         &mut self,
         surface: &str,
         unit: &Unit,
         key: &UnitKey,
-        context: &[UnitKey],
+        context: (&[UnitKey], &[String]),
         walks: &mut Walks<'_, T>,
         typed: &mut Typed,
     ) -> Result<Outcome> {
         let entry_letters = self.eyes.entry_letters(unit);
+        let entry_letters = if self.eyes.variant.forms && self.building.word().units().is_empty() {
+            Some(as_written(
+                surface,
+                entry_letters.as_deref().unwrap_or_default(),
+            ))
+        } else {
+            entry_letters
+        };
         let judged_at = usize::from(unit.kind == UnitKind::Stem);
         let mut slot = Slot {
             entry: entry_letters.is_some(),
@@ -172,7 +191,7 @@ impl<'a, 'm, T: TransducerTablesInterface> UnitTypist<'a, 'm, T> {
         let outcome = loop {
             let look = self.look(surface, key, context, &mut slot, walks)?;
             typed.truncated |= look.truncated;
-            if slot.typed == judged_at {
+            if slot.typed == judged_at || (slot.typed < judged_at && look.choice.is_some()) {
                 judged = (look.first, look.shown);
             }
             if let Some(choice) = look.choice {
@@ -183,6 +202,7 @@ impl<'a, 'm, T: TransducerTablesInterface> UnitTypist<'a, 'm, T> {
                         self.building.pick(word.stem());
                         self.building.pick(word.ending());
                     }
+                    Chosen::Form => {}
                 }
                 break if choice.writes_word {
                     Outcome::Written
@@ -216,7 +236,7 @@ impl<'a, 'm, T: TransducerTablesInterface> UnitTypist<'a, 'm, T> {
         &self,
         surface: &str,
         key: &UnitKey,
-        context: &[UnitKey],
+        (context, before): (&[UnitKey], &[String]),
         slot: &mut Slot,
         walks: &mut Walks<'_, T>,
     ) -> Result<Look> {
@@ -239,11 +259,13 @@ impl<'a, 'm, T: TransducerTablesInterface> UnitTypist<'a, 'm, T> {
             word,
             steps: self.building.steps(),
             ranking: &ranking,
+            before,
         };
         let shown = self.eyes.shown(&view, &next.candidates, slot, walks)?;
         let hit = |suggestion: &Suggestion<'_>| match suggestion {
             Suggestion::Unit(candidate) => &candidate.key == key,
             Suggestion::Word(whole) => same_text(whole.surface(), surface),
+            Suggestion::Form(seen) => same_text(&seen.form, surface),
         };
         Ok(Look {
             reachable,
@@ -289,13 +311,16 @@ impl<'a, 'm, T: TransducerTablesInterface> Eyes<'a, 'm, T> {
     }
 
     /// The N suggestions shown: the first in the model's order, with
-    /// complete words beside the stems when the variant offers them. Once
-    /// letters are typed for a unit entry does not offer, which is never a
-    /// stem, only the candidates whose preview starts with the slot's filter
-    /// count. Their previews are read in the model's order, and none after
-    /// the Nth that fits.
+    /// complete words beside the stems when the variant offers them, and
+    /// before the word's first unit the counted forms that start with the
+    /// letters typed when it offers those. Once letters are typed for a
+    /// unit entry does not offer, which is never a stem, only the
+    /// candidates whose preview starts with the slot's filter count. Their
+    /// previews are read in the model's order, and none after the Nth that
+    /// fits.
     // [spec:hfst:def:prediction-evaluation.keystrokes]
     // [spec:hfst:sem:prediction.whole-words]
+    // [spec:hfst:sem:prediction.seen-forms]
     pub(super) fn shown<'n>(
         &self,
         view: &View<'_>,
@@ -307,12 +332,20 @@ impl<'a, 'm, T: TransducerTablesInterface> Eyes<'a, 'm, T> {
             let settings = Suggest {
                 whole_words: self.variant.whole_words,
                 limit: Some(self.variant.shown),
+                forms: self.variant.forms,
+                units: true,
+                unit_weight: self.variant.unit_weight,
+            };
+            let ranking = Ranking {
+                order: self.model,
+                context: view.ranking,
+                before: view.before,
+                typed: view.steps.typed(),
             };
             return self.walker.suggest_with(
                 view.word,
                 offered,
-                view.ranking,
-                self.model,
+                &ranking,
                 settings,
                 |stem, picked| Ok(walks.endings(view.steps, stem, picked)),
             );
@@ -417,6 +450,7 @@ impl<'a, 'm, T: TransducerTablesInterface> Eyes<'a, 'm, T> {
                     &candidate.key == key,
                 ),
                 Suggestion::Word(whole) => (same_text(whole.surface(), surface), false),
+                Suggestion::Form(seen) => (same_text(&seen.form, surface), false),
             };
             let better = best.as_ref().is_none_or(|best| {
                 taps < best.taps || (taps == best.taps && writes_word && !best.writes_word)
@@ -426,6 +460,7 @@ impl<'a, 'm, T: TransducerTablesInterface> Eyes<'a, 'm, T> {
                     chosen: match suggestion {
                         Suggestion::Unit(candidate) => Chosen::Unit(candidate.clone()),
                         Suggestion::Word(whole) => Chosen::Word(*whole),
+                        Suggestion::Form(_) => Chosen::Form,
                     },
                     taps,
                     writes_word,
@@ -540,7 +575,28 @@ impl<'a, 'm, T: TransducerTablesInterface> Eyes<'a, 'm, T> {
     }
 }
 
-/// Capitals are a keyboard's shift state, not other letters.
+/// The word's own letters, as the user types them where counted forms are
+/// offered. Capitals are shift state, so while the word's letters agree with
+/// the unit's, each is typed in the unit's case, which entry matches.
+// [spec:hfst:def:prediction-evaluation.keystrokes]
+fn as_written(surface: &str, unit: &[char]) -> Vec<char> {
+    let mut agreed = true;
+    surface
+        .chars()
+        .enumerate()
+        .map(|(at, letter)| match unit.get(at) {
+            Some(&own) if agreed && same_letter(own, letter) => own,
+            Some(_) | None => {
+                agreed = false;
+                letter
+            }
+        })
+        .collect()
+}
+
+/// Capitals are a keyboard's shift state, not other letters. They are
+/// folded as [`crate::prediction::model::fold`] folds the forms the model
+/// counts.
 fn same_letter(a: char, b: char) -> bool {
     a == b || a.to_lowercase().eq(b.to_lowercase())
 }
@@ -559,6 +615,6 @@ fn agree(a: &str, b: &str) -> bool {
     a.chars().zip(b.chars()).all(|(a, b)| same_letter(a, b))
 }
 
-fn same_text(a: &str, b: &str) -> bool {
+pub(super) fn same_text(a: &str, b: &str) -> bool {
     a.chars().count() == b.chars().count() && starts_with(a, b)
 }

@@ -5,7 +5,7 @@
 use super::{Ambiguity, Backoff};
 
 pub(super) const MAGIC: &[u8; 8] = b"HFSTPRED";
-pub(super) const VERSION: u32 = 1;
+pub(super) const VERSION: u32 = 2;
 
 pub(super) const VERSION_AT: usize = 8;
 pub(super) const HASH_AT: usize = 12;
@@ -13,30 +13,42 @@ pub(super) const ORDER_AT: usize = 44;
 pub(super) const BACKOFF_AT: usize = 48;
 pub(super) const AMBIGUITY_AT: usize = 52;
 pub(super) const TOTAL_AT: usize = 56;
+pub(super) const FORMS_TOTAL_AT: usize = 64;
 /// Where the table directory starts, and the length of everything before it.
-pub(super) const DIRECTORY_AT: usize = 64;
+pub(super) const DIRECTORY_AT: usize = 72;
 /// One directory entry: a table's offset and its number of records.
 pub(super) const DIRECTORY_ENTRY: usize = 8;
-/// The string table, the unit table, the class table and the face table
-/// come before the run tables in the directory.
-pub(super) const FIXED_TABLES: usize = 4;
+/// The string table, the unit table, the class table, the face table, the
+/// form table and the form-unit table come before the run tables in the
+/// directory.
+pub(super) const FIXED_TABLES: usize = 6;
 
 /// Key offset, key length, count, class.
 pub(super) const UNIT_RECORD: usize = 16;
 /// Name offset, name length, face start, face length.
 pub(super) const CLASS_RECORD: usize = 16;
 pub(super) const FACE_RECORD: usize = 4;
+/// Form offset, form length, count, first unit entry, number of unit
+/// entries.
+pub(super) const FORM_RECORD: usize = 20;
+pub(super) const FORM_UNIT_RECORD: usize = 4;
 /// The class of a unit no class pattern matches.
 pub(super) const NO_CLASS: u32 = u32::MAX;
 
-/// A run of `length` units: its unit ids, then its count.
+/// A run of `length` units or forms: their ids, then its count.
 pub(super) fn run_record(length: usize) -> usize {
     4 * length + 4
 }
 
+/// The number of tables of a model of this order: the fixed ones, then the
+/// runs of units and the runs of forms of each length from 2 to the order.
+pub(super) fn table_count(order: usize) -> usize {
+    FIXED_TABLES + 2 * (order - 1)
+}
+
 /// The bytes before the first table of a model of this order.
 pub(super) fn header_len(order: usize) -> usize {
-    DIRECTORY_AT + DIRECTORY_ENTRY * (FIXED_TABLES + order - 1)
+    DIRECTORY_AT + DIRECTORY_ENTRY * table_count(order)
 }
 
 pub(super) fn backoff_code(backoff: Backoff) -> u32 {

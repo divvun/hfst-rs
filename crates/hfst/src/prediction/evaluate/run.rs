@@ -1,14 +1,15 @@
 use std::ops::Range;
 use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrdering};
 
-use super::corpus::{Corpus, Fold, characters};
+use super::corpus::{Corpus, Fold, Target, characters};
 use super::external::Recording;
+use super::forms::complete_form;
 use super::report::{Report, Row, Typed};
 use super::user::UnitTypist;
 use super::walks::Walks;
 use super::{RunSettings, Variant};
 use crate::error::Result;
-use crate::prediction::model::{Model, ModelBuilder, ModelSettings, generator_accepts};
+use crate::prediction::model::{Model, ModelBuilder, ModelSettings, fold, generator_accepts};
 use crate::prediction::units::{AnalysisTokenizer, UnitGrammar, UnitKey};
 use crate::prediction::walk::{WalkLimits, Walker};
 use crate::transducer::{Transducer, TransducerTablesInterface};
@@ -218,8 +219,9 @@ impl<T: TransducerTablesInterface> Scorer<'_, T> {
     /// `scored` typed as one text, once with each variant of `typing` and
     /// the model it ranks with, adding each variant's words to its row of
     /// `rows`. The context is the keys of each word's target from the start
-    /// of `scored`, as the model builder counts them; a token with no target
-    /// breaks it, as it breaks the builder's runs. Tokens with no
+    /// of `scored`, and the forms of the tokens with a target, capitals
+    /// folded, as the model builder counts them; a token with no target
+    /// breaks both, as it breaks the builder's runs. Tokens with no
     /// characters, such as punctuation, are not typed. Each word is typed
     /// from an empty word, so `scored` typed in parts scores as it does
     /// typed whole, and the variants share the word's walks, since a walk
@@ -241,8 +243,13 @@ impl<T: TransducerTablesInterface> Scorer<'_, T> {
             .collect::<Result<Vec<_>>>()?;
         let mut walks = Walks::new(Walker::new(self.generator, self.grammar, self.limits)?);
         let kept = |model: &Model<'_>| model.order().saturating_sub(1);
-        let keep = typing.iter().map(|&(model, _)| kept(model)).max();
+        let keep = typing
+            .iter()
+            .map(|&(model, _)| kept(model))
+            .max()
+            .unwrap_or(0);
         let mut context: Vec<UnitKey> = Vec::new();
+        let mut before: Vec<String> = Vec::new();
         for index in scored.start..part.end {
             let Some(token) = corpus.tokens().get(index) else {
                 break;
@@ -251,14 +258,16 @@ impl<T: TransducerTablesInterface> Scorer<'_, T> {
             let length = characters(token.surface);
             if length > 0 && index >= part.start {
                 let units = target.map_or(0, |target| target.units.len());
-                for ((typist, &(model, _)), row) in typists.iter_mut().zip(typing).zip(&mut *rows) {
-                    let before = &context[context.len().saturating_sub(kept(model))..];
-                    let typed = match target {
-                        Some(target) => {
-                            typist.type_word(token.surface, target, before, &mut walks)?
-                        }
-                        None => Typed::in_full(length),
+                for ((typist, &(model, variant)), row) in
+                    typists.iter_mut().zip(typing).zip(&mut *rows)
+                {
+                    let word = Word {
+                        surface: token.surface,
+                        target,
+                        context: &context[context.len().saturating_sub(kept(model))..],
+                        before: &before[before.len().saturating_sub(kept(model))..],
                     };
+                    let typed = type_one(typist, model, variant, &word, &mut walks)?;
                     row.add(units, length, &typed);
                 }
                 walks.clear();
@@ -266,13 +275,49 @@ impl<T: TransducerTablesInterface> Scorer<'_, T> {
             match target {
                 Some(target) => {
                     context.extend(target.keys.iter().cloned());
-                    let excess = context.len().saturating_sub(keep.unwrap_or(0));
-                    context.drain(..excess);
+                    context.drain(..context.len().saturating_sub(keep));
+                    before.push(fold(token.surface));
+                    before.drain(..before.len().saturating_sub(keep));
                 }
-                None => context.clear(),
+                None => {
+                    context.clear();
+                    before.clear();
+                }
             }
         }
         Ok(())
+    }
+}
+
+/// A word to type, and what comes before it.
+struct Word<'w> {
+    surface: &'w str,
+    target: Option<&'w Target>,
+    context: &'w [UnitKey],
+    before: &'w [String],
+}
+
+/// How one variant's user types a word: by units, with counted forms
+/// beside them when the variant offers both; by counted forms alone when it
+/// offers no units, or when the word has no target to build; or in full.
+// [spec:hfst:def:prediction-evaluation.keystrokes]
+// [spec:hfst:sem:prediction.seen-forms]
+fn type_one<T: TransducerTablesInterface>(
+    typist: &mut UnitTypist<'_, '_, T>,
+    model: &Model<'_>,
+    variant: &Variant,
+    word: &Word<'_>,
+    walks: &mut Walks<'_, T>,
+) -> Result<Typed> {
+    match word.target {
+        Some(target) if variant.units => {
+            typist.type_word(word.surface, target, word.context, word.before, walks)
+        }
+        Some(_) | None if variant.forms => {
+            let scores = model.form_scores(word.before);
+            Ok(complete_form(&scores, variant.shown, word.surface))
+        }
+        Some(_) | None => Ok(Typed::in_full(characters(word.surface))),
     }
 }
 
