@@ -8,7 +8,7 @@ use std::ops::Range;
 
 use super::format::le_u32;
 use super::read::BACKOFF_FACTOR;
-use super::{Backoff, Model, fold};
+use super::{Backoff, Model, fold, is_character};
 use crate::prediction::units::UnitKey;
 use crate::prediction::walk::{SeenForm, SeenForms};
 
@@ -234,7 +234,8 @@ pub struct FormScores<'m, 'a> {
 
 impl<'m, 'a> FormScores<'m, 'a> {
     /// The forms on offer for letters typed: those that start with them,
-    /// capitals folded.
+    /// capitals folded, and that hold a character other than spaces and
+    /// punctuation.
     // [spec:hfst:sem:prediction.seen-forms]
     pub fn offered(&self, typed: &str) -> Offered {
         let range = self.model.form_range(&fold(typed));
@@ -247,7 +248,21 @@ impl<'m, 'a> FormScores<'m, 'a> {
                     .unwrap_or(self.levels.len()),
             ),
         };
-        Offered { range, level }
+        Offered {
+            range,
+            level,
+            words_only: !typed.chars().any(is_character),
+        }
+    }
+
+    /// True for a form on offer: one that holds a character other than
+    /// spaces and punctuation, which every form does that starts with
+    /// letters typed that hold one.
+    fn is_offered(&self, offered: &Offered, id: u32) -> bool {
+        !offered.words_only
+            || self
+                .text(id)
+                .is_some_and(|form| form.chars().any(is_character))
     }
 
     /// A form's score after the context, as a share of the forms counted
@@ -289,6 +304,7 @@ impl<'m, 'a> FormScores<'m, 'a> {
             .range
             .clone()
             .filter_map(|id| u32::try_from(id).ok())
+            .filter(|&id| self.is_offered(offered, id))
             .map(|id| (id, self.score(offered, id)))
             .collect();
         let compare = |a: &(u32, Option<f64>), b: &(u32, Option<f64>)| match (a.1, b.1) {
@@ -318,7 +334,7 @@ impl<'m, 'a> FormScores<'m, 'a> {
     /// The form on offer whose text is `form` with capitals folded.
     pub fn find(&self, offered: &Offered, form: &str) -> Option<u32> {
         let id = self.model.form_id(&fold(form))?;
-        offered.range.contains(&(id as usize)).then_some(id)
+        (offered.range.contains(&(id as usize)) && self.is_offered(offered, id)).then_some(id)
     }
 
     fn seen(&self, id: u32) -> Option<SeenForm> {
@@ -348,16 +364,10 @@ pub struct Offered {
     /// scored after: the longest after which one of them was seen. The
     /// number of levels stands for no context.
     level: Option<usize>,
-}
-
-impl Offered {
-    pub fn len(&self) -> usize {
-        self.range.len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.range.is_empty()
-    }
+    /// The letters typed hold no character other than spaces and
+    /// punctuation, so the forms that start with them must be checked for
+    /// one.
+    words_only: bool,
 }
 
 struct OwnedOffer<'m, 'a> {

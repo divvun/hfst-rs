@@ -1,9 +1,7 @@
 use std::ops::Range;
 
-use icu::properties::CodePointMapData;
-use icu::properties::props::{GeneralCategory, GeneralCategoryGroup};
-
 use crate::error::Result;
+pub use crate::prediction::model::is_character;
 use crate::prediction::units::{AnalysisTokenizer, Unit, UnitGrammar, UnitKey};
 
 /// One token of analysed text in hfst-lookup's format.
@@ -187,15 +185,6 @@ fn read_tokens(text: &str) -> Result<Vec<Token<'_>>> {
     }
     tokens.extend(open);
     Ok(tokens)
-}
-
-/// True for a character the measure counts: neither a space nor
-/// punctuation. Typing one costs a tap.
-// [spec:hfst:def:prediction-evaluation.keystrokes]
-pub fn is_character(c: char) -> bool {
-    !c.is_whitespace()
-        && !GeneralCategoryGroup::Punctuation
-            .contains(CodePointMapData::<GeneralCategory>::new().get(c))
 }
 
 /// The characters of a word that the measure counts.

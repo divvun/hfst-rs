@@ -55,6 +55,9 @@
 //! at an equal share of one over its readings adds a fraction to its units,
 //! so counts are `f32`.
 
+use icu::properties::CodePointMapData;
+use icu::properties::props::{GeneralCategory, GeneralCategoryGroup};
+
 mod build;
 mod format;
 mod forms;
@@ -81,6 +84,18 @@ pub use build::{BuildReport, ModelBuilder};
 pub use forms::{FormScores, Offered};
 pub use input::generator_accepts;
 pub use read::Model;
+
+/// True for a character the measure counts: neither a space nor
+/// punctuation. Typing one costs a tap, and a counted form is offered as a
+/// word only when it holds one, so that punctuation, which the model counts
+/// for the context, never takes the place of a word.
+// [spec:hfst:def:prediction-evaluation.keystrokes]
+// [spec:hfst:sem:prediction.seen-forms]
+pub fn is_character(c: char) -> bool {
+    !c.is_whitespace()
+        && !GeneralCategoryGroup::Punctuation
+            .contains(CodePointMapData::<GeneralCategory>::new().get(c))
+}
 
 /// Capitals folded, as a keyboard's shift state folds them: each character
 /// by its lower-case mapping, the mapping the harness's typing compares

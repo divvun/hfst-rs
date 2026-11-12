@@ -237,3 +237,32 @@ fn size_limit_drops_form_runs_with_unit_runs() {
         .unwrap_err();
     assert!(error.to_string().contains("1 bytes more"), "{error}");
 }
+
+/// `.` is counted three times, more than any word, but is never offered as
+/// one; it stays in the runs, so the forms after it are ranked by it.
+// [spec:hfst:sem:prediction.seen-forms/test]
+// [spec:hfst:req:prediction-model.word-forms/test]
+#[test]
+fn punctuation_is_counted_but_never_offered() {
+    let stop: (&str, &[&str]) = (".", &["sini+V+Ind+3Sg"]);
+    let nuna: (&str, &[&str]) = ("nuna", &["nuna+N+Abs+Sg"]);
+    let said: (&str, &[&str]) = ("oqarpoq", &["oqar+V+Ind+3Sg"]);
+    let text = lookup_forms(&[nuna, stop, stop, nuna, stop, said]);
+    let bytes = build_text(settings(2, Backoff::StupidBackoff), &text);
+    let model = Model::from_bytes(&bytes, &grammar()).unwrap();
+    assert_eq!(model.form_count(&["."]), 3.0);
+    assert_eq!(model.form_count(&[".", "nuna"]), 1.0);
+    let offered = |context: &[&str], typed: &str| -> Vec<String> {
+        let scores = model.form_scores(&before(context));
+        let offered = scores.offered(typed);
+        assert!(scores.find(&offered, ".").is_none());
+        scores
+            .best(&offered, Some(2))
+            .into_iter()
+            .map(|(id, _)| scores.text(id).unwrap().to_owned())
+            .collect()
+    };
+    assert_eq!(offered(&[], ""), ["nuna", "oqarpoq"]);
+    assert_eq!(offered(&["."], ""), ["nuna", "oqarpoq"]);
+    assert!(offered(&[], ".").is_empty());
+}
