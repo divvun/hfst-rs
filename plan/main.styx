@@ -9284,12 +9284,20 @@ children (
                 title "Close what the compile feature left: depth guards in the pmatch and twolc parsers as XRE has, so no input overflows the stack; native compiles through hfst-embed on a stack as large as the CLI's; flookup's inversion and the optimized-lookup refusals moved into tools::lookup for the CLI and hfst-embed to share; hfst_embed::compile re-exporting the file resolvers"
                 kind @fix
                 deps (compile-surface.embed-compile compile-surface.embed-transducer)
+                sealed true
                 log (
                     {
                         at 2026-11-12T16:54:20.099851Z
                         author "brendan@necessary.nu"
                         kind @status
                         text "Todo → Doing (nplan start)"
+                    }
+
+                    {
+                        at 2026-11-12T20:25:41.869738Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan complete)"
                     }
                 )
             }
