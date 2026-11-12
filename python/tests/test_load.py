@@ -9,7 +9,7 @@ import divvun_hfst
 from conftest import READ, Fixtures
 
 
-# [spec:hfst:req:python.load/test]
+# [spec:hfst:req:python.load+1/test]
 def test_a_stream_reads_in_stream_order(fixtures: Fixtures) -> None:
     transducers = divvun_hfst.read_transducers(fixtures.bytes("ordered.hfst"))
     assert [t.name for t in transducers] == ["first", "second"]
@@ -19,7 +19,7 @@ def test_a_stream_reads_in_stream_order(fixtures: Fixtures) -> None:
     assert [t.properties for t in bare] == [{}, {}]
 
 
-# [spec:hfst:req:python.load/test]
+# [spec:hfst:req:python.load+1/test]
 def test_both_types_read_with_and_without_headers(fixtures: Fixtures) -> None:
     for kind in READ:
         for suffix in ("hfst", "bare"):
@@ -33,7 +33,7 @@ def test_both_types_read_with_and_without_headers(fixtures: Fixtures) -> None:
             assert [r.output for r in optimised.lookup("cat")] == ["dog"]
 
 
-# [spec:hfst:req:python.load/test]
+# [spec:hfst:req:python.load+1/test]
 def test_properties_leave_out_version_type_and_name(fixtures: Fixtures) -> None:
     transducer = divvun_hfst.read_transducer(fixtures.bytes("first.hfst"))
     assert transducer.name == "first"
@@ -45,7 +45,7 @@ def test_properties_leave_out_version_type_and_name(fixtures: Fixtures) -> None:
     assert {t.name for t in container[1:]} == {"Animal"}
 
 
-# [spec:hfst:req:python.load/test]
+# [spec:hfst:req:python.load+1/test]
 def test_bytes_and_bytearray_both_read(fixtures: Fixtures) -> None:
     data = fixtures.bytes("tokenise.pmhfst")
     for given in (data, bytearray(data)):
@@ -56,7 +56,7 @@ def test_bytes_and_bytearray_both_read(fixtures: Fixtures) -> None:
         divvun_hfst.read_dhfst(memoryview(data))  # type: ignore[arg-type]
 
 
-# [spec:hfst:req:python.load/test]
+# [spec:hfst:req:python.load+1/test]
 def test_every_load_takes_str_and_pathlike(fixtures: Fixtures) -> None:
     for path in (fixtures.path("first.hfst"), str(fixtures.path("first.hfst"))):
         assert divvun_hfst.load_transducer(path).name == "first"
@@ -68,7 +68,7 @@ def test_every_load_takes_str_and_pathlike(fixtures: Fixtures) -> None:
     assert acceptor.type == "acceptor"
 
 
-# [spec:hfst:req:python.load/test]
+# [spec:hfst:req:python.load+1/test]
 def test_one_transducer_readers_refuse_several(fixtures: Fixtures) -> None:
     with pytest.raises(divvun_hfst.FormatError, match="holds 2") as raised:
         divvun_hfst.read_transducer(fixtures.bytes("ordered.hfst"))
@@ -82,8 +82,34 @@ def test_one_transducer_readers_refuse_several(fixtures: Fixtures) -> None:
     assert raised.value.code == "transducer-count"
 
 
-# [spec:hfst:req:python.load/test]
-def test_formats_not_read_are_named(fixtures: Fixtures) -> None:
+# [spec:hfst:req:python.load+1/test]
+def test_every_type_reads(fixtures: Fixtures) -> None:
+    cases = {
+        "words.openfst-tropical.hfst": "openfst-tropical",
+        "words.openfst-tropical.bare": "openfst-tropical",
+        "words.foma.hfst": "foma",
+        "words.foma.plain": "foma",
+        "words.optimized-lookup-weighted.hfst": "optimized-lookup-weighted",
+        "words.optimized-lookup-unweighted.bare": "optimized-lookup-unweighted",
+    }
+    for name, kind in cases.items():
+        [transducer] = divvun_hfst.read_transducers(fixtures.bytes(name))
+        assert transducer.type == kind, name
+        assert [r.output for r in transducer.lookup("cat")] == ["dog"], name
+        assert sorted(r.output for r in transducer.lookup("mouse")) == ["mice", "mouse"], name
+
+
+# [spec:hfst:req:python.load+1/test]
+def test_a_thfst_directory_loads(fixtures: Fixtures) -> None:
+    for path in (fixtures.path("words.thfst"), str(fixtures.path("words.thfst"))):
+        [transducer] = divvun_hfst.load_transducers(path)
+        assert transducer.type == "optimized-lookup-weighted"
+        assert [r.output for r in transducer.lookup("cat")] == ["dog"]
+        assert divvun_hfst.load_transducer(path).lookup("cat") == transducer.lookup("cat")
+
+
+# [spec:hfst:req:python.load+1/test]
+def test_other_readers_name_formats_they_refuse(fixtures: Fixtures) -> None:
     cases = {
         "words.openfst-tropical.hfst": "openfst-tropical",
         "words.openfst-tropical.bare": "openfst-tropical",
@@ -92,15 +118,18 @@ def test_formats_not_read_are_named(fixtures: Fixtures) -> None:
         "words.foma.plain": "foma",
     }
     for name, named in cases.items():
-        for read in (divvun_hfst.read_transducers, divvun_hfst.read_optimised_transducer):
-            with pytest.raises(divvun_hfst.FormatError) as raised:
-                read(fixtures.bytes(name))
-            assert raised.value.code == "unsupported-format", name
-            assert named in str(raised.value), name
-            assert "divvun-hfst does not read" in str(raised.value), name
+        with pytest.raises(divvun_hfst.FormatError) as raised:
+            divvun_hfst.read_optimised_transducer(fixtures.bytes(name))
+        assert raised.value.code == "unsupported-format", name
+        assert named in str(raised.value), name
+        assert "divvun-hfst does not read" in str(raised.value), name
+    with pytest.raises(divvun_hfst.FormatError) as raised:
+        divvun_hfst.read_transducers(fixtures.bytes("words.foma.bare"))
+    assert raised.value.code == "unsupported-format"
+    assert "gzip" in str(raised.value)
 
 
-# [spec:hfst:req:python.load/test]
+# [spec:hfst:req:python.load+1/test]
 def test_mixed_and_broken_streams_are_refused(fixtures: Fixtures) -> None:
     with pytest.raises(divvun_hfst.FormatError) as raised:
         divvun_hfst.read_transducers(fixtures.bytes("mixed.hfst"))
@@ -112,15 +141,16 @@ def test_mixed_and_broken_streams_are_refused(fixtures: Fixtures) -> None:
         assert raised.value.code == "invalid-format"
 
 
-# [spec:hfst:req:python.load/test]
-def test_errors_name_the_python_readers(fixtures: Fixtures) -> None:
-    with pytest.raises(divvun_hfst.FormatError, match="read_dhfst reads it"):
+# [spec:hfst:req:python.load+1/test]
+def test_dhfst_is_not_a_transducer_stream(fixtures: Fixtures) -> None:
+    with pytest.raises(divvun_hfst.FormatError, match="DHFST") as raised:
         divvun_hfst.read_transducers(fixtures.bytes("speller.acceptor.dhfst"))
+    assert raised.value.code == "unsupported-format"
     with pytest.raises(divvun_hfst.FormatError, match="read_transducers reads"):
         divvun_hfst.read_dhfst(fixtures.bytes("words.optimized-lookup-weighted.hfst"))
 
 
-# [spec:hfst:req:python.load/test]
+# [spec:hfst:req:python.load+1/test]
 def test_a_tokeniser_reads_only_pmatch_containers(fixtures: Fixtures) -> None:
     for name in ("words.optimized-lookup-weighted.hfst", "speller.acceptor.dhfst"):
         with pytest.raises(divvun_hfst.FormatError) as raised:
@@ -130,7 +160,7 @@ def test_a_tokeniser_reads_only_pmatch_containers(fixtures: Fixtures) -> None:
         divvun_hfst.read_tokeniser(fixtures.bytes("words.optimized-lookup-weighted.hfst"))
 
 
-# [spec:hfst:req:python.load/test]
+# [spec:hfst:req:python.load+1/test]
 def test_objects_come_only_from_readers() -> None:
     for cls in (
         divvun_hfst.Transducer,

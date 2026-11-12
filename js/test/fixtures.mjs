@@ -46,6 +46,8 @@ export function buildFixtures(hfst, out) {
   }
   // A native foma file is gzip-compressed, and foma also reads it uncompressed.
   writeFileSync(at("words.foma.plain"), gunzipSync(readFileSync(at("words.foma.bare"))));
+  // THFST, divvunspell's format, is a directory of three files.
+  tool("fst2fst", "-f", "thfst", at("words.openfst-tropical.hfst"), "-o", at("words.thfst"));
 
   // Several transducers concatenated, which an HFST3 stream is.
   for (const name of ["first", "second"]) {

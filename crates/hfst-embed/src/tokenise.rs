@@ -47,7 +47,7 @@ pub fn output_format(name: &str) -> Option<OutputFormat> {
 }
 
 // [spec:hfst:req:javascript.tokenise]
-// [spec:hfst:req:python.load]
+// [spec:hfst:req:python.load+1]
 /// The tokeniser in pmatch container bytes: a weighted optimized-lookup
 /// stream whose first transducer is named TOP, as `hfst pmatch2fst` writes,
 /// as a run over the container. A caller that wants more runs at once makes
@@ -699,7 +699,7 @@ mod tests {
         assert_eq!(cat.end - cat.start, 4, "an astral character is four bytes");
     }
 
-    // [spec:hfst:req:python.threads/test]
+    // [spec:hfst:req:python.threads+1/test]
     #[test]
     fn runs_over_one_core_agree_with_one_run() {
         let mut first = load(&fixture()).expect("the fixture loads");

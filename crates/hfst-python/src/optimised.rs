@@ -15,7 +15,7 @@ use crate::error::format_error;
 use crate::transducer::{LookupResult, described, properties};
 
 // [spec:hfst:req:python.lookup]
-// [spec:hfst:req:python.threads]
+// [spec:hfst:req:python.threads+1]
 /// An optimized-lookup transducer read for the optimised lookup, which is
 /// divvunspell's: its results are what divvunspell gives for the same
 /// transducer and word. Transducer.lookup gives hfst's. The two agree for
@@ -58,7 +58,7 @@ impl OptimisedTransducer {
     }
 
     // [spec:hfst:req:python.lookup]
-    // [spec:hfst:req:python.threads]
+    // [spec:hfst:req:python.threads+1]
     /// What divvunspell's lookup returns for `input`: every output of a path
     /// that reads it, with the path's weight, final weight included, lightest
     /// first, then by output in code point order. Each output comes once at
@@ -107,8 +107,8 @@ impl OptimisedTransducer {
     }
 }
 
-// [spec:hfst:req:python.load]
-// [spec:hfst:req:python.threads]
+// [spec:hfst:req:python.load+1]
+// [spec:hfst:req:python.threads+1]
 /// Reads the bytes `data` gives for the optimised lookup, without the GIL:
 /// `divvun-fst` keeps the bytes, so a copy made here is the only one.
 fn read(py: Python<'_>, data: impl FnOnce() -> Vec<u8> + Send) -> PyResult<OptimisedTransducer> {
@@ -120,7 +120,7 @@ fn read(py: Python<'_>, data: impl FnOnce() -> Vec<u8> + Send) -> PyResult<Optim
     })
 }
 
-// [spec:hfst:req:python.load]
+// [spec:hfst:req:python.load+1]
 /// The one optimized-lookup transducer in `data`, weighted or unweighted,
 /// with or without an HFST3 header, read for the optimised lookup. Bytes in
 /// any other format raise FormatError with code `unsupported-format`, naming
@@ -135,7 +135,7 @@ pub fn read_optimised_transducer(
     read(py, || data.to_vec())
 }
 
-// [spec:hfst:req:python.load]
+// [spec:hfst:req:python.load+1]
 /// The optimized-lookup transducer in the file at `path`, as
 /// read_optimised_transducer reads its bytes. A file that cannot be read
 /// raises the OSError open() raises.

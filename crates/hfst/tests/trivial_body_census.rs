@@ -156,6 +156,31 @@ const SANCTIONED: &[(&str, &str, &str, &str)] = &[
          and ignored), and applies_common_options above is false.",
     ),
     (
+        "crates/hfst-python/src/log.rs",
+        "record",
+        "{}",
+        "The collector keeps events alone: `enabled` refuses every span \
+         callsite, so no span is ever made whose values could be recorded.",
+    ),
+    (
+        "crates/hfst-python/src/log.rs",
+        "record_follows_from",
+        "{}",
+        "As record: with no span ever made, no span can follow another.",
+    ),
+    (
+        "crates/hfst-python/src/log.rs",
+        "enter",
+        "{}",
+        "As record: with no span ever made, none is entered.",
+    ),
+    (
+        "crates/hfst-python/src/log.rs",
+        "exit",
+        "{}",
+        "As record: with no span ever made, none is exited.",
+    ),
+    (
         "crates/hfst-openfst/src/flag_overlay_compose/lookahead.rs",
         "lookahead_prefix",
         "false",

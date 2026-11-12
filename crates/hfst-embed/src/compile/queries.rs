@@ -357,6 +357,7 @@ impl Transducer {
         }
     }
 
+    // [spec:hfst:req:python.lookup]
     // [spec:hfst:req:python.transducer]
     /// The results of looking `input` up, as the read-only transducer's
     /// lookup gives them: for optimized lookup, the library's flag-aware

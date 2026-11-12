@@ -23,6 +23,7 @@ from conftest import ROOT, Fixtures
 PACKAGE = Path(divvun_hfst.__file__).parent
 STUB = ast.parse((PACKAGE / "_divvun_hfst.pyi").read_text(encoding="utf-8"))
 OPTIONS = ast.parse((PACKAGE / "_options.py").read_text(encoding="utf-8"))
+RESULTS = ast.parse((PACKAGE / "_results.py").read_text(encoding="utf-8"))
 LICENCES = {"COPYING": ROOT / "crates/hfst-cli/COPYING", "COPYING.LESSER": ROOT / "COPYING"}
 
 
@@ -136,6 +137,7 @@ def test_the_wheel_is_divvun_hfst_under_lgpl(wheel: Path) -> None:
     assert package - native == {
         "divvun_hfst/__init__.py",
         "divvun_hfst/_options.py",
+        "divvun_hfst/_results.py",
         "divvun_hfst/_divvun_hfst.pyi",
         "divvun_hfst/py.typed",
     }
@@ -156,7 +158,7 @@ def test_a_named_wheel_is_the_one_imported() -> None:
 # [spec:hfst:req:python.module/test]
 def test_one_wheel_serves_cpython_311_on(wheel: Path) -> None:
     pyo3 = toml(ROOT / "crates/hfst-python/Cargo.toml")["dependencies"]["pyo3"]
-    assert pyo3["features"] == ["abi3-py311"]
+    assert "abi3-py311" in pyo3["features"]
     assert f"-{divvun_hfst.__version__}-cp311-abi3-" in wheel.name
     with zipfile.ZipFile(wheel) as built:
         [native] = [
@@ -170,7 +172,10 @@ def test_one_wheel_serves_cpython_311_on(wheel: Path) -> None:
 # [spec:hfst:req:python.typed/test]
 def test_the_stub_declares_the_whole_api() -> None:
     assert (PACKAGE / "py.typed").is_file()
-    assert set(divvun_hfst.__all__) <= set(stub_names()) | {"TokeniseOptions", "FormatOptions"}
+    results = {node.name for node in RESULTS.body if isinstance(node, ast.ClassDef)}
+    assert set(divvun_hfst.__all__) <= (
+        set(stub_names()) | {"TokeniseOptions", "FormatOptions"} | results
+    )
     declared = {n for n in stub_names() if not n.startswith("_")} | {"__version__"}
     native = {n for n in dir(divvun_hfst._divvun_hfst) if not n.startswith("_")} | {"__version__"}
     assert declared == native
@@ -179,7 +184,7 @@ def test_the_stub_declares_the_whole_api() -> None:
 
 # [spec:hfst:req:python.typed/test]
 def test_no_public_signature_uses_any() -> None:
-    for node in [*ast.walk(STUB), *ast.walk(OPTIONS)]:
+    for node in [*ast.walk(STUB), *ast.walk(OPTIONS), *ast.walk(RESULTS)]:
         assert not (isinstance(node, ast.Name) and node.id == "Any")
         assert not (isinstance(node, ast.Attribute) and node.attr == "Any")
 

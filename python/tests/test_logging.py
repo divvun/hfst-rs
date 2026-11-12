@@ -80,3 +80,18 @@ def test_logging_disable_keeps_nothing(
     finally:
         logging.disable(logging.NOTSET)
     assert caplog.records == []
+
+
+# [spec:hfst:req:python.logging/test]
+# [spec:hfst:req:python.threads+1/test]
+def test_events_reach_logging_from_the_compile_stack(
+    fixtures: Fixtures, caplog: pytest.LogCaptureFixture
+) -> None:
+    flags = divvun_hfst.load_transducer(fixtures.path("flags.openfst-tropical.hfst"))
+    with caplog.at_level(logging.WARNING):
+        flags.compose(flags.copy())
+    [record] = caplog.records
+    assert record.name == "hfst_embed.compile"
+    assert record.levelno == logging.WARNING
+    assert "flag" in record.getMessage()
+

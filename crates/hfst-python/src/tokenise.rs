@@ -133,7 +133,7 @@ impl Token {
 }
 
 // [spec:hfst:req:python.tokenise]
-// [spec:hfst:req:python.threads]
+// [spec:hfst:req:python.threads+1]
 /// A tokeniser read from a pmatch container, as `hfst tokenise` reads one.
 /// It holds the container's tables alone and is immutable, so threads may
 /// tokenise with it at the same time: each call is a run of its own, without
@@ -143,10 +143,22 @@ pub struct Tokeniser {
     core: Arc<PmatchCore>,
 }
 
+impl Tokeniser {
+    pub fn from_core(core: Arc<PmatchCore>) -> Self {
+        Tokeniser { core }
+    }
+
+    /// The container's tables, which each call runs over with a run state of
+    /// its own.
+    pub fn core(&self) -> &Arc<PmatchCore> {
+        &self.core
+    }
+}
+
 #[pymethods]
 impl Tokeniser {
     // [spec:hfst:req:python.tokenise]
-    // [spec:hfst:req:python.threads]
+    // [spec:hfst:req:python.threads+1]
     /// The tokens the tokeniser finds in `text`, in text order, matching the
     /// whole text as one input. `hfst tokenise` takes each paragraph as one
     /// input, so for text with no blank line these are the cohorts
@@ -175,7 +187,7 @@ impl Tokeniser {
     }
 
     // [spec:hfst:req:python.tokenise]
-    // [spec:hfst:req:python.threads]
+    // [spec:hfst:req:python.threads+1]
     /// Exactly what `hfst tokenise` prints in `format` when `text` is its
     /// standard input, given the flags `options` stand for.
     #[pyo3(signature = (text, format, /, options = None))]
@@ -366,8 +378,8 @@ pub fn check_format_options(options: &Bound<'_, PyAny>) -> PyResult<()> {
     format_options(options).map(drop)
 }
 
-// [spec:hfst:req:python.load]
-// [spec:hfst:req:python.threads]
+// [spec:hfst:req:python.load+1]
+// [spec:hfst:req:python.threads+1]
 /// Reads a tokeniser from `data` without the GIL.
 fn read(py: Python<'_>, data: &[u8]) -> PyResult<Tokeniser> {
     let read = without_gil(py, || {
@@ -377,7 +389,7 @@ fn read(py: Python<'_>, data: &[u8]) -> PyResult<Tokeniser> {
     Ok(Tokeniser { core })
 }
 
-// [spec:hfst:req:python.load]
+// [spec:hfst:req:python.load+1]
 /// The tokeniser in a pmatch container's bytes, as `hfst pmatch2fst` writes
 /// them. Bytes that are not a pmatch container raise FormatError with code
 /// `invalid-format`, among them a transducer that is not one: `hfst
@@ -388,7 +400,7 @@ pub fn read_tokeniser(py: Python<'_>, data: PyBackedBytes) -> PyResult<Tokeniser
     read(py, &data)
 }
 
-// [spec:hfst:req:python.load]
+// [spec:hfst:req:python.load+1]
 /// The tokeniser in the pmatch container at `path`, as read_tokeniser reads
 /// its bytes. A file that cannot be read raises the OSError open() raises.
 #[pyfunction]

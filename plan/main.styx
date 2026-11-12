@@ -9216,6 +9216,21 @@ children (
                     )
                 }
                 deps (compile-surface.embed-transducer compile-surface.embed-gaps)
+                log (
+                    {
+                        at 2026-11-12T20:35:18.003049Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
+
+                    {
+                        at 2026-11-12T21:28:40.345423Z
+                        author "brendan@necessary.nu"
+                        kind @decision
+                        text "Readings of python.operations where the rule and the tools pull apart. (1) `hfst name` is `Transducer.set_name(name)`, since python.transducer gives `name` to the attribute that reads it. (2) `guessify()` changes the transducer into the guesser and returns the model form generator the tool writes after it (None with do_not_compile_generator): the one operation that does not return None, because the tool writes two transducers and `guess` takes the second. (3) The queries over several transducers or none are module functions named after hfst-embed's: lookup_report, flookup_report, optimized_lookup_report, pair_test and grep; `Transducer.lookup` keeps python.lookup's shape. pmatch is `Tokeniser.pmatch`, and the naive tokeniser `hfst tokenize` makes is `Transducer.naive_tokeniser()`, its tokenize_multichar left to the options of each call. (4) Query results are frozen dataclasses in divvun_hfst/_results.py. (5) Keyword names follow the tools' long options, with `from_` where the option is `--from`; `repeat` takes math.inf, and `to=None` for no upper bound. (6) `Transducer.convert(type)` is offered as an in-place fst2fst conversion, so an optimized-lookup transducer can be brought into the algebra."
+                    }
+                )
             }
 
             {

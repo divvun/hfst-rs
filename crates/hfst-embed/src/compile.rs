@@ -26,7 +26,7 @@ mod writers;
 pub use compilers::*;
 pub use operations::*;
 pub use queries::*;
-pub use transducer::{Operand, Transducer, WriteOptions, read_transducers};
+pub use transducer::{Operand, Transducer, WriteOptions, read_thfst, read_transducers};
 pub use writers::*;
 
 // [spec:hfst:req:embed.compile-files]

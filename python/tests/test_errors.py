@@ -63,9 +63,20 @@ def test_a_missing_file_raises_what_open_raises(tmp_path: Path) -> None:
         with pytest.raises(FileNotFoundError) as raised:
             load(missing)
         assert raised.value.filename == str(missing)
+    for load in LOADERS[2:]:
         with pytest.raises(OSError) as directory:
             load(tmp_path)
         assert directory.value.filename == str(tmp_path)
+
+
+# [spec:hfst:req:python.errors/test]
+# [spec:hfst:req:python.load+1/test]
+def test_a_directory_not_thfst_is_refused(tmp_path: Path) -> None:
+    for load in LOADERS[:2]:
+        with pytest.raises(divvun_hfst.FormatError) as raised:
+            load(tmp_path)
+        assert raised.value.code == "invalid-format"
+        assert "thfst" in str(raised.value)
 
 
 # [spec:hfst:req:python.errors/test]

@@ -1,9 +1,9 @@
 """Divvun HFST for Python.
 
-Reads optimized-lookup transducers, pmatch tokenisers and DHFST spellers, and
-looks words up, tokenises text and checks words against DHFST acceptors with
-them, giving the results the hfst tools give. It reads and looks up; it does
-not compile, write or change transducers.
+Reads transducers of every type the hfst library reads, pmatch tokenisers and
+DHFST spellers; looks words up, tokenises text and checks words against DHFST
+acceptors with them; and transforms transducers and reports on them as the
+hfst tools do, giving the results the tools give.
 """
 
 # [spec:hfst:req:python.module]
@@ -16,20 +16,27 @@ from divvun_hfst._divvun_hfst import (
     FormatError,
     HfstError,
     HfstErrorCode,
+    LookupInputFormat,
     LookupResult,
     OptimisedTransducer,
     Reading,
+    ReweightFunction,
     Token,
     TokeniseFormat,
     Tokeniser,
     Transducer,
     TransducerType,
     __version__,
+    flookup_report,
+    grep,
     load_dhfst,
     load_optimised_transducer,
     load_tokeniser,
     load_transducer,
     load_transducers,
+    lookup_report,
+    optimized_lookup_report,
+    pair_test,
     read_dhfst,
     read_optimised_transducer,
     read_tokeniser,
@@ -37,18 +44,50 @@ from divvun_hfst._divvun_hfst import (
     read_transducers,
 )
 from divvun_hfst._options import FormatOptions, TokeniseOptions
+from divvun_hfst._results import (
+    AlphabetComparison,
+    Alphabets,
+    ExtractedPath,
+    GrepLine,
+    GrepReport,
+    GuessReport,
+    LookupReport,
+    OptimizedLookupReport,
+    PairTestResult,
+    PmatchLocation,
+    PmatchResult,
+    RuleFailure,
+    Summary,
+    SummaryDetails,
+)
 
 __all__ = [
     "AcceptorInfo",
+    "AlphabetComparison",
+    "Alphabets",
     "DhfstAcceptor",
     "DhfstErrorModel",
+    "ExtractedPath",
     "FormatError",
     "FormatOptions",
+    "GrepLine",
+    "GrepReport",
+    "GuessReport",
     "HfstError",
     "HfstErrorCode",
+    "LookupInputFormat",
+    "LookupReport",
     "LookupResult",
     "OptimisedTransducer",
+    "OptimizedLookupReport",
+    "PairTestResult",
+    "PmatchLocation",
+    "PmatchResult",
     "Reading",
+    "ReweightFunction",
+    "RuleFailure",
+    "Summary",
+    "SummaryDetails",
     "Token",
     "TokeniseFormat",
     "TokeniseOptions",
@@ -56,11 +95,16 @@ __all__ = [
     "Transducer",
     "TransducerType",
     "__version__",
+    "flookup_report",
+    "grep",
     "load_dhfst",
     "load_optimised_transducer",
     "load_tokeniser",
     "load_transducer",
     "load_transducers",
+    "lookup_report",
+    "optimized_lookup_report",
+    "pair_test",
     "read_dhfst",
     "read_optimised_transducer",
     "read_tokeniser",

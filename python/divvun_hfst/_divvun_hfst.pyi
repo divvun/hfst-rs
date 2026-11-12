@@ -4,10 +4,23 @@ divvun_hfst package re-exports. Every public name is declared here, and
 nothing uses Any.
 """
 
+from collections.abc import Mapping, Sequence
 from os import PathLike
 from typing import ClassVar, Final, Literal, TypeAlias, final
 
 from divvun_hfst._options import FormatOptions, TokeniseOptions
+from divvun_hfst._results import (
+    AlphabetComparison,
+    Alphabets,
+    ExtractedPath,
+    GrepReport,
+    GuessReport,
+    LookupReport,
+    OptimizedLookupReport,
+    PairTestResult,
+    PmatchResult,
+    Summary,
+)
 
 __version__: Final[str]
 
@@ -24,7 +37,33 @@ HfstErrorCode: TypeAlias = Literal[
     "transducer-count",
 ]
 
-TransducerType: TypeAlias = Literal["optimized-lookup-weighted", "optimized-lookup-unweighted"]
+TransducerType: TypeAlias = Literal[
+    "optimized-lookup-weighted", "optimized-lookup-unweighted", "openfst-tropical", "foma"
+]
+
+ReweightFunction: TypeAlias = Literal[
+    "cos",
+    "sin",
+    "tan",
+    "acos",
+    "asin",
+    "atan",
+    "cosh",
+    "sinh",
+    "tanh",
+    "exp",
+    "log",
+    "log10",
+    "sqrt",
+    "floor",
+    "ceil",
+]
+"""The functions `Transducer.reweight` applies to a weight, as `hfst reweight
+--function` names them."""
+
+LookupInputFormat: TypeAlias = Literal["text", "spaced", "apertium"]
+"""How a lookup reads each line: as text, as symbols separated by spaces, or
+in Apertium stream format."""
 
 TokeniseFormat: TypeAlias = Literal[
     "segment", "space-separated", "xerox", "cg", "finnpos", "giella-cg", "conllu", "visl"
@@ -55,16 +94,17 @@ class LookupResult:
 
 @final
 class Transducer:
-    """An optimized-lookup transducer, for lookup with the hfst library's
-    engine, whose results are what `hfst lookup` prints. It is immutable, so
-    threads may look up in it at the same time, each lookup a run of its own
-    without the GIL. Make one with read_transducers, read_transducer or their
-    load_ forms."""
+    """A transducer of any type the hfst library reads: tropical OpenFst,
+    foma, and optimized lookup, weighted and unweighted. Its operations change
+    it in place and return None; copy() gives one of its own to change.
+    Threads may share one: an operation holds it for its length, and a call on
+    a transducer another thread is changing waits until that change is done.
+    Every call releases the GIL while the library works. Make one with
+    read_transducers, read_transducer or their load_ forms."""
 
     @property
     def type(self) -> TransducerType:
-        """Which optimized-lookup format the transducer is in, weighted or
-        unweighted."""
+        """The transducer's type."""
     @property
     def name(self) -> str:
         """The `name` property of its HFST3 header, or `""` when there is
@@ -74,18 +114,297 @@ class Transducer:
         """The properties of its HFST3 header, such as a pmatch container's
         settings, as a new dict. `name` and `type` have their own attributes,
         and the header's `version` belongs to the stream rather than the
-        transducer, so none of the three is here. A transducer with no header
-        has none."""
+        transducer, so none of the three is here."""
     def lookup(
         self, input: str, /, *, limit: int | None = None, time_limit: float | None = None
     ) -> list[LookupResult]:
         """Every result the hfst library's lookup finds for `input`, lightest
-        first, then by output in code point order, then by symbols. Flag
-        diacritics are obeyed, so a path they block is not a result. `limit`
-        stops the search once it has found that many paths, so they are the
-        first it found, not the lightest. `time_limit` stops it after that
-        many seconds, and the lookup returns what it found; 0 sets no limit.
+        first, then by output in code point order, then by symbols. In
+        optimized lookup, flag diacritics are obeyed, so a path they block is
+        not a result; `limit` stops the search once it has found that many
+        paths, so they are the first it found, not the lightest; `time_limit`
+        stops it after that many seconds, and the lookup returns what it
+        found, 0 setting no limit. In the other types the results are what
+        `hfst lookup` finds, in its order, at most `limit` of them.
         OptimisedTransducer.lookup gives divvunspell's results instead."""
+    def copy(self, /) -> Transducer:
+        """A transducer of its own with the same contents, which changes
+        independently of this one."""
+    def convert(self, type: TransducerType, /, *, quick: bool = False) -> None:
+        """Converts the transducer to `type`, in place, as `hfst fst2fst`
+        converts it. `quick` packs optimized-lookup tables less tightly, as
+        `--quick`."""
+
+    # Operations: each changes the transducer, as the hfst tool it is named
+    # after changes the transducer it reads, and returns None.
+
+    def determinize(self, /, *, encode_weights: bool = False) -> None:
+        """Determinizes the transducer, as `hfst determinize`.
+        `encode_weights` treats each weight as part of its arc's label, as
+        `--encode-weights`."""
+    def minimize(self, /, *, encode_weights: bool = False) -> None:
+        """Minimizes the transducer, as `hfst minimize`."""
+    def invert(self, /) -> None:
+        """Swaps the input and output sides, as `hfst invert`."""
+    def reverse(self, /) -> None:
+        """Reverses every path, as `hfst reverse`."""
+    def remove_epsilons(self, /) -> None:
+        """Removes the epsilon arcs, as `hfst remove-epsilons`."""
+    def prune_alphabet(self, /, *, force: bool = False) -> None:
+        """Drops the symbols no arc uses from the alphabet, as
+        `hfst prune-alphabet`. `force` prunes even when an arc uses the
+        unknown or identity symbol, as `--force`."""
+    def project(self, /, *, project: Literal["input", "output"] = "output") -> None:
+        """Makes the transducer the identity on one side's language, as
+        `hfst project`."""
+    def push_weights(self, /, *, push: Literal["initial", "final"] = "final") -> None:
+        """Pushes the weights towards the initial state or the final states,
+        as `hfst push-weights`."""
+    def push_labels(self, /, *, push: Literal["initial", "final"] = "final") -> None:
+        """Pushes the labels towards the initial state or the final states,
+        as `hfst push-labels`."""
+    def realign(self, /) -> None:
+        """Realigns the symbols of each path, as `hfst realign`."""
+    def repeat(self, /, *, from_: float = 0.0, to: float | None = None) -> None:
+        """Makes the transducer repeat at least `from_` and at most `to`
+        times, as `hfst repeat --from --to`. Each is a whole number or
+        `math.inf`, and `to` None is `math.inf`."""
+    def insert_freely(self, /, *, symbol_pair: str, harmonise: bool = False) -> None:
+        """Inserts `symbol_pair`, `IN:OUT` with `@0@` for the epsilon, freely
+        anywhere along each path, as `hfst insert-freely`. `harmonise`
+        expands the identity and unknown symbols by the pair's symbols."""
+    def eliminate_flags(self, /, *, flag: str | None = None) -> None:
+        """Compiles the flag diacritics of the feature `flag`, or of every
+        feature, into the transducer's paths, as `hfst eliminate-flags`."""
+    def preprocess_for_optimized_lookup_format(self, /) -> None:
+        """Prepares the transducer for conversion to optimized lookup, as
+        `hfst preprocess-for-optimized-lookup-format`."""
+    def affix_guessify(
+        self, /, *, direction: Literal["prefix", "suffix"] = "suffix", weight: float = 1.0
+    ) -> None:
+        """Makes the transducer a guesser of the analyses of unknown words by
+        their affixes, as `hfst affix-guessify`: by their suffixes or their
+        prefixes, each guessed character costing `weight`."""
+    def expand_equivalences(
+        self,
+        /,
+        *,
+        from_: str | None = None,
+        to: str | None = None,
+        tsv: str | None = None,
+        level: Literal["first", "second", "both"] = "first",
+    ) -> None:
+        """Lets each symbol stand for the symbols it is equivalent to, as
+        `hfst expand-equivalences`: `from_` for `to`, or each line of `tsv`,
+        `FROM<TAB>TO<TAB>TO...`, on the `level` side."""
+    def kill_paths(self, /, *, symbol: str | None = None, tsv: str | None = None) -> None:
+        """Removes every arc carrying `symbol`, or any symbol `tsv` lists one
+        a line, as `hfst kill-paths`."""
+    def reweight(
+        self,
+        /,
+        *,
+        addition: float = 0.0,
+        multiplier: float = 1.0,
+        function: ReweightFunction | None = None,
+        lower_bound: float = 0.0,
+        upper_bound: float | None = None,
+        input_symbol: str | None = None,
+        output_symbol: str | None = None,
+        symbol: str | None = None,
+        end_states_only: bool = False,
+        arcs_only: bool = False,
+        tsv: str | None = None,
+    ) -> None:
+        """Changes the weights, as `hfst reweight`: each weight in bounds
+        becomes `function(weight * multiplier + addition)`, on the arcs and
+        final states `symbol`, `input_symbol` and `output_symbol` select, or
+        by the rules of `tsv`, `SYMBOL<TAB>WEIGHT` a line. `upper_bound` None
+        sets no upper bound."""
+    def set_name(self, name: str, /, *, truncate_length: int = 0) -> None:
+        """Sets the transducer's name, as `hfst name --name`, cut to
+        `truncate_length` bytes unless that is 0. The tool is `name`, which
+        is the attribute that reads the name."""
+    def edit_metadata(self, /, *, add: Mapping[str, str], truncate_length: int = 0) -> None:
+        """Adds or replaces each property of `add`, as `hfst edit-metadata
+        --add NAME=VALUE`, each value cut to `truncate_length` bytes unless
+        that is 0."""
+    def guessify(
+        self, /, *, default_penalty: float = 1.0, do_not_compile_generator: bool = False
+    ) -> Transducer | None:
+        """Makes the transducer, a morphological analyser, a guesser of the
+        analyses of unknown words, as `hfst guessify`: weighted optimized
+        lookup that `guess` takes. Returns the model form generator the tool
+        writes after the guesser, or None with `do_not_compile_generator`."""
+    def substitute(
+        self,
+        /,
+        *,
+        from_label: str | None = None,
+        to_label: str | None = None,
+        to_transducer: Transducer | None = None,
+        from_file: str | None = None,
+        file_name: str = "",
+        in_order: bool = False,
+        do_not_convert: bool = False,
+        compose: bool = False,
+    ) -> None:
+        """Replaces labels, as `hfst substitute`: `from_label` by `to_label`
+        or by `to_transducer`, or each `FROM<TAB>TO` line of `from_file`, the
+        text of a relabel file, in turn with `in_order`. A label is a symbol
+        or a colon pair, `@0@` for the epsilon. `file_name` is the name of
+        the file the tool would read `to_transducer` or `from_file` from,
+        which names the result. `compose` composes symbol-for-symbol
+        substitutions in rather than rewriting arcs."""
+    def compose(
+        self,
+        other: Transducer,
+        /,
+        *,
+        do_not_harmonize: bool = False,
+        harmonize_flags: bool = False,
+        xerox_composition: bool = False,
+        flag_is_epsilon: bool = False,
+        do_not_convert: bool = False,
+    ) -> None:
+        """Composes `other` after the transducer, as `hfst compose`. Flag
+        diacritics are harmonized unless `do_not_harmonize`; with
+        `xerox_composition` they are ordinary symbols, and with
+        `flag_is_epsilon` a one-sided one is an epsilon. Transducers of two
+        algebra types are converted to one as the tool converts them, unless
+        `do_not_convert`. `t.compose(t)` composes the transducer with itself
+        as it was."""
+    def concatenate(
+        self,
+        other: Transducer,
+        /,
+        *,
+        do_not_harmonize: bool = False,
+        harmonize_flags: bool = False,
+        do_not_convert: bool = False,
+    ) -> None:
+        """Concatenates `other` after the transducer, as `hfst concatenate`."""
+    def conjunct(
+        self,
+        other: Transducer,
+        /,
+        *,
+        do_not_harmonize: bool = False,
+        harmonize_flags: bool = False,
+        do_not_convert: bool = False,
+    ) -> None:
+        """Intersects the transducer with `other`, as `hfst conjunct`."""
+    def subtract(
+        self,
+        other: Transducer,
+        /,
+        *,
+        do_not_harmonize: bool = False,
+        harmonize_flags: bool = False,
+        do_not_convert: bool = False,
+    ) -> None:
+        """Subtracts `other` from the transducer, as `hfst subtract`."""
+    def disjunct(
+        self,
+        other: Transducer,
+        /,
+        *,
+        do_not_harmonize: bool = False,
+        do_not_convert: bool = False,
+    ) -> None:
+        """Unites the transducer with `other`, as `hfst disjunct`."""
+    def priority_disjunct(self, other: Transducer, /, *, do_not_convert: bool = False) -> None:
+        """Unites the transducer with the paths of `other` whose input it does
+        not read, as `hfst priority-disjunct`."""
+    def shuffle(self, other: Transducer, /, *, do_not_convert: bool = False) -> None:
+        """Shuffles the transducer with `other`, as `hfst shuffle`."""
+    def compose_intersect(
+        self,
+        rules: Sequence[Transducer],
+        /,
+        *,
+        invert: bool = False,
+        fast: bool = False,
+        encode_weights: bool = False,
+        harmonize: bool = False,
+        lexicon_name: str = "",
+        rules_name: str = "",
+        do_not_convert: bool = False,
+    ) -> None:
+        """Composes the transducer, a lexicon, with the intersection of
+        `rules`, as `hfst compose-intersect`. The result is named after the
+        lexicon, or `lexicon_name` when it has no name, and `rules_name`, as
+        the tool names it after its files."""
+
+    # Queries: each reports what the hfst tool it is named after reports.
+
+    def summarize(self, /, *, verbose: bool = False) -> Summary:
+        """What `hfst summarize` reports on the transducer, and with
+        `verbose` what `--verbose` measures besides."""
+    def check_alpha(self, other: Transducer, /) -> AlphabetComparison:
+        """What `hfst check-alpha` reports on the transducer and `other`."""
+    def compare(
+        self,
+        other: Transducer,
+        /,
+        *,
+        do_not_harmonize: bool = False,
+        eliminate_flags: bool = False,
+    ) -> bool:
+        """Whether the transducer and `other` are equivalent, as `hfst
+        compare` decides. Like the tool, it compares two transducers of one
+        algebra type; flag diacritics are harmonized unless
+        `do_not_harmonize`, and eliminated first with `eliminate_flags`."""
+    def dump_alphabets(self, /) -> Alphabets:
+        """What `hfst dump-alphabets` reports on the transducer."""
+    def extract_paths(
+        self,
+        /,
+        *,
+        max_strings: int | None = None,
+        nbest: int | None = None,
+        random: int | None = None,
+        cycles: int | None = None,
+        beam: float | None = None,
+        obey_flags: bool = False,
+        print_flags: bool = False,
+        max_in_length: int | None = None,
+        max_out_length: int | None = None,
+        in_prefix: str = "",
+        out_prefix: str = "",
+        in_exclude: str = "",
+        out_exclude: str = "",
+    ) -> list[ExtractedPath]:
+        """The paths `hfst fst2strings` prints, in its order. Each limit left
+        as None sets none: at most `max_strings` paths, the `nbest` lightest,
+        `random` paths chosen at random, cycles followed at most `cycles`
+        times, and only paths within `beam` of the lightest, whose input is
+        at most `max_in_length` bytes and output `max_out_length`. Each path
+        must start with `in_prefix` and `out_prefix` and must not contain
+        `in_exclude` or `out_exclude`, unless they are empty. `obey_flags`
+        drops the paths flag diacritics forbid, and `print_flags` keeps the
+        flags in the paths."""
+    def guess(
+        self,
+        words: Sequence[str],
+        /,
+        *,
+        generator: Transducer | None = None,
+        model_forms: str | None = None,
+        max_number_of_guesses: int = 5,
+        max_number_of_forms: int = 2,
+        generate_threshold: float = 50.0,
+    ) -> list[GuessReport]:
+        """What `hfst guess` prints for each of `words` with the transducer,
+        a guesser `guessify` made. With `model_forms`, the text of a model
+        form file, it generates model forms for each guess with `generator`,
+        or with one compiled from the guesser."""
+    def naive_tokeniser(self, /) -> Tokeniser:
+        """The tokeniser `hfst tokenize` makes of a transducer that is not a
+        pmatch container: each word of the transducer's input side a token,
+        analysed as its outputs. Multicharacter symbols are matched longest
+        first when the transducer has any, or when the options of a call set
+        `tokenize_multichar`."""
 
 @final
 class OptimisedTransducer:
@@ -168,6 +487,26 @@ class Tokeniser:
     ) -> str:
         """Exactly what `hfst tokenise` prints in `format` when `text` is its
         standard input, given the flags `options` stand for."""
+    def pmatch(
+        self,
+        text: str,
+        /,
+        *,
+        newline: bool = False,
+        locate: bool = False,
+        extract_patterns: bool | None = None,
+        delete_patterns: bool | None = None,
+        mark_patterns: bool | None = None,
+        max_context: int | None = None,
+        max_recursion: int | None = None,
+        time_cutoff: float = 0.0,
+        weight_cutoff: float | None = None,
+    ) -> list[PmatchResult]:
+        """What `hfst pmatch` reports for `text` with the tokeniser's
+        container: for each piece of it, each run of lines up to an empty one
+        or with `newline` each line, the piece with its matches marked or
+        with `locate` its matches. The options left as None keep the
+        container's own settings."""
 
 @final
 class AcceptorInfo:
@@ -260,12 +599,11 @@ class DhfstErrorModel:
 
 def read_transducers(data: bytes | bytearray) -> list[Transducer]:
     """Every transducer in the bytes of an HFST transducer stream, in stream
-    order: weighted and unweighted optimized-lookup transducers, with or
-    without an HFST3 header. A pmatch container reads as TOP followed by its
-    definitions, each under its name. Bytes in any other format raise
-    FormatError with code `unsupported-format`, naming the format; bytes that
-    are not a transducer stream, or end partway through one, raise
-    FormatError with code `invalid-format`."""
+    order, of any type the hfst library reads: tropical OpenFst, foma, and
+    optimized lookup, weighted and unweighted, with an HFST3 header or
+    without one. A pmatch container reads as TOP followed by its definitions,
+    each under its name. Bytes that are not a transducer stream raise
+    FormatError, its code saying why."""
 
 def read_transducer(data: bytes | bytearray) -> Transducer:
     """The one transducer in the bytes of a stream, as read_transducers reads
@@ -273,12 +611,14 @@ def read_transducer(data: bytes | bytearray) -> Transducer:
     `transducer-count`."""
 
 def load_transducers(path: str | PathLike[str]) -> list[Transducer]:
-    """Every transducer in the file at `path`, as read_transducers reads its
-    bytes. A file that cannot be read raises the OSError open() raises."""
+    """Every transducer at `path`, as read_transducers reads a file's bytes; a
+    THFST directory, as `hfst fst2fst -f thfst` writes one, reads as its one
+    transducer, in weighted optimized lookup. A file that cannot be read
+    raises the OSError open() raises."""
 
 def load_transducer(path: str | PathLike[str]) -> Transducer:
-    """The one transducer in the file at `path`, as read_transducer reads its
-    bytes. A file that cannot be read raises the OSError open() raises."""
+    """The one transducer at `path`, as load_transducers reads it. A stream
+    holding more raises FormatError with code `transducer-count`."""
 
 def read_optimised_transducer(data: bytes | bytearray) -> OptimisedTransducer:
     """The one optimized-lookup transducer in `data`, weighted or unweighted,
@@ -324,3 +664,94 @@ def _check_tokenise_options(options: TokeniseOptions) -> None:
 def _check_format_options(options: FormatOptions) -> None:
     """Checks a FormatOptions as it is made, raising what a call reading its
     fields would raise."""
+
+def lookup_report(
+    transducers: Sequence[Transducer],
+    inputs: Sequence[str],
+    /,
+    *,
+    input_format: LookupInputFormat = "text",
+    epsilon_format: str = "",
+    max_number: int | None = None,
+    cycles: int = 5,
+    beam: float | None = None,
+    time_cutoff: float = 0.0,
+    cascade: Literal["union", "priority-union", "composition"] = "union",
+    obey_flags: bool = True,
+    show_flags: bool = False,
+) -> list[LookupReport]:
+    """What `hfst lookup` reports for each of `inputs` with the stream
+    `transducers`. `input_format` reads each line as `"text"`, as symbols
+    `"spaced"` apart, or as `"apertium"` stream format. `cascade` combines the
+    results of several transducers: `"union"`, `"priority-union"` or
+    `"composition"`. Each other option is the tool's: `max_number` results a
+    word in optimized lookup, epsilon cycles followed `cycles` times, results
+    within `beam` of the lightest, `time_cutoff` seconds a word, flags obeyed
+    unless not `obey_flags` and shown with `show_flags`."""
+
+def flookup_report(
+    transducers: Sequence[Transducer],
+    inputs: Sequence[str],
+    /,
+    *,
+    input_format: LookupInputFormat = "text",
+    epsilon_format: str = "",
+    cycles: int = 5,
+    beam: float | None = None,
+    time_cutoff: float = 0.0,
+    invert: bool = False,
+    force_ol: bool = False,
+    obey_flags: bool = True,
+    show_flags: bool = False,
+) -> list[LookupReport]:
+    """What `hfst flookup` reports for each of `inputs` with the stream
+    `transducers`. Like the tool, it looks up in each transducer inverted
+    unless `invert`, and then refuses optimized lookup unless `force_ol`.
+    The other options are lookup_report's."""
+
+def optimized_lookup_report(
+    transducers: Sequence[Transducer],
+    words: Sequence[str],
+    /,
+    *,
+    unique: bool = False,
+    analyses: int | None = None,
+    time_cutoff: float = 0.0,
+    beam: float | None = None,
+    fast: bool = False,
+) -> list[OptimizedLookupReport]:
+    """What `hfst optimized-lookup` reports for each of `words` with the union
+    of the stream `transducers`: each analysis once with `unique`, at most
+    `analyses` of them, `time_cutoff` seconds a word, only those within `beam`
+    of the lightest, and with `fast` every analysis as found."""
+
+def pair_test(
+    rules: Sequence[Transducer],
+    tests: str,
+    /,
+    *,
+    negative_test: bool = False,
+    xerox_mode: bool = False,
+) -> list[PairTestResult]:
+    """What `hfst pair-test` reports with the twolc rule transducers `rules`
+    on `tests`: each line a pair string, a negative test with
+    `negative_test`, or with `xerox_mode` the text of a twolc source holding
+    test cases. Blank and `!` comment lines are not tests."""
+
+def grep(
+    pattern: str,
+    text: str,
+    /,
+    *,
+    fixed_strings: bool = False,
+    color: bool = False,
+    word_regexp: bool = False,
+    line_regexp: bool = False,
+    invert_match: bool = False,
+    max_count: int = 0,
+) -> GrepReport:
+    """What `hfst grep` reports for `pattern`, a Xerox regular expression or
+    with `fixed_strings` a string, on `text`: the lines that match, or with
+    `invert_match` those that do not, their matches marked with `{{{ }}}` or
+    with `color` colour codes, at most `max_count` of them unless it is 0.
+    `word_regexp` matches only between spaces, `line_regexp` whole lines."""

@@ -19,12 +19,14 @@ test = false
 doctest = false
 
 [dependencies]
-# Without default features, so the module carries no foma backend.
 hfst = { workspace = true }
-hfst-embed = { workspace = true }
+# The compile feature brings the compilers, the algebra and both of its
+# backends, foma among them.
+hfst-embed = { workspace = true, features = ["compile"] }
 # The stable ABI from CPython 3.11, so one wheel per platform serves every
-# release from 3.11 on.
-pyo3 = { version = "0.30", features = ["abi3-py311"] }
+# release from 3.11 on. A transducer's methods are spread over a module for
+# each kind of call, which needs more than one `#[pymethods]` block.
+pyo3 = { version = "0.30", features = ["abi3-py311", "multiple-pymethods"] }
 tracing = "0.1.44"
 
 [lints]

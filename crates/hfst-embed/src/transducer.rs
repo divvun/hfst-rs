@@ -43,7 +43,6 @@ impl Transducer {
     }
 
     // [spec:hfst:req:javascript.lookup]
-    // [spec:hfst:req:python.lookup]
     /// Every result the library's flag-aware lookup finds for `input`, as
     /// [`lookup_results`] orders them. The search stops once it has found
     /// `limit` paths, or once `time_limit` seconds have passed, keeping what
@@ -77,7 +76,6 @@ impl Transducer {
 }
 
 // [spec:hfst:req:javascript.load-bytes+2]
-// [spec:hfst:req:python.load]
 /// Every transducer in `bytes`, in stream order. Optimized-lookup members are
 /// read with the library's member reader, so a pmatch container's
 /// definitions take its first transducer's alphabet as they do natively.

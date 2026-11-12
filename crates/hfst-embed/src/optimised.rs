@@ -41,7 +41,7 @@ pub struct OptimisedTransducer {
 impl OptimisedTransducer {
     // [spec:hfst:req:javascript.optimised-lookup+2]
     // [spec:hfst:req:javascript.load-bytes+2]
-    // [spec:hfst:req:python.load]
+    // [spec:hfst:req:python.load+1]
     /// The one optimized-lookup transducer in `bytes`, read by `divvun-fst`.
     /// Bytes in another format are turned down as
     /// [`crate::transducer::read_transducers`] turns them down; a stream

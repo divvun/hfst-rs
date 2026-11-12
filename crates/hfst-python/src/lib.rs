@@ -9,7 +9,10 @@ mod call;
 mod dhfst;
 mod error;
 mod log;
+mod operations;
 mod optimised;
+mod queries;
+mod results;
 mod tokenise;
 mod transducer;
 
@@ -46,6 +49,8 @@ mod module {
         OptimisedTransducer, load_optimised_transducer, read_optimised_transducer,
     };
     #[pymodule_export]
+    use crate::queries::{flookup_report, grep, lookup_report, optimized_lookup_report, pair_test};
+    #[pymodule_export]
     use crate::tokenise::{
         Reading, Token, Tokeniser, check_format_options, check_tokenise_options, load_tokeniser,
         read_tokeniser,
@@ -77,8 +82,15 @@ mod module {
             "TransducerType",
             hfst_embed::format::Format::ALL
                 .iter()
-                .filter(|format| format.is_read())
                 .map(|format| format.name())
+                .collect(),
+        )?;
+        add("ReweightFunction", crate::operations::FUNCTIONS.to_vec())?;
+        add(
+            "LookupInputFormat",
+            crate::queries::INPUT_FORMATS
+                .iter()
+                .map(|(name, _)| *name)
                 .collect(),
         )?;
         add(

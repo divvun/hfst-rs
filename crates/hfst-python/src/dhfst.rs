@@ -69,7 +69,7 @@ impl AcceptorInfo {
 }
 
 // [spec:hfst:req:python.dhfst]
-// [spec:hfst:req:python.threads]
+// [spec:hfst:req:python.threads+1]
 /// A DHFST acceptor (type 2): a speller's lexicon, read and validated as
 /// divvunspell reads it. It is immutable, so threads may look words up in it
 /// at the same time. Make one with read_dhfst or load_dhfst.
@@ -127,7 +127,7 @@ impl DhfstAcceptor {
     }
 
     // [spec:hfst:req:python.dhfst]
-    // [spec:hfst:req:python.threads]
+    // [spec:hfst:req:python.threads+1]
     /// The least weight of a path that accepts `word`, final weight included,
     /// or None when no path does: what divvunspell's speller finds checking
     /// the word as typed against this lexicon alone. The word is read one
@@ -202,8 +202,8 @@ impl DhfstErrorModel {
     }
 }
 
-// [spec:hfst:req:python.load]
-// [spec:hfst:req:python.threads]
+// [spec:hfst:req:python.load+1]
+// [spec:hfst:req:python.threads+1]
 /// Reads a DHFST file from `data` without the GIL.
 fn read(py: Python<'_>, data: &[u8]) -> PyResult<Py<PyAny>> {
     let read = without_gil(py, || hfst_embed::dhfst::read_dhfst(data, &crate::PACKAGE))?;
@@ -213,7 +213,7 @@ fn read(py: Python<'_>, data: &[u8]) -> PyResult<Py<PyAny>> {
     }
 }
 
-// [spec:hfst:req:python.load]
+// [spec:hfst:req:python.load+1]
 // [spec:hfst:req:python.dhfst]
 /// The DHFST file in `data`, a DhfstAcceptor or a DhfstErrorModel, as its
 /// `type` says. A file that fails the validation divvunspell runs on load, or
@@ -226,7 +226,7 @@ pub fn read_dhfst(py: Python<'_>, data: PyBackedBytes) -> PyResult<Py<PyAny>> {
     read(py, &data)
 }
 
-// [spec:hfst:req:python.load]
+// [spec:hfst:req:python.load+1]
 /// The DHFST file at `path`, as read_dhfst reads its bytes. A file that
 /// cannot be read raises the OSError open() raises.
 #[pyfunction]

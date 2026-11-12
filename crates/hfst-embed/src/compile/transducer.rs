@@ -1,6 +1,7 @@
 //! The transducer type of the compile surface, and reading and writing it.
 
 use std::io::Cursor;
+use std::path::Path;
 
 use hfst::file_resolver::{FileResolver, MemoryFiles};
 use hfst::hfst_data_types::ImplementationType;
@@ -104,20 +105,44 @@ pub(crate) fn stream_bytes(
 
 // [spec:hfst:req:embed.transducer]
 /// Every transducer of the stream `bytes`, in stream order, in any type the
-/// library reads, with an HFST3 header or without one.
+/// library reads, with an HFST3 header or without one. Bytes that do not
+/// read fail as the read-only reader's do: a stream mixing types, a type the
+/// library lacks, or bytes that are not a well-formed stream, DHFST among
+/// them.
 pub fn read_transducers(bytes: &[u8]) -> Result<Vec<Transducer>, Error> {
     if bytes.is_empty() {
         return Err(stream::empty());
     }
+    if bytes.starts_with(hfst::dhfst_header::MAGIC) {
+        return Err(Error::new(
+            Code::UnsupportedFormat,
+            "the bytes hold DHFST, a speller format and not a transducer stream",
+        ));
+    }
     let mut cursor = Cursor::new(bytes);
-    let mut stream = HfstInputStream::read_from(&mut cursor)?;
+    let mut stream = HfstInputStream::read_from(&mut cursor).map_err(stream::read_error)?;
     let mut read = Vec::new();
     while stream.is_good() {
         read.push(Transducer {
-            inner: held(stream.read()?),
+            inner: held(stream.read().map_err(stream::read_error)?),
         });
     }
     Ok(read)
+}
+
+// [spec:hfst:req:embed.transducer]
+/// The transducer of the THFST directory `dir`, as `hfst fst2fst` reads one,
+/// held as weighted optimized lookup. A directory without the three files of
+/// one is not a transducer.
+pub fn read_thfst(dir: &Path) -> Result<Transducer, Error> {
+    let Some(name) = dir.to_str() else {
+        return Err(Error::new(
+            Code::InvalidArgument,
+            format!("the THFST directory {dir:?} is not named in UTF-8"),
+        ));
+    };
+    let mut stream = HfstInputStream::new_filename(name)?;
+    Ok(Transducer::new(stream.read()?))
 }
 
 impl Transducer {

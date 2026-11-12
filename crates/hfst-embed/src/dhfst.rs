@@ -34,7 +34,7 @@ pub struct ErrorModel {
 // [spec:hfst:req:javascript.dhfst+2]
 // [spec:hfst:req:javascript.load-bytes+2]
 // [spec:hfst:req:python.dhfst]
-// [spec:hfst:req:python.load]
+// [spec:hfst:req:python.load+1]
 /// The DHFST file in `bytes`, validated as divvunspell validates it on load.
 pub fn read_dhfst(bytes: &[u8], package: &Package) -> Result<Dhfst, Error> {
     if !bytes.starts_with(MAGIC) {
