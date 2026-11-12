@@ -4,16 +4,21 @@
 
 mod accept;
 mod hash;
+mod lattice;
 mod machine;
+mod memo;
 mod pass;
 mod reach;
 mod runs;
+mod seeds;
 mod words;
 
 #[cfg(test)]
 mod accept_tests;
 #[cfg(test)]
 pub(super) mod fixtures_test;
+#[cfg(test)]
+mod memo_tests;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]
@@ -24,9 +29,12 @@ use std::collections::{BTreeMap, HashMap};
 pub use accept::Acceptor;
 pub use machine::Configuration;
 pub(super) use machine::Machine;
+use memo::Shelf;
+use pass::Purpose;
 pub(super) use pass::{Live, Pass};
-use reach::Role;
+use reach::{Marks, Role};
 pub(super) use runs::Offers;
+use seeds::{Finals, Seeds};
 pub use words::{Suggest, Suggestion, WholeWord};
 
 use super::rank::rank_scored;
@@ -64,8 +72,8 @@ impl Default for WalkLimits {
 #[derive(Clone, Debug)]
 pub struct Word {
     units: Vec<Unit>,
-    seeds: Vec<Configuration>,
-    finals: Vec<Configuration>,
+    seeds: Seeds,
+    finals: Finals,
     truncated: bool,
 }
 
@@ -111,8 +119,8 @@ pub struct Candidate {
     /// The lowest weight of a path to the unit, with the final weight for an
     /// ending or an enclitic, which make the word complete.
     pub weight: Weight,
-    seeds: Vec<Configuration>,
-    finals: Vec<Configuration>,
+    seeds: Seeds,
+    finals: Finals,
     truncated: bool,
 }
 
@@ -244,8 +252,11 @@ pub struct Walker<'a, T: TransducerTablesInterface> {
     limits: WalkLimits,
     symbols: Vec<SymbolInfo>,
     roles: Vec<Role>,
+    marks: Vec<Marks>,
     letters: HashMap<char, SymbolNumber>,
     filters: Vec<(Unit, Vec<FdOperation>)>,
+    /// What earlier walks learnt of the generator.
+    shelf: Shelf,
 }
 
 impl<'a, T: TransducerTablesInterface> Walker<'a, T> {
@@ -281,6 +292,10 @@ impl<'a, T: TransducerTablesInterface> Walker<'a, T> {
             })
             .collect();
         let roles = symbols.iter().map(SymbolInfo::role).collect();
+        let marks = symbols
+            .iter()
+            .map(|info| reach::marks_of(info.class, info.prefix))
+            .collect();
         let letters = inputs
             .iter()
             .zip(&symbols)
@@ -312,8 +327,10 @@ impl<'a, T: TransducerTablesInterface> Walker<'a, T> {
             limits,
             symbols,
             roles,
+            marks,
             letters,
             filters,
+            shelf: Shelf::default(),
         })
     }
 
@@ -331,14 +348,25 @@ impl<'a, T: TransducerTablesInterface> Walker<'a, T> {
     }
 
     pub(super) fn pass(&self) -> Pass<'_, 'a, T> {
-        Pass::new(&self.machine, &self.roles, self.limits.max_configurations)
+        Pass::kept(
+            &self.machine,
+            (&self.roles, &self.marks),
+            self.limits.max_configurations,
+            &self.shelf,
+        )
     }
 
+    /// The word's seeds in `pass`. When the word is complete, its final
+    /// configurations are found in `pass` too, if they are not known yet.
     pub(super) fn seeds(&self, pass: &mut Pass<'_, 'a, T>, word: &Word) -> Vec<Live> {
-        word.seeds
+        let (configurations, cut) = word.seeds.get();
+        pass.budget.configurations_cut |= cut;
+        let seeds: Vec<Live> = configurations
             .iter()
             .map(|config| pass.intern(config))
-            .collect()
+            .collect();
+        word.finals.get_or(|_| pass.final_configurations(&seeds));
+        seeds
     }
 
     pub(super) fn letter(&self, letter: char) -> Option<SymbolNumber> {
@@ -351,11 +379,11 @@ impl<'a, T: TransducerTablesInterface> Walker<'a, T> {
     pub fn start(&self) -> Word {
         let mut pass = self.pass();
         let start = pass.start();
-        let finals = pass.finals(&[start]);
+        let seeds = Seeds::spelled(vec![pass.materialize(&start)]);
         Word {
             units: Vec::new(),
-            seeds: vec![pass.materialize(&start)],
-            finals: finals.iter().map(|live| pass.materialize(live)).collect(),
+            finals: Finals::found(seeds.clone(), pass.final_configurations(&[start])),
+            seeds,
             truncated: pass.budget.truncated(),
         }
     }
@@ -401,7 +429,9 @@ impl<'a, T: TransducerTablesInterface> Walker<'a, T> {
             ),
         }
         let stem_next = place.stem_may_start()
-            && pass.can_read(&seeds, &|symbol| self.class(symbol) == SymbolClass::Letter);
+            && pass.can_read(&seeds, Purpose::Letters, &|symbol| {
+                self.class(symbol) == SymbolClass::Letter
+            });
         self.found(word, offers, &pass, stem_next)
     }
 
@@ -454,7 +484,12 @@ impl<'a, T: TransducerTablesInterface> Walker<'a, T> {
         self.forms_of(&word.finals)
     }
 
-    fn forms_of(&self, finals: &[Configuration]) -> Vec<Form> {
+    fn forms_of(&self, finals: &Finals) -> Vec<Form> {
+        let finals = finals.get_or(|seeds| {
+            let mut pass = self.pass();
+            let seeds: Vec<Live> = seeds.iter().map(|config| pass.intern(config)).collect();
+            pass.final_configurations(&seeds)
+        });
         let mut best: BTreeMap<String, Weight> = BTreeMap::new();
         for config in finals {
             let Some(final_weight) = config.final_weight else {

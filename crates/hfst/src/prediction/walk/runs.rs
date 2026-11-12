@@ -3,8 +3,10 @@
 
 use std::collections::{HashMap, VecDeque};
 
-use super::pass::{Live, LiveSet, Pass, Purpose};
+use super::lattice::Spot;
+use super::pass::{Live, Pass, Purpose};
 use super::reach::Role;
+use super::seeds::{Finals, Seeds};
 use super::{Candidate, Place, SymbolInfo, Walker};
 use crate::prediction::units::{SymbolClass, Unit, UnitKey, UnitKind};
 use crate::transducer::{SymbolNumber, TransducerTablesInterface, Weight};
@@ -18,8 +20,9 @@ pub(in crate::prediction) struct Offers {
 struct Offer {
     unit: Unit,
     weight: Weight,
-    seeds: LiveSet,
-    finals: LiveSet,
+    seeds: Vec<Spot>,
+    /// Some configuration of the unit's reaches a final one.
+    complete: bool,
 }
 
 impl Offers {
@@ -34,35 +37,37 @@ impl Offers {
         pass: &mut Pass<'_, '_, T>,
         key: UnitKey,
         unit: Unit,
-        seeds: Vec<Live>,
+        seeds: Vec<Spot>,
     ) {
-        let finals = pass.finals(&seeds);
-        let weight = match unit.kind {
-            UnitKind::Ending | UnitKind::Enclitic => finals
-                .iter()
-                .map(|live| live.weight() + pass.final_weight(live).unwrap_or(0.0))
-                .fold(Weight::INFINITY, Weight::min),
-            UnitKind::Stem | UnitKind::Prefix | UnitKind::Boundary | UnitKind::Filter => seeds
-                .iter()
-                .map(Live::weight)
-                .fold(Weight::INFINITY, Weight::min),
+        let (weight, complete) = match unit.kind {
+            UnitKind::Ending | UnitKind::Enclitic => {
+                let finals = pass.final_points(&seeds);
+                let weight = finals
+                    .iter()
+                    .map(|live| live.weight() + pass.final_weight(live).unwrap_or(0.0))
+                    .fold(Weight::INFINITY, Weight::min);
+                (weight, !finals.is_empty())
+            }
+            UnitKind::Stem | UnitKind::Prefix | UnitKind::Boundary | UnitKind::Filter => {
+                let weight = seeds
+                    .iter()
+                    .map(Spot::weight)
+                    .fold(Weight::INFINITY, Weight::min);
+                (weight, pass.ends(&seeds))
+            }
         };
         let offer = self.by_key.entry(key).or_insert_with(|| Offer {
             unit: unit.clone(),
             weight,
-            seeds: LiveSet::default(),
-            finals: LiveSet::default(),
+            seeds: Vec::new(),
+            complete: false,
         });
         if weight < offer.weight {
             offer.unit = unit;
             offer.weight = weight;
         }
-        for live in seeds {
-            pass.insert(&mut offer.seeds, live);
-        }
-        for live in finals {
-            pass.insert(&mut offer.finals, live);
-        }
+        offer.complete |= complete;
+        offer.seeds.extend(seeds);
     }
 
     pub(in crate::prediction) fn units(&self) -> impl Iterator<Item = &Unit> {
@@ -79,26 +84,24 @@ impl Offers {
         pass: &Pass<'_, '_, T>,
         cut: bool,
     ) -> Vec<Candidate> {
+        if self.by_key.is_empty() {
+            return Vec::new();
+        }
+        let record = pass.record();
         let mut candidates: Vec<Candidate> = self
             .by_key
             .into_iter()
-            .map(|(key, offer)| Candidate {
-                unit: offer.unit,
-                key,
-                weight: offer.weight,
-                seeds: offer
-                    .seeds
-                    .as_slice()
-                    .iter()
-                    .map(|live| pass.materialize(live))
-                    .collect(),
-                finals: offer
-                    .finals
-                    .as_slice()
-                    .iter()
-                    .map(|live| pass.materialize(live))
-                    .collect(),
-                truncated: cut,
+            .map(|(key, offer)| {
+                let nodes = offer.seeds.iter().map(|spot| spot.node).collect();
+                let seeds = Seeds::recorded(record.clone(), nodes);
+                Candidate {
+                    unit: offer.unit,
+                    key,
+                    weight: offer.weight,
+                    finals: Finals::of(seeds.clone(), offer.complete),
+                    seeds,
+                    truncated: cut,
+                }
             })
             .collect();
         candidates.sort_by(|a, b| a.key.cmp(&b.key));
@@ -109,7 +112,7 @@ impl Offers {
 /// A run of tags being read, and what it can still become.
 struct TagRun {
     symbols: Vec<SymbolNumber>,
-    seeds: Vec<Live>,
+    seeds: Vec<Spot>,
     /// No enclitic, boundary or derivation tag yet, after a stem or a
     /// boundary unit.
     ending: bool,
@@ -138,7 +141,7 @@ impl<'a, T: TransducerTablesInterface> Walker<'a, T> {
         offers: &mut Offers,
         kind: UnitKind,
         symbols: &[SymbolNumber],
-        seeds: Vec<Live>,
+        seeds: Vec<Spot>,
     ) {
         let unit = Unit {
             kind,
@@ -162,9 +165,10 @@ impl<'a, T: TransducerTablesInterface> Walker<'a, T> {
             self.info(symbol)
                 .is_some_and(|info| info.class == SymbolClass::Tag && info.prefix)
         };
-        let readers = pass.readers(seeds, Purpose::Prefixes, &is_prefix);
+        let seeds = pass.spots(seeds);
+        let readers = pass.readers(&seeds, Purpose::Prefixes, &is_prefix);
         for symbol in readers.symbols() {
-            let reached = pass.step_readers(seeds, &readers, symbol);
+            let reached = pass.step_spots(&seeds, &readers, symbol);
             if !reached.is_empty() {
                 self.offer(pass, offers, UnitKind::Prefix, &[symbol], reached);
             }
@@ -188,6 +192,7 @@ impl<'a, T: TransducerTablesInterface> Walker<'a, T> {
                 .filter_map(|live| pass.apply_all(live, operations))
                 .collect();
             if !survivors.is_empty() {
+                let survivors = pass.spots(&survivors);
                 offers.add(pass, self.grammar.key(unit), unit.clone(), survivors);
             }
         }
@@ -205,10 +210,13 @@ impl<'a, T: TransducerTablesInterface> Walker<'a, T> {
     ) {
         let is_tag = |symbol: SymbolNumber| self.class(symbol) == SymbolClass::Tag;
         let is_letter = |symbol: SymbolNumber| self.class(symbol) == SymbolClass::Letter;
-        let mut queue: VecDeque<(Vec<SymbolNumber>, Vec<Live>)> = seeds.into();
+        let mut queue: VecDeque<(Vec<SymbolNumber>, Vec<Spot>)> = seeds
+            .into_iter()
+            .map(|(letters, lives)| (letters, pass.spots(&lives)))
+            .collect();
         while let Some((letters, seeds)) = queue.pop_front() {
-            let tag_follows = pass.can_read(&seeds, &is_tag);
-            if !letters.is_empty() && (tag_follows || !pass.finals(&seeds).is_empty()) {
+            let tag_follows = pass.reads(&seeds, Purpose::Tags, &is_tag);
+            if !letters.is_empty() && (tag_follows || pass.ends(&seeds)) {
                 self.offer(pass, offers, UnitKind::Stem, &letters, seeds.clone());
             }
             let readers = pass.readers(&seeds, Purpose::Letters, &is_letter);
@@ -217,7 +225,7 @@ impl<'a, T: TransducerTablesInterface> Walker<'a, T> {
                     pass.budget.search_cut = true;
                     continue;
                 }
-                let reached = pass.step_readers(&seeds, &readers, symbol);
+                let reached = pass.step_spots(&seeds, &readers, symbol);
                 if !reached.is_empty() {
                     let mut longer = letters.clone();
                     longer.push(symbol);
@@ -268,7 +276,7 @@ impl<'a, T: TransducerTablesInterface> Walker<'a, T> {
         };
         let mut queue = VecDeque::from([TagRun {
             symbols: Vec::new(),
-            seeds: seeds.to_vec(),
+            seeds: pass.spots(seeds),
             ending: after_stem,
             enclitic: complete,
             derived: false,
@@ -292,7 +300,7 @@ impl<'a, T: TransducerTablesInterface> Walker<'a, T> {
                     pass.budget.search_cut = true;
                     continue;
                 }
-                let reached = pass.step_readers(&run.seeds, &readers, symbol);
+                let reached = pass.step_spots(&run.seeds, &readers, symbol);
                 if reached.is_empty() {
                     continue;
                 }
@@ -302,7 +310,7 @@ impl<'a, T: TransducerTablesInterface> Walker<'a, T> {
                     self.offer(pass, offers, UnitKind::Boundary, &symbols, reached);
                     continue;
                 }
-                if (extension.ending || extension.enclitic) && !pass.finals(&reached).is_empty() {
+                if (extension.ending || extension.enclitic) && pass.ends(&reached) {
                     let kind = if extension.ending {
                         UnitKind::Ending
                     } else {

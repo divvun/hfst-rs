@@ -1,44 +1,44 @@
-//! The scratch of one walk: flag values and outputs interned, what each
-//! state reaches without reading a symbol, and the steps the walk takes.
+//! The scratch of one walk: outputs interned, the walker's memo while the
+//! walk holds it, and the steps the walk takes.
 //!
 //! A word holds only the configurations right after the last symbol it
 //! read, its seeds. A generator may write a morpheme's surface before its
 //! tags, so the configurations one tag reaches without reading another can
-//! spell every morpheme that may follow. So each state first learns, once
-//! per walk, which input symbols it can read next and whether it can end
-//! there, and a step over a symbol follows only the epsilon arcs that lead
-//! to it.
+//! spell every morpheme that may follow. So each state first learns which
+//! input symbols it can read next and whether it can end there, and a step
+//! over a symbol follows only the epsilon arcs that lead to it. What a
+//! state learns is kept in the memo for later walks.
 
-use std::collections::BTreeMap;
-use std::hash::Hasher;
-use std::rc::Rc;
+use std::cell::RefCell;
+use std::sync::Arc;
 
-use smallvec::SmallVec;
-
-use super::hash::{IdHasher, IdMap};
+use super::hash::{IdMap, IdSet};
+use super::lattice::{Lattice, Reached, Spot};
 use super::machine::{Budget, Configuration, Edge, Machine};
-use super::reach::{Reach, Reaches, Role, Want};
+use super::memo::{Entry, Frontier, FrontierKey, Memo, Question, Reading, Shelf};
+use super::reach::{FINAL, LETTER, Marks, PREFIX, Reach, Role, TAG, Want};
 use crate::hfst_flag_diacritics::{FdOperation, FdValue};
 use crate::transducer::{SymbolNumber, TransducerTablesInterface, TransitionTableIndex, Weight};
 
 pub(in crate::prediction) type FlagsId = usize;
-type OutputId = usize;
 
-const EMPTY_OUTPUT: OutputId = 0;
+pub(super) type OutputId = usize;
+
+pub(super) const EMPTY_OUTPUT: OutputId = 0;
 
 /// Where a configuration of one pass is.
 #[derive(Clone, Copy, Debug)]
-struct Here {
-    state: TransitionTableIndex,
-    flags: FlagsId,
-    output: OutputId,
+pub(super) struct Here {
+    pub(super) state: TransitionTableIndex,
+    pub(super) flags: FlagsId,
+    pub(super) output: OutputId,
 }
 
 /// A configuration within one pass.
 #[derive(Clone, Copy, Debug)]
 pub(in crate::prediction) struct Live {
-    here: Here,
-    weight: Weight,
+    pub(super) here: Here,
+    pub(super) weight: Weight,
 }
 
 impl Live {
@@ -48,37 +48,28 @@ impl Live {
 }
 
 /// Configurations, each at the lowest weight it was reached with, in the
-/// order they were first reached. They are told apart by state, flags and
-/// the symbols of their output, which a hash finds and a walk along the two
-/// outputs confirms.
+/// order they were first reached.
 #[derive(Default)]
 pub(in crate::prediction) struct LiveSet {
     lives: Vec<Live>,
-    index: IdMap<(TransitionTableIndex, FlagsId, u64), SmallVec<[usize; 1]>>,
+    index: IdMap<(TransitionTableIndex, FlagsId, OutputId), usize>,
 }
 
 impl LiveSet {
     /// True when `live` is new or lowers the weight its configuration had.
-    fn insert(&mut self, live: Live, outputs: &Outputs) -> bool {
-        let key = (
-            live.here.state,
-            live.here.flags,
-            outputs.hash(live.here.output),
-        );
-        let slots = self.index.entry(key).or_default();
-        for &at in slots.iter() {
-            let known = &mut self.lives[at];
-            if !outputs.same(known.here.output, live.here.output) {
-                continue;
-            }
-            if known.weight <= live.weight {
-                return false;
-            }
-            known.weight = live.weight;
+    pub(super) fn insert(&mut self, live: Live) -> bool {
+        let key = (live.here.state, live.here.flags, live.here.output);
+        let next = self.lives.len();
+        let at = *self.index.entry(key).or_insert(next);
+        if at == next {
+            self.lives.push(live);
             return true;
         }
-        slots.push(self.lives.len());
-        self.lives.push(live);
+        let known = &mut self.lives[at];
+        if known.weight <= live.weight {
+            return false;
+        }
+        known.weight = live.weight;
         true
     }
 
@@ -91,73 +82,56 @@ impl LiveSet {
     }
 }
 
-/// One symbol written after its parent's, and a hash of the whole output.
+/// One symbol written after its parent's.
 #[derive(Clone, Copy, Debug)]
 struct Written {
     parent: OutputId,
     symbol: SymbolNumber,
-    hash: u64,
 }
 
 /// Outputs as a tree: a node is its parent with one more symbol, so a
-/// configuration's output is one number however long it is.
-struct Outputs {
+/// configuration's output is one number however long it is. Each node is
+/// made once, so two outputs are the same when their numbers are.
+pub(super) struct Outputs {
     nodes: Vec<Written>,
+    children: IdMap<(OutputId, SymbolNumber), OutputId>,
 }
 
 impl Outputs {
-    fn new() -> Outputs {
+    pub(super) fn new() -> Outputs {
         Outputs {
             nodes: vec![Written {
                 parent: EMPTY_OUTPUT,
                 symbol: 0,
-                hash: 0,
             }],
+            children: IdMap::default(),
         }
     }
 
-    fn push(&mut self, parent: OutputId, symbol: SymbolNumber) -> OutputId {
-        let mut hasher = IdHasher::default();
-        hasher.write_u64(self.nodes[parent].hash);
-        hasher.write_u16(symbol);
-        self.nodes.push(Written {
-            parent,
-            symbol,
-            hash: hasher.finish(),
-        });
-        self.nodes.len() - 1
-    }
-
-    fn hash(&self, at: OutputId) -> u64 {
-        self.nodes[at].hash
-    }
-
-    /// True when the outputs at `a` and `b` spell the same symbols.
-    fn same(&self, mut a: OutputId, mut b: OutputId) -> bool {
-        while a != b {
-            let (left, right) = (self.nodes[a], self.nodes[b]);
-            if a == EMPTY_OUTPUT
-                || b == EMPTY_OUTPUT
-                || left.hash != right.hash
-                || left.symbol != right.symbol
-            {
-                return false;
-            }
-            a = left.parent;
-            b = right.parent;
+    pub(super) fn push(&mut self, parent: OutputId, symbol: SymbolNumber) -> OutputId {
+        let next = self.nodes.len();
+        let at = *self.children.entry((parent, symbol)).or_insert(next);
+        if at == next {
+            self.nodes.push(Written { parent, symbol });
         }
-        true
+        at
     }
 
-    fn symbols(&self, mut at: OutputId) -> Vec<SymbolNumber> {
+    pub(super) fn symbols(&self, at: OutputId) -> Vec<SymbolNumber> {
         let mut symbols = Vec::new();
+        self.write(at, &mut symbols);
+        symbols
+    }
+
+    /// Append the symbols of the output at `at` to `symbols`.
+    fn write(&self, mut at: OutputId, symbols: &mut Vec<SymbolNumber>) {
+        let start = symbols.len();
         while at != EMPTY_OUTPUT {
             let written = self.nodes[at];
             symbols.push(written.symbol);
             at = written.parent;
         }
-        symbols.reverse();
-        symbols
+        symbols[start..].reverse();
     }
 }
 
@@ -205,7 +179,7 @@ impl Flags {
 
 /// What one purpose looks for in the configurations a state reaches
 /// without reading a symbol. Each purpose has one predicate, so what a state
-/// offers for it is found once per walk.
+/// offers for it is found once per walker.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(in crate::prediction) enum Purpose {
     Tags,
@@ -216,47 +190,80 @@ pub(in crate::prediction) enum Purpose {
     Letters,
 }
 
-/// A configuration one state reaches without reading a symbol, relative to
-/// that state, from which it can read a symbol of some purpose.
-#[derive(Clone, Debug)]
-struct Entry {
-    state: TransitionTableIndex,
-    flags: FlagsId,
-    suffix: Vec<SymbolNumber>,
-    weight: Weight,
-}
-
-/// The entries one state, with given flags, reaches for one purpose.
-struct Frontier {
-    entries: Vec<Entry>,
-    /// For each symbol of the purpose, the entries with arcs that read it.
-    by_symbol: BTreeMap<SymbolNumber, Vec<usize>>,
+impl Purpose {
+    /// The marks of the symbols the purpose looks for, or of more.
+    pub(super) fn marks(self) -> Marks {
+        match self {
+            Purpose::Tags | Purpose::Bounded(_) => TAG,
+            Purpose::Prefixes => PREFIX,
+            Purpose::Letters => LETTER,
+        }
+    }
 }
 
 /// What a set of seeds can read next for one purpose.
 pub(in crate::prediction) struct Readers {
-    frontiers: Vec<Rc<Frontier>>,
-    /// For each symbol, the seeds that can read it.
-    by_symbol: BTreeMap<SymbolNumber, Vec<usize>>,
+    /// The frontier of each seed, as the pass's lattice numbers it.
+    pub(super) frontiers: Vec<u32>,
+    /// Each symbol some seed can read, with that seed, in order of symbol
+    /// and then of seed.
+    pairs: Vec<(SymbolNumber, u32)>,
 }
 
 impl Readers {
     /// The symbols some seed can read. Flag values are kept, so each can
     /// be read.
     pub(in crate::prediction) fn symbols(&self) -> Vec<SymbolNumber> {
-        self.by_symbol.keys().copied().collect()
+        let mut symbols: Vec<SymbolNumber> = self.pairs.iter().map(|&(symbol, _)| symbol).collect();
+        symbols.dedup();
+        symbols
+    }
+
+    /// The seeds that can read `symbol`, in order.
+    pub(super) fn reading(&self, symbol: SymbolNumber) -> impl Iterator<Item = &u32> {
+        let first = self.pairs.partition_point(|&(read, _)| read < symbol);
+        self.pairs[first..]
+            .iter()
+            .take_while(move |&&(read, _)| read == symbol)
+            .map(|(_, seed)| seed)
     }
 }
 
 pub(in crate::prediction) struct Pass<'m, 'a, T: TransducerTablesInterface> {
-    machine: &'m Machine<'a, T>,
+    pub(super) machine: &'m Machine<'a, T>,
     /// What each input symbol does to a run only a boundary tag can end.
     roles: &'m [Role],
+    /// The marks each input symbol carries; none for a pass that is no
+    /// walker's.
+    marks: &'m [Marks],
     pub(in crate::prediction) budget: Budget,
-    outputs: Outputs,
-    flags: Flags,
-    reaches: Reaches,
-    frontiers: IdMap<(TransitionTableIndex, FlagsId, Purpose), Rc<Frontier>>,
+    /// The configurations the pass may visit, as it started.
+    pub(super) limit: usize,
+    pub(super) outputs: Outputs,
+    /// Taken by [`Pass::record`] when the pass is over.
+    pub(super) lattice: RefCell<Lattice>,
+    /// Where in the lattice each frontier the pass has gone through is.
+    slots: IdMap<FrontierKey, u32>,
+    /// Reused by every step, so that its tables are allocated once.
+    pub(super) reached: Reached,
+    memo: Box<Memo>,
+    /// Where the memo goes back to when the pass ends, if it outlives it.
+    shelf: Option<&'m Shelf>,
+    /// The frontiers this pass found after the budget cut it, which may miss
+    /// entries and so stay with this pass.
+    cut: Vec<FrontierKey>,
+}
+
+impl<T: TransducerTablesInterface> Drop for Pass<'_, '_, T> {
+    fn drop(&mut self) {
+        let Some(shelf) = self.shelf else {
+            return;
+        };
+        for key in std::mem::take(&mut self.cut) {
+            self.memo.forget(&key);
+        }
+        shelf.put(std::mem::take(&mut self.memo));
+    }
 }
 
 impl<'m, 'a, T: TransducerTablesInterface> Pass<'m, 'a, T> {
@@ -265,19 +272,51 @@ impl<'m, 'a, T: TransducerTablesInterface> Pass<'m, 'a, T> {
         roles: &'m [Role],
         configurations: usize,
     ) -> Self {
+        Pass::with(machine, (roles, &[]), configurations, Box::default(), None)
+    }
+
+    fn with(
+        machine: &'m Machine<'a, T>,
+        (roles, marks): (&'m [Role], &'m [Marks]),
+        configurations: usize,
+        memo: Box<Memo>,
+        shelf: Option<&'m Shelf>,
+    ) -> Self {
         Pass {
             machine,
             roles,
+            marks,
             budget: Budget::new(configurations),
+            limit: configurations,
             outputs: Outputs::new(),
-            flags: Flags::default(),
-            reaches: Reaches::default(),
-            frontiers: IdMap::default(),
+            lattice: RefCell::default(),
+            slots: IdMap::default(),
+            reached: Reached::default(),
+            memo,
+            shelf,
+            cut: Vec::new(),
         }
     }
 
+    /// A walker's pass, which starts from the memo on `shelf` and puts it
+    /// back when it ends.
+    pub(in crate::prediction) fn kept(
+        machine: &'m Machine<'a, T>,
+        (roles, marks): (&'m [Role], &'m [Marks]),
+        configurations: usize,
+        shelf: &'m Shelf,
+    ) -> Self {
+        Pass::with(
+            machine,
+            (roles, marks),
+            configurations,
+            shelf.take(),
+            Some(shelf),
+        )
+    }
+
     pub(in crate::prediction) fn start(&mut self) -> Live {
-        let flags = self.flags.intern(self.machine.neutral_flags());
+        let flags = self.memo.flags.intern(self.machine.neutral_flags());
         Live {
             here: Here {
                 state: 0,
@@ -296,7 +335,7 @@ impl<'m, 'a, T: TransducerTablesInterface> Pass<'m, 'a, T> {
         Live {
             here: Here {
                 state: config.state,
-                flags: self.flags.intern(config.flags.clone()),
+                flags: self.memo.flags.intern(config.flags.clone()),
                 output,
             },
             weight: config.weight,
@@ -306,57 +345,70 @@ impl<'m, 'a, T: TransducerTablesInterface> Pass<'m, 'a, T> {
     pub(in crate::prediction) fn materialize(&self, live: &Live) -> Configuration {
         Configuration {
             state: live.here.state,
-            flags: self.flags.values[live.here.flags].clone(),
+            flags: self.memo.flags.values[live.here.flags].clone(),
             output: self.outputs.symbols(live.here.output),
             weight: live.weight,
             final_weight: self.machine.final_weight(live.here.state),
         }
     }
 
-    pub(in crate::prediction) fn final_weight(&self, live: &Live) -> Option<Weight> {
-        self.machine.final_weight(live.here.state)
+    pub(super) fn flag_values(&self, flags: FlagsId) -> &[FdValue] {
+        &self.memo.flags.values[flags]
     }
 
-    /// Add `live` to `set`. True when it is new there or lowers the weight
-    /// its configuration had.
-    pub(in crate::prediction) fn insert(&self, set: &mut LiveSet, live: Live) -> bool {
-        set.insert(live, &self.outputs)
+    #[cfg(test)]
+    pub(super) fn knows_reach(&self, state: TransitionTableIndex) -> bool {
+        self.memo.reaches.knows(state)
+    }
+
+    /// How many sets of flag values the pass knows.
+    pub(super) fn flag_count(&self) -> usize {
+        self.memo.flags.values.len()
+    }
+
+    pub(in crate::prediction) fn final_weight(&self, live: &Live) -> Option<Weight> {
+        self.machine.final_weight(live.here.state)
     }
 
     pub(in crate::prediction) fn render(&self, live: &Live) -> String {
         self.machine.render(&self.outputs.symbols(live.here.output))
     }
 
-    fn outgoing(&mut self, state: TransitionTableIndex) -> Rc<[SymbolNumber]> {
-        self.reaches.outgoing(self.machine, state)
+    fn outgoing(&mut self, state: TransitionTableIndex) -> Arc<[SymbolNumber]> {
+        self.memo.reaches.outgoing(self.machine, state)
     }
 
-    fn reach(&mut self, state: TransitionTableIndex) -> Rc<Reach> {
-        self.reaches.of(self.machine, state)
+    fn reach(&mut self, state: TransitionTableIndex) -> Arc<Reach> {
+        self.memo.reaches.of(self.machine, state)
     }
 
-    fn met(&mut self, want: Want<'_>, state: TransitionTableIndex) -> bool {
+    fn marks(&mut self, state: TransitionTableIndex) -> Marks {
+        self.memo.reaches.marks(self.machine, self.marks, state)
+    }
+
+    pub(super) fn met(&mut self, want: Want, state: TransitionTableIndex) -> bool {
         match want {
             Want::Everything => true,
-            Want::Final => self.reach(state).can_end(),
-            Want::Symbol(symbol) => self.reach(state).reads(symbol),
-            Want::Reading(wanted) => self.reach(state).reads_any(wanted),
-            Want::Boundary(hold) => self.reaches.bounded(self.machine, self.roles, state, hold),
+            Want::Final => self.marks(state) & FINAL != 0,
+            Want::Symbol(symbol) => match self.marks.get(symbol as usize) {
+                Some(&marks) if marks != 0 => self.marks(state) & marks != 0,
+                Some(_) | None => self.reach(state).reads(symbol),
+            },
+            Want::Purpose(purpose) => self.marks(state) & purpose.marks() != 0,
+            Want::Boundary(hold) => {
+                self.memo
+                    .reaches
+                    .bounded(self.machine, self.roles, state, hold)
+            }
         }
     }
 
-    /// True when a run of tags from some of `seeds` can still end at a
-    /// boundary tag, `hold` saying whether it holds its derivation tag.
-    pub(in crate::prediction) fn bounded(&mut self, seeds: &[Live], hold: bool) -> bool {
-        seeds
-            .iter()
-            .any(|seed| self.met(Want::Boundary(hold), seed.here.state))
-    }
-
-    fn along(&mut self, live: &Live, arc: &Edge, flags: FlagsId) -> Live {
+    /// `live` over `arc`, with `flags` after it. What the arc writes is
+    /// added to the output when the walk `writes`.
+    fn along(&mut self, live: &Live, arc: &Edge, flags: FlagsId, writes: bool) -> Live {
         let output = match arc.output {
-            Some(output) => self.outputs.push(live.here.output, output),
-            None => live.here.output,
+            Some(output) if writes => self.outputs.push(live.here.output, output),
+            Some(_) | None => live.here.output,
         };
         Live {
             here: Here {
@@ -374,12 +426,19 @@ impl<'m, 'a, T: TransducerTablesInterface> Pass<'m, 'a, T> {
     /// the budget ends a cycle that keeps writing output.
     // [spec:hfst:def:prediction.state]
     // [spec:hfst:req:prediction.flags]
-    pub(in crate::prediction) fn explore(&mut self, seeds: &[Live], want: Want<'_>) -> Vec<Live> {
+    pub(in crate::prediction) fn explore(&mut self, seeds: &[Live], want: Want) -> Vec<Live> {
+        self.explore_as(seeds, want, true)
+    }
+
+    /// [`Pass::explore`], keeping what each path writes only when it
+    /// `writes`. Without it, the configurations are points, each at the
+    /// lowest weight of a path to it.
+    pub(super) fn explore_as(&mut self, seeds: &[Live], want: Want, writes: bool) -> Vec<Live> {
         let machine = self.machine;
         let mut set = LiveSet::default();
         let mut agenda: Vec<Live> = Vec::new();
         for seed in seeds {
-            if self.met(want, seed.here.state) && set.insert(*seed, &self.outputs) {
+            if self.met(want, seed.here.state) && set.insert(*seed) {
                 agenda.push(*seed);
             }
         }
@@ -389,14 +448,14 @@ impl<'m, 'a, T: TransducerTablesInterface> Pass<'m, 'a, T> {
                 if !self.met(want, arc.target) {
                     continue;
                 }
-                let Some(flags) = self.flags.after(machine, live.here.flags, arc.input) else {
+                let Some(flags) = self.memo.flags.after(machine, live.here.flags, arc.input) else {
                     continue;
                 };
                 if !self.budget.spend() {
                     break 'agenda;
                 }
-                let next = self.along(&live, &arc, flags);
-                if set.insert(next, &self.outputs) {
+                let next = self.along(&live, &arc, flags, writes);
+                if set.insert(next) {
                     agenda.push(next);
                 }
             }
@@ -422,9 +481,14 @@ impl<'m, 'a, T: TransducerTablesInterface> Pass<'m, 'a, T> {
         flags: FlagsId,
         purpose: Purpose,
         wanted: &dyn Fn(SymbolNumber) -> bool,
-    ) -> Rc<Frontier> {
-        if let Some(known) = self.frontiers.get(&(state, flags, purpose)) {
+    ) -> Arc<Frontier> {
+        let key = (state, flags, purpose);
+        if let Some(known) = self.memo.frontiers.get(&key) {
             return known.clone();
+        }
+        #[cfg(test)]
+        {
+            self.memo.computed += 1;
         }
         let root = Live {
             here: Here {
@@ -434,35 +498,52 @@ impl<'m, 'a, T: TransducerTablesInterface> Pass<'m, 'a, T> {
             },
             weight: 0.0,
         };
-        let mut entries = Vec::new();
-        let mut by_symbol: BTreeMap<SymbolNumber, Vec<usize>> = BTreeMap::new();
         let want = match purpose {
             Purpose::Bounded(hold) => Want::Boundary(hold),
-            Purpose::Tags | Purpose::Prefixes | Purpose::Letters => Want::Reading(wanted),
+            Purpose::Tags | Purpose::Prefixes | Purpose::Letters => Want::Purpose(purpose),
         };
+        let machine = self.machine;
+        let mut frontier = Frontier::default();
         for live in self.explore(&[root], want) {
-            let symbols: Vec<SymbolNumber> = self
-                .outgoing(live.here.state)
-                .iter()
-                .copied()
-                .filter(|&symbol| wanted(symbol))
-                .collect();
-            if symbols.is_empty() {
+            let at =
+                u32::try_from(frontier.entries.len()).expect("a frontier holds under 2^32 entries");
+            let before = frontier.readings.len();
+            for &symbol in self.outgoing(live.here.state).iter() {
+                if !wanted(symbol) {
+                    continue;
+                }
+                for arc in machine.symbol_arcs(live.here.state, symbol) {
+                    let arc = machine.arc(arc);
+                    frontier.readings.push(Reading {
+                        symbol,
+                        entry: at,
+                        target: arc.target,
+                        written: arc.output,
+                        weight: arc.weight,
+                    });
+                }
+            }
+            if frontier.readings.len() == before {
                 continue;
             }
-            for symbol in symbols {
-                by_symbol.entry(symbol).or_default().push(entries.len());
-            }
-            entries.push(Entry {
-                state: live.here.state,
+            let start = frontier.symbols.len();
+            self.outputs.write(live.here.output, &mut frontier.symbols);
+            let span = |at: usize| u32::try_from(at).expect("a frontier writes under 2^32 symbols");
+            frontier.entries.push(Entry {
                 flags: live.here.flags,
-                suffix: self.outputs.symbols(live.here.output),
+                suffix: span(start)..span(frontier.symbols.len()),
                 weight: live.weight,
             });
         }
-        let frontier = Rc::new(Frontier { entries, by_symbol });
-        self.frontiers
-            .insert((state, flags, purpose), frontier.clone());
+        frontier
+            .readings
+            .sort_by_key(|read| (read.symbol, read.entry));
+        let frontier = Arc::new(frontier);
+        if self.budget.configurations_cut {
+            self.cut.push(key);
+        }
+        self.memo.entries += frontier.entries.len();
+        self.memo.frontiers.insert(key, frontier.clone());
         frontier
     }
 
@@ -470,56 +551,30 @@ impl<'m, 'a, T: TransducerTablesInterface> Pass<'m, 'a, T> {
     /// predicate.
     pub(in crate::prediction) fn readers(
         &mut self,
-        seeds: &[Live],
+        seeds: &[Spot],
         purpose: Purpose,
         wanted: &dyn Fn(SymbolNumber) -> bool,
     ) -> Readers {
-        let frontiers: Vec<Rc<Frontier>> = seeds
-            .iter()
-            .map(|seed| self.frontier(seed.here.state, seed.here.flags, purpose, wanted))
-            .collect();
-        let mut by_symbol: BTreeMap<SymbolNumber, Vec<usize>> = BTreeMap::new();
-        for (at, frontier) in frontiers.iter().enumerate() {
-            for &symbol in frontier.by_symbol.keys() {
-                by_symbol.entry(symbol).or_default().push(at);
-            }
+        let mut frontiers = Vec::with_capacity(seeds.len());
+        let mut pairs = Vec::new();
+        for (at, seed) in seeds.iter().enumerate() {
+            let key = (seed.state, seed.flags, purpose);
+            let slot = match self.slots.get(&key) {
+                Some(&slot) => slot,
+                None => {
+                    let frontier = self.frontier(seed.state, seed.flags, purpose, wanted);
+                    let slot = self.lattice.get_mut().frontier(frontier);
+                    self.slots.insert(key, slot);
+                    slot
+                }
+            };
+            let at = u32::try_from(at).expect("a run holds under 2^32 seeds");
+            let frontier = &self.lattice.get_mut().frontiers[slot as usize];
+            pairs.extend(frontier.symbols_read().map(|symbol| (symbol, at)));
+            frontiers.push(slot);
         }
-        Readers {
-            frontiers,
-            by_symbol,
-        }
-    }
-
-    /// The seeds `seeds` reach by reading `symbol`, `readers` being what
-    /// they can read.
-    pub(in crate::prediction) fn step_readers(
-        &mut self,
-        seeds: &[Live],
-        readers: &Readers,
-        symbol: SymbolNumber,
-    ) -> Vec<Live> {
-        let mut from = Vec::new();
-        for &at in readers.by_symbol.get(&symbol).into_iter().flatten() {
-            let frontier = &readers.frontiers[at];
-            for &entry in frontier.by_symbol.get(&symbol).into_iter().flatten() {
-                let entry = &frontier.entries[entry];
-                let output = entry
-                    .suffix
-                    .iter()
-                    .fold(seeds[at].here.output, |output, &written| {
-                        self.outputs.push(output, written)
-                    });
-                from.push(Live {
-                    here: Here {
-                        state: entry.state,
-                        flags: entry.flags,
-                        output,
-                    },
-                    weight: seeds[at].weight + entry.weight,
-                });
-            }
-        }
-        self.step_from(&from, symbol)
+        pairs.sort_unstable();
+        Readers { frontiers, pairs }
     }
 
     /// Where the arcs reading `symbol` from `lives` themselves lead.
@@ -531,8 +586,8 @@ impl<'m, 'a, T: TransducerTablesInterface> Pass<'m, 'a, T> {
                 if !self.budget.spend() {
                     return reached.into_vec();
                 }
-                let next = self.along(live, &machine.arc(arc), live.here.flags);
-                reached.insert(next, &self.outputs);
+                let next = self.along(live, &machine.arc(arc), live.here.flags, true);
+                reached.insert(next);
             }
         }
         reached.into_vec()
@@ -547,47 +602,108 @@ impl<'m, 'a, T: TransducerTablesInterface> Pass<'m, 'a, T> {
             .collect()
     }
 
+    /// The final configurations `seeds` reach without reading a symbol,
+    /// spelled out.
+    pub(in crate::prediction) fn final_configurations(
+        &mut self,
+        seeds: &[Live],
+    ) -> Vec<Configuration> {
+        let finals = self.finals(seeds);
+        finals.iter().map(|live| self.materialize(live)).collect()
+    }
+
     /// Every configuration `seeds` reach without reading a symbol.
     pub(in crate::prediction) fn closure(&mut self, seeds: &[Live]) -> Vec<Live> {
         self.explore(seeds, Want::Everything)
     }
 
-    /// True when some of `seeds` can read a symbol `wanted` takes, flag
-    /// values included. The search goes deep first and stops at the first
-    /// such configuration, so it does not walk what a state reaches in full.
+    /// True when some of `seeds` can read a symbol of `purpose`, `wanted`
+    /// being its predicate, flag values included. The search goes deep
+    /// first and stops at the first such configuration, so it does not walk
+    /// what a state reaches in full.
     pub(in crate::prediction) fn can_read(
         &mut self,
         seeds: &[Live],
+        purpose: Purpose,
         wanted: &dyn Fn(SymbolNumber) -> bool,
     ) -> bool {
+        self.search(seeds, Want::Purpose(purpose), &|pass, state| {
+            pass.outgoing(state).iter().any(|&symbol| wanted(symbol))
+        })
+    }
+
+    /// True when some of `seeds` reach a final state without reading a
+    /// symbol, flag values included.
+    pub(super) fn can_end(&mut self, seeds: &[Live]) -> bool {
+        self.search(seeds, Want::Final, &|pass, state| {
+            pass.machine.final_weight(state).is_some()
+        })
+    }
+
+    /// True when some point `seeds` reach without reading a symbol, through
+    /// states `want` admits, is `found`. The search goes deep first and
+    /// stops at the first, so it does not walk what a state reaches in
+    /// full.
+    fn search(
+        &mut self,
+        seeds: &[Live],
+        want: Want,
+        found: &dyn Fn(&mut Self, TransitionTableIndex) -> bool,
+    ) -> bool {
         let machine = self.machine;
-        let want = Want::Reading(wanted);
-        let mut seen = LiveSet::default();
-        let mut agenda: Vec<Live> = seeds.to_vec();
-        while let Some(live) = agenda.pop() {
-            if !seen.insert(live, &self.outputs) || !self.met(want, live.here.state) {
+        let mut seen: IdSet<(TransitionTableIndex, FlagsId)> = IdSet::default();
+        let mut agenda: Vec<(TransitionTableIndex, FlagsId)> = seeds
+            .iter()
+            .map(|seed| (seed.here.state, seed.here.flags))
+            .collect();
+        while let Some((state, flags)) = agenda.pop() {
+            if !seen.insert((state, flags)) || !self.met(want, state) {
                 continue;
             }
-            if self
-                .outgoing(live.here.state)
-                .iter()
-                .any(|&symbol| wanted(symbol))
-            {
+            if found(self, state) {
                 return true;
             }
-            for arc in machine.epsilon_arcs(live.here.state) {
+            for arc in machine.epsilon_arcs(state) {
                 let arc = machine.arc(arc);
-                let Some(flags) = self.flags.after(machine, live.here.flags, arc.input) else {
+                let Some(flags) = self.memo.flags.after(machine, flags, arc.input) else {
                     continue;
                 };
                 if !self.budget.spend() {
                     return false;
                 }
-                let next = self.along(&live, &arc, flags);
-                agenda.push(next);
+                agenda.push((arc.target, flags));
             }
         }
         false
+    }
+
+    /// The answer to `question` about the point `state` with `flags`, as
+    /// the memo knows it or `ask` finds it. An answer the bound cut short
+    /// is not kept.
+    pub(super) fn answer(
+        &mut self,
+        state: TransitionTableIndex,
+        flags: FlagsId,
+        question: Question,
+        ask: &dyn Fn(&mut Self, &[Live]) -> bool,
+    ) -> bool {
+        let key = (state, flags, question);
+        if let Some(&known) = self.memo.answers.get(&key) {
+            return known;
+        }
+        let point = Live {
+            here: Here {
+                state,
+                flags,
+                output: EMPTY_OUTPUT,
+            },
+            weight: 0.0,
+        };
+        let found = ask(self, &[point]);
+        if !self.budget.configurations_cut {
+            self.memo.answers.insert(key, found);
+        }
+        found
     }
 
     /// `live` with `operations` applied in order where it is, or nothing
@@ -598,12 +714,12 @@ impl<'m, 'a, T: TransducerTablesInterface> Pass<'m, 'a, T> {
         live: &Live,
         operations: &[FdOperation],
     ) -> Option<Live> {
-        let mut values = self.flags.values[live.here.flags].clone();
+        let mut values = self.memo.flags.values[live.here.flags].clone();
         for operation in operations {
             values = self.machine.apply(operation, &values)?;
         }
         let mut applied = *live;
-        applied.here.flags = self.flags.intern(values);
+        applied.here.flags = self.memo.flags.intern(values);
         Some(applied)
     }
 }

@@ -401,6 +401,7 @@ assertions (
     {id clippy-deny-gate, kind @complete, author "brendan@necessary.nu", at 2026-07-17T19:49:59.63991Z}
     {id compile-surface.embed-gaps, kind @complete, author "brendan@necessary.nu", at 2026-11-12T20:25:41.869738Z}
     {id compile-surface.spec, kind @complete, author "brendan@necessary.nu", at 2026-11-11T11:38:00.541522Z}
+    {id compile-surface.wasm-compile, kind @doing, author "brendan@necessary.nu", at 2026-11-12T22:22:50.192479Z}
     {id compose-facade-nativize, kind @complete, author "brendan@necessary.nu", at 2026-07-19T16:26:17.752081Z}
     {id compose-intersect-diagnostics, kind @complete, author "brendan@necessary.nu", at 2026-06-29T14:09:41.317897Z}
     {id compose-intersect-empty-panic, kind @complete, author "brendan@necessary.nu", at 2026-08-13T23:41:01.321301Z}
@@ -582,6 +583,7 @@ assertions (
     {id predict.preview-reuse, kind @complete, author "brendan@necessary.nu", at 2026-11-12T15:59:00.144891Z}
     {id predict.sme-evaluation, kind @complete, author "brendan@necessary.nu", at 2026-11-12T21:20:17.356626Z}
     {id predict.spec, kind @complete, author "brendan@necessary.nu", at 2026-11-11T12:36:15.313631Z}
+    {id predict.walk-speed, kind @complete, author "brendan@necessary.nu", at 2026-11-12T22:02:53.630897Z}
     {id predict.whole-words-spec, kind @complete, author "brendan@necessary.nu", at 2026-11-12T15:30:22.23091Z}
     {id predict.word-forms-spec, kind @complete, author "brendan@necessary.nu", at 2026-11-12T21:30:41.021303Z}
     {id python.embed, kind @complete, author "brendan@necessary.nu", at 2026-11-10T15:14:12.551711Z}
@@ -723,7 +725,6 @@ assertions (
     {id xre-intermediate-optimization, kind @complete, author "brendan@necessary.nu", at 2026-08-19T23:55:03.286981Z}
     {id zip-upgrade.divvunspell, kind @complete, author "brendan@necessary.nu", at 2026-10-31T18:02:55.139381Z}
     {id zip-upgrade.hfst, kind @complete, author "brendan@necessary.nu", at 2026-10-31T19:37:53.145211Z}
-    {id compile-surface.wasm-compile, kind @doing, author "brendan@necessary.nu", at 2026-11-12T22:22:50.192479Z}
 )
 
 impl_evidence (
@@ -758,6 +759,18 @@ impl_evidence (
     ), covered_claims (
         {impl_name target-impl, rule embed.no-panic}
     )}
+    {id compile-surface.python-compile, covered_rules (
+        python.compile
+        python.compile-errors
+    ), covered_claims (
+        {impl_name target-impl, rule python.compile}
+        {impl_name target-impl, rule python.compile-errors}
+    )}
+    {id compile-surface.python-parity, covered_rules (
+        python.compile-parity
+    ), covered_claims (
+        {impl_name target-impl, rule python.compile-parity}
+    )}
     {id compile-surface.python-transducer, covered_rules (
         python.load
         python.operations
@@ -768,6 +781,11 @@ impl_evidence (
         {impl_name target-impl, rule python.operations}
         {impl_name target-impl, rule python.threads}
         {impl_name target-impl, rule python.transducer}
+    )}
+    {id compile-surface.python-writers, covered_rules (
+        python.writers
+    ), covered_claims (
+        {impl_name target-impl, rule python.writers}
     )}
     {id compile-surface.xfst-files, covered_rules (
         embed.compile-files
@@ -1425,22 +1443,5 @@ impl_evidence (
         {impl_name target-impl, rule xre-finalization.root-optimize}
     ), rule_versions_seen (
         {id xre-finalization.root-optimize, version 0}
-    )}
-    {id compile-surface.python-compile, covered_rules (
-        python.compile
-        python.compile-errors
-    ), covered_claims (
-        {impl_name target-impl, rule python.compile}
-        {impl_name target-impl, rule python.compile-errors}
-    )}
-    {id compile-surface.python-writers, covered_rules (
-        python.writers
-    ), covered_claims (
-        {impl_name target-impl, rule python.writers}
-    )}
-    {id compile-surface.python-parity, covered_rules (
-        python.compile-parity
-    ), covered_claims (
-        {impl_name target-impl, rule python.compile-parity}
     )}
 )

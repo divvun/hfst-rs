@@ -9698,6 +9698,29 @@ children (
                 title "Bring the walk on lang-kal under keyboard latency: next() averages 0.2 s and peaks at 1.4 s, and after long derivation chains 2-4% of walks reach the 1M-configuration bound and lose candidates (ator +TUQ +SSAQ +NNGUR offers 698 of 1,080); the walk keeps nothing between calls, so start by keeping what each state reaches through epsilon and flag arcs, and the word's own walk, across calls"
                 kind @perf
                 deps (predict.walk predict.kal-check)
+                sealed true
+                log (
+                    {
+                        at 2026-11-12T17:05:39.733597Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
+
+                    {
+                        at 2026-11-12T22:02:53.248646Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "Walk now keeps a per-walker memo (reach marks, boundary reach, frontiers with their arcs, point answers, flags) across calls, draws units over (state, flags) points with a step lattice, and spells out a candidate's configurations only when it is picked or its forms are asked for. Outputs identical to f0cfb77 on every walk f0cfb77 did not truncate (kal 1234 and sme 1546 dumped walks), supersets where it did. lang-kal ignored check: 232 s (was 4-8 min); 797 next() mean 24.9 ms, median 13.4 ms, max 341 ms, 6 truncated. Cold chain ator+TUQ+SSAQ+NNGUR completes at 1.5M configurations (f0cfb77 needed 3M); warm it completes within 1M. Short-prefix entry walks never complete at any bound (100M still cut after 30 s on kal 'a'), so most evaluation truncation is entry, not next(). hfst-embed builds a Walker per call, so it gets no memo: keeping one per Predictor is the next lever for the keyboard."
+                    }
+
+                    {
+                        at 2026-11-12T22:02:53.630897Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan complete)"
+                    }
+                )
             }
 
             {

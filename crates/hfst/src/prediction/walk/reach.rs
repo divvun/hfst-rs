@@ -4,10 +4,12 @@
 //! boundary tag. A walk asks before it follows an arc, so it follows only
 //! arcs that lead to what it is after.
 
-use std::rc::Rc;
+use std::sync::Arc;
 
 use super::hash::{IdMap, IdSet};
 use super::machine::Machine;
+use super::pass::Purpose;
+use crate::prediction::units::SymbolClass;
 use crate::transducer::{SymbolNumber, TransducerTablesInterface, TransitionTableIndex};
 
 /// What a state reaches without reading an input symbol, flag values left
@@ -26,10 +28,6 @@ impl Reach {
 
     pub(in crate::prediction) fn reads(&self, symbol: SymbolNumber) -> bool {
         self.symbols.binary_search(&symbol).is_ok()
-    }
-
-    pub(in crate::prediction) fn reads_any(&self, wanted: &dyn Fn(SymbolNumber) -> bool) -> bool {
-        self.symbols.iter().any(|&symbol| wanted(symbol))
     }
 }
 
@@ -51,11 +49,11 @@ pub(in crate::prediction) enum Role {
 
 /// What an epsilon walk is after: it enters only states that can lead to it.
 #[derive(Clone, Copy)]
-pub(in crate::prediction) enum Want<'w> {
+pub(in crate::prediction) enum Want {
     Everything,
     Final,
     Symbol(SymbolNumber),
-    Reading(&'w dyn Fn(SymbolNumber) -> bool),
+    Purpose(Purpose),
     /// A boundary tag, at the end of a run of tags that go through. True
     /// when the run already holds its derivation tag.
     Boundary(bool),
@@ -65,20 +63,22 @@ pub(in crate::prediction) enum Want<'w> {
 trait Graph {
     type Value: Clone;
     fn edges(&mut self, state: TransitionTableIndex) -> Vec<TransitionTableIndex>;
-    /// The value of a component, from its members and the components it
-    /// leads to, which are settled.
+    /// The value of a component, from its members, the edges of each, and
+    /// the components they lead to, which are settled. No member is
+    /// settled yet.
     fn value(
         &mut self,
         members: &[TransitionTableIndex],
+        edges: &[Vec<TransitionTableIndex>],
         settled: &IdMap<TransitionTableIndex, Self::Value>,
     ) -> Self::Value;
 }
 
 fn outgoing_of<T: TransducerTablesInterface>(
-    outgoing: &mut IdMap<TransitionTableIndex, Rc<[SymbolNumber]>>,
+    outgoing: &mut IdMap<TransitionTableIndex, Arc<[SymbolNumber]>>,
     machine: &Machine<'_, T>,
     state: TransitionTableIndex,
-) -> Rc<[SymbolNumber]> {
+) -> Arc<[SymbolNumber]> {
     outgoing
         .entry(state)
         .or_insert_with(|| machine.symbols_from(state).into())
@@ -99,11 +99,11 @@ fn epsilon_targets<T: TransducerTablesInterface>(
 /// Epsilon and flag arcs, valued by what they lead to reading.
 struct Epsilons<'g, 'a, T: TransducerTablesInterface> {
     machine: &'g Machine<'a, T>,
-    outgoing: &'g mut IdMap<TransitionTableIndex, Rc<[SymbolNumber]>>,
+    outgoing: &'g mut IdMap<TransitionTableIndex, Arc<[SymbolNumber]>>,
 }
 
 impl<T: TransducerTablesInterface> Graph for Epsilons<'_, '_, T> {
-    type Value = Rc<Reach>;
+    type Value = Arc<Reach>;
 
     fn edges(&mut self, state: TransitionTableIndex) -> Vec<TransitionTableIndex> {
         epsilon_targets(self.machine, state)
@@ -112,19 +112,20 @@ impl<T: TransducerTablesInterface> Graph for Epsilons<'_, '_, T> {
     fn value(
         &mut self,
         members: &[TransitionTableIndex],
-        settled: &IdMap<TransitionTableIndex, Rc<Reach>>,
-    ) -> Rc<Reach> {
+        edges: &[Vec<TransitionTableIndex>],
+        settled: &IdMap<TransitionTableIndex, Arc<Reach>>,
+    ) -> Arc<Reach> {
         let mut symbols: Vec<SymbolNumber> = Vec::new();
         let mut can_end = false;
-        let mut after: Vec<Rc<Reach>> = Vec::new();
-        for &member in members {
+        let mut after: Vec<Arc<Reach>> = Vec::new();
+        for (&member, targets) in members.iter().zip(edges) {
             symbols.extend(outgoing_of(self.outgoing, self.machine, member).iter());
             can_end |= self.machine.final_weight(member).is_some();
-            for target in epsilon_targets(self.machine, member) {
-                if let Some(reach) = settled.get(&target).filter(|_| !members.contains(&target)) {
-                    after.push(reach.clone());
-                }
-            }
+            after.extend(
+                targets
+                    .iter()
+                    .filter_map(|target| settled.get(target).cloned()),
+            );
         }
         if symbols.is_empty() && !can_end && after.len() == 1 {
             return after.swap_remove(0);
@@ -135,7 +136,78 @@ impl<T: TransducerTablesInterface> Graph for Epsilons<'_, '_, T> {
         }
         symbols.sort_unstable();
         symbols.dedup();
-        Rc::new(Reach { symbols, can_end })
+        Arc::new(Reach { symbols, can_end })
+    }
+}
+
+/// What a state leads to without reading a symbol, a bit for each: a final
+/// state, and an arc for a symbol that carries the mark. A walker asks this
+/// of many states and for few things, so one search answers them all.
+pub(in crate::prediction) type Marks = u8;
+
+pub(in crate::prediction) const FINAL: Marks = 1;
+pub(in crate::prediction) const TAG: Marks = 2;
+pub(in crate::prediction) const LETTER: Marks = 4;
+pub(in crate::prediction) const PREFIX: Marks = 8;
+
+/// The marks a symbol of `class` carries, `prefix` saying whether a prefix
+/// pattern matches it.
+pub(in crate::prediction) fn marks_of(class: SymbolClass, prefix: bool) -> Marks {
+    match class {
+        SymbolClass::Tag if prefix => TAG | PREFIX,
+        SymbolClass::Tag => TAG,
+        SymbolClass::Letter => LETTER,
+        SymbolClass::Flag | SymbolClass::Reserved => 0,
+    }
+}
+
+/// Epsilon and flag arcs, valued by the marks they lead to. Unlike
+/// [`Reach`], whose sets of symbols grow with what a state reaches, the
+/// value is a few bits.
+struct Leads<'g, 'a, T: TransducerTablesInterface> {
+    machine: &'g Machine<'a, T>,
+    outgoing: &'g mut IdMap<TransitionTableIndex, Arc<[SymbolNumber]>>,
+    /// The marks of each input symbol.
+    marks: &'g [Marks],
+}
+
+impl<T: TransducerTablesInterface> Leads<'_, '_, T> {
+    fn own(&mut self, state: TransitionTableIndex) -> Marks {
+        let mut own = if self.machine.final_weight(state).is_some() {
+            FINAL
+        } else {
+            0
+        };
+        if !self.marks.is_empty() {
+            for &symbol in outgoing_of(self.outgoing, self.machine, state).iter() {
+                own |= self.marks.get(symbol as usize).copied().unwrap_or(0);
+            }
+        }
+        own
+    }
+}
+
+impl<T: TransducerTablesInterface> Graph for Leads<'_, '_, T> {
+    type Value = Marks;
+
+    fn edges(&mut self, state: TransitionTableIndex) -> Vec<TransitionTableIndex> {
+        epsilon_targets(self.machine, state)
+    }
+
+    fn value(
+        &mut self,
+        members: &[TransitionTableIndex],
+        edges: &[Vec<TransitionTableIndex>],
+        settled: &IdMap<TransitionTableIndex, Marks>,
+    ) -> Marks {
+        let mut marks = 0;
+        for (&member, targets) in members.iter().zip(edges) {
+            marks |= self.own(member);
+            for target in targets {
+                marks |= settled.get(target).copied().unwrap_or(0);
+            }
+        }
+        marks
     }
 }
 
@@ -143,7 +215,7 @@ impl<T: TransducerTablesInterface> Graph for Epsilons<'_, '_, T> {
 /// by whether they lead to a boundary tag.
 struct Tags<'g, 'a, T: TransducerTablesInterface> {
     machine: &'g Machine<'a, T>,
-    outgoing: &'g mut IdMap<TransitionTableIndex, Rc<[SymbolNumber]>>,
+    outgoing: &'g mut IdMap<TransitionTableIndex, Arc<[SymbolNumber]>>,
     roles: &'g [Role],
     /// For a run that can still take a derivation tag, the settled values
     /// of runs that hold one, where a derivation arc leads; none for a run
@@ -203,9 +275,10 @@ impl<T: TransducerTablesInterface> Graph for Tags<'_, '_, T> {
     fn value(
         &mut self,
         members: &[TransitionTableIndex],
+        edges: &[Vec<TransitionTableIndex>],
         settled: &IdMap<TransitionTableIndex, bool>,
     ) -> bool {
-        for &member in members {
+        for (&member, targets) in members.iter().zip(edges) {
             let own = outgoing_of(self.outgoing, self.machine, member);
             if own.iter().any(|&symbol| self.ends(symbol)) {
                 return true;
@@ -220,11 +293,10 @@ impl<T: TransducerTablesInterface> Graph for Tags<'_, '_, T> {
                     }
                 }
             }
-            let leads = self
-                .edges(member)
-                .into_iter()
-                .any(|target| !members.contains(&target) && settled.get(&target) == Some(&true));
-            if leads {
+            if targets
+                .iter()
+                .any(|target| settled.get(target) == Some(&true))
+            {
                 return true;
             }
         }
@@ -251,6 +323,9 @@ struct Search {
     open: Vec<TransitionTableIndex>,
     on_open: IdSet<TransitionTableIndex>,
     frames: Vec<Frame>,
+    /// The edges of the states the search has left, until their component
+    /// is settled.
+    left: IdMap<TransitionTableIndex, Vec<TransitionTableIndex>>,
 }
 
 /// Settle `root` and everything it leads to, a strongly connected component
@@ -280,7 +355,9 @@ fn settle<G: Graph>(
             }
             continue;
         }
-        search.frames.pop();
+        if let Some(frame) = search.frames.pop() {
+            search.left.insert(frame.state, frame.targets);
+        }
         close_component(graph, settled, state, &mut search);
     }
 }
@@ -324,22 +401,27 @@ fn close_component<G: Graph>(
             break;
         }
     }
-    let value = graph.value(&members, settled);
+    let edges: Vec<Vec<TransitionTableIndex>> = members
+        .iter()
+        .map(|member| search.left.remove(member).unwrap_or_default())
+        .collect();
+    let value = graph.value(&members, &edges, settled);
     for member in members {
         settled.insert(member, value.clone());
     }
 }
 
-/// What the states one walk has asked about reach, and their own input
+/// What the states walks have asked about reach, and their own input
 /// symbols.
 #[derive(Default)]
 pub(in crate::prediction) struct Reaches {
-    reaches: IdMap<TransitionTableIndex, Rc<Reach>>,
+    reaches: IdMap<TransitionTableIndex, Arc<Reach>>,
     /// Whether a run that holds its derivation tag can end at a boundary.
     held: IdMap<TransitionTableIndex, bool>,
     /// Whether a run that can still take one can.
     free: IdMap<TransitionTableIndex, bool>,
-    outgoing: IdMap<TransitionTableIndex, Rc<[SymbolNumber]>>,
+    marks: IdMap<TransitionTableIndex, Marks>,
+    outgoing: IdMap<TransitionTableIndex, Arc<[SymbolNumber]>>,
 }
 
 impl Reaches {
@@ -349,8 +431,14 @@ impl Reaches {
         &mut self,
         machine: &Machine<'_, T>,
         state: TransitionTableIndex,
-    ) -> Rc<[SymbolNumber]> {
+    ) -> Arc<[SymbolNumber]> {
         outgoing_of(&mut self.outgoing, machine, state)
+    }
+
+    /// True when what `state` reaches is known, in full or as marks.
+    #[cfg(test)]
+    pub(in crate::prediction) fn knows(&self, state: TransitionTableIndex) -> bool {
+        self.reaches.contains_key(&state) || self.marks.contains_key(&state)
     }
 
     /// What `root` reaches over epsilon and flag arcs.
@@ -358,7 +446,7 @@ impl Reaches {
         &mut self,
         machine: &Machine<'_, T>,
         root: TransitionTableIndex,
-    ) -> Rc<Reach> {
+    ) -> Arc<Reach> {
         if !self.reaches.contains_key(&root) {
             let Reaches {
                 reaches, outgoing, ..
@@ -366,6 +454,32 @@ impl Reaches {
             settle(&mut Epsilons { machine, outgoing }, reaches, root);
         }
         self.reaches.get(&root).cloned().unwrap_or_default()
+    }
+
+    /// The marks `root` reaches over epsilon and flag arcs, `marks` being
+    /// those of each input symbol. A walker passes the same `marks` every
+    /// time.
+    pub(in crate::prediction) fn marks<T: TransducerTablesInterface>(
+        &mut self,
+        machine: &Machine<'_, T>,
+        marks: &[Marks],
+        root: TransitionTableIndex,
+    ) -> Marks {
+        if let Some(&known) = self.marks.get(&root) {
+            return known;
+        }
+        let Reaches {
+            marks: settled,
+            outgoing,
+            ..
+        } = self;
+        let mut graph = Leads {
+            machine,
+            outgoing,
+            marks,
+        };
+        settle(&mut graph, settled, root);
+        settled.get(&root).copied().unwrap_or(0)
     }
 
     /// True when a run of tags from `root` can end at a boundary tag, going
