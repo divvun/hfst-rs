@@ -3,7 +3,7 @@
 > [spec:hfst:def:hfst-ol-transducer.hfst.implementations.extract-paths-fn]
 > static bool extract_paths
 
-> [spec:hfst:sem:hfst-ol-transducer.hfst.implementations.extract-paths-fn+1]
+> [spec:hfst:sem:hfst-ol-transducer.hfst.implementations.extract-paths-fn+2]
 > Free (file-static) recursive helper that does a depth-first traversal of the
 > hfst_ol::Transducer `t` starting at transition-table index `s`, emitting paths
 > via `callback`. Parameters: `on_path` (for every state, how many times it
@@ -13,9 +13,10 @@
 > (max allowed repeated visits of a state on one path, or negative for
 > unlimited), `fd_state_stack` (pointer to a vector of FdState<SymbolNumber>;
 > NULL when no flag-diacritic handling), `filter_fd` (whether flag-diacritic
-> symbols are filtered out of the emitted strings), and `spv` (a
-> StringPairVector& holding the current path's input/output symbol pairs,
-> mutated and restored as the recursion proceeds). Steps:
+> symbols are filtered out of the emitted strings), and `path` (an
+> HfstTwoLevelPath whose symbol list `spv` holds the current path's
+> input/output symbol pairs, mutated and restored as the recursion proceeds;
+> one path shared by the whole recursion). Steps:
 > 1. If `cycles >= 0` and `on_path[s] > cycles`, return `true`
 >    immediately (cycle limit reached for this state on this path).
 > 2. Increment `on_path[s]`.
@@ -24,9 +25,10 @@
 >    if `.final()`, mark final and, when the header's Weighted flag is set, set
 >    final_weight from `TransitionWIndex::final_weight()` (else 0). Otherwise
 >    look at `t->get_transition(s)`: if `.final()`, mark final and, when Weighted,
->    set final_weight from `TransitionW::get_weight()` (else 0). Build an
->    HfstTwoLevelPath from `weight_sum + final_weight` and `spv`, call
->    `callback(path, final)`. If the returned RetVal has `continueSearch` false
+>    set final_weight from `TransitionW::get_weight()` (else 0). Set the
+>    weight of `path` to `weight_sum + final_weight` and call
+>    `callback(path, final)`, which borrows `path` for the call. If the
+>    returned RetVal has `continueSearch` false
 >    or `continuePath` false, decrement `on_path[s]` and return
 >    `ret.continueSearch`.
 > 4. Get the set of outgoing transitions `t->get_transitions_from_state(s)` and
@@ -44,7 +46,7 @@
 > 7. Recurse into `extract_paths` on `transition.get_target()`, passing
 >    `on_path`, `weight_sum` plus (when Weighted) the transition's
 >    `TransitionW::get_weight()` else 0, and the same callback, cycles,
->    fd_state_stack, filter_fd, spv. Store the result in `res`.
+>    fd_state_stack, filter_fd, path. Store the result in `res`.
 > 8. Pop the just-pushed entry off `spv`. If `added_fd_state`, pop the
 >    fd_state_stack.
 > 9. After the loop, decrement `on_path[s]` and return `res`.
@@ -54,7 +56,10 @@
 > maps, `all_visitations` and `path_visitations`, by value instead, a copy per
 > call: wherever either is read, both equal `on_path`, so the paths and their
 > order are the same, but a path n states long holds n copies of up to n
-> entries, memory quadratic in n where the shared count is linear.
+> entries, memory quadratic in n where the shared count is linear. Likewise
+> the C++ builds a new HfstTwoLevelPath from a copy of `spv` for every
+> callback, where lending `path` costs nothing: the copies take time
+> quadratic in the path's length.
 
 > [spec:hfst:def:hfst-ol-transducer.hfst.implementations.hfst-ol-input-stream]
 > class HfstOlInputStream {
@@ -235,7 +240,7 @@
 > [spec:hfst:def:hfst-ol-transducer.hfst.implementations.hfst-ol-transducer.extract-paths-fn]
 > void HfstOlTransducer::extract_paths
 
-> [spec:hfst:sem:hfst-ol-transducer.hfst.implementations.hfst-ol-transducer.extract-paths-fn+1]
+> [spec:hfst:sem:hfst-ol-transducer.hfst.implementations.hfst-ol-transducer.extract-paths-fn+2]
 > Public entry point that sets up state and invokes the recursive free
 > `extract_paths` helper. Parameters: `t` (the transducer), `callback`
 > (ExtractStringsCb&), `cycles` (max repeated state visits per path), `fd`
@@ -246,9 +251,10 @@
 > 2. If `fd == NULL`, set `fd_state_stack` to NULL; otherwise allocate a new
 >    `std::vector<FdState<SymbolNumber>>` initialized with one element
 >    `FdState<SymbolNumber>(*fd)`.
-> 3. Create an empty `StringPairVector spv`.
+> 3. Create an empty path `path` (weight 0, no pairs). The C++ creates an
+>    empty `StringPairVector spv` in its place.
 > 4. Call the free helper `hfst::implementations::extract_paths(t, 0, on_path,
->    0.0f, callback, cycles, fd_state_stack, filter_fd, spv)` — starting at
+>    0.0f, callback, cycles, fd_state_stack, filter_fd, path)` — starting at
 >    index 0, with weight_sum 0.0.
 > Returns void. (Note: the allocated fd_state_stack is not freed here.)
 

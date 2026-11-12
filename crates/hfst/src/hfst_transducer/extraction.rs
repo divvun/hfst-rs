@@ -319,7 +319,7 @@ impl<'a> ExtractStringsCb_<'a> {
 impl<'a> ExtractStringsCb for ExtractStringsCb_<'a> {
     // [spec:hfst:def:hfst-transducer.hfst.extract-strings-cb.operator-fn]
     // [spec:hfst:sem:hfst-transducer.hfst.extract-strings-cb.operator-fn]
-    fn operator_call(&mut self, path: &mut HfstTwoLevelPath, is_final: bool) -> RetVal {
+    fn operator_call(&mut self, path: &HfstTwoLevelPath, is_final: bool) -> RetVal {
         if is_final {
             self.paths.insert(path.clone());
         }

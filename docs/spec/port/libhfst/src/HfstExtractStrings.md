@@ -8,16 +8,24 @@
 > [spec:hfst:def:hfst-extract-strings.hfst.extract-strings-cb.operator-fn]
 > virtual RetVal operator()(HfstTwoLevelPath& path, bool final) = 0
 
-> [spec:hfst:sem:hfst-extract-strings.hfst.extract-strings-cb.operator-fn]
+> [spec:hfst:sem:hfst-extract-strings.hfst.extract-strings-cb.operator-fn+1]
 > Pure virtual call operator defining the callback contract; it has no body
 > and must be overridden by concrete subclasses. The extraction routine
 > (`extract_paths`) invokes it after every transition, passing the path
-> accumulated so far as `path` (a mutable reference to an `HfstTwoLevelPath`,
-> i.e. a `(float weight, StringPairVector)`) and a boolean `final` indicating
-> whether that path currently ends at a final state. The implementation
-> inspects the path and returns a `RetVal` whose two flags tell the caller
-> whether to keep searching overall and whether to keep following this
-> specific path.
+> accumulated so far as `path` (an `HfstTwoLevelPath`, i.e. a `(float weight,
+> StringPairVector)`) and a boolean `final` indicating whether that path
+> currently ends at a final state. The implementation inspects the path and
+> returns a `RetVal` whose two flags tell the caller whether to keep searching
+> overall and whether to keep following this specific path.
+>
+> `path` is a shared reference to the walk's own path, lent for the call: the
+> callback cannot change it, and one that keeps a path clones it. The C++
+> passes a mutable reference to a copy the walk makes for every call, which
+> takes time quadratic in the path's length. A walk calls in depth-first
+> order: a path more than one pair long extends the path of an earlier call
+> by one pair, and every call between the two is on a path that extends that
+> earlier one too, so a callback may carry what it derived from a path over to
+> the paths that extend it.
 
 > [spec:hfst:def:hfst-extract-strings.hfst.extract-strings-cb.ret-val]
 > class RetVal {

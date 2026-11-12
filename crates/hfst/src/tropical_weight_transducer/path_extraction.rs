@@ -23,9 +23,12 @@ count undo it, so a call hands the counts back as it found them and a branch
 never sees its siblings' visits. The C++ passes two maps by value, a copy per
 call, which holds a path n states long in memory quadratic in n; at every read
 both copies equal these counts, so the paths and their order are the same.
-`spv` and `fd_state_stack` are shared down the recursion too. */
-// [spec:hfst:def:tropical-weight-transducer.hfst.implementations.extract-paths-fn]
-// [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.extract-paths-fn+1]
+`path` is shared down the recursion the same way: each call pushes its arc's
+pair onto it and pops it after, and the callback borrows it, where the C++
+copies the pairs into a new path for every call, time quadratic in the
+path's length. `fd_state_stack` is shared too. */
+// [spec:hfst:def:tropical-weight-transducer.hfst.implementations.extract-paths-fn+2]
+// [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.extract-paths-fn+2]
 #[allow(clippy::too_many_arguments)]
 fn extract_paths(
     t: &StdVectorFst,
@@ -36,14 +39,14 @@ fn extract_paths(
     cycles: i32,
     mut fd_state_stack: Option<&mut Vec<FdState<i64>>>,
     filter_fd: bool,
-    spv: &mut StringPairVector,
+    path: &mut HfstTwoLevelPath,
 ) -> bool {
     if cycles >= 0 && i32::from(on_path[s as usize]) > cycles {
         return true;
     }
     on_path[s as usize] += 1;
 
-    if !spv.is_empty() {
+    if !path.second.is_empty() {
         let is_final = t.is_final(s).expect("s is a valid state of this fst");
         let fw = if is_final {
             *t.final_weight(s)
@@ -53,11 +56,8 @@ fn extract_paths(
         } else {
             0.0
         };
-        let mut path = HfstTwoLevelPath {
-            first: weight_sum + fw,
-            second: spv.clone(),
-        };
-        let ret = callback.operator_call(&mut path, is_final);
+        path.first = weight_sum + fw;
+        let ret = callback.operator_call(path, is_final);
         if !ret.continueSearch || !ret.continuePath {
             on_path[s as usize] -= 1;
             return ret.continueSearch;
@@ -106,7 +106,7 @@ fn extract_paths(
             }
         }
 
-        /* Handle spv here. Special symbols (flags, epsilons) are always
+        /* Handle the arc's pair here. Special symbols (flags, epsilons) are always
         inserted. */
         let mut istring = crate::hfst_data_types::Symbol::default();
         let mut ostring = crate::hfst_data_types::Symbol::default();
@@ -147,7 +147,7 @@ fn extract_paths(
             );
         }
 
-        spv.push((istring, ostring));
+        path.second.push((istring, ostring));
 
         res = extract_paths(
             t,
@@ -158,10 +158,10 @@ fn extract_paths(
             cycles,
             fd_state_stack.as_deref_mut(),
             filter_fd,
-            spv,
+            path,
         );
 
-        spv.pop();
+        path.second.pop();
 
         if added_fd_state {
             fd_state_stack
@@ -487,8 +487,8 @@ fn random_path(
 impl TropicalWeightTransducer {
     // ---- extract_paths / extract_random_paths --------------------------------
 
-    // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.extract-paths-fn]
-    // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.extract-paths-fn+1]
+    // [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.extract-paths-fn+2]
+    // [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.extract-paths-fn+2]
     pub fn extract_paths(
         t: &StdVectorFst,
         callback: &mut dyn ExtractStringsCb,
@@ -506,7 +506,10 @@ impl TropicalWeightTransducer {
         let start = t
             .start()
             .expect("start state present: is_none checked above");
-        let mut spv = StringPairVector::new();
+        let mut path = HfstTwoLevelPath {
+            first: 0.0,
+            second: StringPairVector::new(),
+        };
         extract_paths(
             t,
             start,
@@ -516,7 +519,7 @@ impl TropicalWeightTransducer {
             cycles,
             fd_state_stack.as_mut(),
             filter_fd,
-            &mut spv,
+            &mut path,
         );
 
         // add epsilon path, if needed
@@ -524,7 +527,7 @@ impl TropicalWeightTransducer {
             && t.is_final(start)
                 .expect("start is a valid state of this fst")
         {
-            let mut epsilon_path = HfstTwoLevelPath {
+            let epsilon_path = HfstTwoLevelPath {
                 first: *t
                     .final_weight(start)
                     .expect("start is a valid state of this fst")
@@ -532,7 +535,7 @@ impl TropicalWeightTransducer {
                     .value(),
                 second: StringPairVector::new(),
             };
-            callback.operator_call(&mut epsilon_path, true /* final */);
+            callback.operator_call(&epsilon_path, true /* final */);
         }
         // fd_state_stack dropped here (C++ 'delete fd_state_stack').
     }

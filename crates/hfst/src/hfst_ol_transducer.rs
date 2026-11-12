@@ -387,11 +387,14 @@ mod ol_lookup_ops {
     and a branch never sees its siblings' visits. The C++ passes two maps by
     value, a copy per call, which holds a path n states long in memory
     quadratic in n; at every read both copies equal these counts, so the paths
-    and their order are the same. `spv` and `fd_state_stack` are shared down
-    the recursion too. A state is a table index, an index-table position or a
+    and their order are the same. `path` is shared down the recursion the same
+    way: each call pushes its transition's pair onto it and pops it after, and
+    the callback borrows it, where the C++ copies the pairs into a new path for
+    every call, time quadratic in the path's length. `fd_state_stack` is
+    shared too. A state is a table index, an index-table position or a
     transition-table one past TARGET_TABLE, hence a map and not a vector. */
-    // [spec:hfst:def:hfst-ol-transducer.hfst.implementations.extract-paths-fn]
-    // [spec:hfst:sem:hfst-ol-transducer.hfst.implementations.extract-paths-fn+1]
+    // [spec:hfst:def:hfst-ol-transducer.hfst.implementations.extract-paths-fn+2]
+    // [spec:hfst:sem:hfst-ol-transducer.hfst.implementations.extract-paths-fn+2]
     #[allow(clippy::too_many_arguments)]
     fn extract_paths<T: crate::transducer::TransducerTablesInterface>(
         t: &Transducer<T>,
@@ -404,14 +407,14 @@ mod ol_lookup_ops {
         cycles: i32,
         mut fd_state_stack: Option<&mut Vec<FdState<SymbolNumber>>>,
         filter_fd: bool,
-        spv: &mut StringPairVector,
+        path: &mut HfstTwoLevelPath,
     ) -> bool {
         if cycles >= 0 && i32::from(visits(on_path, s)) > cycles {
             return true;
         }
         *on_path.entry(s).or_insert(0) += 1;
 
-        if !spv.is_empty() {
+        if !path.second.is_empty() {
             // check for finality
             let mut is_final = false;
             let mut final_weight = 0.0f32;
@@ -433,12 +436,8 @@ mod ol_lookup_ops {
                 };
             }
 
-            let mut path = HfstTwoLevelPath {
-                first: weight_sum + final_weight,
-                second: spv.clone(),
-            };
-
-            let ret = callback.operator_call(&mut path, is_final);
+            path.first = weight_sum + final_weight;
+            let ret = callback.operator_call(path, is_final);
             if !ret.continueSearch || !ret.continuePath {
                 leave(on_path, s);
                 return ret.continueSearch;
@@ -497,8 +496,8 @@ mod ol_lookup_ops {
                 }
             }
 
-            /* Handle spv here. Special symbols (flags, epsilons)
-            are always inserted. */
+            /* Handle the transition's pair here. Special symbols (flags,
+            epsilons) are always inserted. */
             let mut istring = crate::hfst_data_types::Symbol::default();
             let mut ostring = crate::hfst_data_types::Symbol::default();
 
@@ -529,7 +528,7 @@ mod ol_lookup_ops {
                 ostring = t.get_alphabet().get_symbol_table()[output as usize].clone();
             }
 
-            spv.push((istring, ostring));
+            path.second.push((istring, ostring));
 
             res = extract_paths(
                 t,
@@ -546,10 +545,10 @@ mod ol_lookup_ops {
                 cycles,
                 fd_state_stack.as_deref_mut(),
                 filter_fd,
-                spv,
+                path,
             );
 
-            spv.pop();
+            path.second.pop();
 
             if added_fd_state {
                 fd_state_stack
@@ -583,8 +582,8 @@ mod ol_lookup_ops {
     const BUFFER_START_SIZE: i32 = 64;
 
     impl HfstOlTransducer {
-        // [spec:hfst:def:hfst-ol-transducer.hfst.implementations.hfst-ol-transducer.extract-paths-fn]
-        // [spec:hfst:sem:hfst-ol-transducer.hfst.implementations.hfst-ol-transducer.extract-paths-fn+1]
+        // [spec:hfst:def:hfst-ol-transducer.hfst.implementations.hfst-ol-transducer.extract-paths-fn+2]
+        // [spec:hfst:sem:hfst-ol-transducer.hfst.implementations.hfst-ol-transducer.extract-paths-fn+2]
         pub fn extract_paths<T: crate::transducer::TransducerTablesInterface>(
             t: &Transducer<T>,
             callback: &mut dyn ExtractStringsCb,
@@ -598,7 +597,10 @@ mod ol_lookup_ops {
             let mut fd_state_stack: Option<Vec<FdState<SymbolNumber>>> =
                 fd.map(|table| vec![FdState::new(table)]);
 
-            let mut spv = StringPairVector::new();
+            let mut path = HfstTwoLevelPath {
+                first: 0.0,
+                second: StringPairVector::new(),
+            };
 
             extract_paths(
                 t,
@@ -610,7 +612,7 @@ mod ol_lookup_ops {
                 cycles,
                 fd_state_stack.as_mut(),
                 filter_fd,
-                &mut spv,
+                &mut path,
             );
         }
     }

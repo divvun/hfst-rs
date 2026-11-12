@@ -116,7 +116,7 @@ struct TraceCb {
 }
 
 impl ExtractStringsCb for TraceCb {
-    fn operator_call(&mut self, path: &mut HfstTwoLevelPath, is_final: bool) -> RetVal {
+    fn operator_call(&mut self, path: &HfstTwoLevelPath, is_final: bool) -> RetVal {
         self.trace.push((
             is_final,
             path.second

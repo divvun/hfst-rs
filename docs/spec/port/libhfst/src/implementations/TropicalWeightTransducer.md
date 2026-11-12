@@ -14,21 +14,22 @@
 > [spec:hfst:def:tropical-weight-transducer.hfst.implementations.extract-paths-fn]
 > static bool
 
-> [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.extract-paths-fn+1]
+> [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.extract-paths-fn+2]
 > File-static recursive depth-first path enumerator. Params: transducer `t`,
 > current state `s`, the on-path count `on_path` (for every state, how many
 > times it occurs on the path from the start state to `s`; one count shared by
 > the whole recursion), accumulated `weight_sum`, a `callback`
 > (hfst::ExtractStringsCb), `cycles` limit, optional `fd_state_stack`
-> (flag-diacritic states), `filter_fd` bool, and `spv` (StringPairVector, the
-> path symbols accumulated so far, passed by reference).
+> (flag-diacritic states), `filter_fd` bool, and `path` (an HfstTwoLevelPath
+> whose symbol list `spv` holds the pairs accumulated so far; one path shared
+> by the whole recursion).
 > Step 1: if `cycles >= 0` and `on_path[s] > cycles`, return true (prune this
 > branch but keep searching). Otherwise increment `on_path[s]`.
-> Step 2: if `spv` is non-empty, compute `final = (t->Final(s) != Zero)`, build
-> an HfstTwoLevelPath with weight `weight_sum + (final ? Final(s).Value() : 0)`
-> and symbol list `spv`, and invoke `callback(path, final)`. If the returned
-> RetVal has `!continueSearch || !continuePath`, decrement `on_path[s]` and
-> return `ret.continueSearch`.
+> Step 2: if `spv` is non-empty, compute `final = (t->Final(s) != Zero)`, set
+> the weight of `path` to `weight_sum + (final ? Final(s).Value() : 0)`, and
+> invoke `callback(path, final)`, which borrows `path` for the call. If the
+> returned RetVal has `!continueSearch || !continuePath`, decrement
+> `on_path[s]` and return `ret.continueSearch`.
 > Step 3: collect this state's out-arcs into a vector sorted ascending by the
 > `on_path` count of each arc's target state (insertion sort: find first index
 > whose target's count exceeds the new arc's, shift right, insert).
@@ -48,7 +49,9 @@
 > `path_visitations`, by value instead, a copy per call: wherever either is
 > read, both equal `on_path`, so the paths and their order are the same, but a
 > path n states long holds n copies of up to n entries, memory quadratic in n
-> where the shared count is linear.
+> where the shared count is linear. Likewise the C++ builds a new
+> HfstTwoLevelPath from a copy of `spv` for every callback, where lending
+> `path` costs nothing: the copies take time quadratic in the path's length.
 
 > [spec:hfst:def:tropical-weight-transducer.hfst.implementations.initialize-symbol-tables-fn]
 > void initialize_symbol_tables(StdVectorFst *t)
@@ -600,7 +603,7 @@
 > [spec:hfst:def:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.extract-paths-fn]
 > void
 
-> [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.extract-paths-fn+1]
+> [spec:hfst:sem:tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.extract-paths-fn+2]
 > Static member. Drives path extraction from `t`, delivering each path to
 > `callback` (hfst::ExtractStringsCb). Params: `t`, `callback`, int `cycles`,
 > `FdTable<int64> *fd`, bool `filter_fd`.
@@ -609,9 +612,10 @@
 > `fd` is non-NULL, allocate a `fd_state_stack` = a vector containing one
 > `FdState<int64>` constructed from `*fd`; otherwise NULL. (The C++ creates two
 > empty maps, `all_visitations` and `path_visitations`, in its place.)
-> Step 3: with an empty `StringPairVector spv`, call the file-static
+> Step 3: with an empty path `path` (weight 0, no pairs), call the file-static
 > `hfst::implementations::extract_paths(t, t->Start(), on_path, 0.0f, callback,
-> cycles, fd_state_stack, filter_fd, spv)` to do the recursive DFS enumeration.
+> cycles, fd_state_stack, filter_fd, path)` to do the recursive DFS
+> enumeration. (The C++ passes an empty `StringPairVector spv` in its place.)
 > Step 4: emit the epsilon path if accepted: if start state exists and
 > `t->Final(t->Start()) != Zero`, build an `HfstTwoLevelPath` with weight
 > `Final(Start()).Value()` and an empty symbol vector, and call

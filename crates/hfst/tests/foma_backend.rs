@@ -52,7 +52,7 @@ struct PairCollector {
 }
 
 impl ExtractStringsCb for PairCollector {
-    fn operator_call(&mut self, path: &mut HfstTwoLevelPath, is_final: bool) -> RetVal {
+    fn operator_call(&mut self, path: &HfstTwoLevelPath, is_final: bool) -> RetVal {
         if is_final {
             let mut i = String::new();
             let mut o = String::new();

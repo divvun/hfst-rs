@@ -368,6 +368,32 @@ fn paths_print_as_fst2strings_prints_them() {
     assert_eq!(path_line(&quoted, &spaced), "a@_SPACE_@b \n");
 }
 
+// The selector carries each path's strings over to the paths that extend it,
+// as a walk's order allows. Random paths come in no such order: they come
+// sorted, so `ba` follows `ab`, and judging `ba` on `ab`'s first symbol would
+// read it as `aa` and drop it.
+// [spec:hfst:sem:hfst-fst2strings.callback.operator-fn+1/test]
+#[test]
+fn random_paths_are_each_judged_whole() {
+    let t = regex("{aa} | {ab} | {ba} | {bb}");
+    let query = PathQuery {
+        random: 200,
+        in_prefix: "b".to_string(),
+        ..PathQuery::default()
+    };
+    let mut found = std::collections::BTreeSet::new();
+    extract_paths(
+        &t,
+        &query,
+        &mut |p| {
+            found.insert(p.second.iter().map(|(i, _)| i.as_str()).collect::<String>());
+        },
+        &mut |_| {},
+    )
+    .expect("finds");
+    assert_eq!(found, ["ba", "bb"].map(String::from).into());
+}
+
 // [spec:hfst:req:embed.tools-in-library/test]
 #[test]
 fn paths_are_selected_as_fst2strings_selects_them() {

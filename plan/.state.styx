@@ -1,6 +1,6 @@
 schema_version 7
 
-last_sync_at 2026-11-12T22:32:56.114005Z
+last_sync_at 2026-11-12T23:10:56.770133Z
 
 rule_versions (
     {id determinize-envelope.bounded-strategies, version 0}
@@ -43,6 +43,10 @@ rule_versions (
     {id general-lookup-termination.no-cycle-count-termination, version 0}
     {id general-lookup-termination.non-progressing-cycle, version 0}
     {id general-lookup-termination.progress-resets-the-trap, version 0}
+    {id hfst-extract-strings.hfst.extract-strings-cb.operator-fn, version 1}
+    {id hfst-fst2strings.callback.operator-fn, version 1}
+    {id hfst-ol-transducer.hfst.implementations.extract-paths-fn, version 2}
+    {id hfst-ol-transducer.hfst.implementations.hfst-ol-transducer.extract-paths-fn, version 2}
     {id javascript.compile-errors, version 0}
     {id javascript.compile-files, version 0}
     {id javascript.compile-module, version 0}
@@ -135,6 +139,8 @@ rule_versions (
     {id table-residency.single-copy-load, version 0}
     {id table-residency.untrusted-size-fields, version 0}
     {id table-residency.views-not-copies, version 0}
+    {id tropical-weight-transducer.hfst.implementations.extract-paths-fn, version 2}
+    {id tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.extract-paths-fn, version 2}
     {id twolc-compiler.hfst.twolcpre2.complete-alphabet-fn, version 1}
     {id virtual-flag-algebra.backend-core, version 0}
     {id virtual-flag-algebra.frontend-compose, version 0}
@@ -299,6 +305,8 @@ derived_priorities (
     {id olw-direct-conversion, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
     {id olw-flat-groups, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
     {id oov-four-byte-tests, priority 0, derived_at 2026-09-15T19:46:58.963189Z}
+    {id path-extraction-memory, priority 0, derived_at 2026-11-12T23:10:56.770133Z}
+    {id path-extraction-time, priority 1, derived_at 2026-11-12T23:10:56.770133Z}
     {id perf-ol-epsilon-guard, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
     {id performance-language-gates, priority 0, derived_at 2026-08-21T21:18:14.374864Z}
     {id plan-node-kinds, priority 0, derived_at 2026-08-18T11:19:03.814367Z}
@@ -315,6 +323,7 @@ derived_priorities (
     {id predict.display-script, priority 3, derived_at 2026-11-12T22:32:56.114005Z}
     {id predict.embed, priority 3, derived_at 2026-11-12T22:32:56.114005Z}
     {id predict.embed-builder, priority 3, derived_at 2026-11-12T22:32:56.114005Z}
+    {id predict.embed-memo, priority 3, derived_at 2026-11-12T23:10:56.770133Z}
     {id predict.eval-speed, priority 3, derived_at 2026-11-12T22:32:56.114005Z}
     {id predict.evaluation, priority 3, derived_at 2026-11-12T22:32:56.114005Z}
     {id predict.filter-scoring, priority 3, derived_at 2026-11-12T22:32:56.114005Z}
@@ -1055,6 +1064,21 @@ impl_evidence (
         {id ol-lookup-enumeration.no-internal-work-cap, version 0}
         {id ol-lookup-enumeration.out-of-alphabet-input, version 0}
         {id ol-lookup-enumeration.representation-independence, version 0}
+    )}
+    {id path-extraction-time, covered_rules (
+        hfst-extract-strings.hfst.extract-strings-cb.operator-fn
+        hfst-fst2strings.callback.operator-fn
+        hfst-ol-transducer.hfst.implementations.extract-paths-fn
+        hfst-ol-transducer.hfst.implementations.hfst-ol-transducer.extract-paths-fn
+        tropical-weight-transducer.hfst.implementations.extract-paths-fn
+        tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.extract-paths-fn
+    ), covered_claims (
+        {impl_name target-impl, rule hfst-extract-strings.hfst.extract-strings-cb.operator-fn}
+        {impl_name target-impl, rule hfst-fst2strings.callback.operator-fn}
+        {impl_name target-impl, rule hfst-ol-transducer.hfst.implementations.extract-paths-fn}
+        {impl_name target-impl, rule hfst-ol-transducer.hfst.implementations.hfst-ol-transducer.extract-paths-fn}
+        {impl_name target-impl, rule tropical-weight-transducer.hfst.implementations.extract-paths-fn}
+        {impl_name target-impl, rule tropical-weight-transducer.hfst.implementations.tropical-weight-transducer.extract-paths-fn}
     )}
     {id pmatch-quotient-subtract, covered_rules (
         xfst-cmd.pmatch-quotient-subtract

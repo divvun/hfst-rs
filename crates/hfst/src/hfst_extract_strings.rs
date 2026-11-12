@@ -193,7 +193,11 @@ impl RetVal {
 pub trait ExtractStringsCb {
     // This function is called by extract_paths after every transition with the
     // path up to that point, and whether or not the path ends at a final state.
-    // [spec:hfst:def:hfst-extract-strings.hfst.extract-strings-cb.operator-fn]
-    // [spec:hfst:sem:hfst-extract-strings.hfst.extract-strings-cb.operator-fn]
-    fn operator_call(&mut self, path: &mut HfstTwoLevelPath, is_final: bool) -> RetVal;
+    // The path is the walk's own, lent for the call, so a callback that keeps
+    // a path clones it. A walk calls in depth-first order: a path more than
+    // one pair long extends the path of an earlier call by one pair, and every
+    // call between the two is on a path that extends that earlier one too.
+    // [spec:hfst:def:hfst-extract-strings.hfst.extract-strings-cb.operator-fn+1]
+    // [spec:hfst:sem:hfst-extract-strings.hfst.extract-strings-cb.operator-fn+1]
+    fn operator_call(&mut self, path: &HfstTwoLevelPath, is_final: bool) -> RetVal;
 }

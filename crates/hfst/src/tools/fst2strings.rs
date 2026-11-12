@@ -4,7 +4,7 @@
 use std::io::Write;
 
 use crate::backend::{AlgebraBackend, LookupBackend};
-use crate::hfst_data_types::{HfstTwoLevelPath, HfstTwoLevelPaths};
+use crate::hfst_data_types::{HfstTwoLevelPath, HfstTwoLevelPaths, StringPair};
 use crate::hfst_extract_strings::{ExtractStringsCb, RetVal};
 use crate::hfst_flag_diacritics::FdOperation;
 use crate::hfst_symbol_defs::is_epsilon;
@@ -116,25 +116,41 @@ struct Selector<'q, 'e> {
     max: i32,
     count: i32,
     each: &'e mut dyn FnMut(&HfstTwoLevelPath),
+    strings: PathStrings,
+}
+
+impl<'q, 'e> Selector<'q, 'e> {
+    fn new(
+        query: &'q PathQuery,
+        best_weight: Option<f32>,
+        max: i32,
+        each: &'e mut dyn FnMut(&HfstTwoLevelPath),
+    ) -> Self {
+        Selector {
+            query,
+            best_weight,
+            max,
+            count: 0,
+            each,
+            strings: PathStrings::new(),
+        }
+    }
+
+    /// Judge a final path that no walk led to, such as a random one.
+    fn judge_alone(&mut self, path: &HfstTwoLevelPath) {
+        self.strings.clear();
+        self.operator_call(path, true);
+    }
 }
 
 impl ExtractStringsCb for Selector<'_, '_> {
-    // [spec:hfst:def:hfst-fst2strings.callback.operator-fn]
-    // [spec:hfst:sem:hfst-fst2strings.callback.operator-fn]
-    fn operator_call(&mut self, path: &mut HfstTwoLevelPath, is_final: bool) -> RetVal {
+    // [spec:hfst:def:hfst-fst2strings.callback.operator-fn+1]
+    // [spec:hfst:sem:hfst-fst2strings.callback.operator-fn+1]
+    fn operator_call(&mut self, path: &HfstTwoLevelPath, is_final: bool) -> RetVal {
         let query = self.query;
-        let mut istring = String::new();
-        let mut ostring = String::new();
-        // Epsilons render as nothing, so the length, prefix and exclusion
-        // filters leave them out too [upstream hfst/hfst#587].
-        for it in path.second.iter() {
-            if !is_epsilon(&it.0) {
-                istring.push_str(&it.0);
-            }
-            if !is_epsilon(&it.1) {
-                ostring.push_str(&it.1);
-            }
-        }
+        let whole = self.strings.follow(&path.second, query);
+        let istring = self.strings.istring.as_str();
+        let ostring = self.strings.ostring.as_str();
         let weight = path.first;
         let prefix = |string: &str, prefix: &str| -> Option<RetVal> {
             if prefix.is_empty() {
@@ -147,20 +163,18 @@ impl ExtractStringsCb for Selector<'_, '_> {
                 None
             }
         };
-        if (query.max_in_length > 0 && istring.len() as u32 > query.max_in_length)
-            || (query.max_out_length > 0 && ostring.len() as u32 > query.max_out_length)
+        if (query.max_in_length > 0 && whole.in_len as u32 > query.max_in_length)
+            || (query.max_out_length > 0 && whole.out_len as u32 > query.max_out_length)
         {
             return RetVal::new(true, false);
         }
-        if let Some(verdict) = prefix(&istring, &query.in_prefix) {
+        if let Some(verdict) = prefix(istring, &query.in_prefix) {
             return verdict;
         }
-        if let Some(verdict) = prefix(&ostring, &query.out_prefix) {
+        if let Some(verdict) = prefix(ostring, &query.out_prefix) {
             return verdict;
         }
-        if (!query.in_exclude.is_empty() && istring.contains(query.in_exclude.as_str()))
-            || (!query.out_exclude.is_empty() && ostring.contains(query.out_exclude.as_str()))
-        {
+        if whole.in_excluded || whole.out_excluded {
             return RetVal::new(true, false);
         }
         // As in the C++ tool, a lightest weight below 0 lifts the beam.
@@ -176,6 +190,86 @@ impl ExtractStringsCb for Selector<'_, '_> {
         }
         RetVal::new((self.max < 1) || (self.count < self.max), true)
     }
+}
+
+/// The input and output strings of the path the selector last judged, and
+/// for each of its prefixes the strings' lengths and whether each holds its
+/// exclusion yet. A walk's next path extends one it gave before by one pair,
+/// so following it costs that pair, where rebuilding the strings would cost
+/// the whole path at every state.
+struct PathStrings {
+    istring: String,
+    ostring: String,
+    /// `prefixes[k]` describes the first `k` pairs of the path.
+    prefixes: Vec<Prefix>,
+}
+
+#[derive(Clone, Copy, Default)]
+struct Prefix {
+    in_len: usize,
+    out_len: usize,
+    in_excluded: bool,
+    out_excluded: bool,
+}
+
+impl PathStrings {
+    fn new() -> Self {
+        PathStrings {
+            istring: String::new(),
+            ostring: String::new(),
+            prefixes: vec![Prefix::default()],
+        }
+    }
+
+    /// Bring the strings to `pairs`, and describe the whole of them. As many
+    /// of their first pairs as are held, up to all but the last, are taken to
+    /// be the pairs held, as a walk's order promises.
+    fn follow(&mut self, pairs: &[StringPair], query: &PathQuery) -> Prefix {
+        let held = (self.prefixes.len() - 1).min(pairs.len().saturating_sub(1));
+        self.prefixes.truncate(held + 1);
+        let mut last = self.prefixes[held];
+        self.istring.truncate(last.in_len);
+        self.ostring.truncate(last.out_len);
+        for (input, output) in &pairs[held..] {
+            // Epsilons render as nothing, so the length, prefix and exclusion
+            // filters leave them out too [upstream hfst/hfst#587].
+            if !is_epsilon(input) {
+                self.istring.push_str(input);
+            }
+            if !is_epsilon(output) {
+                self.ostring.push_str(output);
+            }
+            last = Prefix {
+                in_len: self.istring.len(),
+                out_len: self.ostring.len(),
+                in_excluded: last.in_excluded
+                    || occurs_from(&self.istring, last.in_len, &query.in_exclude),
+                out_excluded: last.out_excluded
+                    || occurs_from(&self.ostring, last.out_len, &query.out_exclude),
+            };
+            self.prefixes.push(last);
+        }
+        last
+    }
+
+    /// Hold no path, before one that no walk led to.
+    fn clear(&mut self) {
+        self.prefixes.truncate(1);
+    }
+}
+
+/// Whether `needle`, unless it is empty, occurs in `haystack` other than
+/// wholly inside its first `held` bytes: the occurrences that appending past
+/// `held` made. A UTF-8 needle matches bytes only at a character boundary, so
+/// this agrees with `str::contains`.
+fn occurs_from(haystack: &str, held: usize, needle: &str) -> bool {
+    if needle.is_empty() {
+        return false;
+    }
+    let start = held.saturating_sub(needle.len() - 1);
+    haystack.as_bytes()[start..]
+        .windows(needle.len())
+        .any(|window| window == needle.as_bytes())
 }
 
 fn unbounded(query: &PathQuery) -> bool {
@@ -227,13 +321,7 @@ pub fn extract_paths<B: AlgebraBackend>(
         random: query.random,
     });
     if query.random <= 0 {
-        let mut selector = Selector {
-            query,
-            best_weight,
-            max: query.max_strings,
-            count: 0,
-            each,
-        };
+        let mut selector = Selector::new(query, best_weight, query.max_strings, each);
         if query.obey_flags {
             t.extract_paths_fd_cb(&mut selector, query.cycles, !query.show_flags)?;
         } else {
@@ -251,16 +339,9 @@ pub fn extract_paths<B: AlgebraBackend>(
         } else {
             t.extract_random_paths(&mut results, query.random)?;
         }
-        let mut selector = Selector {
-            query,
-            best_weight,
-            max: query.random,
-            count: 0,
-            each,
-        };
+        let mut selector = Selector::new(query, best_weight, query.random, each);
         for it in results.iter() {
-            let mut path = it.clone();
-            selector.operator_call(&mut path, true);
+            selector.judge_alone(it);
         }
         progress(Fst2StringsProgress::Found {
             count: selector.count,
@@ -293,17 +374,12 @@ pub fn extract_paths_ol<B: LookupBackend>(
         max_strings: query.max_strings,
         random: query.random,
     });
-    let mut selector = Selector {
-        query,
-        best_weight: None,
-        max: if query.random <= 0 {
-            query.max_strings
-        } else {
-            query.random
-        },
-        count: 0,
-        each,
+    let max = if query.random <= 0 {
+        query.max_strings
+    } else {
+        query.random
     };
+    let mut selector = Selector::new(query, None, max, each);
     if query.random <= 0 {
         if query.obey_flags {
             t.extract_paths_fd_cb(&mut selector, query.cycles, !query.show_flags)?;
@@ -317,8 +393,7 @@ pub fn extract_paths_ol<B: LookupBackend>(
         let mut results = HfstTwoLevelPaths::new();
         t.extract_random_paths_fd(&mut results, query.random, !query.show_flags)?;
         for it in results.iter() {
-            let mut path = it.clone();
-            selector.operator_call(&mut path, true);
+            selector.judge_alone(it);
         }
     }
     progress(Fst2StringsProgress::Found {

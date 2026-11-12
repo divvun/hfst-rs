@@ -358,7 +358,7 @@ struct CollectPaths<'a> {
 impl ExtractStringsCb for CollectPaths<'_> {
     fn operator_call(
         &mut self,
-        path: &mut HfstTwoLevelPath,
+        path: &HfstTwoLevelPath,
         is_final: bool,
     ) -> crate::hfst_extract_strings::RetVal {
         if is_final && self.results.len() < self.cap {
@@ -373,8 +373,11 @@ impl ExtractStringsCb for CollectPaths<'_> {
 /// number of times state `q` occurs on the path from the start state to
 /// `state`: the cycle limit reads it before `state` is counted, the arc order
 /// after. Both returns after the count undo it, so a call hands the counts back
-/// as it found them and a branch never sees its siblings' visits. `spv` and
-/// `fd_state_stack` are shared down the recursion too.
+/// as it found them and a branch never sees its siblings' visits. `path` is
+/// shared down the recursion the same way: each call pushes its arc's pair
+/// onto it and pops it after, and the callback borrows it rather than a copy,
+/// which would make the walk's time quadratic in the path's length.
+/// `fd_state_stack` is shared too.
 #[allow(clippy::too_many_arguments)]
 fn walk_paths(
     w: &Walk,
@@ -384,21 +387,16 @@ fn walk_paths(
     cycles: i32,
     mut fd_state_stack: Option<&mut Vec<FdState<i32>>>,
     filter_fd: bool,
-    spv: &mut StringPairVector,
+    path: &mut HfstTwoLevelPath,
 ) -> bool {
     if cycles >= 0 && i32::from(on_path[state as usize]) > cycles {
         return true;
     }
     on_path[state as usize] += 1;
 
-    if !spv.is_empty() {
+    if !path.second.is_empty() {
         let is_final = w.finals[state as usize];
-        // foma is unweighted, so every path weighs 0.
-        let mut path = HfstTwoLevelPath {
-            first: 0.0 as WeightType,
-            second: spv.clone(),
-        };
-        let ret = callback.operator_call(&mut path, is_final);
+        let ret = callback.operator_call(path, is_final);
         if !ret.continueSearch || !ret.continuePath {
             on_path[state as usize] -= 1;
             return ret.continueSearch;
@@ -473,7 +471,7 @@ fn walk_paths(
             ostring = arc.osym.clone();
         }
 
-        spv.push((istring, ostring));
+        path.second.push((istring, ostring));
 
         res = walk_paths(
             w,
@@ -483,10 +481,10 @@ fn walk_paths(
             cycles,
             fd_state_stack.as_deref_mut(),
             filter_fd,
-            spv,
+            path,
         );
 
-        spv.pop();
+        path.second.pop();
 
         if added_fd_state {
             fd_state_stack
@@ -594,7 +592,11 @@ impl FomaTransducer {
         }
 
         let mut fd_state_stack: Option<Vec<FdState<i32>>> = fd.map(|fd| vec![FdState::new(fd)]);
-        let mut spv = StringPairVector::new();
+        // foma is unweighted, so every path weighs 0.
+        let mut path = HfstTwoLevelPath {
+            first: 0.0 as WeightType,
+            second: StringPairVector::new(),
+        };
         walk_paths(
             &w,
             0,
@@ -603,15 +605,11 @@ impl FomaTransducer {
             cycles,
             fd_state_stack.as_mut(),
             filter_fd,
-            &mut spv,
+            &mut path,
         );
 
         if w.finals[0] {
-            let mut epsilon_path = HfstTwoLevelPath {
-                first: 0.0 as WeightType,
-                second: StringPairVector::new(),
-            };
-            callback.operator_call(&mut epsilon_path, true);
+            callback.operator_call(&path, true);
         }
     }
 }

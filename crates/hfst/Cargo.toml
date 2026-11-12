@@ -41,9 +41,9 @@ serde-xml-rs = { version = "=0.6.0", default-features = false, optional = true }
 # would also bring in zopfli for writing.
 zip = { version = "9.2", default-features = false, features = ["deflate-flate2-zlib-rs"], optional = true }
 
-# tests/path_extraction_memory.rs measures the heap a walk holds at its peak.
+# tests/path_extraction_linear.rs counts the bytes a walk allocates and holds.
 [dev-dependencies]
-peak_alloc = "0.3"
+allocation-counter = "0.8"
 
 [features]
 default = ["foma", "bhfst"]

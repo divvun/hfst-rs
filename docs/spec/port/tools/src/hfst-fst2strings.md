@@ -22,10 +22,18 @@ negative meaning unbounded), and the destination output stream `out_`.
 > [spec:hfst:def:hfst-fst2strings.callback.operator-fn]
 > RetVal
 
-> [spec:hfst:sem:hfst-fst2strings.callback.operator-fn]
+> [spec:hfst:sem:hfst-fst2strings.callback.operator-fn+1]
 > Called for every path candidate `(path, final)`. First concatenate every
 > transition's input symbol into `istring` and every output symbol into
-> `ostring`, and take `weight = path.first`.
+> `ostring`, leaving out epsilons, which render as nothing [upstream
+> hfst/hfst#587], and take `weight = path.first`. The C++ rebuilds both
+> strings for every call, time quadratic in the path's length. The port keeps
+> the strings of the path it was last called on, with each prefix's string
+> lengths and whether each string yet contains its exclusion string, and
+> brings them to the new path by cutting back to the path's first pairs but
+> one and appending the last; the walk's depth-first order makes the kept
+> prefix the new path's. A path no walk led to, such as a random one, is
+> taken from nothing.
 >
 > Then apply the path filters, each returning a RetVal that tells the search
 > whether to keep going and whether to keep extending this path:

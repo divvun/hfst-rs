@@ -27,6 +27,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "allocation-counter"
+version = "0.8.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "beb9e990c0a33699f1984d85a6abead615ccc72dd8130bf3e15dcabe2ca149c9"
+
+[[package]]
 name = "allocator-api2"
 version = "0.2.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -948,6 +954,7 @@ checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
 name = "hfst"
 version = "0.1.0"
 dependencies = [
+ "allocation-counter",
  "ariadne",
  "box-format 0.4.0 (git+https://github.com/bbqsrc/box?rev=2333d401b1d06ef6c3aca9f32b0c33efd4b8b1b4)",
  "foma",
@@ -959,7 +966,6 @@ dependencies = [
  "nfst-twolc",
  "nfst-xfst",
  "nfst-xre",
- "peak_alloc",
  "serde",
  "serde-xml-rs",
  "serde_json",
@@ -1945,12 +1951,6 @@ name = "pathdiff"
 version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "df94ce210e5bc13cb6651479fa48d14f601d9858cfe0467f43ae157023b938d3"
-
-[[package]]
-name = "peak_alloc"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ccc90935a8dd139fdf341762773687a1e361d3f54b396a55d9dd1f7001e484bb"
 
 [[package]]
 name = "pin-project-lite"
