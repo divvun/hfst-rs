@@ -366,6 +366,60 @@ fn the_preview_completes_with_the_first_ranked_ending() {
     assert_eq!(walker.preview(&joined, &[], &GeneratorWeightOrder), None);
 }
 
+// [spec:hfst:sem:prediction.preview/test]
+#[test]
+fn a_preview_from_the_walk_is_the_preview() {
+    let nouns = lexc(NOUNS);
+    let nouns_grammar = grammar(NOUNS_GRAMMAR);
+    let derivations = lexc(DERIVATIONS);
+    let derivations_grammar = grammar(DERIVATIONS_GRAMMAR);
+    let orders: [&dyn CandidateOrder; 3] = [
+        &GeneratorWeightOrder,
+        &Prefer("+N+Sg+Gen"),
+        &Prefer("+N+Abs+Sg"),
+    ];
+    let cases = [
+        (&nouns, &nouns_grammar, "girji", &[][..]),
+        (&nouns, &nouns_grammar, "girji", &["+N+Pl+Nom"][..]),
+        (&nouns, &nouns_grammar, "girji", &["+N+Sg+Nom", "+Qst"][..]),
+        (&nouns, &nouns_grammar, "girji", &["+N+Cmp#"][..]),
+        (&nouns, &nouns_grammar, "borra", &["+V+Der/NomAg"][..]),
+        (&derivations, &derivations_grammar, "oqar", &[][..]),
+        (
+            &derivations,
+            &derivations_grammar,
+            "oqar",
+            &["+NIQ+Der/vn"][..],
+        ),
+    ];
+    let mut previews = 0;
+    for (generator, grammar, stem, units) in cases {
+        let walker = walker(generator, grammar);
+        let built = word_after(&walker, stem, units);
+        let next = walker.next(&built);
+        let mut words: Vec<Word> = next
+            .candidates
+            .iter()
+            .map(|offered| built.pick(offered))
+            .collect();
+        words.extend([walker.start(), built]);
+        for word in &words {
+            let next = walker.next(word);
+            for order in orders {
+                let context = [UnitKey::from(stem)];
+                let preview = walker.preview(word, &context, order);
+                assert_eq!(
+                    walker.preview_from(word, &next, &context, order),
+                    preview,
+                    "{stem} {units:?}"
+                );
+                previews += usize::from(preview.is_some());
+            }
+        }
+    }
+    assert!(previews > 30, "{previews}");
+}
+
 #[test]
 fn generator_weight_order_is_lightest_then_by_key() {
     let candidates = [

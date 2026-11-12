@@ -448,7 +448,23 @@ impl<'a, T: TransducerTablesInterface> Walker<'a, T> {
         if word.is_complete() {
             return self.forms(word).into_iter().next().map(|form| form.surface);
         }
-        let next = self.next(word);
+        self.preview_from(word, &self.next(word), context, order)
+    }
+
+    /// [`Walker::preview`] from `next`, which must be what [`Walker::next`]
+    /// found for `word`, so a caller that has that walk does not walk the
+    /// word again.
+    // [spec:hfst:sem:prediction.preview]
+    pub fn preview_from(
+        &self,
+        word: &Word,
+        next: &Next,
+        context: &[UnitKey],
+        order: &dyn CandidateOrder,
+    ) -> Option<String> {
+        if word.is_complete() {
+            return next.forms.first().map(|form| form.surface.clone());
+        }
         let endings: Vec<&Candidate> = next
             .candidates
             .iter()

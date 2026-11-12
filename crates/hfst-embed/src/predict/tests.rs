@@ -264,6 +264,28 @@ fn the_words_before_rank_the_next_one() {
 }
 
 #[test]
+fn the_preview_and_the_offer_share_one_walk() {
+    let mut session = session(&language(), PredictorOptions::default());
+    session.type_letters("gi").unwrap();
+    assert_eq!(session.preview(), None);
+    assert_eq!(keys(&mut session), ["girji"]);
+    session.pick("girji").unwrap();
+    assert!(session.offered.is_none());
+    assert_eq!(session.preview().as_deref(), Some("girjat"));
+    let kept = session.offered.as_ref().map(|next| next.candidates.len());
+    assert_eq!(kept, Some(4));
+    assert_eq!(
+        keys(&mut session),
+        ["+N+Pl+Nom", "+N+Sg+Nom", "+N+Sg+Gen", "+N+Cmp#"]
+    );
+    assert_eq!(session.preview().as_deref(), Some("girjat"));
+    session.pick("+N+Pl+Nom").unwrap();
+    assert_eq!(session.preview().as_deref(), Some("girjat"));
+    assert_eq!(keys(&mut session), ["+Qst"]);
+    assert_eq!(session.commit().unwrap(), "girjat");
+}
+
+#[test]
 fn backspace_removes_a_letter_then_a_unit() {
     let mut session = session(&language(), PredictorOptions::default());
     assert!(!session.backspace());

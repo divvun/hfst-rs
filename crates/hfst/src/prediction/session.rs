@@ -187,11 +187,21 @@ impl<'a, T: TransducerTablesInterface> Session<'a, T> {
         Ok(written)
     }
 
-    /// The word's preview, ranked after [`Session::ranking_context`].
+    /// The word's preview, ranked after [`Session::ranking_context`]. With
+    /// no letters typed, the preview and [`Session::candidates`] share one
+    /// walk, whichever comes first.
     // [spec:hfst:sem:prediction.preview]
-    pub fn preview(&self, order: &dyn CandidateOrder) -> Option<String> {
-        self.walker
-            .preview(self.word(), &self.ranking_context(), order)
+    pub fn preview(&mut self, order: &dyn CandidateOrder) -> Option<String> {
+        let context = self.ranking_context();
+        let word = self
+            .words
+            .last()
+            .expect("a session always holds at least the empty word");
+        if !self.typed.is_empty() {
+            return self.walker.preview(word, &context, order);
+        }
+        let next = self.offered.get_or_insert_with(|| self.walker.next(word));
+        self.walker.preview_from(word, next, &context, order)
     }
 }
 
@@ -408,6 +418,37 @@ mod tests {
         let recorder = Recorder(RefCell::new(Vec::new()));
         assert_eq!(session.preview(&recorder).as_deref(), Some("girji"));
         assert_eq!(*recorder.0.borrow(), ["guolli", "+N+Sg+Gen", "girji"]);
+    }
+
+    // [spec:hfst:sem:prediction.preview/test]
+    #[test]
+    fn the_preview_and_the_candidates_share_one_walk() {
+        let generator = lexc(NOUNS);
+        let grammar = grammar(NOUNS_GRAMMAR);
+        let mut session = Session::new(walker(&generator, &grammar), 2);
+        session.type_letters("gi").unwrap();
+        assert_eq!(session.preview(&GeneratorWeightOrder), None);
+        assert_eq!(keys_of(&mut session), ["girji"]);
+        session.pick(&UnitKey::from("girji")).unwrap();
+        let walked = |session: &Session<'_, _>| {
+            session.walker().preview(
+                session.word(),
+                &session.ranking_context(),
+                &GeneratorWeightOrder,
+            )
+        };
+        let expected = walked(&session);
+        assert_eq!(session.preview(&GeneratorWeightOrder), expected);
+        assert_eq!(expected.as_deref(), Some("girji"));
+        let kept = session.offered.as_ref().map(|next| keys(next).join(" "));
+        let next = session.walker().next(session.word());
+        assert_eq!(kept, Some(keys(&next).join(" ")));
+        assert_eq!(keys_of(&mut session), keys(&next));
+        session.pick(&UnitKey::from("+N+Pl+Nom")).unwrap();
+        keys_of(&mut session);
+        let expected = walked(&session);
+        assert_eq!(session.preview(&GeneratorWeightOrder), expected);
+        assert_eq!(expected.as_deref(), Some("girjat"));
     }
 
     // [spec:hfst:req:prediction.script-edges/test]

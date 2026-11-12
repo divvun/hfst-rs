@@ -9485,7 +9485,7 @@ children (
                 id predict.sme-evaluation
                 title "Write up unit prediction for North Sámi: keystrokes saved on held-out analysed text for each model order and backoff, against ranking whole word forms, to show whether a language with short unit chains gains enough to ship"
                 kind @docs
-                deps (predict.cli)
+                deps (predict.cli predict.eval-speed)
             }
 
             {
@@ -9566,6 +9566,22 @@ children (
                 title "Preview from the walk a caller already has: Walker::preview walks the word again even when the caller has just walked it for its candidates, so a keyboard showing both pays the walk twice (about 75 ms more per keystroke on kal, 15 ms on sme)"
                 kind @perf
                 deps (predict.walk predict.embed)
+                sealed true
+                log (
+                    {
+                        at 2026-11-12T15:23:19.665676Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
+
+                    {
+                        at 2026-11-12T15:59:00.144891Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan complete)"
+                    }
+                )
             }
 
             {
@@ -9626,6 +9642,13 @@ children (
                     target-impl ([spec:hfst:sem:prediction.whole-words] [spec:hfst:sem:prediction-model.word-score])
                 }
                 deps (predict.whole-words-spec predict.preview-reuse)
+            }
+
+            {
+                id predict.eval-speed
+                title "Make the harness fast enough to measure lang-kal and North Sámi: with the complete walk, 3,000 kal tokens did not finish in 17 hours (the truncated walk took 10 minutes), because filtering suggestions by preview walks every candidate on every typed letter; check previews in rank order and stop at N, and keep what a word's walk found across its steps, with results identical to the slow path"
+                kind @perf
+                deps (predict.evaluation predict.preview-reuse)
             }
         )
     }

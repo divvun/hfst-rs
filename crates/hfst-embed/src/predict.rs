@@ -479,12 +479,21 @@ impl Session {
 
     /// The word completed by the ending the model ranks first, or the word
     /// itself when it is complete, in the generator's spelling. None when no
-    /// ending is in reach.
-    pub fn preview(&self) -> Option<String> {
+    /// ending is in reach. With no letters typed, the preview and
+    /// [`Session::candidates`] share one walk, whichever comes first.
+    pub fn preview(&mut self) -> Option<String> {
         let predictor = &*self.predictor;
         let order = ModelOrder(predictor.model());
         let context = self.state.ranking_context(&predictor.grammar);
-        walking!(predictor, walker => walker.preview(self.state.word(), &context, &order))
+        let word = self.state.word();
+        walking!(predictor, walker => {
+            if self.state.typed.is_empty() {
+                let next = self.offered.get_or_insert_with(|| walker.next(word));
+                walker.preview_from(word, next, &context, &order)
+            } else {
+                walker.preview(word, &context, &order)
+            }
+        })
     }
 
     /// The class of the word: that of its latest unit that has one.

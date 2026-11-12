@@ -575,6 +575,7 @@ assertions (
     {id predict.derivations, kind @complete, author "brendan@necessary.nu", at 2026-11-11T16:32:14.938372Z}
     {id predict.embed, kind @complete, author "brendan@necessary.nu", at 2026-11-11T16:38:32.468048Z}
     {id predict.kal-check, kind @complete, author "brendan@necessary.nu", at 2026-11-11T23:10:10.064972Z}
+    {id predict.preview-reuse, kind @complete, author "brendan@necessary.nu", at 2026-11-12T15:59:00.144891Z}
     {id predict.spec, kind @complete, author "brendan@necessary.nu", at 2026-11-11T12:36:15.313631Z}
     {id predict.whole-words-spec, kind @complete, author "brendan@necessary.nu", at 2026-11-12T15:30:22.23091Z}
     {id python.embed, kind @complete, author "brendan@necessary.nu", at 2026-11-10T15:14:12.551711Z}
@@ -725,6 +726,13 @@ impl_evidence (
     ), covered_claims (
         {impl_name target-impl, rule embed.tools}
         {impl_name target-impl, rule embed.tools-in-library}
+    )}
+    {id compile-surface.embed-compile, covered_rules (
+        embed.compile
+        embed.compile-diagnostics
+    ), covered_claims (
+        {impl_name target-impl, rule embed.compile}
+        {impl_name target-impl, rule embed.compile-diagnostics}
     )}
     {id compile-surface.embed-transducer, covered_rules (
         embed.operations
@@ -1392,12 +1400,5 @@ impl_evidence (
         {impl_name target-impl, rule xre-finalization.root-optimize}
     ), rule_versions_seen (
         {id xre-finalization.root-optimize, version 0}
-    )}
-    {id compile-surface.embed-compile, covered_rules (
-        embed.compile
-        embed.compile-diagnostics
-    ), covered_claims (
-        {impl_name target-impl, rule embed.compile}
-        {impl_name target-impl, rule embed.compile-diagnostics}
     )}
 )
