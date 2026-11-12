@@ -9518,6 +9518,22 @@ children (
                 title "Write up unit prediction for North Sámi: keystrokes saved on held-out analysed text for each model order and backoff, against ranking whole word forms, to show whether a language with short unit chains gains enough to ship"
                 kind @docs
                 deps (predict.cli predict.eval-speed predict.whole-words)
+                sealed true
+                log (
+                    {
+                        at 2026-11-11T22:39:14.652266Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
+
+                    {
+                        at 2026-11-12T21:20:17.356626Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan complete)"
+                    }
+                )
             }
 
             {
