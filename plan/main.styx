@@ -9904,4 +9904,10 @@ children (
         title "A LookupState reused over many lookups slows down badly: generating 15,770 kal analyses through one state did not finish in 10 minutes, while the same analyses in chunks of 2,000, each with a fresh state, took 114 s in total; find what the state accumulates across lookups and stop it"
         kind @fix
     }
+
+    {
+        id path-extraction-memory
+        title "Path extraction kept a copy of two visitation maps for every state on the path, so a path n states long took memory quadratic in n; one shared on-path count gives the same paths in linear memory"
+        kind @fix
+    }
 )
