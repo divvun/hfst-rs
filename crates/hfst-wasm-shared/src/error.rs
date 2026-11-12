@@ -22,9 +22,12 @@ impl GlueError {
         }
     }
 
-    #[cfg(test)]
     pub fn code(&self) -> &'static str {
         self.code
+    }
+
+    pub fn message(&self) -> &str {
+        &self.message
     }
 }
 
@@ -49,7 +52,7 @@ impl From<GlueError> for JsValue {
     }
 }
 
-fn set(object: &js_sys::Object, key: &str, value: &JsValue) {
+pub fn set(object: &js_sys::Object, key: &str, value: &JsValue) {
     js_sys::Reflect::set(object, &JsValue::from_str(key), value)
         .expect("a fresh plain object takes any property");
 }

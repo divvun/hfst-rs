@@ -16,21 +16,16 @@ publish = false
 crate-type = ["cdylib"]
 
 [features]
-# Exports a small owned object, a panic, log events and a library error for
-# the JavaScript test suite. Only `js/build.mjs --test` turns it on, and that
-# build writes outside the package directory.
-test-hooks = []
+# The test hooks of hfst-wasm-shared, in this module. Only
+# `js/build.mjs --test` turns it on.
+test-hooks = ["hfst-wasm-shared/test-hooks"]
 
 [dependencies]
 # Without default features, so the module carries no foma backend.
 hfst = { workspace = true }
 hfst-embed = { workspace = true }
+hfst-wasm-shared = { path = "../hfst-wasm-shared" }
 js-sys = "0.3.95"
-tracing = "0.1.44"
-tracing-core = "0.1.36"
-# The registry keeps the span bookkeeping that tracing asks of a subscriber;
-# the layer on it only filters and forwards events.
-tracing-subscriber = { version = "0.3.23", default-features = false, features = ["registry", "std"] }
 # The wasm-bindgen CLI that writes the JavaScript glue must be this exact
 # version, or it refuses the module.
 wasm-bindgen = "=0.2.118"
@@ -44,6 +39,9 @@ divvun-fst = { workspace = true }
 # builds on the tropical backend. Examples run natively, so none of it reaches
 # the module.
 hfst-openfst = { workspace = true }
+# The glue's tests compile the transducers they read with the compile
+# feature. Its features reach only test builds, never the module.
+hfst-embed = { workspace = true, features = ["compile"] }
 # The example that writes the optimised lookup's native expectations for the
 # JavaScript parity suite reads its request and writes its answer as JSON, and
 # the version test reads js/hfst/package.json.

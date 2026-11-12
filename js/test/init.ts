@@ -1,5 +1,6 @@
-// Starting the package: what importing does, the init sources, and calls made
-// too early. `variant` names the source this process starts the module from.
+// Starting an entry point of the package: what importing does, the init
+// sources, and calls made too early. `variant` names the source this process
+// starts the module from. run.mjs runs it for each entry point.
 
 import {
   assert,
@@ -83,6 +84,13 @@ test(`init from ${args.variant} starts the package`, async () => {
   await started;
   assertEqual(pkg.version(), args.version, "version()");
 });
+
+if (args.variant === "default") {
+  // [spec:hfst:def:javascript.packages+3/test]
+  test("starting the entry point compiles its own module and no other", () => {
+    assertEqual(compiles, 1, "modules compiled");
+  });
+}
 
 // [spec:hfst:req:javascript.init+1/test]
 test("init again returns the first call's promise and instance", async () => {

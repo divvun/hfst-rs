@@ -13,4 +13,14 @@ test("the entry module exports the API", async () => {
   );
 });
 
+// [spec:hfst:req:javascript.compile-module/test]
+test("the compile entry module exports the compile API", async () => {
+  const names = Object.keys(await entryOf(dir, "./compile")).sort();
+  assertEqual(
+    names.join(" "),
+    "HfstError Tokeniser Transducer compileLexc compilePmatch compileStrings compileTwolc compileXfst flookupReport grep init lookupReport optimizedLookupReport packBhfst pairTest parseAtt parseProlog readTokeniser readTransducer readTransducers regex setLogLevel setLogger version",
+    "exports",
+  );
+});
+
 await runTests("hfst/package");

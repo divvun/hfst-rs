@@ -21,6 +21,25 @@ test("a glue error object becomes an HfstError with its code and message", () =>
   assertEqual(error.message, "transducer type mismatch: x", "message");
 });
 
+// [spec:hfst:req:javascript.compile-errors/test]
+test("a compile error object keeps its diagnostics, and any other error has none", () => {
+  const diagnostic = {
+    severity: "error" as const,
+    message: "expected RightBracket",
+    sourceName: "<stdin>",
+    span: { start: 2, end: 2 },
+    labels: [{ span: { start: 2, end: 2 }, message: "expected RightBracket" }],
+    notes: [],
+    help: null,
+    rendered: "Error: expected RightBracket\n",
+  };
+  const error = fromGlue({ code: "compile-failed", message: "XRE parsing failed", diagnostics: [diagnostic] });
+  assertEqual(error?.code, "compile-failed", "code");
+  assertEqual(error?.diagnostics.length, 1, "diagnostics");
+  assert(error?.diagnostics[0] === diagnostic, "the module's own object");
+  assertEqual(new HfstError("failed", "x").diagnostics.length, 0, "none on another error");
+});
+
 test("an unknown code becomes internal and keeps the code in the message", () => {
   const error = fromGlue({ code: "brand-new", message: "something" });
   assertEqual(error?.code, "internal", "code");

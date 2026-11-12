@@ -1,0 +1,34 @@
+[package]
+name = "hfst-wasm-shared"
+# Versioned with @divvun/hfst, whose two modules link it.
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "What both of @divvun/hfst's WebAssembly modules start, log, fail, look up and tokenise through"
+# The modules link it; it reaches users only inside the npm package.
+publish = false
+
+[features]
+# Exports a small owned object, a panic, log events and a library error for
+# the JavaScript test suite, from whichever module turns it on. Only
+# `js/build.mjs --test` turns it on, and that build writes outside the
+# package directory.
+test-hooks = []
+
+[dependencies]
+# Without default features, so the read-only module carries no foma backend.
+hfst = { workspace = true }
+hfst-embed = { workspace = true }
+js-sys = "0.3.95"
+tracing = "0.1.44"
+tracing-core = "0.1.36"
+# The registry keeps the span bookkeeping that tracing asks of a subscriber;
+# the layer on it only filters and forwards events.
+tracing-subscriber = { version = "0.3.23", default-features = false, features = ["registry", "std"] }
+# Pinned with the modules' own: one wasm-bindgen CLI generates both modules'
+# glue, and it refuses a module built against another version.
+wasm-bindgen = "=0.2.118"
+
+[lints]
+workspace = true

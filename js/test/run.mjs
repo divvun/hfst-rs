@@ -12,10 +12,11 @@
 // Each scenario variant runs in a process of its own, once per runtime,
 // because a started or poisoned module instance cannot be reset. Scenarios
 // that need the test hooks run against the test build in target/js-test; the
-// rest run against the package as it would ship. The transducer fixtures the
-// test build writes to target/js-test/fixtures are read by path. The runner
-// also serves the package's .wasm file over HTTP, so the suite can start the
-// package from an http: URL and from a fetched Response.
+// rest run against the package as it would ship. A scenario runs against the
+// main entry point unless it names the compile one. The transducer fixtures
+// the test build writes to target/js-test/fixtures are read by path. The
+// runner also serves each entry point's .wasm file over HTTP, so the suite
+// can start either from an http: URL and from a fetched Response.
 
 import { spawn } from "node:child_process";
 import { readdirSync, readFileSync } from "node:fs";
@@ -28,16 +29,19 @@ const js = dirname(dirname(fileURLToPath(import.meta.url)));
 const testBuild = join(dirname(js), "target", "js-test");
 const fixtures = `${pathToFileURL(join(testBuild, "fixtures")).href}/`;
 
-const wasmFile = "hfst_wasm_bg.wasm";
+// Each entry point's .wasm file, under the package's dist/.
+const WASM = { main: "pkg/hfst_wasm_bg.wasm", compile: "pkg-compile/hfst_wasm_compile_bg.wasm" };
+
+const INIT_VARIANTS = ["bytes", "file-url", "http-url", "response", "module", "default", "retry"];
 
 const scenarios = [
-  {
-    file: "init.ts",
-    build: "release",
-    variants: ["bytes", "file-url", "http-url", "response", "module", "default", "retry"],
-  },
+  { file: "init.ts", build: "release", variants: INIT_VARIANTS },
+  { file: "init.ts", build: "release", entry: "compile", variants: INIT_VARIANTS },
   { file: "contract.ts", build: "test", variants: ["main"] },
+  { file: "compile-contract.ts", build: "release", entry: "compile", variants: ["main"] },
+  { file: "compile-depth.ts", build: "release", entry: "compile", variants: ["main"] },
   { file: "poison.ts", build: "test", variants: ["function", "method"] },
+  { file: "poison-isolation.ts", build: "test", variants: ["main", "compile"] },
   { file: "transducers.ts", build: "release", variants: ["main"] },
   { file: "lookup.ts", build: "release", variants: ["main"] },
   { file: "tokenise.ts", build: "release", variants: ["main"] },
@@ -76,22 +80,29 @@ function locate() {
   const release = join(js, "hfst", "dist");
   const test = join(testBuild, "dist");
   const manifest = JSON.parse(readFileSync(join(js, "hfst", "package.json"), "utf8"));
+  const build = (dir, main, compile) => ({
+    module: join(dir, main),
+    main: { module: join(dir, main), wasm: join(dir, WASM.main) },
+    compile: { module: join(dir, compile), wasm: join(dir, WASM.compile) },
+  });
   return {
     name: manifest.name,
     version: manifest.version,
-    release: { module: join(release, "index.js"), wasm: join(release, "pkg", wasmFile) },
-    test: { module: join(test, "testing.js"), wasm: join(test, "pkg", wasmFile) },
+    release: build(release, "index.js", "compile.js"),
+    test: build(test, "testing.js", "compile-testing.js"),
   };
 }
 
+/** Serves the release build's .wasm files, each at /<entry>.wasm. */
 function serve(pkg) {
   const server = createServer((request, response) => {
-    if (request.url !== `/${wasmFile}`) {
+    const entry = Object.keys(WASM).find((name) => request.url === `/${name}.wasm`);
+    if (entry === undefined) {
       response.writeHead(404).end();
       return;
     }
     response.writeHead(200, { "content-type": "application/wasm" });
-    response.end(readFileSync(pkg.release.wasm));
+    response.end(readFileSync(pkg.release[entry].wasm));
   });
   return new Promise((resolve) => {
     server.listen(0, "127.0.0.1", () => resolve(server));
@@ -121,13 +132,17 @@ for (const runtime of runtimes.filter((name) => !PARITY_ONLY.includes(name))) {
     runs += 1;
     if (!(await runFile(runtime, path, []))) failures += 1;
   }
-  for (const { file, build, variants } of scenarios) {
+  for (const { file, build, entry = "main", variants } of scenarios) {
     for (const variant of variants) {
-      const label = `${pkg.name} ${file} ${variant}`;
+      const label = `${pkg.name}${entry === "main" ? "" : "/compile"} ${file} ${variant}`;
+      const entryArgs = (name) => ({
+        module: pathToFileURL(pkg[build][name].module).href,
+        wasm: pathToFileURL(pkg[build][name].wasm).href,
+        http: `${base}/${name}.wasm`,
+      });
       const args = {
-        module: pathToFileURL(pkg[build].module).href,
-        wasm: pathToFileURL(pkg[build].wasm).href,
-        http: `${base}/${wasmFile}`,
+        ...entryArgs(entry),
+        entries: { main: entryArgs("main"), compile: entryArgs("compile") },
         package: pkg.name,
         version: pkg.version,
         fixtures,

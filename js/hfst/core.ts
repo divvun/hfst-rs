@@ -1,5 +1,5 @@
 import { fromGlue, HfstError, messageOf } from "./errors.ts";
-import type { Glue, GlueInitInput, GlueObject, GlueSink } from "./glue.ts";
+import type { Glue, GlueInitInput, GlueObject, GlueSink, ModuleGlue } from "./glue.ts";
 import {
   consoleLogger,
   eventLevel,
@@ -17,12 +17,14 @@ export type InitSource = string | URL | Response | BufferSource | WebAssembly.Mo
 
 /**
  * A WebAssembly module instance and the state the wrapper keeps about it.
- * The package makes exactly one, in binding.ts, and every call into the
- * module goes through it.
+ * The package makes exactly one per entry point, in binding.ts and
+ * compile-binding.ts, and every call into a module goes through its own.
+ * Each starts, logs and is poisoned on its own.
  */
-export class Core {
-  readonly #glue: Glue;
+export class Core<G extends ModuleGlue = Glue> {
+  readonly #glue: G;
   readonly #defaultSource: URL;
+  readonly #entry: string;
   #starting: Promise<void> | null = null;
   #ready = false;
   /** Set by the first trap, and never cleared. */
@@ -49,10 +51,14 @@ export class Core {
     },
   };
 
-  /** `defaultSource` is the package's own `.wasm` file. Nothing is loaded yet. */
-  constructor(glue: Glue, defaultSource: URL) {
+  /**
+   * `defaultSource` is the entry point's own `.wasm` file, and `entry` the
+   * name its errors give it. Nothing is loaded yet.
+   */
+  constructor(glue: G, defaultSource: URL, entry = "Divvun HFST") {
     this.#glue = glue;
     this.#defaultSource = defaultSource;
+    this.#entry = entry;
   }
 
   // [spec:hfst:req:javascript.init+1]
@@ -76,7 +82,7 @@ export class Core {
     try {
       await this.#glue.default({ module_or_path: await load(source) });
     } catch (error) {
-      throw new HfstError("init-failed", `cannot start Divvun HFST: ${messageOf(error)}`, {
+      throw new HfstError("init-failed", `cannot start ${this.#entry}: ${messageOf(error)}`, {
         cause: error,
       });
     }
@@ -90,7 +96,7 @@ export class Core {
    * it throws into an `HfstError`. After a trap it throws `poisoned` without
    * running `f`.
    */
-  call<T>(f: (glue: Glue) => T): T {
+  call<T>(f: (glue: G) => T): T {
     this.#check();
     return this.#enter(() => f(this.#glue));
   }
@@ -100,7 +106,7 @@ export class Core {
     if (!this.#ready) {
       throw new HfstError(
         "not-initialised",
-        "Divvun HFST is not initialised: call init() and wait for it to resolve first",
+        `${this.#entry} is not initialised: call init() and wait for it to resolve first`,
       );
     }
   }
@@ -168,7 +174,7 @@ export class Core {
     try {
       this.#logger({ level: eventLevel(level), target, message });
     } catch (error) {
-      console.error("Divvun HFST: the logger threw:", error);
+      console.error(`${this.#entry}: the logger threw:`, error);
     }
   }
 

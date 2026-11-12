@@ -13,7 +13,7 @@ import type { FormatOptions, Token, TokeniseOptions } from "./tokenise.ts";
 export type GlueInitInput = BufferSource | Response | WebAssembly.Module;
 
 /**
- * What the module calls back into, from `crates/hfst-wasm/src/sink.rs`.
+ * What the module calls back into, from `crates/hfst-wasm-shared/src/sink.rs`.
  * Levels are numbers: 0 is off, then 1 error, 2 warn, 3 info, 4 debug, 5 trace.
  * These calls arrive while the module is running, so none of them may throw:
  * an exception would unwind through the module and leave it half run.
@@ -91,8 +91,11 @@ export type DhfstGlue =
   | { type: "acceptor"; model: DhfstAcceptorGlue }
   | { type: "error-model"; model: DhfstErrorModelGlue };
 
-/** The exports of `crates/hfst-wasm`. */
-export interface Glue {
+/**
+ * What every module of the package exports, from `crates/hfst-wasm-shared`:
+ * starting it, logging, and its version. `Core` needs no more of a module.
+ */
+export interface ModuleGlue {
   /** Instantiates the module. The generated glue keeps the instance it makes. */
   default(options: { module_or_path: GlueInitInput }): Promise<unknown>;
   /** Starts the instance with the wrapper's sink and a log level. Called once, by `init()`. */
@@ -100,6 +103,10 @@ export interface Glue {
   /** Sends events at `level` and above from here on, and nothing below it. */
   setLogLevel(level: number): void;
   version(): string;
+}
+
+/** The exports of `crates/hfst-wasm`. */
+export interface Glue extends ModuleGlue {
   /** Every optimized-lookup transducer in a stream, in stream order. */
   readTransducers(bytes: Uint8Array): TransducerGlue[];
   /** The one optimized-lookup transducer in `bytes`, read by divvun-fst. */

@@ -1,4 +1,4 @@
-// [spec:hfst:def:javascript.packages+2]
+// [spec:hfst:def:javascript.packages+3]
 /**
  * `@divvun/hfst`: Divvun HFST for JavaScript. It loads optimized-lookup
  * transducers, pmatch containers and DHFST spellers and runs lookup,
@@ -6,7 +6,8 @@
  * and Bun. Lookup comes in two kinds: `Transducer.lookup` gives hfst's
  * results, and `OptimisedTransducer.lookup` divvunspell's. It replaces
  * `hfst-js` for reading and looking up transducers, and does not compile,
- * write or transform them.
+ * write or transform them: `@divvun/hfst/compile` does, from a module of its
+ * own that this entry point never loads.
  *
  * @module
  */

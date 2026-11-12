@@ -13,12 +13,8 @@
 use wasm_bindgen::prelude::wasm_bindgen;
 
 mod dhfst;
-mod error;
 mod lookup;
 mod optimised;
-mod sink;
-#[cfg(feature = "test-hooks")]
-mod test_hooks;
 mod tokenise;
 mod transducer;
 
@@ -32,8 +28,9 @@ const PACKAGE: hfst_embed::Package = hfst_embed::Package {
 };
 
 // [spec:hfst:req:javascript.read-only-module]
-// These and version() are the module's exports, with the test hooks only in a
-// test build. Apart from the log sink and version(), each reads an
+// These, version(), and hfst-wasm-shared's install() and setLogLevel() are the
+// module's exports, with the test hooks only in a test build. Apart from the
+// log sink and version(), each reads an
 // optimized-lookup transducer, a pmatch container or a DHFST file, or runs
 // lookup or tokenise on one, through hfst-embed; the optimised lookup reads
 // and looks up with divvun-fst. None reaches a compiler, the foma backend, the
@@ -42,9 +39,6 @@ const PACKAGE: hfst_embed::Package = hfst_embed::Package {
 // of them is in the module.
 pub use dhfst::{DhfstAcceptor, DhfstErrorModel, read_dhfst};
 pub use optimised::{OptimisedTransducer, read_optimised_transducer};
-pub use sink::{install, set_log_level};
-#[cfg(feature = "test-hooks")]
-pub use test_hooks::{TestObject, test_library_error, test_log, test_panic};
 pub use tokenise::{Tokeniser, read_tokeniser};
 pub use transducer::{Transducer, read_transducers};
 

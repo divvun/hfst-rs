@@ -481,7 +481,6 @@ assertions (
     {id clippy-deny-gate, kind @complete, author "brendan@necessary.nu", at 2026-07-17T19:49:59.63991Z}
     {id compile-surface.embed-gaps, kind @complete, author "brendan@necessary.nu", at 2026-11-12T20:25:41.869738Z}
     {id compile-surface.spec, kind @complete, author "brendan@necessary.nu", at 2026-11-11T11:38:00.541522Z}
-    {id compile-surface.wasm-compile, kind @doing, author "brendan@necessary.nu", at 2026-11-12T22:22:50.192479Z}
     {id compose-facade-nativize, kind @complete, author "brendan@necessary.nu", at 2026-07-19T16:26:17.752081Z}
     {id compose-intersect-diagnostics, kind @complete, author "brendan@necessary.nu", at 2026-06-29T14:09:41.317897Z}
     {id compose-intersect-empty-panic, kind @complete, author "brendan@necessary.nu", at 2026-08-13T23:41:01.321301Z}
@@ -893,7 +892,20 @@ impl_evidence (
     ), rule_versions_seen (
         {id python.writers, version 0}
     )}
-    {id compile-surface.wasm-compile}
+    {id compile-surface.wasm-compile, covered_rules (
+        javascript.compile-errors
+        javascript.compile-files
+        javascript.compile-module
+        javascript.packages
+    ), covered_claims (
+        {impl_name js-impl, rule javascript.compile-errors}
+        {impl_name js-impl, rule javascript.compile-files}
+        {impl_name js-impl, rule javascript.compile-module}
+        {impl_name js-impl, rule javascript.packages}
+        {impl_name target-impl, rule javascript.compile-errors}
+        {impl_name target-impl, rule javascript.compile-files}
+        {impl_name target-impl, rule javascript.compile-module}
+    )}
     {id compile-surface.xfst-files, covered_rules (
         embed.compile-files
     ), covered_claims (

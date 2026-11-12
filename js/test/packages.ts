@@ -11,7 +11,7 @@ interface Manifest {
   author: string;
   type: string;
   files: string[];
-  exports: { ".": { types: string; default: string } };
+  exports: Record<"." | "./compile", { types: string; default: string }>;
 }
 
 interface NodeFs {
@@ -29,10 +29,10 @@ async function listFiles(dir: URL): Promise<string[]> {
   return await fs.readdir(dir, { recursive: true });
 }
 
-/** The entry module of the built package in `dir`. */
-export async function entryOf(dir: URL): Promise<Record<string, unknown>> {
+/** The entry module `entry` (`.` or `./compile`) of the built package in `dir`. */
+export async function entryOf(dir: URL, entry: "." | "./compile" = "."): Promise<Record<string, unknown>> {
   const manifest = await readManifest(dir);
-  return await import(new URL(manifest.exports["."].default, dir).href);
+  return await import(new URL(manifest.exports[entry].default, dir).href);
 }
 
 /** Registers the checks for the package in `dir`, which must be called `name`. */
@@ -61,20 +61,26 @@ export function packageTests(dir: URL, name: string): void {
   });
 
   // [spec:hfst:req:javascript.typed-surface+1/test]
-  test("the entry module and its declarations are where the exports map says", async () => {
+  // [spec:hfst:def:javascript.packages+3/test]
+  test("each entry module and its declarations are where the exports map says", async () => {
     const manifest = await readManifest(dir);
     const files = await listFiles(dir);
-    const entry = manifest.exports["."];
-    for (const path of [entry.default, entry.types]) {
-      assert(files.includes(path.replace(/^\.\//, "")), `${path} exists`);
+    assertEqual(Object.keys(manifest.exports).join(" "), ". ./compile", "the entry points");
+    for (const entry of Object.values(manifest.exports)) {
+      for (const path of [entry.default, entry.types]) {
+        assert(files.includes(path.replace(/^\.\//, "")), `${path} exists`);
+      }
     }
   });
 
-  test("one .wasm file ships, beside the entry module", async () => {
+  // [spec:hfst:def:javascript.packages+3/test]
+  test("each entry point ships a .wasm file of its own, beside its entry module", async () => {
     const manifest = await readManifest(dir);
-    const wasm = (await listFiles(new URL("dist/", dir))).filter((file) => file.endsWith(".wasm"));
-    assertEqual(wasm.length, 1, ".wasm files");
-    const entryDir = manifest.exports["."].default.replace(/^\.\/dist\//, "").replace(/[^/]*$/, "");
-    assert(wasm[0]?.startsWith(entryDir) === true, `${String(wasm[0])} sits under ${entryDir}`);
+    const wasm = (await listFiles(new URL("dist/", dir))).filter((file) => file.endsWith(".wasm")).sort();
+    assertEqual(wasm.join(" "), "pkg-compile/hfst_wasm_compile_bg.wasm pkg/hfst_wasm_bg.wasm", ".wasm files");
+    for (const entry of Object.values(manifest.exports)) {
+      const entryDir = entry.default.replace(/^\.\/dist\//, "").replace(/[^/]*$/, "");
+      assert(wasm.every((file) => file.startsWith(entryDir)), `the .wasm files sit under ${entryDir}`);
+    }
   });
 }

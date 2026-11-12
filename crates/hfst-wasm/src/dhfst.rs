@@ -4,7 +4,7 @@
 use hfst_embed::dhfst::{AcceptorInfo, AcceptorReader, Dhfst, ErrorModel};
 use wasm_bindgen::prelude::*;
 
-use crate::error::GlueError;
+use hfst_wasm_shared::{GlueError, set};
 
 /// A DHFST acceptor, type 2, read and validated as divvunspell reads one.
 /// The wrapper's `DhfstAcceptor` class in `js/hfst/dhfst.ts` owns one.
@@ -107,9 +107,4 @@ fn info_to_js(info: AcceptorInfo) -> JsValue {
     }
     set(&object, "distances", &JsValue::from_bool(info.distances));
     object.into()
-}
-
-fn set(object: &js_sys::Object, key: &str, value: &JsValue) {
-    js_sys::Reflect::set(object, &JsValue::from_str(key), value)
-        .expect("a fresh plain object takes any property");
 }

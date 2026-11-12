@@ -1,4 +1,4 @@
 {
   "extends": "./tsconfig.json",
-  "files": ["index.ts", "testing.ts"]
+  "files": ["index.ts", "testing.ts", "compile.ts", "compile-testing.ts"]
 }

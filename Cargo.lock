@@ -1038,9 +1038,33 @@ dependencies = [
  "hfst",
  "hfst-embed",
  "hfst-openfst",
+ "hfst-wasm-shared",
  "js-sys",
  "serde",
  "serde_json",
+ "wasm-bindgen",
+]
+
+[[package]]
+name = "hfst-wasm-compile"
+version = "0.1.0"
+dependencies = [
+ "hfst",
+ "hfst-embed",
+ "hfst-wasm-shared",
+ "js-sys",
+ "serde_json",
+ "tracing",
+ "wasm-bindgen",
+]
+
+[[package]]
+name = "hfst-wasm-shared"
+version = "0.1.0"
+dependencies = [
+ "hfst",
+ "hfst-embed",
+ "js-sys",
  "tracing",
  "tracing-core",
  "tracing-subscriber",

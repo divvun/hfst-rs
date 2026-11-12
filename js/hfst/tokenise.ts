@@ -1,6 +1,6 @@
 import type { Core } from "./core.ts";
 import { HfstError } from "./errors.ts";
-import type { TokeniserGlue } from "./glue.ts";
+import type { ModuleGlue, TokeniserGlue } from "./glue.ts";
 import { Handle } from "./handle.ts";
 
 // [spec:hfst:req:javascript.tokenise]
@@ -158,7 +158,7 @@ const TOKENISE_FORMATS = [
 
 export type TokeniseFormat = (typeof TOKENISE_FORMATS)[number];
 
-function checkText(text: unknown, what: string): asserts text is string {
+export function checkText(text: unknown, what: string): asserts text is string {
   if (typeof text !== "string") {
     throw new HfstError("invalid-argument", `${what} takes the text as a string`);
   }
@@ -172,8 +172,8 @@ let wrap: (core: Core, glue: TokeniserGlue) => Tokeniser;
  * It owns module memory: call `free()` when done with it, or declare it with
  * `using`.
  */
-export class Tokeniser extends Handle<TokeniserGlue> {
-  private constructor(core: Core, glue: TokeniserGlue) {
+export class Tokeniser<G extends TokeniserGlue = TokeniserGlue> extends Handle<G> {
+  protected constructor(core: Core<ModuleGlue>, glue: G) {
     super(core, glue);
   }
 

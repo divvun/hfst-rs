@@ -9312,6 +9312,20 @@ children (
                         kind @status
                         text "Todo → Doing (nplan start)"
                     }
+
+                    {
+                        at 2026-11-12T23:12:03.348241Z
+                        author "brendan@necessary.nu"
+                        kind @decision
+                        text "JavaScript choices where divvun-hfst's shape does not carry over. (1) Warnings come back with the result, so each compiler returns an object: regex, compileLexc, compileStrings, parseAtt and parseProlog give { transducer, warnings }, compileTwolc { transducers, warnings }, compilePmatch { archive, warnings }, compileXfst { output, stack, definitions, written, warnings }; definitions and written are plain records, not Maps, so results stay plain objects. (2) A compile that fails throws code compile-failed, as javascript.compile-errors says, where divvun-hfst's CompileError carries the library's code; a source compiling to several where one is wanted throws transducer-count, carrying the compile's diagnostics too. (3) Every HfstError has diagnostics, empty unless it came from a compile. (4) Time options are in milliseconds, as the package's other time limits are: lookupReport, flookupReport, optimizedLookupReport and Tokeniser.pmatch take timeCutoff in ms where divvun-hfst takes time_cutoff in seconds; Transducer.lookup takes the main entry's { limit, timeLimitMs }. (5) Options are one object per call; name, names, files and input ride in the compiler's options object beside the tool's options. An option a call does not know is refused with invalid-argument, as an unknown keyword is in Python. (6) guess takes generator inside its options; substitute takes toTransducer inside its options. (7) maxFallbackDepth: undefined is the tool's default 4, null unbounded. (8) Without files a compile reads no file at all, since there is no filesystem: divvun-hfst reads the filesystem then. (9) A transducer of the main entry point is refused as an operand (invalid-argument): transducers cross as bytes. (10) Info-level diagnostics (verbose) go to the entry point's logger under target hfst, as divvun-hfst sends them to the hfst logger."
+                    }
+
+                    {
+                        at 2026-11-12T23:12:03.583398Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "Shared glue: sink, GlueError, the options reader, lookup result encoding, tokenise option parsing and the test hooks moved from crates/hfst-wasm into crates/hfst-wasm-shared, which both modules link (cg3 does the same). Moving them cost the main module 167 bytes of codegen; folding dhfst.rs's private copy of the set() helper into the shared one brought it to 467,830 bytes, 64 under the 467,894 it was. The read-only check (js/test/read-only-module.ts) is unchanged and passes: 1448 functions checked. The compile module links with an 8 MiB stack from build.rs (cargo:rustc-link-arg-cdylib=-zstack-size=8388608 on wasm32); measured on the release module under Node, the deepest each compiler takes is: XRE 100 brackets, 499 prefix operators, a union chain of 2999, a 1000-arc path; lexc 100 brackets; twolc 499 operators; pmatch 100 brackets and a union chain of 498 (pmatch refuses ~~); xfst 100 brackets and 499 operators. One past each fails with compile-failed."
+                    }
                 )
             }
 

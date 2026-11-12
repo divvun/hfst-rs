@@ -15,5 +15,5 @@
     "rootDir": ".",
     "outDir": "dist"
   },
-  "files": ["index.ts"]
+  "files": ["index.ts", "compile.ts"]
 }

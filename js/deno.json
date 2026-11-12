@@ -5,5 +5,5 @@
     "noUncheckedIndexedAccess": true,
     "noImplicitOverride": true
   },
-  "exclude": ["**/dist/", "**/pkg/", "**/node_modules/", "**/*.mjs"]
+  "exclude": ["**/dist/", "**/pkg/", "**/pkg-compile/", "**/node_modules/", "**/*.mjs"]
 }

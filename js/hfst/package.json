@@ -17,6 +17,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./compile": {
+      "types": "./dist/compile.d.ts",
+      "default": "./dist/compile.js"
     }
   },
   "files": ["dist", "MIGRATING.md", "BENCHMARKS.md"],

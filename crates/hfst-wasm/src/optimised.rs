@@ -4,9 +4,9 @@
 use hfst_embed::optimised::{Lookup, OptimisedTransducer as Machine};
 use wasm_bindgen::prelude::*;
 
-use crate::error::GlueError;
-use crate::lookup::encode;
 use crate::transducer::property_pairs;
+use hfst_wasm_shared::GlueError;
+use hfst_wasm_shared::lookup::encode;
 
 // [spec:hfst:req:javascript.optimised-lookup+2]
 /// An optimized-lookup transducer as `divvun-fst` reads it, with the lookup
@@ -59,4 +59,26 @@ pub fn read_optimised_transducer(bytes: Vec<u8>) -> Result<OptimisedTransducer, 
         machine: Machine::read(bytes, &crate::PACKAGE)?,
         tables: Lookup::new(),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use hfst_embed::format::Format;
+
+    use super::read_optimised_transducer;
+    use crate::lookup::tests::stream;
+
+    // [spec:hfst:req:javascript.optimised-lookup+2/test]
+    #[test]
+    fn the_optimised_lookup_gives_its_results_as_json() {
+        let bytes = stream("{cat}:{dog}::2", Format::OptimizedLookupWeighted);
+        let mut t = read_optimised_transducer(bytes).expect("read");
+        assert_eq!(t.format(), "optimized-lookup-weighted");
+        let found = t.lookup("cat", None);
+        assert!(found.contains("\"output\":\"dog\""), "{found}");
+        assert!(found.contains("\"weight\":2"), "{found}");
+        assert_eq!(t.lookup("dog", Some(1)), "[]");
+        let refused = read_optimised_transducer(stream("a", Format::Foma)).err();
+        assert_eq!(refused.map(|e| e.code()), Some("unsupported-format"));
+    }
 }

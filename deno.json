@@ -3,6 +3,7 @@
   "exclude": ["target/"],
   "lock": false,
   "imports": {
-    "./js/hfst/pkg/hfst_wasm.js": "./js/hfst/glue-stub.d.ts"
+    "./js/hfst/pkg/hfst_wasm.js": "./js/hfst/glue-stub.d.ts",
+    "./js/hfst/pkg-compile/hfst_wasm_compile.js": "./js/hfst/compile-glue-stub.d.ts"
   }
 }

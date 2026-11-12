@@ -3,7 +3,7 @@
 use hfst_embed::transducer::Transducer as Machine;
 use wasm_bindgen::prelude::*;
 
-use crate::error::GlueError;
+use hfst_wasm_shared::GlueError;
 
 /// A transducer the package read. The wrapper's `Transducer` class in
 /// `js/hfst/transducer.ts` owns one.
@@ -51,6 +51,31 @@ pub fn read_transducers(bytes: &[u8]) -> Result<Vec<Transducer>, GlueError> {
 #[cfg(test)]
 mod tests {
     use hfst_embed::format::Format;
+
+    use super::read_transducers;
+    use crate::lookup::tests::stream;
+
+    // [spec:hfst:req:javascript.load-bytes+2/test]
+    #[test]
+    fn a_transducer_says_its_type_name_and_properties() {
+        let bytes = stream("a", Format::OptimizedLookupUnweighted);
+        let [t] = &read_transducers(&bytes).expect("read")[..] else {
+            panic!("one transducer");
+        };
+        assert_eq!(t.format(), "optimized-lookup-unweighted");
+        assert_eq!(t.name(), "xre(?)");
+        assert_eq!(t.property_pairs().len() % 2, 0, "key, value, key, value");
+        let tropical = stream("a", Format::OpenFstTropical);
+        let refused = read_transducers(&tropical).err().expect("refused");
+        assert_eq!(refused.code(), "unsupported-format");
+        let mut both = stream("a", Format::OptimizedLookupWeighted);
+        both.extend(stream("b", Format::OptimizedLookupWeighted));
+        assert_eq!(
+            read_transducers(&both).expect("read").len(),
+            2,
+            "in stream order"
+        );
+    }
 
     #[test]
     fn the_wrapper_lists_exactly_the_formats_read() {

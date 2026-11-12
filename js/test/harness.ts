@@ -8,14 +8,20 @@ import type * as Entry from "../hfst/index.ts";
 /** What the package exports. */
 export type Package = typeof Entry;
 
-/** What `run.mjs` hands each scenario process, as JSON in its first argument. */
-export interface ScenarioArgs {
-  /** URL of the package entry module under test. */
+/** Where one entry point of the package under test is. */
+export interface EntryArgs {
+  /** URL of the entry module. */
   module: string;
-  /** `file:` URL of the package's `.wasm` file. */
+  /** `file:` URL of its `.wasm` file. */
   wasm: string;
   /** `http:` URL the runner serves the same `.wasm` file at. */
   http: string;
+}
+
+/** What `run.mjs` hands each scenario process, as JSON in its first argument. */
+export interface ScenarioArgs extends EntryArgs {
+  /** Both entry points of the same build, for a scenario that runs the two. */
+  entries: { main: EntryArgs; compile: EntryArgs };
   package: string;
   /** The version the package declares. */
   version: string;

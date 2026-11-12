@@ -1,0 +1,37 @@
+[package]
+name = "hfst-wasm-compile"
+# The version of @divvun/hfst, which crates/hfst-wasm carries; this module's
+# version() reports it too, and a test holds the two equal.
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "wasm-bindgen glue behind @divvun/hfst/compile, which compiles, transforms, inspects and writes transducers in JavaScript"
+# The glue reaches users only through the npm package under js/hfst.
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[features]
+# The test hooks of hfst-wasm-shared, in this module. Only
+# `js/build.mjs --test` turns it on.
+test-hooks = ["hfst-wasm-shared/test-hooks"]
+
+[dependencies]
+hfst = { workspace = true }
+# The compile feature, with bhfst for packing spellers as divvun-hfst does.
+hfst-embed = { workspace = true, features = ["bhfst"] }
+hfst-wasm-shared = { path = "../hfst-wasm-shared" }
+js-sys = "0.3.95"
+tracing = "0.1.44"
+# Pinned with crates/hfst-wasm's: one wasm-bindgen CLI generates both
+# modules' glue.
+wasm-bindgen = "=0.2.118"
+
+[dev-dependencies]
+# The version test reads js/hfst/package.json.
+serde_json = "1"
+
+[lints]
+workspace = true

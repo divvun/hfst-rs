@@ -1,6 +1,6 @@
 import type { Core } from "./core.ts";
 import { HfstError } from "./errors.ts";
-import type { GlueObject } from "./glue.ts";
+import type { GlueObject, ModuleGlue } from "./glue.ts";
 
 // [spec:hfst:req:javascript.handle-lifetime+1]
 /**
@@ -11,10 +11,10 @@ import type { GlueObject } from "./glue.ts";
  * dropped without `free()` is released once it has been garbage collected.
  */
 export abstract class Handle<G extends GlueObject> implements Disposable {
-  readonly #core: Core;
+  readonly #core: Core<ModuleGlue>;
   #glue: G | null;
 
-  protected constructor(core: Core, glue: G) {
+  protected constructor(core: Core<ModuleGlue>, glue: G) {
     this.#core = core;
     this.#glue = glue;
     core.adopt(this, glue);
