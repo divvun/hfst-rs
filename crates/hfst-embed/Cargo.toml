@@ -25,9 +25,10 @@ tracing-subscriber = { version = "0.3.23", default-features = false, features = 
 # the library reads, foma included. Off by default, so a binding that only
 # reads and runs, as crates/hfst-wasm does, links none of it.
 compile = ["hfst/foma", "dep:hfst-openfst", "dep:tracing", "dep:tracing-subscriber"]
-# Packing a BHFST speller. The library's packer needs box-format's writer,
-# which does not build for wasm32-unknown-unknown at the revision pinned, so
-# it is a feature of its own.
+# Packing a BHFST speller, with box-format's archive writer and the zhfst
+# and index.xml readers. It builds for wasm32-unknown-unknown, as the compile
+# feature does, and is a feature of its own so a binding that compiles but
+# does not pack spellers links none of it.
 bhfst = ["compile", "hfst/bhfst"]
 
 [dev-dependencies]

@@ -26,13 +26,14 @@ web-time = "1"
 sha2 = { version = "0.11.1", default-features = false }
 toml = { version = "1.2.1", default-features = false, features = ["std", "serde", "parse"] }
 
-# BHFST packing (tools::bhfst). box-format is pinned to the exact git rev
-# divvunspell pins (its Cargo.lock: git+https://github.com/bbqsrc/box rev
-# 3d3818ce6251201916f2ce99a2aedfef321ba3ad), so the archives written are
-# byte-compatible with what divvunspell reads. Its `std` feature, which
-# `writer` and `reader` need, does not build for wasm32-unknown-unknown, so
-# packing is a feature of its own.
-box-format = { git = "https://github.com/bbqsrc/box", rev = "3d3818ce6251201916f2ce99a2aedfef321ba3ad", default-features = false, features = ["writer", "reader"], optional = true }
+# BHFST packing (tools::bhfst), through box-format's sans-I/O archive reader
+# and writer. Its light `std` feature carries them with no tokio, memory maps
+# or blake3, so it builds for wasm32-unknown-unknown. The archives it writes
+# are byte for byte those of the revision divvunspell pins (its Cargo.lock:
+# git+https://github.com/bbqsrc/box rev
+# 3d3818ce6251201916f2ce99a2aedfef321ba3ad), so divvunspell reads them.
+# Members are stored uncompressed, so no compression feature is needed.
+box-format = { git = "https://github.com/bbqsrc/box", rev = "2333d401b1d06ef6c3aca9f32b0c33efd4b8b1b4", default-features = false, features = ["std"], optional = true }
 serde-xml-rs = { version = "=0.6.0", default-features = false, optional = true }
 # Reading zhfst speller archives, with the version divvunspell reads them
 # with. Only deflate is needed (Giella zhfst members are deflated), taken

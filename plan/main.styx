@@ -9305,6 +9305,14 @@ children (
                     target-impl ([spec:hfst:req:javascript.compile-module] [spec:hfst:req:javascript.compile-files] [spec:hfst:req:javascript.compile-errors])
                 }
                 deps (compile-surface.embed-compile compile-surface.embed-writers compile-surface.embed-gaps)
+                log (
+                    {
+                        at 2026-11-12T22:22:50.192479Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
+                )
             }
 
             {

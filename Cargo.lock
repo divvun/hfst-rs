@@ -260,6 +260,22 @@ dependencies = [
 [[package]]
 name = "box-format"
 version = "0.4.0"
+source = "git+https://github.com/bbqsrc/box?rev=2333d401b1d06ef6c3aca9f32b0c33efd4b8b1b4#2333d401b1d06ef6c3aca9f32b0c33efd4b8b1b4"
+dependencies = [
+ "box-fst 0.1.0 (git+https://github.com/bbqsrc/box?rev=2333d401b1d06ef6c3aca9f32b0c33efd4b8b1b4)",
+ "byteorder",
+ "fastvint",
+ "hashbrown 0.17.1",
+ "pathdiff",
+ "serde_json",
+ "tracing",
+ "unic-normal",
+ "unic-ucd",
+]
+
+[[package]]
+name = "box-format"
+version = "0.4.0"
 source = "git+https://github.com/bbqsrc/box?rev=3d3818ce6251201916f2ce99a2aedfef321ba3ad#3d3818ce6251201916f2ce99a2aedfef321ba3ad"
 dependencies = [
  "async-walkdir",
@@ -296,6 +312,15 @@ dependencies = [
  "byteorder",
  "fastvint",
  "hashbrown 0.15.5",
+]
+
+[[package]]
+name = "box-fst"
+version = "0.1.0"
+source = "git+https://github.com/bbqsrc/box?rev=2333d401b1d06ef6c3aca9f32b0c33efd4b8b1b4#2333d401b1d06ef6c3aca9f32b0c33efd4b8b1b4"
+dependencies = [
+ "fastvint",
+ "hashbrown 0.17.1",
 ]
 
 [[package]]
@@ -924,7 +949,7 @@ name = "hfst"
 version = "0.1.0"
 dependencies = [
  "ariadne",
- "box-format 0.4.0 (git+https://github.com/bbqsrc/box?rev=3d3818ce6251201916f2ce99a2aedfef321ba3ad)",
+ "box-format 0.4.0 (git+https://github.com/bbqsrc/box?rev=2333d401b1d06ef6c3aca9f32b0c33efd4b8b1b4)",
  "foma",
  "glob",
  "hfst-openfst",

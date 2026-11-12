@@ -137,7 +137,9 @@ fn member(archive: &[u8], path: &str) -> Vec<u8> {
     let Some(Record::File(file)) = reader.find(&path) else {
         panic!("{path} is not a file of the archive");
     };
-    let (offset, len) = reader.file_location(file);
+    let (offset, len) = reader
+        .file_location(file)
+        .expect("a location in the archive");
     assert_eq!(offset % 8, 0, "{path} is 8-byte aligned");
     archive[offset as usize..(offset + len) as usize].to_vec()
 }

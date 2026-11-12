@@ -490,7 +490,9 @@ impl ArchiveBytes {
         let at = self.core.next_write_addr();
         self.bytes.resize(at.get() as usize, 0);
         self.bytes.extend_from_slice(data);
-        self.core.advance_position(data.len() as u64);
+        self.core
+            .advance_position(data.len() as u64)
+            .map_err(|e| BhfstError::Message(format!("cannot insert '{name}': {e}")))?;
         let len = data.len() as u64;
         self.core
             .insert_file(
@@ -605,7 +607,9 @@ pub fn meta_json_of(origin: &str, archive: &[u8]) -> Result<Vec<u8>, BhfstError>
     let Some(file) = record.as_file() else {
         return fail!(format!("{origin}: meta.json is not a file"));
     };
-    let (at, len) = reader.file_location(file);
+    let (at, len) = reader
+        .file_location(file)
+        .map_err(|e| BhfstError::Message(format!("cannot read meta.json: {e}")))?;
     let data = archive
         .get(at as usize..(at + len) as usize)
         .map_or_else(|| fail!("cannot read meta.json: cut short".to_string()), Ok)?;
