@@ -113,6 +113,14 @@ class Typing(unittest.TestCase):
         self.assertEqual(sme_eval.type_word("girjjiid", lambda p: shown.get(p, [])), 3)
         self.assertEqual(sme_eval.type_word("álbmot-", lambda p: []), 6)
 
+    def test_the_whole_user_picks_only_the_word(self):
+        shown = {"": ["gi", "girj", "ja"], "girjj": ["girjjiid"]}
+        self.assertEqual(
+            sme_eval.type_word("girjjiid", lambda p: shown.get(p, []), whole=True), 6
+        )
+        self.assertEqual(sme_eval.type_word("ja", lambda p: ["ja"], whole=True), 1)
+        self.assertEqual(sme_eval.type_word("jagi", lambda p: ["ja"], whole=True), 4)
+
     def test_forms_rank_by_count_then_letters(self):
         forms = sme_eval.Forms(Counter({"ja": 5, "jahki": 2, "jagi": 2, "lea": 3}))
         self.assertEqual(forms.top("ja", 2), ["ja", "jagi"])

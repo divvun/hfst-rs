@@ -44,9 +44,25 @@ The baselines are scored by the measure's rule for recorded suggestions
 (`prediction-evaluation.external`): the user picks the longest suggestion
 the word starts with, or types the next letter.
 
+That rule lets the user pick a suggestion that only starts the word, such
+as `ja` while typing `jagi`, or `ráhkesvuođa` while typing
+`ráhkesvuođabáhkkomis`, and then type on. The measure's own user
+(`prediction-evaluation.keystrokes`), which types every unit variant, picks
+only the word's next unit or the whole word, as a keyboard does that ends a
+picked word with a space. The word-form figures this write-up first gave,
+25.3% (unigram) and 26.6% (bigram) with 3 shown, assume the generous user,
+and the finding first drawn from them rested on that unequal comparison.
+With the measure's own user the same baselines save 20.9% and 22.4%. Each
+word-form figure below says which user it assumes: prefix picks for the
+recording rule, whole-word picks for the measure's user.
+`sme_eval.py baselines --picks whole` scores the baselines with the
+measure's user.
+
 Versions measured: hfst de85176 (the harness and the tools), lang-sme's
 analyser and generator `analyser-gt-norm.hfstol` and
 `generator-gt-norm.hfstol` as built on 2026-08-24, corpus-sme d55a4a8c6.
+The word forms the model counts (section *Word forms in the model*) were
+measured with hfst 0f5590d.
 
 ## Data
 
@@ -249,10 +265,17 @@ brings (0: units only).
 | units, K = 0 | 17.3% | 21.8% |
 | units, K = 1 | 19.5% | 24.1% |
 | units, K = 2 | 18.8% | 23.6% |
-| word forms, unigram | 25.3% | 27.8% |
-| word forms, bigram | 26.6% | 29.0% |
+| word forms, unigram, prefix picks | 25.3% | 27.8% |
+| word forms, bigram, prefix picks | 26.6% | 29.0% |
+| word forms, unigram, whole-word picks | 20.9% | 23.1% |
+| word forms, bigram, whole-word picks | 22.4% | 24.6% |
 
-Keystrokes saved by the number of units in the word, 3 shown:
+Only the last two rows are scored by the user that scores units. Section
+*Word forms in the model* adds the forms the model itself counts, alone and
+beside units.
+
+Keystrokes saved by the number of units in the word, 3 shown, with the
+baselines' prefix picks:
 
 | units | words | chars | K = 0 | K = 1 | K = 2 | unigram | bigram |
 |---|---:|---:|---:|---:|---:|---:|---:|
@@ -266,7 +289,7 @@ Keystrokes saved by the number of units in the word, 3 shown:
 | 8 | 14 | 374 | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% |
 | no reading | 1980 | 17764 | 0.0% | 0.0% | 0.0% | 8.9% | 9.5% |
 
-4 shown:
+4 shown, prefix picks:
 
 | units | words | chars | K = 0 | K = 1 | K = 2 | unigram | bigram |
 |---|---:|---:|---:|---:|---:|---:|---:|
@@ -340,8 +363,10 @@ The full grid of 24 variants was run on a sample, to keep the time down:
 four parts, and the sampled words keep their context (see the setup). All
 with K = 0. Whole-text figures for the same variant run half a point to a point
 higher (o3 stupid backoff: 17.3% and 21.8% on the whole text, 16.8% and
-21.4% here), and the baselines likewise (unigram 25.3% and 27.8%, here
-24.5% and 27.0%; bigram 26.6% and 29.0%, here 25.7% and 28.1%).
+21.4% here), and the baselines likewise (with prefix picks unigram 25.3%
+and 27.8%, here 24.5% and 27.0%; bigram 26.6% and 29.0%, here 25.7% and
+28.1%; with whole-word picks the sample's unigram saves 20.3% and 22.6%,
+its bigram 21.7% and 23.9%).
 
 Keystrokes saved, all words:
 
@@ -399,8 +424,10 @@ stupid backoff, first reading.
 |---|---:|---:|---:|---:|
 | K = 0 | 16.8% | 19.4% | 21.4% | 22.8% |
 | K = 1 | 18.9% | 21.2% | 23.6% | 24.8% |
-| unigram (no faces) | 24.5% | | 27.0% | |
-| bigram (no faces) | 25.7% | | 28.1% | |
+| unigram (no faces), prefix picks | 24.5% | | 27.0% | |
+| bigram (no faces), prefix picks | 25.7% | | 28.1% | |
+| unigram (no faces), whole-word picks | 20.3% | | 22.6% | |
+| bigram (no faces), whole-word picks | 21.7% | | 23.9% | |
 
 By units, faces 8+4:
 
@@ -480,15 +507,23 @@ K = 2 (not shown) is 1.1 to 1.3 points below K = 1 on changed stems
 (18.1% and 24.1%), and within 0.2 points of it on written ones (22.0% and
 25.8%).
 
+The unigram and bigram columns use prefix picks. With whole-word picks
+they save 20.1% and 21.7% with 3 shown and 22.5% and 23.9% with 4 on
+changed stems, and 23.9% and 25.5%, 26.2% and 27.8% on written lemmas.
+
 Units do much better, against word forms, where the stem changes. There,
-units alone with 4 shown come within 1.2 points of the unigram baseline,
-and on the three- to five-unit words of the group they beat both baselines
-with 4 shown, by 1.0 to 6.3 points. Where the lemma is written, units alone
-are 12 to 13 points behind. These are the short, frequent words, where a
+units alone with 4 shown come within 1.2 points of the unigram baseline
+with prefix picks, and on the three- to five-unit words of the group they
+beat both baselines with 4 shown, by 1.0 to 6.3 points. Against whole-word
+picks, units alone lead on changed stems: 20.7% against 20.1% (unigram)
+with 3 shown, and 26.5% against 22.5% with 4. Where the lemma is written,
+units alone are 12 to 13 points behind with prefix picks, 8 to 11 with
+whole-word picks. These are the short, frequent words, where a
 stem and an ending cost two picks. The words whose stem changes are also
 longer, 7.7 characters against 5.7, so these numbers cannot separate the
-gain from gradation from the gain from length. Either way, gradation does
-not carry unit prediction past word forms.
+gain from gradation from the gain from length. Against prefix picks,
+gradation does not carry unit prediction past word forms; against
+whole-word picks it does, on these words.
 
 Whole words close more than half of the gap on written lemmas, and cost
 1.3 points on changed stems.
@@ -521,14 +556,20 @@ as unseen, by the generator's weight.
 | 4 | 508 | 8.5% | 6.5% | 9.0% | 11.7% | 9.5% | 10.1% |
 | 5 | 195 | 6.1% | 4.7% | 6.5% | 12.5% | 10.4% | 7.7% |
 
+The unigram and bigram columns use prefix picks. With whole-word picks,
+word forms save nothing on forms the training text never showed (0.0% in
+both groups, with both N, unigram and bigram), and 35.2% and 39.0%
+(unigram), 37.7% and 41.4% (bigram), on forms it did show.
+
 This is pooling. A word form the training text never showed is completed by
 word forms only where another form shares its start, and they save 5 to 10
-percent. Units save 12.6% with 3 shown and 19.8% with 4 when the lemma was
+percent, but only for a user who picks a suggestion that starts the word;
+with whole-word picks they save nothing. Units save 12.6% with 3 shown and 19.8% with 4 when the lemma was
 seen in another form, and 8.9% and 13.7% when it was not seen at all. On
 all 12,459 unseen forms together (128,231 characters), units alone save
 10.6% with 3 shown and 16.6% with 4, against 6.5% and 7.5% for the
-unigram. On forms the training text did show, word forms win by 10 points
-or more.
+unigram with prefix picks and nothing with whole-word picks. On forms the
+training text did show, word forms win by 10 points or more.
 
 Whole words cost most on unseen forms: 4.6 and 4.8 points where only the
 lemma was seen. That fits how they are built: a stem is completed by its
@@ -540,6 +581,126 @@ give 17.25%, 19.47%, 21.81% and 24.10% for K = 0 and 1 with 3 and 4 shown
 (gradation groups: 17.24%, 19.53%, 21.77%, 24.14%), against the main run's
 17.3%, 19.5%, 21.8% and 24.1%. The runs took 30, 8 and 9 minutes,
 14,263, 3,124 and 3,595 CPU seconds, and 3.4, 3.0 and 4.0 GB.
+
+## Word forms in the model
+
+Since hfst bf519f5 the model also counts the text's word forms
+(`prediction-model.word-forms`), and before a word's first unit the
+keyboard offers the counted forms that start with the letters typed, or
+with none typed the likeliest after the words before
+(`prediction.seen-forms`). A form is scored by its count after the forms of
+the words before it; units, and words built from them, by the unit model
+times a unit weight from 0 to 1 (`prediction-model.form-score`). Forms,
+units and the weight are settings, so the harness scores forms alone, units
+alone and both on the same parts, with its own user throughout: it picks a
+form only when it is the whole word. With forms on, the user types the
+word's own letters until it picks a unit, each in the stem's case while the
+two agree, so entry still matches the stem. A pick before the first letter
+costs one tap, and the word is then judged at that look.
+
+### Checked against the baselines
+
+With units off and order 1 the harness completes the forms its model
+counted, which is the unigram baseline. The two agree to the tap once the
+baseline is scored the same way. Whole text, keystrokes saved:
+
+| unigram | 3 shown | 4 shown |
+|---|---:|---:|
+| `sme_eval.py`, prefix picks | 25.29% | 27.81% |
+| whole-word picks | 20.89% | 23.12% |
+| and forms counted only for tokens with a reading the model counts, punctuation counted but not offered | 20.76% | 23.01% |
+| harness, units off, order 1 | 20.76% | 23.01% |
+
+The harness and the baseline row above it both spend 280,164 taps with 3
+shown and 272,238 with 4. That row was scored by a variant of
+`sme_eval.py`'s baselines that is not kept; `--picks whole` gives the row
+before it. The step between the two costs 0.13 points: the 1,980 words
+with no reading give the model no form, as `prediction-model.word-forms`
+says;
+punctuation tokens do have readings, so they are counted as context but
+never offered as words. At order 2 the harness ranks by stupid backoff,
+where the bigram baseline puts every form seen after the previous token
+before the rest: the bigram rule saves 22.11% and 24.29%, stupid backoff
+22.24% and 24.40%, the same as the harness to the tap (274,954 and 267,304
+taps). On the 10% sample the steps agree to the tap as well. Picks of a
+suggestion that only starts the word are 4.4 points of the published 25.3%.
+
+### The results
+
+All 51,954 words, order 3, stupid backoff, the first reading, the same five
+parts. `units` offers units alone, `forms` the counted forms alone, `both`
+both in one list; K is the number of complete words each stem brings and w
+the unit weight.
+
+3 shown:
+
+| units | words | chars | units, K = 0 | units, K = 1 | forms | both, K = 0, w 1 | both, K = 0, w 0.1 | both, K = 1, w 1 | both, K = 1, w 0.1 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| all | 51954 | 353579 | 17.3% | 19.5% | 22.3% | 22.7% | 22.9% | 23.6% | 23.4% |
+| 2 | 44845 | 279255 | 17.7% | 21.2% | 24.5% | 24.3% | 25.0% | 25.6% | 25.6% |
+| 3 | 3906 | 38093 | 26.4% | 22.3% | 24.7% | 28.3% | 26.2% | 27.5% | 26.2% |
+| 4 | 898 | 12752 | 10.6% | 9.0% | 7.2% | 10.5% | 8.3% | 10.1% | 8.8% |
+| 5 | 258 | 4276 | 3.5% | 2.4% | 0.0% | 3.9% | 1.9% | 2.9% | 1.2% |
+| 6 | 40 | 782 | 4.6% | 3.1% | 0.0% | 3.6% | 2.9% | 2.9% | 2.2% |
+| 7 | 13 | 283 | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% |
+| 8 | 14 | 374 | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% |
+| no reading | 1980 | 17764 | 0.0% | 0.0% | 0.4% | 0.4% | 0.4% | 0.4% | 0.4% |
+
+4 shown:
+
+| units | words | chars | units, K = 0 | units, K = 1 | forms | both, K = 0, w 1 | both, K = 0, w 0.1 | both, K = 1, w 1 | both, K = 1, w 0.1 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| all | 51954 | 353579 | 21.8% | 24.1% | 24.4% | 27.3% | 27.1% | 27.9% | 27.3% |
+| 2 | 44845 | 279255 | 22.4% | 26.0% | 26.9% | 29.2% | 29.6% | 30.2% | 29.8% |
+| 3 | 3906 | 38093 | 32.5% | 28.4% | 26.8% | 34.1% | 30.9% | 32.9% | 30.6% |
+| 4 | 898 | 12752 | 13.1% | 11.5% | 7.9% | 12.7% | 9.7% | 12.1% | 9.9% |
+| 5 | 258 | 4276 | 9.0% | 7.2% | 0.0% | 8.2% | 5.1% | 6.8% | 4.0% |
+| 6 | 40 | 782 | 9.3% | 9.0% | 0.0% | 8.2% | 5.1% | 7.9% | 4.7% |
+| 7 | 13 | 283 | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% |
+| 8 | 14 | 374 | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% |
+| no reading | 1980 | 17764 | 0.0% | 0.0% | 0.4% | 0.4% | 0.4% | 0.4% | 0.4% |
+
+Units alone give the earlier runs' figures to the tenth. Forms alone save
+22.3% and 24.4%, at order 3; at order 1 they save 20.8% and 23.0%, and at
+order 2 22.2% and 24.4%.
+
+Reading:
+
+- With 3 shown, forms alone lead units with one complete word per stem by
+  2.8 points (22.3% against 19.5%), not the 5.8 points the prefix-pick
+  baseline gave. With 4 shown the two are level (24.4% and 24.1%).
+- Both together beat either alone. The best is K = 1 at weight 1: 23.6%
+  with 3 shown and 27.9% with 4, 1.3 and 3.5 points over forms alone. Weight
+  0.1 is 0.2 points behind with 3 shown and 0.6 with 4.
+- Forms carry the two-unit words, the short frequent ones. Units carry the
+  longer ones: on words of four units and more, forms alone save 0 to 8%,
+  units 2 to 13%, and both at weight 1 keep most of what units save there.
+  At weight 0.1 units rank below the forms and lose those places.
+- On the forms the training text never showed, forms alone save nothing
+  (the novelty groups above), and units save 8.0% to 19.8%.
+- The 1,980 words with no reading gain 0.4% from forms another token
+  showed in another case.
+
+The run of all 14 variants took 26 minutes (1,557 s), 18,379 CPU seconds
+and 7.0 GB. With units on, 27,390 of the 51,954 words (24,700 with both)
+met the walk's bound of 1,000,000 configurations in some walk; an entry
+walk after one or two letters seldom finishes within it.
+
+The groups of the previous sections were not run with forms. They are
+scored by masking the other words, and masking replaces the surfaces that
+the form counts read, so a masked run would count `·` and almost no real
+form.
+
+```sh
+$HFST predict-eval -g $G -G $U --folds 5 --order 3 --backoff stupid-backoff \
+    -n 3,4 --whole-words 0,1 --forms off,on --units on,off --unit-weight 1,0.1 \
+    $W/analysed.txt
+for S in none gradation novelty; do
+    python3 -I scripts/prediction/sme_eval.py baselines \
+        --analysed $W/analysed.txt --targets $W/targets.tsv \
+        --folds 5 --sample 1.0 --seed 1 --shown 3,4 --split $S --picks whole
+done
+```
 
 ## Time, memory and model size
 
@@ -556,34 +717,53 @@ The machine had 18 cores and was shared with other work (load 20 to
 | form seen | 37,515 | 6 | 30 min | 14,263 | 0.063 | 3.4 GB |
 | only lemma seen | 6,067 | 6 | 8 min | 3,124 | 0.086 | 3.0 GB |
 | neither seen | 6,392 | 6 | 9 min | 3,595 | 0.094 | 4.0 GB |
+| forms and units, whole text | 51,954 | 14 | 26 min | 18,379 | 0.025 | 7.0 GB |
 | baselines (script) | 51,954 | 4 | 12 s | 8 | | 0.2 GB |
 
 The grid has no whole words; runs with K above 0 cost more per word, since
-each stem on offer is completed by its own walk. Preparing the text takes
+each stem on offer is completed by its own walk. The forms-and-units run
+used hfst 0f5590d, whose walk keeps what it learns of the generator between
+calls, with 18 threads. Preparing the text takes
 under half a minute: extraction under 1 s, analysis 3 to 17 s, targets 2
 to 5 s.
 
 Model sizes, built from the whole text with faces of 12 keys for each class
-by `hfst predict-model`, each in under 3 s and 150 MB:
+by `hfst predict-model`, each in under 3 s and 150 MB. The first two
+columns are de85176's models, of units only; the last two are 0f5590d's,
+which also hold the word forms and their runs:
 
-| order | first reading | equal shares |
-|---|---:|---:|
-| 1 | 166,694 bytes | 219,913 bytes |
-| 2 | 592,414 bytes | 1,607,805 bytes |
-| 3 | 1,686,710 bytes | 7,628,661 bytes |
+| order | first reading | equal shares | with forms, first reading | with forms, equal shares |
+|---|---:|---:|---:|---:|
+| 1 | 166,694 bytes | 219,913 bytes | 655,685 bytes | 720,616 bytes |
+| 2 | 592,414 bytes | 1,607,805 bytes | 1,574,049 bytes | 2,601,152 bytes |
+| 3 | 1,686,710 bytes | 7,628,661 bytes | 3,489,553 bytes | 9,443,216 bytes |
 
-The text has 14,745 distinct word forms.
+The text has 14,745 distinct word forms; the model counts 12,274, with
+capitals folded and only from tokens with a reading it counts.
 
 ## The finding
 
-On 51,954 words of open North Sámi text, unit prediction saves fewer
-keystrokes than completing word forms counted from the same training text.
-The best variant measured on the whole text, order 3 with stupid backoff,
-the first reading and one complete word for each stem on offer, saves 19.5%
-with 3 suggestions shown and 24.1% with 4. The unigram baseline saves 25.3%
-and 27.8%, the bigram 26.6% and 29.0%. On the 10% sample, a keyboard face
-of 8 + 4 keys adds 1.2 to 2.6 points, which still leaves unit prediction
-2.2 points or more behind the unigram with 4 shown (24.8% against 27.0%).
+On 51,954 words of open North Sámi text, scored throughout by the user the
+measure defines, who picks a suggestion only when it is the word's next
+unit or the whole word:
+
+- Completing the word forms the training text showed saves 22.3% of
+  keystrokes with 3 suggestions shown and 24.4% with 4 (order 3; the
+  unigram baseline saves 20.9% and 23.1%). Units with one complete word per
+  stem save 19.5% and 24.1%. Forms lead by 2.8 points with 3 shown and the
+  two are level with 4.
+- Forms and units together, in one list, save 23.6% and 27.9% (one
+  complete word per stem, unit weight 1), more than either alone.
+- Units win where the training text never showed the form, where forms
+  alone save nothing, and on words of four units and more. Forms win on the
+  short frequent words of two units.
+
+The finding first written here, that unit prediction saves 5.8 points
+fewer than completing word forms with 3 shown and is not worth shipping on
+its own, rested on word-form baselines scored with prefix picks (25.3% and
+27.8% for the unigram, 26.6% and 29.0% for the bigram). Those assume a
+more generous user than the one that scored units. With the same user the
+gap with 3 shown is 2.8 points, and with 4 shown there is none.
 
 Whole words did what they were meant to for short words and no more. They
 add 3.5 points on two-unit words and 7.3 to 7.5 points on words whose lemma
@@ -591,19 +771,16 @@ is written, the short frequent words such as `ja` and `lea`. They cost about
 4 points on three-unit words, 1.3 points on words whose stem changes, and
 4.6 to 4.8 points on forms the training text never showed but whose lemma
 it did. Net, they add 2.2 points with 3 shown and 2.3 with 4. K = 2 is
-worse than K = 1.
+worse than K = 1. Beside forms they still add 0.9 points with 3 shown and
+0.6 with 4 at weight 1.
 
-Units win in two places. Where the training text never showed the word
-form, they save 10.6% and 16.6% against 6.5% and 7.5%. And with 4 shown,
-on words of three to five units whose stem changes, they beat both
-baselines by 1.0 to 6.3 points. Over all words whose stem changes, units
-come within 1.2 points of the unigram with 4 shown, and no closer.
-
-So, as measured here, unit prediction is not worth shipping for North Sámi
-as the keyboard's only prediction. It is worth more as a complement: for
-the quarter of words whose form the word list has not seen, and for long
-words whose stem changes. A keyboard that completes seen word forms first and offers units for
-the rest was not measured, and that is what these numbers point to.
+What to ship for North Sámi, as measured: forms and units together, one
+complete word per stem, unit weight 1, order 3 with stupid backoff. With 4
+suggestions shown the combination gains most (27.9% against 24.4% for
+forms alone and 24.1% for units); with 3 shown it gains 1.3 points over
+forms alone. This holds for one text of 52,000 words and the simulated
+user below; weight 1 and 0.1 are within 0.6 points of each other, so the
+weight is not settled by this text.
 
 The limits:
 
@@ -618,6 +795,9 @@ The limits:
   alone.
 - Keystrokes saved is the only measure. Whether a North Sámi writer would
   rather pick a lemma and an ending than a word is a question for writers.
+- The groups (gradation, novelty) were not scored with forms on, so how the
+  combination does on changed stems and unseen forms is inferred from the
+  totals and from forms and units alone.
 
 ## Open problems
 
@@ -635,9 +815,9 @@ The limits:
   and unseen forms lose 1 to 5 points. On Greenlandic they cost 0.6 to 1.6
   points for the same reason. Keeping the stem visible beside its words was
   not tried.
-- **Nothing before the first letter.** Stems are offered only for letters
-  typed, so unit prediction never offers the next word before its first
-  letter, where the bigram baseline has the word first 6.5% of the time.
+- **Units offer nothing before the first letter.** Stems are offered only
+  for letters typed. With forms on, the likeliest counted forms after the
+  words before are offered there.
 - **Long words are typed in full.** All 27 words of seven and eight units
   are typed in full in every variant, as are the 1,980 words the analyser
   does not know.
@@ -645,7 +825,10 @@ The limits:
   and `shown` per unit looked for. With whole words, a word picked whole is
   looked for once instead of twice, so the rates fall while taps fall too.
   A recording gets no rates. A rate per word would serve both.
-- **No per-word output.** The harness reports totals only. Groups and single
-  words were scored by masking the other words, one run for each.
+- **No per-word output, and no way to score some words with forms on.**
+  The harness reports totals only. Groups and single words were scored by
+  masking the other words, one run for each, and masking replaces the
+  surfaces that the form counts read. Scoring a group or a sample with
+  forms on needs a harness setting that types only some tokens.
 - **No disambiguated run.** lang-sme's CG disambiguator is not compiled
   here and no vislcg3 was at hand.

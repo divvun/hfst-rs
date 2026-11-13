@@ -18,7 +18,9 @@ p running from p*n//k to (p+1)*n//k. Subcommands:
               harness. See write_recordings.
   baselines   Score word-form completion by the measure's rule for
               recorded suggestions: the unigram and bigram baselines,
-              overall, by units in the word and by group.
+              overall, by units in the word and by group. --picks whole
+              scores them with predict-eval's own user, who picks only the
+              whole word.
 
 The splits group tokens by what unit prediction is meant to help with:
   gradation   whether the lemma is a prefix of the word as written
@@ -326,16 +328,23 @@ def bigram(forms, after, previous, word, prefix, n):
     return shown_as_typed(shown, word)
 
 
-def type_word(word, suggest):
+def type_word(word, suggest, whole=False):
     """Taps for a word, as predict-eval's Recording::type_word: pick the
     longest suggestion the word starts with that is longer than what is
-    typed, or type the next letter."""
+    typed, or type the next letter. With whole, a suggestion is picked only
+    when it is the whole word, as the measure's own simulated user picks a
+    complete word (prediction-evaluation.keystrokes); a suggestion that only
+    starts the word is not picked."""
     typed = 0
     taps = 0
     while typed < len(word):
         prefix = word[:typed]
         longer = [
-            len(s) for s in suggest(prefix) if word.startswith(s) and len(s) > typed
+            len(s)
+            for s in suggest(prefix)
+            if word.startswith(s)
+            and len(s) > typed
+            and (not whole or len(s) == len(word))
         ]
         if longer:
             taps += 1
@@ -434,7 +443,7 @@ def baselines(args):
                 keys += [("all", found[i], "*"), ("all", found[i], units)]
             for name, kind, n in systems:
                 suggest = suggester(kind, forms, after, previous, word, n)
-                taps = type_word(word, suggest)
+                taps = type_word(word, suggest, args.picks == "whole")
                 seen = looks(word, suggest)
                 for key in keys:
                     tallies[name][key].add(chars, taps, seen)
@@ -543,6 +552,13 @@ def main():
     common(b)
     b.add_argument("--split", choices=["none", "gradation", "novelty"], default="none")
     b.add_argument("--shown", type=lambda s: [int(x) for x in s.split(",")], default=[3, 4])
+    b.add_argument(
+        "--picks",
+        choices=["prefix", "whole"],
+        default="prefix",
+        help="prefix: the recording rule, a suggestion that only starts the word "
+        "may be picked; whole: only the whole word is picked, as predict-eval's user",
+    )
     args = parser.parse_args()
     {
         "targets": targets,

@@ -13,6 +13,7 @@ import unittest
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import crk_corpus  # noqa: E402
+import crk_forms  # noqa: E402
 import crk_record  # noqa: E402
 import crk_speller  # noqa: E402
 import crk_sum_folds  # noqa: E402
@@ -120,6 +121,28 @@ units        words    chars     saved   first   shown    full     saved   first 
 all             10      100     10.0%   40.0%   60.0%       1     20.0%       -       -       0
 2               10      100     10.0%   40.0%   60.0%       1     20.0%       -       -       0
 """
+
+
+class Forms(unittest.TestCase):
+    def test_forms_are_picked_only_whole(self):
+        forms = crk_forms.Forms({"nipâw": 3, "nipâwak": 1, "ni": 5, ".": 9})
+        self.assertEqual(forms.top("", 2), ["ni", "nipâw"])
+        self.assertEqual(crk_forms.type_word("nipâw", forms, 2), 1)
+        self.assertEqual(crk_forms.type_word("Nipâwak", forms, 1), 7)
+        self.assertEqual(crk_forms.type_word("Nipâwak", forms, 3), 1)
+        self.assertEqual(crk_forms.type_word("nipi", forms, 3), 4)
+
+    def test_parts_count_the_other_parts_only(self):
+        full = [("nipâw", True), (".", False), ("nipâw", True), ("_x", False)]
+        totals = crk_forms.score(full, {0, 2}, 2, [1])
+        self.assertEqual(totals[1], [2, 10, 2])
+        alone = crk_forms.score(full, {0}, 2, [1])
+        self.assertEqual(alone[1], [1, 5, 1])
+
+    def test_lookup_blocks_become_tokens(self):
+        with tempfile.TemporaryDirectory() as directory:
+            text = written_file(directory, "t.txt", "a\ta+Ipc\t0\n\n.\t.+?\tinf\n\n")
+            self.assertEqual(crk_forms.read_tokens(text), [("a", True), (".", False)])
 
 
 class SumFolds(unittest.TestCase):

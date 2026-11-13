@@ -427,6 +427,125 @@ The starts were counted with `hfst predict -j -m MODEL -n 3 --whole-words K`
 over a file of lines each holding a tab and one start, lower-cased, the
 model built by `hfst predict-model --order 3` from the whole text.
 
+## Word forms
+
+Since hfst bf519f5 the model also counts word forms, and the keyboard can
+offer the forms the training text showed beside units, or alone
+(`prediction.seen-forms`, `prediction-model.form-score`). This was measured
+with hfst 0f5590d, order 3, stupid backoff, the first reading, the same ten
+parts, and the harness's own user, who picks a form only when it is the
+whole word. With forms on, that user types the word's own letters until it
+picks a unit, each in the stem's case while the two agree.
+
+### The masked text and the form counts
+
+The setup above writes the surface `_` for every token it does not type.
+The model builder counts the surface of each token with a reading as a word
+form, so on that text each part's form model would hold `_` (punctuation,
+never offered) for about 107,000 of its 111,700 tokens and the real form
+only for the 4,500 typed tokens of the other parts. That would leave forms
+almost nothing to offer. The harness cannot type only some tokens of an
+unmasked text, so two fair setups were used instead:
+
+- Forms alone on the same 5,000 tokens: `scripts/prediction/crk_forms.py`
+  takes each part's form counts from the unmasked text, which
+  `crk_corpus.py` writes in the same order when `--typed` is left out, and
+  types the tokens the masked text types, as the harness's user does. On
+  the whole unmasked text it and the harness spend the same taps (583,056
+  with 3 shown, 499,969 with 10).
+- Everything on the whole text: all 124,110 tokens typed, unmasked, in one
+  harness run with every variant.
+
+The two agree where they overlap. Units alone save 25.8% and 43.9% (K = 0)
+and 32.2% and 51.5% (K = 1) on the whole text, against 25.9% and 43.8%, and
+32.4% and 51.5%, on the 5,000 tokens; forms alone save 36.1% and 45.2%
+against 36.1% and 45.1%. So the whole text's figures can be set beside the
+speller's on the 5,000 tokens.
+
+### The results
+
+Keystrokes saved, with 3 and 10 shown. K is the number of complete words
+each stem brings, w the unit weight.
+
+| system | tokens | 3 shown | 10 shown |
+|---|---|---:|---:|
+| speller, held out | 5,000 | 29.4% | 41.2% |
+| speller, shipped | 5,000 | 34.0% | 44.5% |
+| units, K = 0 | 5,000 | 25.9% | 43.8% |
+| units, K = 1 | 5,000 | 32.4% | 51.5% |
+| forms | 5,000 | 36.1% | 45.1% |
+| units, K = 0 | 124,110 | 25.8% | 43.9% |
+| units, K = 1 | 124,110 | 32.2% | 51.5% |
+| forms | 124,110 | 36.1% | 45.2% |
+| both, K = 0, w 1 | 124,110 | 33.1% | 50.6% |
+| both, K = 0, w 0.1 | 124,110 | 35.5% | 45.9% |
+| both, K = 1, w 1 | 124,110 | 34.1% | 51.5% |
+| both, K = 1, w 0.1 | 124,110 | 35.7% | 46.0% |
+
+By units in the word, on the whole text, 3 shown:
+
+| units | words | chars | units, K = 0 | units, K = 1 | forms | both, K = 0, w 1 | both, K = 0, w 0.1 | both, K = 1, w 1 | both, K = 1, w 0.1 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| all | 124110 | 912605 | 25.8% | 32.2% | 36.1% | 33.1% | 35.5% | 34.1% | 35.7% |
+| 2 | 96128 | 574238 | 28.6% | 40.2% | 44.6% | 40.4% | 43.6% | 42.6% | 43.9% |
+| 3 | 19368 | 215467 | 22.4% | 20.1% | 26.0% | 23.3% | 25.8% | 22.5% | 25.9% |
+| 4 | 7324 | 100414 | 18.7% | 16.9% | 16.2% | 16.7% | 16.2% | 15.4% | 16.2% |
+| 5 | 1147 | 19528 | 17.0% | 15.1% | 7.3% | 14.0% | 7.3% | 12.4% | 7.3% |
+| 6 | 134 | 2757 | 15.3% | 11.7% | 1.1% | 11.5% | 1.1% | 8.2% | 1.1% |
+| 7 | 9 | 201 | 44.3% | 37.3% | 12.9% | 38.8% | 12.9% | 31.3% | 12.9% |
+
+10 shown:
+
+| units | words | chars | units, K = 0 | units, K = 1 | forms | both, K = 0, w 1 | both, K = 0, w 0.1 | both, K = 1, w 1 | both, K = 1, w 0.1 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| all | 124110 | 912605 | 43.9% | 51.5% | 45.2% | 50.6% | 45.9% | 51.5% | 46.0% |
+| 2 | 96128 | 574238 | 40.6% | 52.9% | 55.9% | 54.6% | 57.0% | 56.0% | 57.2% |
+| 3 | 19368 | 215467 | 49.5% | 49.2% | 32.5% | 42.5% | 32.6% | 42.9% | 32.6% |
+| 4 | 7324 | 100414 | 49.6% | 49.1% | 19.9% | 45.6% | 19.9% | 45.3% | 19.9% |
+| 5 | 1147 | 19528 | 48.8% | 47.7% | 8.5% | 47.3% | 8.5% | 46.2% | 8.5% |
+| 6 | 134 | 2757 | 52.2% | 49.8% | 1.6% | 52.0% | 1.6% | 49.5% | 1.6% |
+| 7 | 9 | 201 | 53.2% | 49.3% | 12.9% | 53.2% | 12.9% | 49.3% | 12.9% |
+
+Reading:
+
+- With 3 shown, forms alone save the most: 36.1%, ahead of units with one
+  complete word per stem (32.4%), the held-out speller (29.4%) and even the
+  shipped speller with its leaked weights (34.0%). The text favours forms:
+  it is word types from frequency lists expanded by their counts, and 87%
+  of the typed tokens' forms occur in their part's training text (75% on
+  the North Sámi running text).
+- With 10 shown, units with one complete word per stem save the most,
+  51.5%, and both at weight 1 with K = 1 save the same. Forms alone save
+  45.2%.
+- No mix beats the better single system at either N. With 3 shown, both at
+  weight 0.1 come within 0.4 points of forms alone; with 10, both at weight
+  1 equal units alone.
+- Both together gain on two-unit words and lose on longer ones, against
+  units alone with 10 shown: 42.5% to 42.9% against 49.2% to 49.5% on
+  three-unit words. With forms on, the user types the word's own letters,
+  and a Cree word that starts with a person prefix or another form of its
+  stem does not start with the stem's letters, so entry offers the stem
+  late or not at all. Units alone are typed by the stem's letters and the
+  prefix labels.
+
+The run of all 14 variants on the whole text took 36 minutes (2,155 s),
+31,217 CPU seconds and 4.3 GB. With units on, 53,637 of the 124,110 words
+met the walk's bound of 1,000,000 configurations in some walk, most of them
+in an entry walk after one or two letters.
+
+```sh
+python3 -I scripts/prediction/crk_corpus.py --hfst $HFST \
+    --analyser $CRK/src/fst/analyser-gt-norm.hfstol --generator $G \
+    --out $W/full --seed 1 --folds 10 \
+    $T/ahenakew_wolfart_MGS_tab-sep-anls_freq-sorted.txt \
+    $T/bloomfield_MGS_tab-sep-anls_freq-sorted.txt
+python3 -I scripts/prediction/crk_forms.py $W/full/text.txt \
+    $W/corpus/text.txt --folds 10 --shown 3,10
+$HFST predict-eval -g $G -G $U --folds 10 --order 3 -n 3,10 \
+    --whole-words 0,1 --forms off,on --units on,off --unit-weight 1,0.1 \
+    $W/full/text.txt
+```
+
 ## What this does and does not show
 
 It shows, on words of this corpus typed one at a time:
@@ -449,6 +568,10 @@ It shows, on words of this corpus typed one at a time:
   shown, and 3.3 more at 10, because its weights were counted from the
   scored words. Counted the same way with and without the scored words,
   the gap is 5.1 and 3.6 points.
+- Completing the word forms the training text showed saves 36.1% with 3
+  shown, more than units, either speller, or any mix of forms and units;
+  with 10 shown it saves 45.2%, behind units with one complete word per
+  stem (51.5%).
 
 It does not show:
 
@@ -462,8 +585,19 @@ It does not show:
 - Anything about the words left out: the misspelt and English words, and
   the 15,310 tokens today's normative analyser does not know.
 - How the filter pays off in taps, which the harness cannot count.
-- Small differences. Only 5,000 tokens are typed, and the groups of five
-  units or more are small.
+- Small differences. Only 5,000 tokens are typed for the speller and the
+  first unit runs, and the groups of five units or more are small. The
+  forms runs type the whole text.
+
+What to ship for Plains Cree, as measured: with 3 suggestions shown, the
+counted word forms alone (36.1%), or both at unit weight 0.1 with one
+complete word per stem, which gives up 0.4 points but still builds words
+the text never showed; with 10 shown, units with one complete word per
+stem, alone or beside forms at weight 1 (51.5%). The text is a shuffled
+frequency list with no context across words, on which forms do well
+because most typed words were seen in training. With forms on, the
+harness's user types the word's own letters; a user who types the stem, as
+units alone assume, was not measured with forms on.
 
 ## Open problems
 
@@ -480,8 +614,13 @@ It does not show:
   recording rule lets the user pick a complete word as the start of a
   longer one. Here complete words were recorded with a trailing space; the
   lenient numbers show the rule as written adds about a point.
+- The harness cannot type only some tokens of an unmasked text, so a
+  masked text, which the unit setup above uses, cannot score forms: the
+  form counts read the masked surfaces.
 - Speed: on d472f02 the harness took about 0.17 CPU seconds per word per
   variant on this text, and divvunspell about 0.4 CPU seconds per start.
+  On 0f5590d the 14 variants of the whole text took 0.018 CPU seconds per
+  word and variant.
   On de85176 the six whole-word variants took under six minutes together.
 - With complete words on offer, a stem often gives its place to one of its
   own complete words, and words of three or more units lose points. How a

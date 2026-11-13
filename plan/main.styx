@@ -9933,6 +9933,22 @@ children (
                 title "Measure word forms alone, units alone and both on North Sámi, Plains Cree and Greenlandic on the same folds, with the unit weight and whole words varied, and update the three write-ups (Greenlandic gets docs/prediction/kal-evaluation.md) with which mix each language should ship"
                 kind @docs
                 deps (predict.word-forms)
+                sealed true
+                log (
+                    {
+                        at 2026-11-12T23:31:56.28184Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
+
+                    {
+                        at 2026-11-13T01:02:50.488327Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan complete)"
+                    }
+                )
             }
 
             {

@@ -665,6 +665,7 @@ assertions (
     {id predict.spec, kind @complete, author "brendan@necessary.nu", at 2026-11-11T12:36:15.313631Z}
     {id predict.walk-speed, kind @complete, author "brendan@necessary.nu", at 2026-11-12T22:02:53.630897Z}
     {id predict.whole-words-spec, kind @complete, author "brendan@necessary.nu", at 2026-11-12T15:30:22.23091Z}
+    {id predict.word-forms-measure, kind @complete, author "brendan@necessary.nu", at 2026-11-13T01:02:50.488327Z}
     {id predict.word-forms-spec, kind @complete, author "brendan@necessary.nu", at 2026-11-12T21:30:41.021303Z}
     {id python.embed, kind @complete, author "brendan@necessary.nu", at 2026-11-10T15:14:12.551711Z}
     {id python.spec, kind @complete, author "brendan@necessary.nu", at 2026-11-10T15:00:49.230155Z}
