@@ -9326,6 +9326,14 @@ children (
                         kind @note
                         text "Shared glue: sink, GlueError, the options reader, lookup result encoding, tokenise option parsing and the test hooks moved from crates/hfst-wasm into crates/hfst-wasm-shared, which both modules link (cg3 does the same). Moving them cost the main module 167 bytes of codegen; folding dhfst.rs's private copy of the set() helper into the shared one brought it to 467,830 bytes, 64 under the 467,894 it was. The read-only check (js/test/read-only-module.ts) is unchanged and passes: 1448 functions checked. The compile module links with an 8 MiB stack from build.rs (cargo:rustc-link-arg-cdylib=-zstack-size=8388608 on wasm32); measured on the release module under Node, the deepest each compiler takes is: XRE 100 brackets, 499 prefix operators, a union chain of 2999, a 1000-arc path; lexc 100 brackets; twolc 499 operators; pmatch 100 brackets and a union chain of 498 (pmatch refuses ~~); xfst 100 brackets and 499 operators. One past each fails with compile-failed."
                     }
+
+                    {
+                        at 2026-11-13T00:25:55.717747Z
+                        author "brendan@necessary.nu"
+                        kind @decision
+                        text "The delivery commit (2bd0ab2) carries one violation, test-footprint, for the scope crates/hfst-wasm-compile: that directory holds only build.rs, which links the module's 8 MiB stack, and a build script has no test target. js/test/compile-depth.ts tests the stack it sets, under Node and Bun. To meet the other gates the glue reads each options object out of JavaScript once into plain Rust values, so the compilers, every operation's, query's and writer's options, the files resolver and the self-operand cases of compose, substitute and compose-intersect are tested on the host (32 tests); strings2fst, AT&T and Prolog text share one export, compileText, and the Transducer class is split into TransducerBase (type, name, properties, lookup, queries, writers) and Transducer (copy, convert and the operations). The shared tokenise helpers are #[inline], which keeps the main module at 467,830 bytes, 64 under where it was."
+                        after_done true
+                    }
                 )
             }
 
