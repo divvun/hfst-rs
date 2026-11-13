@@ -9368,12 +9368,20 @@ children (
                 title "Release the compile surface: divvun-hfst 0.2.0 and @divvun/hfst 0.2.0 with READMEs covering compiling, the npm tarball carrying the compile entry, and the python/v0.2.0 and wasm/v0.2.0 tags"
                 kind @chore
                 deps (compile-surface.python-parity compile-surface.wasm-parity)
+                sealed true
                 log (
                     {
                         at 2026-11-13T07:08:06.059305Z
                         author "brendan@necessary.nu"
                         kind @status
                         text "Todo → Doing (nplan start)"
+                    }
+
+                    {
+                        at 2026-11-13T07:26:38.89475Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan complete)"
                     }
                 )
             }
