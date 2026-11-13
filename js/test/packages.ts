@@ -40,7 +40,7 @@ export function packageTests(dir: URL, name: string): void {
   test("package.json names Divvun HFST, UiT and the licence", async () => {
     const manifest = await readManifest(dir);
     assertEqual(manifest.name, name, "name");
-    assertEqual(manifest.version, "0.1.0", "version");
+    assertEqual(manifest.version, "0.2.0", "version");
     assertEqual(manifest.license, "LGPL-3.0-or-later", "license");
     assertEqual(manifest.author, "UiT The Arctic University of Norway", "author");
     assertEqual(manifest.type, "module", "type");

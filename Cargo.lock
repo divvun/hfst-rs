@@ -1022,7 +1022,7 @@ dependencies = [
 
 [[package]]
 name = "hfst-python"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "hfst",
  "hfst-embed",
@@ -1032,7 +1032,7 @@ dependencies = [
 
 [[package]]
 name = "hfst-wasm"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "divvun-fst",
  "hfst",
@@ -1047,7 +1047,7 @@ dependencies = [
 
 [[package]]
 name = "hfst-wasm-compile"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "hfst",
  "hfst-embed",
@@ -1060,7 +1060,7 @@ dependencies = [
 
 [[package]]
 name = "hfst-wasm-shared"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "hfst",
  "hfst-embed",

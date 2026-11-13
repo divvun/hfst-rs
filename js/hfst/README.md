@@ -5,15 +5,18 @@ Divvun HFST for JavaScript. It reads optimized-lookup transducers
 up, tokenises text and checks words against DHFST acceptors. It is the Divvun
 HFST library, written in Rust and built as WebAssembly, so it gives the
 results the `hfst` command-line tools give. It runs in browsers, Web Workers,
-Deno, Node 20 and later, and Bun, as one ES module and one `.wasm` file.
+Deno, Node 20 and later, and Bun.
+
+The package has two entry points. `@divvun/hfst` reads and looks up.
+[`@divvun/hfst/compile`](#compiling) compiles, changes, inspects and writes
+transducers, from a WebAssembly module of its own, which only code that
+imports it loads.
 
 It replaces [hfst-js](https://www.npmjs.com/package/hfst-js). Its optimised
 lookup loads and looks words up faster than hfst-js on every transducer
 measured ([figures below](#against-hfst-js)).
 [MIGRATING.md](https://github.com/divvun/hfst-rs/blob/main/js/hfst/MIGRATING.md)
 maps hfst-js calls to this package and lists every way the results differ.
-The package reads and looks up. It does not compile, write or change
-transducers.
 
 ```sh
 npm install @divvun/hfst
@@ -44,7 +47,8 @@ analyser.free();
 `readTransducer` takes a weighted or unweighted optimized-lookup transducer,
 with or without an HFST header. `readTransducers` takes a stream of several
 and returns them in stream order. Bytes in any other format throw `HfstError`
-with code `unsupported-format`.
+with code `unsupported-format`; [`@divvun/hfst/compile`](#compiling) reads
+every type.
 
 `lookup` returns every result the hfst library finds, ordered by weight, then
 by output. `output` is the output symbols joined; `symbols` lists them,
@@ -142,19 +146,235 @@ gives its `version`, `stateCount`, `symbols` and `meta`. For spelling
 suggestions, use [@divvun/fst](https://www.npmjs.com/package/@divvun/fst),
 which is divvunspell itself.
 
+## Compiling
+
+`@divvun/hfst/compile` compiles regular expressions, lexc, twolc, xfst
+scripts, pmatch scripts, strings, and AT&T and Prolog text. It reads
+transducers of every type the hfst library reads, and changes, inspects and
+writes them as the hfst tools do, giving the bytes and reports the tools
+give. Its WebAssembly module is about 3.6 MiB, against about 460 KiB for
+the main entry point's, and only code that imports this entry point loads
+it.
+
+```js
+import { compileLexc, init } from "@divvun/hfst/compile";
+
+await init();
+
+const lexc = `
+Multichar_Symbols +N +Pl
+LEXICON Root
+Nouns ;
+LEXICON Nouns
+cat Noun ;
+dog Noun ;
+LEXICON Noun
++N:0 # ;
++N+Pl:s # ;
+`;
+
+const { transducer: nouns } = compileLexc([lexc], { names: ["nouns.lexc"] });
+nouns.name; // "lexc(nouns.lexc)"
+nouns.lookup("cat+N+Pl"); // [{ output: "cats", symbols: ["c", "a", "t", "s"], weight: 0 }]
+```
+
+This entry point has its own `init`, which loads its own `.wasm` file. Call
+it before anything else here: the main entry point's `init` does not start
+it.
+
+| Function | Tool | Returns |
+| --- | --- | --- |
+| `regex(source)` | `hfst regexp2fst` | `{ transducer, warnings }` |
+| `compileLexc(sources)` | `hfst lexc` | `{ transducer, warnings }` |
+| `compileTwolc(source)` | `hfst twolc` | `{ transducers, warnings }` |
+| `compileXfst(source)` | `hfst xfst -F` | `{ output, stack, definitions, written, warnings }` |
+| `compilePmatch(source)` | `hfst pmatch2fst` | `{ archive, warnings }`; `readTokeniser(archive)` reads the archive |
+| `compileStrings(source)` | `hfst strings2fst` | `{ transducer, warnings }` |
+| `parseAtt(source)` | `hfst txt2fst` | `{ transducer, warnings }` |
+| `parseProlog(source)` | `hfst txt2fst --prolog` | `{ transducer, warnings }` |
+
+Each compiler gives what the tool writes of the same source. Its second
+argument holds the tool's options in camelCase, such as
+`{ format: "foma", warnMissingLexicons: true }`. `format` is the type to
+compile to, `openfst-tropical` unless set; twolc and xfst work in
+`openfst-tropical` or `foma`. `name` is the file name the tool would read the
+source from: diagnostics give it, and results are named after it as the tool
+names them. `compileLexc` takes `names`, one for each source, and
+`compileXfst` takes `input`, the script's standard input. An option a call
+does not know throws `invalid-argument`, naming it.
+
+### Files
+
+A compile reads the files its source names from `files`, and from nowhere
+else. `files` is a record or a `Map` from names to text or a `Uint8Array`, or
+a function that takes a name and returns the file's text or bytes, or
+`undefined` when it has no such file. The function is called while the
+compile runs, once for each file. A file `files` does not give fails the
+compile, naming the file. The files an xfst script writes come back in
+`written`.
+
+```js
+regex('@txt"words.txt"', { files: { "words.txt": "cat\ndog\n" } });
+regex('@txt"words.txt"', { files: new Map([["words.txt", bytes]]) });
+regex('@txt"words.txt"', { files: (name) => cache.get(name) });
+
+const ran = compileXfst("load stack nouns.hfst\ninvert net\nsave stack inverted.hfst\n", {
+  files: { "nouns.hfst": nouns.toBytes() },
+});
+readTransducer(ran.written["inverted.hfst"]).lookup("cats"); // [{ output: "cat+N+Pl", ... }]
+```
+
+A pmatch script finds a relative `@bin"FILE"` or `@txt"FILE"` beside
+`name`, as the tool finds one beside its input: with
+`name: "lang/animals.pmatch"`, `@txt"animals.txt"` reads
+`lang/animals.txt`.
+
+### Changing a transducer
+
+A `Transducer` of this entry point is of any type the hfst library reads:
+`openfst-tropical`, `foma`, `optimized-lookup-weighted` or
+`optimized-lookup-unweighted`. Its `readTransducer` and `readTransducers`
+read all four. Each operation changes the transducer in place and returns
+it, as `Array.prototype.sort` does, so operations chain. `copy()` gives a
+transducer of its own to change.
+
+```js
+const { transducer: animals } = regex("{cat}:{dog} | {mouse}:{mice}");
+animals.invert().minimize();
+animals.lookup("dog"); // [{ output: "cat", symbols: ["c", "a", "t"], weight: 0 }]
+
+const plurals = animals.copy().concatenate(regex("s").transducer);
+plurals.lookup("dogs"); // [{ output: "cats", symbols: ["c", "a", "t", "s"], weight: 0 }]
+animals.lookup("dogs"); // []
+```
+
+Each operation is named after the hfst tool that does it, in camelCase, and
+takes the tool's options as an object, such as
+`t.determinize({ encodeWeights: true })`:
+
+- On the transducer alone: `determinize`, `minimize`, `invert`, `reverse`,
+  `removeEpsilons`, `pruneAlphabet`, `project`, `pushWeights`,
+  `pushLabels`, `realign`, `repeat`, `insertFreely`, `eliminateFlags`,
+  `preprocessForOptimizedLookupFormat`, `affixGuessify`,
+  `expandEquivalences`, `killPaths`, `reweight`, `setName`,
+  `editMetadata`, `guessify` and `substitute`.
+- With another transducer: `compose`, `concatenate`, `conjunct`,
+  `subtract`, `disjunct`, `priorityDisjunct` and `shuffle`, and
+  `composeIntersect` with an array of rule transducers.
+- `convert(type)` converts it to another type, as `hfst fst2fst` does.
+
+`guessify` returns the model form generator `hfst guessify` writes after
+the guesser, or `null`, rather than the transducer. `t.compose(t)` composes
+`t` with itself as it was. The operations work on `openfst-tropical` and
+`foma`. As the tools do, they refuse optimized lookup, throwing
+`type-mismatch`; convert it first.
+
+### Queries
+
+A transducer's `summarize`, `checkAlpha`, `compare`, `dumpAlphabets`,
+`extractPaths` (`hfst fst2strings`), `guess` and `naiveTokeniser` report
+what the hfst tool each is named after reports, as plain objects. The entry
+point also exports `lookupReport`, `flookupReport`, `optimizedLookupReport`,
+`pairTest` and `grep`, and its `Tokeniser` adds `pmatch`.
+
+```js
+animals.extractPaths().map((p) => [p.input, p.output]); // [["dog", "cat"], ["mice", "mouse"]]
+```
+
+### Errors and warnings
+
+A source that does not compile throws `HfstError` with code
+`compile-failed`. Its `diagnostics` hold every diagnostic the compile made,
+as plain objects:
+
+```js
+try {
+  regex("[cat", { name: "nouns.xre" });
+} catch (error) {
+  error.code; // "compile-failed"
+  const [diagnostic] = error.diagnostics;
+  diagnostic.message; // "expected RightBracket"
+  diagnostic.span; // { start: 4, end: 4 }
+  console.log(diagnostic.rendered);
+}
+```
+
+A diagnostic has its `severity` (`error`, `warning` or `info`), `message`,
+`sourceName`, `span`, `labels`, `notes`, `help`, and `rendered`, the report
+the hfst tools print for it, without colour. Spans count UTF-16 code units,
+as JavaScript indexes a string, so `source.slice(span.start, span.end)` is
+the text a span points at.
+
+A compile that succeeds returns its warnings beside what it made:
+
+```js
+const { warnings } = compileStrings("cat\t-1\n");
+warnings[0].message; // "Found negative weight -1.000000; negative weights are supported but iffy, ..."
+```
+
+An xfst command that fails without stopping the script is among its
+warnings, with severity `error`. What a compile says at the info level, as
+with `verbose`, goes to the logger.
+
+### Writing
+
+```js
+nouns.toBytes(); // in its own type, as hfst fst2fst writes it
+nouns.toBytes("optimized-lookup-weighted"); // converted, for lookup
+nouns.toAtt(); // AT&T text, as hfst fst2txt writes it
+```
+
+`toBytes` writes a stream holding the transducer, in any type, and
+`useBackendFormat` leaves out the HFST header. `toAtt`, `toProlog`, `toDot`
+and `toPckimmo` return the text `hfst fst2txt` writes. `toDhfstAcceptor`
+and `toDhfstErrorModel` write DHFST files, which the main entry point's
+`readDhfst` reads. `packBhfst` packs a speller as `hfst bhfst` does, from
+two DHFST files, or two transducer streams to convert, and the text of its
+`meta.json`:
+
+```js
+const lexicon = regex("{cat} | {dog}").transducer;
+const errorModel = regex("[a:b | b:a | a | b]*").transducer;
+const speller = packBhfst(lexicon.toDhfstAcceptor(), errorModel.toDhfstErrorModel(), '{"id": "en"}');
+```
+
+This entry point does not write THFST, which is a directory of files rather
+than bytes; `packBhfst` converts a transducer stream it packs to THFST inside
+the archive.
+
+### Between the entry points
+
+A transducer crosses between the entry points as the bytes `toBytes`
+writes. The main entry point reads optimized lookup, so write that:
+
+```js
+import * as hfst from "@divvun/hfst";
+
+await hfst.init();
+const generator = hfst.readTransducer(nouns.toBytes("optimized-lookup-weighted"));
+generator.lookup("cat+N+Pl"); // [{ output: "cats", symbols: ["c", "a", "t", "s"], weight: 0 }]
+```
+
+This entry point's readers read what the main one reads. A transducer of
+one entry point is not an operand of the other's: passing one throws
+`invalid-argument`. Both throw the same `HfstError`.
+
 ## Starting the module
 
 `init()` loads the `.wasm` file that ships beside the package. Call it once
 and wait for it before anything else; calling it again returns the same
 promise. It also takes a URL, a `Response`, the module's bytes or a compiled
 `WebAssembly.Module`, for bundlers and for workers that are handed one.
-`version()` gives the package's version. The package is versioned on its own,
-apart from the hfst library inside it.
+`@divvun/hfst/compile`'s `init` does the same for its own `.wasm` file. Each
+entry point starts on its own, and only the ones you call `init` on are
+loaded. `version()` gives the package's version, from either entry point.
+The package is versioned on its own, apart from the hfst library inside it.
 
 ## Memory
 
-Transducers, tokenisers and DHFST models hold WebAssembly memory. Call
-`free()` when done with one, or declare it with `using`:
+Transducers, tokenisers and DHFST models, of either entry point, hold
+WebAssembly memory. Call `free()` when done with one, or declare it with
+`using`:
 
 ```js
 {
@@ -171,21 +391,24 @@ A call on a freed object throws `HfstError` with code `freed`.
 Every error is an `HfstError` with a `code` that code can test:
 `not-initialised`, `init-failed`, `poisoned`, `freed`, `transducer-count`,
 `type-mismatch`, `unsupported-format`, `invalid-format`, `io`,
-`not-automaton`, `cyclic`, `invalid-argument`, `internal` and `failed`. A
-panic inside the module traps it. The instance is poisoned from then on and
-every call throws `poisoned`, because its memory can no longer be trusted.
-Load the page or process again to recover.
+`not-automaton`, `cyclic`, `invalid-argument`, `internal`, `failed` and,
+from `@divvun/hfst/compile`, `compile-failed`. A panic inside a module traps
+it. The instance is poisoned from then on and every call into it throws
+`poisoned`, because its memory can no longer be trusted. The other entry
+point's module carries on. Load the page or process again to recover.
 
 ## Logging
 
 The library's log events go to the console, warnings and errors only by
 default. `setLogger((event) => ...)` takes them instead, each with its
 `level`, `target` and `message`. `setLogLevel("debug")` changes how much is
-sent, and `setLogLevel("off")` sends nothing.
+sent, and `setLogLevel("off")` sends nothing. Each entry point logs on its
+own: the `setLogger` and `setLogLevel` it exports reach only its module.
 
 ## Developing
 
-The package is built from `crates/hfst-wasm` in the
+The package is built from `crates/hfst-wasm`, and its compile entry point
+from `crates/hfst-wasm-compile`, in the
 [hfst-rs](https://github.com/divvun/hfst-rs) repository:
 
 ```sh
@@ -197,9 +420,11 @@ node js/test/run.mjs --require-all
 The build needs the `wasm32-unknown-unknown` target, the `wasm-bindgen` CLI
 at the version `Cargo.lock` pins, and `npx`; `wasm-opt` is used when it is
 installed. The suite runs under Node, Bun, Deno and a headless Chromium, on a
-page and in a Web Worker, and compares every result with the native hfst
-library's. `node js/bench/bench.mjs` measures the package against hfst-js and
-writes BENCHMARKS.md.
+page and in a Web Worker. It compares every result of the main entry point
+with the native hfst library's, and every result of the compile entry point
+with what the hfst tools write or print of the same input.
+`node js/bench/bench.mjs` measures the package against hfst-js and writes
+BENCHMARKS.md.
 
 The package's version is the one `crates/hfst-wasm/Cargo.toml` and
 `js/hfst/package.json` both carry. A `wasm/v<version>` tag naming it releases
