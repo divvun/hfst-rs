@@ -1636,4 +1636,7 @@ impl_evidence (
     ), rule_versions_seen (
         {id xre-finalization.root-optimize, version 0}
     )}
+    {id compile-surface.wasm-parity, covered_claims (
+        {impl_name target-impl, rule javascript.compile-parity}
+    )}
 )

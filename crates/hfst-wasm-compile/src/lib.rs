@@ -11,6 +11,14 @@
 //! limits `hfst::depth` sets for wasm32. build.rs links the module with a
 //! stack those limits fit in.
 
+// [spec:hfst:req:javascript.compile-parity]
+// Every compiler, operation, query and writer reaches hfst-embed's compile
+// feature, which divvun-hfst's binding reaches too, with the caller's options
+// turned into the tool's: the bytes and reports are the tool's, and
+// divvun-hfst's. js/test/compile-parity.ts checks them against what the tools
+// write of the inputs the repository's tests give them, the cases
+// python/tests/test_compile_parity.py checks divvun-hfst on.
+
 // [spec:hfst:req:javascript.portable-build+1]
 // This crate builds for wasm32-unknown-unknown from its manifest alone:
 // build.rs sets its stack size, and every dependency it pulls in, box-format

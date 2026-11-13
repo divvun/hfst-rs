@@ -9338,6 +9338,14 @@ children (
                     target-impl ([spec:hfst:req:javascript.compile-parity])
                 }
                 deps (compile-surface.wasm-compile)
+                log (
+                    {
+                        at 2026-11-12T23:49:45.016059Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
+                )
             }
 
             {

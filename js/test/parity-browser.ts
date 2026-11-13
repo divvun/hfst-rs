@@ -1,16 +1,18 @@
-// The parity scenario (parity.ts) in a browser: on the page's main thread, or
-// in a module Web Worker the page starts, as the page's query says. The test
-// build compiles this to target/js-test/browser, and browser.mjs serves it
-// beside the package and the fixtures. The browser posts its report back to
-// browser.mjs, which has no other way to learn the outcome.
+// The parity scenarios in a browser, on the page's main thread or in a module
+// Web Worker the page starts, as the page's query says: parity.ts, or with
+// the scenario `compile`, compile-parity.ts. The test build compiles this to
+// target/js-test/browser, and browser.mjs serves it beside the package and
+// the fixtures. The browser posts its report back to browser.mjs, which has
+// no other way to learn the outcome.
 
-import { report, runParity } from "./parity.ts";
 import type { ParityArgs } from "./parity.ts";
 
 /** What browser.mjs puts in the page's query, as JSON under `args`. */
 interface BrowserArgs extends ParityArgs {
   label: string;
   variant: "main-thread" | "worker";
+  /** `compile` for the compile entry point's scenario; the main one's otherwise. */
+  scenario?: "compile";
   /** URL to post the report to. */
   report: string;
 }
@@ -36,14 +38,25 @@ async function fetchBytes(url: string): Promise<Uint8Array> {
 /** Where this script runs: a worker has no document. */
 const place = typeof document === "undefined" ? "worker" : "main-thread";
 
-// [spec:hfst:req:javascript.native-parity+2/test]
+/** The report of the scenario the page's query names. */
+async function outcome(): Promise<{ lines: string[]; passed: boolean }> {
+  if (args.scenario === "compile") {
+    // [spec:hfst:req:javascript.compile-parity/test]
+    const { report, runCompileParity } = await import("./compile-parity.ts");
+    return report(args.label, await runCompileParity(args, fetchBytes));
+  }
+  // [spec:hfst:req:javascript.native-parity+2/test]
+  const { report, runParity } = await import("./parity.ts");
+  return report(args.label, await runParity(args, fetchBytes));
+}
+
 async function run(): Promise<void> {
   if (place !== args.variant) {
     await send([`not ok - ${args.label}: asked to run as ${args.variant}, it ran as ${place}`], false);
     return;
   }
   try {
-    const { lines, passed } = report(args.label, await runParity(args, fetchBytes));
+    const { lines, passed } = await outcome();
     await send(lines, passed);
   } catch (error) {
     const reason = error instanceof Error ? (error.stack ?? error.message) : String(error);

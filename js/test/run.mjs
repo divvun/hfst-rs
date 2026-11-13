@@ -1,6 +1,7 @@
 // Runs the JavaScript test suite against the built package, under Node and
-// Bun, and its parity scenario under Node, Bun and Deno and in a headless
-// Chromium (js/test/parity-runner.mjs).
+// Bun, and its parity scenarios, the main entry point's against the native
+// library and the compile entry point's against the tools, under Node, Bun
+// and Deno and in a headless Chromium (js/test/parity-runner.mjs).
 //
 //   node js/build.mjs --test && node js/test/run.mjs [--runtime node|bun|deno|chromium]... [--require-all]
 //
@@ -49,6 +50,7 @@ const scenarios = [
   { file: "parity-runtime.ts", build: "release", variants: ["main"] },
   { file: "hfst-js-parity.ts", build: "release", variants: ["fixtures", "analysers"] },
   { file: "optimised.ts", build: "release", variants: ["main", "analysers"] },
+  { file: "parity-runtime.ts", build: "release", entry: "compile", variants: ["compile"] },
 ];
 
 // Node only collects garbage on request with --expose-gc; Bun has Bun.gc.

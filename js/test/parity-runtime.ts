@@ -1,10 +1,11 @@
-// The parity scenario (parity.ts) under Node, Bun and Deno, in a process of
-// its own. run.mjs passes the scenario arguments as JSON: Node and Bun run
-// this from its scenario list, and Deno with read access to the package and
-// the fixtures alone, which is all the scenario needs.
+// The parity scenarios under Node, Bun and Deno, in a process of their own:
+// parity.ts, the main entry point against the native library, and with the
+// variant `compile`, compile-parity.ts, the compile entry point against the
+// tools. run.mjs passes the scenario arguments as JSON: Node and Bun run this
+// from its scenario list, and Deno with read access to the package and the
+// fixtures alone, which is all either scenario needs.
 
 import { readBytes } from "./harness.ts";
-import { report, runParity } from "./parity.ts";
 import type { ParityArgs } from "./parity.ts";
 
 const deno: unknown = Reflect.get(globalThis, "Deno");
@@ -13,7 +14,7 @@ const deno: unknown = Reflect.get(globalThis, "Deno");
 const runtime = deno !== undefined ? "deno" : Reflect.has(globalThis, "Bun") ? "bun" : "node";
 
 /** Deno hands a script its own arguments; Node and Bun put the runtime and script paths first. */
-function scenarioArgs(): ParityArgs & { label: string } {
+function scenarioArgs(): ParityArgs & { label: string; variant?: string } {
   const argv: unknown =
     typeof deno === "object" && deno !== null
       ? Reflect.get(deno, "args")
@@ -25,9 +26,20 @@ function scenarioArgs(): ParityArgs & { label: string } {
   return JSON.parse(own[0]);
 }
 
-// [spec:hfst:req:javascript.native-parity+2/test]
+/** The report of the scenario `args` names, with each line under `label`. */
+async function outcome(args: ParityArgs & { variant?: string }, label: string) {
+  if (args.variant === "compile") {
+    // [spec:hfst:req:javascript.compile-parity/test]
+    const { report, runCompileParity } = await import("./compile-parity.ts");
+    return report(label, await runCompileParity(args, readBytes));
+  }
+  // [spec:hfst:req:javascript.native-parity+2/test]
+  const { report, runParity } = await import("./parity.ts");
+  return report(label, await runParity(args, readBytes));
+}
+
 const args = scenarioArgs();
 const label = `${runtime} ${args.label}`;
-const { lines, passed } = report(label, await runParity(args, readBytes));
+const { lines, passed } = await outcome(args, label);
 for (const line of lines) console.log(line);
-if (!passed) throw new Error(`${label}: the package's results differ from the native library's`);
+if (!passed) throw new Error(`${label}: the package's results differ from what it is checked against`);

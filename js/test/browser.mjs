@@ -192,23 +192,28 @@ function launch(browser, url) {
 }
 
 /**
- * Runs the scenario in `browser` once for each of `variants` ("main-thread",
- * "worker"), each in a browser of its own, and prints what each reports.
- * `compiled` is the directory of the compiled js/test modules, and
- * `label(variant)` names the run in the report. Returns how many ran and how
- * many failed.
+ * Runs a parity scenario in `browser` once for each of `variants`
+ * ("main-thread", "worker"), each in a browser of its own, and prints what
+ * each reports. `compiled` is the directory of the compiled js/test modules,
+ * `entry` the package's entry module the scenario starts, `scenario` the one
+ * parity-browser.ts runs, and `label(variant)` names the run in the report.
+ * Returns how many ran and how many failed.
  */
-export async function runInBrowser(browser, { packageDir, compiled, fixtures, label, variants }) {
+export async function runInBrowser(
+  browser,
+  { packageDir, compiled, fixtures, label, variants, entry = "index.js", scenario },
+) {
   const served = await serve({ "/package/": packageDir, "/test/": compiled, "/fixtures/": fixtures });
   const { base } = served;
   let failures = 0;
   try {
     for (const variant of variants) {
       const args = {
-        module: `${base}/package/index.js`,
+        module: `${base}/package/${entry}`,
         fixtures: `${base}/fixtures/`,
         label: label(variant),
         variant,
+        ...(scenario === undefined ? {} : { scenario }),
         report: `${base}/report/${variant}`,
       };
       const reported = served.reported(variant);
