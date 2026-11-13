@@ -308,8 +308,10 @@ function split(call: string, options: Record<string, unknown>, defaultName = "<s
 // [spec:hfst:req:javascript.compile-module]
 // [spec:hfst:req:javascript.compile-files]
 // [spec:hfst:req:javascript.compile-errors]
+// [spec:hfst:req:javascript.compile-parity]
 // The source, the files and the options reach the module as given, and what
-// a compile makes comes back as the module wrote it.
+// a compile makes comes back as the module wrote it, so a compile gives what
+// divvun-hfst's gives: the tool's bytes.
 /** The {@link Compilers} over the compile module instance `core`. */
 export function compilers(core: Core<CompileGlue>): Compilers {
   const compiled = ({ transducer, warnings }: CompiledGlue): Compiled => ({

@@ -9345,6 +9345,13 @@ children (
                         kind @status
                         text "Todo → Doing (nplan start)"
                     }
+
+                    {
+                        at 2026-11-13T00:17:39.870316Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "Ran locally, every runtime: Node, Bun and Deno (parity-runtime.ts, variant compile) and Chromium headless shell 1243 on a page and in a Web Worker (parity-browser.ts, scenario compile). Each runs the 676 cases of compile-parity.json in 15 groups and gives what the tools give; the 4 THFST cases are not run, since the package writes no directory. divvun-hfst's suite checks the same cases against the same tool output, so parity with divvun-hfst is through the tools' output rather than a run of divvun-hfst itself, which a browser cannot do. The compile parity scenario shares parity-runtime.ts and parity-browser.ts with the native parity scenario rather than having runners of its own."
+                    }
                 )
             }
 
