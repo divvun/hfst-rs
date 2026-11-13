@@ -9957,6 +9957,27 @@ children (
                 kind @perf
                 deps (predict.walk-speed predict.embed)
             }
+
+            {
+                id predict.entry-first-letters
+                title "Make entry after one or two typed letters finish: those walks reach the configuration bound on every language (27,390 of 51,954 North Sámi words, 1,594 of 2,313 Greenlandic words meet it in some walk, kal `a` is still cut at 100M configurations), so stems are missed exactly where a keyboard starts; bound entry by ranked stems or a stem index, not by exhausting the generator"
+                kind @perf
+                deps (predict.walk-speed predict.word-forms-measure)
+            }
+
+            {
+                id predict.harness-subsets
+                title "Let the harness type only some words while counting all of them: groups and samples are scored today by replacing the other words' surfaces, which corrupts the word-form counts, so with forms on a sample or a group (gradation, unseen forms, Cree's 5,000 tokens) needs the full text or a script outside the harness"
+                kind @feat
+                deps (predict.word-forms-measure)
+            }
+
+            {
+                id predict.harness-memory
+                title "Bring the harness's memory down: the 3,000-token Greenlandic run peaked at 22.5 GB and the North Sámi full run at 7.0 GB, because each thread keeps every walk of its word for the variants to share; keep a summary of preview-only steps and the endings, not whole walks"
+                kind @perf
+                deps (predict.word-forms-measure)
+            }
         )
     }
 
