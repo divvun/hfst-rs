@@ -1711,4 +1711,15 @@ impl_evidence (
     ), rule_versions_seen (
         {id xre-finalization.root-optimize, version 0}
     )}
+    {id swift-package.build, covered_rules (
+        swift.build
+        swift.linking
+        swift.platforms
+        swift.registry
+    ), covered_claims (
+        {impl_name swift-impl, rule swift.build}
+        {impl_name swift-impl, rule swift.linking}
+        {impl_name swift-impl, rule swift.platforms}
+        {impl_name swift-impl, rule swift.registry}
+    )}
 )

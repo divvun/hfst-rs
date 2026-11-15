@@ -28,6 +28,20 @@ platforms (
         }
     }
 
+    // The Swift package is tested through Swift, against the XCFramework
+    // swift/build.sh --host builds for the host, as an app links it. The
+    // tests read the npm package's fixtures, which node js/test/fixtures.mjs
+    // builds, so the fixture builders are inputs too.
+    {
+        platform "swift"
+        files (crates/hfst-swift/** crates/hfst-swift-runtime/** crates/hfst-swift-compile/** crates/hfst-embed/** swift/Package.swift swift/build.sh swift/Sources/HFST/** swift/Sources/HFSTCompile/** swift/Tests/** js/test/*fixtures.mjs)
+        checks {
+            test {
+                cmd "cd swift && ./build.sh --host && swift test"
+            }
+        }
+    }
+
     {
         platform "rust"
         files (crates/**/*.rs)

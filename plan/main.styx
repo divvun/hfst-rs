@@ -10169,6 +10169,14 @@ children (
                     )
                 }
                 deps (swift-package.runtime)
+                log (
+                    {
+                        at 2026-11-15T14:29:38.883679Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
+                )
             }
 
             {
