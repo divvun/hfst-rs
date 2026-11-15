@@ -10223,6 +10223,14 @@ children (
                         kind @decision
                         text "Interpretations while porting the parity suites. (1) compile-parity.json has `hfst repeat -f inf` cases, which Swift's `repeat(from: Int)` could not express, so `repeat` takes `RepeatCount` (`.times(n)`, `.unbounded`, integer literals as times) for both bounds; the glue's `from` became optional like `to` (shipped in the compile commit). (2) The manifest names calls and keywords as divvun-hfst does; the Swift suite maps each to the Swift call and fails a case that leaves a keyword unread, so a manifest option the mapping ignores cannot pass silently. (3) Text is compared byte for byte (UTF-8), not with Swift's String ==, which holds canonically equivalent strings equal. (4) JSONSerialization reads 17-digit weights as NSDecimalNumber, whose doubleValue can miss the nearest double; the parity suite re-reads its digits. (5) The linking test mirrors cg3's: swift/link-probe, a second Rust staticlib with fat LTO and no prelink, linked into the test binary beside HFST and HFSTCompile on macOS and the iOS simulator; it records the targets its own tracing subscriber sees, so the test holds each library to its own tracing whatever order they install their global subscribers in. (6) The Swift platform check `cd swift && ./build.sh --host && swift test` ran /usr/bin/cd with the rest as arguments, a no-op that passed, for the runtime and build commits; swift/check.sh replaced it in the compile commit. The python and typescript checks (`cd python && ...`, `cd js && deno check`) have the same shape and are likely no-ops too; left alone as outside this node."
                     }
+
+                    {
+                        at 2026-11-15T16:22:18.928325Z
+                        author "brendan@necessary.nu"
+                        kind @decision
+                        text "package-metadata.json's author gained `url: https://github.com/divvun/hfst-rs`, as cg3's did: the operator wants author.url to be the repository, the homepage the other hfst packages declare, since SwiftPM's metadata has no homepage field. hfst's author had no url before, so this adds one rather than changing one. The archive check's compiler detection reads nm's demangled function paths: by mangled name alone, an HFST-only link showed compile-crate names on LTO-merged identical functions and on generics a compiler crate instantiated, though it held no compiler code (1.11 MB against 8.44 MB with both glues)."
+                        after_done true
+                    }
                 )
             }
 
