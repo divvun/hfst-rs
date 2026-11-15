@@ -37,15 +37,18 @@ errors, `String.Index` ranges, `URL`s and the unified log.
 > 0.1.0. The library and the tools keep the workspace's version, apart from
 > it.
 
-> [spec:hfst:req:swift.registry]
+> [spec:hfst:req:swift.registry+1]
 > The package MUST be published to pahkat's Swift registry under the scope
 > `divvun` as `divvun.hfst`, never through git. Each version is the zip
 > `swift package archive-source` makes of a directory holding
-> `Package.swift`, the Swift sources of the four Swift targets and the
+> `Package.swift`, the Swift sources of the four Swift targets, the
 > XCFramework, which `Package.swift` names with `.binaryTarget(name:path:)`,
-> and nothing else the package does not build. Beside it is a
-> `package-metadata.json` with the fields pahkat's `swift.package` accepts:
-> `author`, `description`, `licenseURL`, `readmeURL` and `repositoryURLs`.
+> the package's `README.md`, and the licence texts `COPYING` and
+> `COPYING.LESSER` that divvun-hfst carries; it MUST hold nothing else that
+> the package does not build. Beside it is a `package-metadata.json` with the
+> fields pahkat's `swift.package` accepts: `author`, `description`,
+> `licenseURL`, `readmeURL` and `repositoryURLs`. `licenseURL` and
+> `readmeURL` MUST name the files at the version's `swift/v<version>` tag.
 
 > [spec:hfst:req:swift.platforms]
 > The XCFramework MUST hold three libraries: macOS for arm64 and x86_64 in

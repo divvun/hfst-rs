@@ -243,11 +243,13 @@ if ! $archive; then
     exit 0
 fi
 
-# [spec:hfst:req:swift.registry]
-# The archive holds what the package builds and nothing else: its manifest,
-# the Swift of its four targets and the XCFramework. They are copied to a
-# directory of their own first, since `swift package archive-source` zips the
-# whole package directory, with its tests, this script and .build.
+# [spec:hfst:req:swift.registry+1]
+# The archive holds what the package builds, its README and the licence texts
+# divvun-hfst carries, and nothing else: its manifest, the Swift of its four
+# targets, the XCFramework, README.md, COPYING and COPYING.LESSER. They are
+# copied to a directory of their own first, since `swift package
+# archive-source` zips the whole package directory, with its tests, this
+# script and .build.
 echo "--- dist/swift/hfst-$version.zip"
 staging="$(mktemp -d)"
 trap 'rm -rf "$staging"' EXIT
@@ -260,17 +262,26 @@ for module in HFST HFSTCompile HFSTGlue HFSTCompileGlue; do
     fi
 done
 cp -R "$here/HFSTFFI.xcframework" "$package/"
+cp "$here/README.md" "$package/README.md"
+cp -L "$root/python/COPYING" "$package/COPYING"
+cp -L "$root/python/COPYING.LESSER" "$package/COPYING.LESSER"
 dist="$root/dist/swift"
 rm -rf "$dist"
 mkdir -p "$dist"
 (cd "$package" && swift package archive-source --output "$dist/hfst-$version.zip")
+for file in Package.swift README.md COPYING COPYING.LESSER; do
+    if ! unzip -Z1 "$dist/hfst-$version.zip" | grep -qx "hfst/$file"; then
+        echo "dist/swift/hfst-$version.zip lacks $file" >&2
+        exit 1
+    fi
+done
 
 cat >"$dist/package-metadata.json" <<EOF
 {
   "author": { "name": "UiT The Arctic University of Norway", "url": "https://github.com/divvun/hfst-rs" },
   "description": "Divvun HFST for Swift: reads optimized-lookup transducers, pmatch tokenisers and DHFST spellers and runs lookup, tokenisation and DHFST acceptor lookup, and its HFSTCompile product compiles, transforms, inspects and writes transducers as the hfst tools do. macOS, iOS and the iOS simulator.",
-  "licenseURL": "https://github.com/divvun/hfst-rs/blob/main/COPYING",
-  "readmeURL": "https://github.com/divvun/hfst-rs/blob/main/swift/README.md",
+  "licenseURL": "https://github.com/divvun/hfst-rs/blob/swift/v$version/COPYING",
+  "readmeURL": "https://github.com/divvun/hfst-rs/blob/swift/v$version/swift/README.md",
   "repositoryURLs": ["https://github.com/divvun/hfst-rs", "https://github.com/divvun/hfst-rs.git", "git@github.com:divvun/hfst-rs.git"]
 }
 EOF
