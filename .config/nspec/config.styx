@@ -11,5 +11,6 @@ specs ({
         {name target-impl, languages (@rust), include (src/**/*.rs crates/**/*.rs), exclude (target/**), mode @both}
         {name js-impl, languages (@typescript), include (js/**/*.ts), exclude (js/**/node_modules/** js/**/pkg/**), mode @both}
         {name py-impl, languages (@python), include (python/**/*.py python/**/*.pyi), exclude (python/.venv/**), mode @both}
+        {name swift-impl, languages (@swift @bash), include (swift/**/*.swift swift/**/*.sh), exclude (swift/.build/** swift/build/** swift/Sources/HFSTGlue/** swift/Sources/HFSTCompileGlue/**), mode @both}
     )
 })

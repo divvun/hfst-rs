@@ -10051,17 +10051,100 @@ children (
                 id swift-package.spec
                 title "State the Swift package in the spec and the AKM: docs/spec/swift.md with rules for the package and its version, the two products, loading, lookup, tokenising, DHFST, compiling, operations, writers, errors and diagnostics, threads, the compile stack on iOS, logging, linking beside other Rust libraries, the XCFramework and archive, and parity; the swift-package decision, the Swift package element, and nspec reading swift/ as the swift-impl block"
                 kind @docs
+                sealed true
+                log (
+                    {
+                        at 2026-11-15T14:08:03.927092Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
+
+                    {
+                        at 2026-11-15T14:08:23.724009Z
+                        author "brendan@necessary.nu"
+                        kind @decision
+                        text "Linking: chose (a), one Rust static library (libhfst_swift.a) holding both UniFFI crates, both products over one binary target. Evidence from a prototype (Xcode 27.2, rustc 1.99.0, uniffi 0.32.2, iOS 26.5 simulator) linked with a second Rust staticlib from the same toolchain sharing std, uniffi_core (same crate hash) and tracing: passes with swift test on macOS and xcodebuild test on the simulator, with the other library built with or without lto = true, and with -ObjC. -Xlinker -all_load fails with 2200 duplicate symbols (std, core, _rust_eh_personality), as it would for any two Rust staticlibs. (b) as ld -r -exported_symbols_list into one object survives -all_load but drops MH_SUBSECTIONS_VIA_SYMBOLS, so a runtime-only release iOS binary grew from 0.61 MB to 29.4 MB; rustc's lto = true staticlib keeps its Rust symbols global (T). Preliminary dead-strip figure: runtime-only iOS binary 0.61 MB, one compiler added 3.8 MB. Xcode copies static XCFramework libraries and headers into one products directory, so library names and the Headers/<module>/ subdirectory must differ per package; written to the scratchpad note swift-linking-hfst.md for the cg3 agent."
+                    }
+
+                    {
+                        at 2026-11-15T14:08:23.95047Z
+                        author "brendan@necessary.nu"
+                        kind @decision
+                        text "iOS compile stack: 16 MiB with limits nesting 125, expression 3000, tree 30,000, path 15,000 (native/32). Per-level stack measured with crates/hfst/examples/compile_depth.rs on a 4 MiB thread, release, identical on the aarch64-apple-ios-sim simulator (xcrun simctl spawn) and natively on macOS arm64: XRE brackets 9362 B, pmatch brackets 5504 B, twolc brackets 1552 B, XRE postfix operators 1391 B, pmatch chain 994 B, twolc chain 1297 B, XRE tree drop 48 B, minimize 128 B an arc, lexc 385 B a chained lexicon. Not tested on a device: a paired iPhone was visible but installing a test runner on it and touching provisioning was outside what the task allowed, and the simulator is a Mac process whose 512 MiB reservation proves nothing about a device. The choice rests on the address space an iOS process has (a few GiB; every concurrent operation reserves its own stack) and on a keyboard extension's footprint limit (a compile near the limits touches half the stack), not on a measured refusal."
+                    }
+
+                    {
+                        at 2026-11-15T14:08:24.189244Z
+                        author "brendan@necessary.nu"
+                        kind @decision
+                        text "Interpretations: (1) Readers are initializers and static methods, Transducer.all(in:)/Transducer(data:)/OptimisedTransducer(data:)/Tokeniser(data:)/Dhfst(data:), not free functions named readTransducers: measured in Swift 6.4, HFSTCompile re-exporting HFST makes its Transducer/Tokeniser shadow HFST's for one import, but two free functions of the same name are ambiguous, and importing both modules without re-export makes the types ambiguous. (2) Codes: the ten library codes plus compile-failed, as @divvun/hfst gives for a failed compile; divvun-hfst gives the library code on a CompileError subclass, which a Swift struct error cannot have. (3) Argument values out of range throw invalid-argument rather than trap, as @divvun/hfst does; Swift's standard library would trap, but a keyboard reading a setting should not crash. (4) Logging names carry an HFST prefix (HFSTLogging, HFSTLogEvent) because swift-log's module is called Logging; os_log rather than os.Logger because os.Logger needs iOS 14 and the package targets iOS 13. (5) Each call logs through a dispatcher scoped to it, not a global default, because a second Rust library with the same tracing-core build would share the global dispatcher. (6) Compilers that read no file (twolc, strings, att, prolog) take no files parameter."
+                    }
+
+                    {
+                        at 2026-11-15T14:08:46.33376Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Doing → Done (nplan complete)"
+                    }
+                )
             }
 
             {
                 id swift-package.runtime
                 title "Add the UniFFI binding of hfst-embed's read-only surface and the HFST product over it, equal to @divvun/hfst's main entry: readTransducers, readTransducer, readOptimisedTransducer, readTokeniser and readDhfst from Data, both lookups, tokenise with String.Index ranges and format, DHFST acceptors and error models, HFSTError with the npm codes, Sendable final classes, and tracing events sent to os.Logger and an optional handler"
+                implements {
+                    swift-impl (
+                        [spec:hfst:def:swift.package]
+                        [spec:hfst:req:swift.version]
+                        [spec:hfst:req:swift.names]
+                        [spec:hfst:req:swift.load]
+                        [spec:hfst:req:swift.lookup]
+                        [spec:hfst:req:swift.tokenise]
+                        [spec:hfst:req:swift.dhfst]
+                        [spec:hfst:req:swift.errors]
+                        [spec:hfst:req:swift.logging]
+                        [spec:hfst:req:swift.threads]
+                        [spec:hfst:req:swift.runtime-product]
+                    )
+                    target-impl (
+                        [spec:hfst:req:swift.version]
+                        [spec:hfst:req:swift.load]
+                        [spec:hfst:req:swift.lookup]
+                        [spec:hfst:req:swift.tokenise]
+                        [spec:hfst:req:swift.dhfst]
+                        [spec:hfst:req:swift.errors]
+                        [spec:hfst:req:swift.logging]
+                        [spec:hfst:req:swift.linking]
+                    )
+                }
                 deps (swift-package.spec)
             }
 
             {
                 id swift-package.compile
                 title "Add the HFSTCompile product, equal to @divvun/hfst/compile: the compilers, with files from a dictionary or a @Sendable closure and diagnostics spanning the caller's string, readTransducers over every type, a Transducer of any type with each operation in place, query and writer, writeThfst(to:), the module-level reports and packBhfst, a lock per transducer taken in a fixed order, and a compile stack and depth limits of its own on iOS"
+                implements {
+                    swift-impl (
+                        [spec:hfst:req:swift.compile-product]
+                        [spec:hfst:req:swift.transducer]
+                        [spec:hfst:req:swift.compile]
+                        [spec:hfst:req:swift.compile-files]
+                        [spec:hfst:req:swift.compile-errors]
+                        [spec:hfst:req:swift.operations]
+                        [spec:hfst:req:swift.writers]
+                    )
+                    target-impl (
+                        [spec:hfst:req:swift.threads]
+                        [spec:hfst:req:swift.transducer]
+                        [spec:hfst:req:swift.compile]
+                        [spec:hfst:req:swift.compile-files]
+                        [spec:hfst:req:swift.compile-errors]
+                        [spec:hfst:req:swift.operations]
+                        [spec:hfst:req:swift.writers]
+                        [spec:hfst:req:swift.compile-stack]
+                    )
+                }
                 deps (swift-package.runtime)
             }
 
@@ -10069,6 +10152,14 @@ children (
                 id swift-package.build
                 title "Build the XCFramework and the source archive: a script beside js/build.mjs that builds the Rust library for macOS arm64 and x86_64 as one fat slice, iOS arm64 and the arm64 iOS simulator, runs uniffi-bindgen, makes the XCFramework with xcodebuild -create-xcframework, and assembles the zip swift package archive-source makes with the package-metadata.json pahkat's swift.package accepts"
                 kind @build
+                implements {
+                    swift-impl (
+                        [spec:hfst:req:swift.build]
+                        [spec:hfst:req:swift.registry]
+                        [spec:hfst:req:swift.platforms]
+                        [spec:hfst:req:swift.linking]
+                    )
+                }
                 deps (swift-package.runtime)
             }
 
@@ -10076,6 +10167,9 @@ children (
                 id swift-package.parity
                 title "Show the package gives the other packages' results: a Swift test suite run with swift test on macOS and xcodebuild test on the iOS simulator over DIVVUN_HFST_FIXTURES, the main entry's parity cases and compile-parity.json's tool cases, a link test of both products beside a second Rust static library, and the linked sizes of an app with HFST alone and with both products"
                 kind @test
+                implements {
+                    swift-impl ([spec:hfst:req:swift.parity] [spec:hfst:req:swift.compile-parity])
+                }
                 deps (swift-package.compile swift-package.build)
             }
 

@@ -141,4 +141,44 @@ elements (
             {at "2026-11-11T12:34:17Z", kind @established, by "[dec:hfst:prediction-measured-choices]"}
         )
     }
+    {
+        id [arch:hfst:swift-package]
+        name "Swift package"
+        kind @boundary
+        lifecycle @provisional
+        owns (
+            [spec:hfst:def:swift.package]
+            [spec:hfst:req:swift.version]
+            [spec:hfst:req:swift.registry]
+            [spec:hfst:req:swift.platforms]
+            [spec:hfst:req:swift.runtime-product]
+            [spec:hfst:req:swift.linking]
+            [spec:hfst:req:swift.names]
+            [spec:hfst:req:swift.errors]
+            [spec:hfst:req:swift.threads]
+            [spec:hfst:req:swift.logging]
+            [spec:hfst:req:swift.load]
+            [spec:hfst:req:swift.lookup]
+            [spec:hfst:req:swift.tokenise]
+            [spec:hfst:req:swift.dhfst]
+            [spec:hfst:req:swift.compile-product]
+            [spec:hfst:req:swift.transducer]
+            [spec:hfst:req:swift.compile]
+            [spec:hfst:req:swift.compile-files]
+            [spec:hfst:req:swift.compile-errors]
+            [spec:hfst:req:swift.operations]
+            [spec:hfst:req:swift.writers]
+            [spec:hfst:req:swift.compile-stack]
+            [spec:hfst:req:swift.build]
+            [spec:hfst:req:swift.parity]
+            [spec:hfst:req:swift.compile-parity]
+        )
+        exposes ("crates/hfst-swift/**" "crates/hfst-swift-runtime/**" "crates/hfst-swift-compile/**" "swift/**")
+        depends_on ()
+        composed_of ()
+        decisions ([dec:hfst:swift-package])
+        log (
+            {at "2026-11-15T00:00:00Z", kind @established, by "[dec:hfst:swift-package]"}
+        )
+    }
 )
