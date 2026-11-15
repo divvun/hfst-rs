@@ -16,6 +16,12 @@ internal import HFSTGlue
 /// library inside it.
 public let version: String = HFSTGlue.version()
 
+// [spec:hfst:req:swift.parity]
+// Every call goes through here to the glue and on to hfst-embed, the code
+// @divvun/hfst runs too, and its result comes back converted and nothing
+// else: the results are the library's. ParityTests checks them on the npm
+// package's parity fixtures.
+
 /// Runs a call into the glue with logging set up, turning what it throws
 /// into an `HFSTError` whose diagnostics span `sources`, the sources the
 /// caller gave the call in the order the glue numbers them.

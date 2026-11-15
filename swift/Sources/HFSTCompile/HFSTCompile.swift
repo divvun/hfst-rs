@@ -8,6 +8,12 @@
 // import, as Swift resolves a type name to the re-exporting module's own
 // declaration. HFST's Tokeniser gains pmatch.
 
+// [spec:hfst:req:swift.compile-parity]
+// Each compiler, operation, query and writer passes its options to the glue
+// as the tool's, and hfst-embed calls the library function the tool calls:
+// the bytes and reports are the tool's. CompileParityTests checks them on
+// compile-parity.json's cases.
+
 @_exported public import HFST
 import Foundation
 internal import HFSTCompileGlue

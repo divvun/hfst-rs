@@ -1749,5 +1749,11 @@ impl_evidence (
         {impl_name target-impl, rule swift.transducer}
         {impl_name target-impl, rule swift.writers}
     )}
-    {id swift-package.parity}
+    {id swift-package.parity, covered_rules (
+        swift.compile-parity
+        swift.parity
+    ), covered_claims (
+        {impl_name swift-impl, rule swift.compile-parity}
+        {impl_name swift-impl, rule swift.parity}
+    )}
 )
