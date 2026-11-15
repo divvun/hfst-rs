@@ -1,0 +1,24 @@
+[package]
+name = "hfst-swift-compile"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "UniFFI glue behind the HFSTCompile product of divvun.hfst, Divvun HFST for Swift"
+# The glue reaches users only through the Swift package under swift/, whose
+# XCFramework crates/hfst-swift builds, so it is never published.
+publish = false
+
+[dependencies]
+hfst = { workspace = true }
+# The compile feature brings the compilers, the algebra and both of its
+# backends, foma among them; bhfst adds packing spellers.
+hfst-embed = { workspace = true, features = ["bhfst"] }
+# The runtime glue's error, diagnostics, lookup results, tokeniser and
+# logging, which HFSTCompile shares with HFST.
+hfst-swift-runtime = { path = "../hfst-swift-runtime" }
+tracing = "0.1.44"
+uniffi = "0.32"
+
+[lints]
+workspace = true

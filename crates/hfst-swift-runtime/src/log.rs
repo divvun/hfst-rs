@@ -1,14 +1,16 @@
 //! The library's `tracing` events, sent to the sink the Swift layer sets,
 //! which logs them to the unified log and to the caller's handler.
 //!
-//! Each call runs under this module's dispatcher for its length, never a
-//! global default: another Rust library in the app built with the same
-//! `tracing-core` shares its global dispatcher with this one, so a global
-//! default would mix the two libraries' events.
+//! The dispatcher is the global default. swift/build.sh prelinks the static
+//! library so that only its C interface is global, so this `tracing` is the
+//! library's own and no other Rust library in the app can set or share its
+//! default. A dispatcher set for each call instead would make a handler that
+//! calls back into the library panic: `tracing` refuses to set a scoped
+//! default while it dispatches an event on the same thread.
 
 use std::fmt;
 use std::sync::atomic::{AtomicU8, Ordering};
-use std::sync::{Arc, LazyLock, PoisonError, RwLock};
+use std::sync::{Arc, Once, PoisonError, RwLock};
 
 use tracing::field::{Field, Visit};
 use tracing::level_filters::LevelFilter;
@@ -16,7 +18,7 @@ use tracing::span::{Attributes, Id, Record};
 use tracing::subscriber::Interest;
 use tracing::{Dispatch, Level, Metadata, Subscriber};
 
-// [spec:hfst:req:swift.logging]
+// [spec:hfst:req:swift.logging+1]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
 pub enum LogLevel {
     Trace,
@@ -48,7 +50,7 @@ impl LogLevel {
     }
 }
 
-// [spec:hfst:req:swift.logging]
+// [spec:hfst:req:swift.logging+1]
 /// Where the events go: the Swift layer's sink, which logs each to the
 /// unified log and hands it to the caller's handler.
 #[uniffi::export(with_foreign)]
@@ -74,12 +76,20 @@ fn filter() -> LevelFilter {
     }
 }
 
+// [spec:hfst:req:swift.logging+1]
+/// Sets the sink every event goes to, and the first time, the library's
+/// dispatcher as the global default.
 #[uniffi::export]
 pub fn set_log_sink(sink: Arc<dyn LogSink>) {
     *SINK.write().unwrap_or_else(PoisonError::into_inner) = Some(sink);
+    INSTALLED.call_once(|| {
+        // Nothing else in the library sets a global default, so this one is
+        // the first.
+        let _ = tracing::dispatcher::set_global_default(Dispatch::new(Forwarder));
+    });
 }
 
-// [spec:hfst:req:swift.logging]
+// [spec:hfst:req:swift.logging+1]
 /// Logs events at `level` and the more severe levels, or none for `None`.
 #[uniffi::export]
 pub fn set_log_level(level: Option<LogLevel>) {
@@ -103,15 +113,7 @@ pub fn log_level() -> Option<LogLevel> {
     filter().into_level().map(LogLevel::of)
 }
 
-static DISPATCH: LazyLock<Dispatch> = LazyLock::new(|| Dispatch::new(Forwarder));
-
-// [spec:hfst:req:swift.logging]
-/// Runs `f` under the package's dispatcher. hfst-embed carries the caller's
-/// dispatcher into the thread a compile runs on, so a compile's events come
-/// here too.
-pub fn logged<T>(f: impl FnOnce() -> T) -> T {
-    tracing::dispatcher::with_default(&DISPATCH, f)
-}
+static INSTALLED: Once = Once::new();
 
 /// The subscriber the dispatcher holds. It enables events at the level
 /// [`set_log_level`] set and never a span, and sends each event it enables

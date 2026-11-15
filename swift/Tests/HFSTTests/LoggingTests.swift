@@ -62,28 +62,29 @@ extension Data {
 
 // The handler and the level are the process's, so these run one at a time.
 @Suite(.serialized) struct LoggingTests {
-    // [spec:hfst:req:swift.logging/test]
+    // [spec:hfst:req:swift.logging+1/test]
     @Test func hfstEventsReachTheHandler() throws {
         let tokeniser = try modifierTag()
         let events = try logged(at: .debug) { _ = try tokeniser.format("a cat.", as: .giellaCG) }
-        let event = try #require(events.under("hfst").first)
-        #expect(events.under("hfst").count == 1)
+        // Other suites run meanwhile and log under hfst too, so the event is
+        // found by its message.
+        let event = try #require(events.under("hfst").first { $0.message.contains("ŋʷ") })
         #expect(event.target == "hfst::pmatch_tokenize")
         #expect(event.level == .warning)
         #expect(event.message.contains("ŋʷ"))
     }
 
-    // [spec:hfst:req:swift.logging/test]
+    // [spec:hfst:req:swift.logging+1/test]
     @Test func divvunFstEventsReachTheHandler() throws {
         let data = try unhandledSymbol()
         let events = try logged(at: .warning) { _ = try OptimisedTransducer(data: data) }
-        let event = try #require(events.under("divvun_fst").first)
+        let event = try #require(events.under("divvun_fst").first { $0.message.contains("@odd1@") })
         #expect(event.target == "divvun_fst::transducer::hfst::alphabet")
         #expect(event.level == .warning)
         #expect(event.message.contains("@odd1@"))
     }
 
-    // [spec:hfst:req:swift.logging/test]
+    // [spec:hfst:req:swift.logging+1/test]
     @Test func theLevelKeepsOutLesserEvents() throws {
         let data = try unhandledSymbol()
         let tokeniser = try modifierTag()

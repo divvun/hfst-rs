@@ -1722,4 +1722,31 @@ impl_evidence (
         {impl_name swift-impl, rule swift.platforms}
         {impl_name swift-impl, rule swift.registry}
     )}
+    {id swift-package.compile, covered_rules (
+        swift.compile
+        swift.compile-errors
+        swift.compile-files
+        swift.compile-product
+        swift.compile-stack
+        swift.operations
+        swift.threads
+        swift.transducer
+        swift.writers
+    ), covered_claims (
+        {impl_name swift-impl, rule swift.compile}
+        {impl_name swift-impl, rule swift.compile-errors}
+        {impl_name swift-impl, rule swift.compile-files}
+        {impl_name swift-impl, rule swift.compile-product}
+        {impl_name swift-impl, rule swift.operations}
+        {impl_name swift-impl, rule swift.transducer}
+        {impl_name swift-impl, rule swift.writers}
+        {impl_name target-impl, rule swift.compile}
+        {impl_name target-impl, rule swift.compile-errors}
+        {impl_name target-impl, rule swift.compile-files}
+        {impl_name target-impl, rule swift.compile-stack}
+        {impl_name target-impl, rule swift.operations}
+        {impl_name target-impl, rule swift.threads}
+        {impl_name target-impl, rule swift.transducer}
+        {impl_name target-impl, rule swift.writers}
+    )}
 )

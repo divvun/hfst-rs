@@ -7,7 +7,6 @@ use std::sync::{Arc, Mutex, PoisonError};
 use hfst_embed::optimised::{Lookup, OptimisedTransducer as Machine};
 
 use crate::error::GlueError;
-use crate::log::logged;
 use crate::transducer::LookupResult;
 use crate::{PACKAGE, args};
 
@@ -54,7 +53,7 @@ impl OptimisedTransducer {
             .unwrap_or_else(PoisonError::into_inner)
             .pop()
             .unwrap_or_default();
-        let found = logged(|| self.machine.lookup(&mut tables, &input, limit));
+        let found = self.machine.lookup(&mut tables, &input, limit);
         self.tables
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
@@ -75,7 +74,7 @@ impl OptimisedTransducer {
 /// `readOptimisedTransducer` reads it.
 #[uniffi::export]
 pub fn read_optimised_transducer(bytes: Vec<u8>) -> Result<Arc<OptimisedTransducer>, GlueError> {
-    let machine = logged(|| Machine::read(bytes, &PACKAGE))?;
+    let machine = Machine::read(bytes, &PACKAGE)?;
     Ok(Arc::new(OptimisedTransducer {
         machine,
         tables: Mutex::new(Vec::new()),

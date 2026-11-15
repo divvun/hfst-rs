@@ -1149,7 +1149,19 @@ dependencies = [
 name = "hfst-swift"
 version = "0.1.0"
 dependencies = [
+ "hfst-swift-compile",
  "hfst-swift-runtime",
+ "uniffi",
+]
+
+[[package]]
+name = "hfst-swift-compile"
+version = "0.1.0"
+dependencies = [
+ "hfst",
+ "hfst-embed",
+ "hfst-swift-runtime",
+ "tracing",
  "uniffi",
 ]
 

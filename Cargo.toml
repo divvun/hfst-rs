@@ -84,3 +84,12 @@ inherits = "release"
 opt-level = "z"
 lto = true
 codegen-units = 1
+
+# The static library swift/build.sh makes for the Swift package. Fat LTO in
+# one codegen unit keeps only what the library's C interface reaches, in one
+# object, which the script then prelinks so that the interface is its only
+# global symbols and it links beside any other Rust static library.
+[profile.swift-release]
+inherits = "release"
+lto = "fat"
+codegen-units = 1

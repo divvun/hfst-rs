@@ -14,6 +14,7 @@ publish = false
 crate-type = ["staticlib"]
 
 [dependencies]
+hfst-swift-compile = { path = "../hfst-swift-compile" }
 hfst-swift-runtime = { path = "../hfst-swift-runtime" }
 
 # uniffi-bindgen-swift, which writes the Swift and the headers of every

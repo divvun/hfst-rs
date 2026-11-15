@@ -8,7 +8,6 @@ use hfst_embed::transducer::{Transducer as Machine, read_transducers as read_all
 use hfst_embed::{Code, Error};
 
 use crate::error::GlueError;
-use crate::log::logged;
 use crate::{PACKAGE, args};
 
 // [spec:hfst:req:swift.lookup]
@@ -70,7 +69,9 @@ impl Transducer {
     ) -> Result<Vec<LookupResult>, GlueError> {
         let limit = args::limit(limit)?;
         let time_limit = args::seconds("a lookup time limit", time_limit)?;
-        Ok(logged(|| self.machine.lookup(&input, limit, time_limit))
+        Ok(self
+            .machine
+            .lookup(&input, limit, time_limit)
             .into_iter()
             .map(LookupResult::from)
             .collect())
@@ -82,7 +83,7 @@ impl Transducer {
 /// `readTransducers` reads them.
 #[uniffi::export]
 pub fn read_transducers(bytes: Vec<u8>) -> Result<Vec<Arc<Transducer>>, GlueError> {
-    let machines = logged(|| read_all(&bytes, &PACKAGE))?;
+    let machines = read_all(&bytes, &PACKAGE)?;
     Ok(machines
         .into_iter()
         .map(|machine| Arc::new(Transducer { machine }))

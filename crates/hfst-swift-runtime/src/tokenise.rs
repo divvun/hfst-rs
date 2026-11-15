@@ -10,7 +10,6 @@ use hfst_embed::tokenise::{self, FORMATS, FormatOptions, Selection, TokeniseOpti
 use crate::PACKAGE;
 use crate::args;
 use crate::error::{GlueError, invalid};
-use crate::log::logged;
 
 // [spec:hfst:req:swift.tokenise]
 #[derive(uniffi::Record)]
@@ -154,7 +153,7 @@ impl Tokeniser {
             selection: settings.selection.checked()?,
             weight_cutoff: settings.weight_cutoff,
         };
-        let found = logged(|| tokenise::tokens(&mut self.run(), &text, &options));
+        let found = tokenise::tokens(&mut self.run(), &text, &options);
         Ok(found.into_iter().map(Token::from).collect())
     }
 
@@ -181,9 +180,7 @@ impl Tokeniser {
             keep_newline: settings.keep_newline,
             superblanks: settings.superblanks,
         };
-        Ok(logged(|| {
-            tokenise::format(&mut self.run(), &text, output, &options)
-        })?)
+        Ok(tokenise::format(&mut self.run(), &text, output, &options)?)
     }
 }
 
@@ -192,6 +189,6 @@ impl Tokeniser {
 /// `readTokeniser` reads it.
 #[uniffi::export]
 pub fn read_tokeniser(bytes: Vec<u8>) -> Result<Arc<Tokeniser>, GlueError> {
-    let container = logged(|| tokenise::read_tokeniser(&bytes, &PACKAGE))?;
+    let container = tokenise::read_tokeniser(&bytes, &PACKAGE)?;
     Ok(Arc::new(Tokeniser::from_core(container.core())))
 }

@@ -14,8 +14,8 @@ mod dhfst;
 pub mod error;
 pub mod log;
 mod optimised;
-mod tokenise;
-mod transducer;
+pub mod tokenise;
+pub mod transducer;
 
 pub use error::GlueError;
 

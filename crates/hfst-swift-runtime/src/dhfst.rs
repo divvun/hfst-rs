@@ -7,7 +7,6 @@ use hfst_embed::dhfst::{AcceptorReader, Dhfst as Read, read_dhfst as read};
 
 use crate::PACKAGE;
 use crate::error::GlueError;
-use crate::log::logged;
 
 // [spec:hfst:req:swift.dhfst]
 /// How a DHFST acceptor stores its arcs, as `dhfst-tools` reports it.
@@ -74,7 +73,7 @@ impl DhfstAcceptor {
     /// The least weight of a path that accepts `word`, as `@divvun/hfst`'s
     /// acceptor lookup gives it.
     pub fn lookup(&self, word: String) -> Option<f32> {
-        logged(|| self.reader.lookup(&word))
+        self.reader.lookup(&word)
     }
 }
 
@@ -100,7 +99,7 @@ pub enum Dhfst {
 /// The DHFST file in `bytes`, as `@divvun/hfst`'s `readDhfst` reads it.
 #[uniffi::export]
 pub fn read_dhfst(bytes: Vec<u8>) -> Result<Dhfst, GlueError> {
-    Ok(match logged(|| read(&bytes, &PACKAGE))? {
+    Ok(match read(&bytes, &PACKAGE)? {
         Read::Acceptor(reader) => Dhfst::Acceptor {
             acceptor: Arc::new(DhfstAcceptor { reader }),
         },

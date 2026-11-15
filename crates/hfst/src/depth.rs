@@ -27,6 +27,18 @@
 //! phonology.twolc) and its chains run to 912 operators (lang-sme's
 //! generated oov-tagclass.regex), so each limit sits well above them on
 //! wasm32 too.
+//!
+//! iOS has limits of its own, for a stack of its own. A 64-bit Mac reserves
+//! 512 MiB for each compile freely; an iOS process has an address space of a
+//! few GiB, every compile running at once reserves a stack, and a keyboard
+//! extension is ended once the memory it has touched passes its limit, near
+//! 60 MB. A compile on iOS runs on 16 MiB, under the native limits divided by
+//! 32. `examples/compile_depth.rs`, built for aarch64-apple-ios-sim and run on
+//! the iOS 26.5 simulator on a 4 MiB stack, measured the same cost a level
+//! as macOS arm64 does, byte for byte: XRE brackets 9362 bytes, pmatch
+//! brackets 5504, twolc brackets 1552, XRE postfix operators 1391, a pmatch
+//! chain 994, a twolc chain 1297, a parsed XRE chain's drop 48, minimizing an
+//! arc 128 and a chained lexc lexicon 385.
 
 use std::cell::Cell;
 use std::ops::Range;
@@ -34,7 +46,13 @@ use std::ops::Range;
 /// The stack a compile is given natively: the `hfst` tools run on a thread
 /// this large, and `hfst-embed` runs each compile and operation on one. A
 /// 64-bit host only reserves it, so it costs what is used of it.
+#[cfg(not(target_os = "ios"))]
 pub const COMPILE_STACK_SIZE: usize = 512 * 1024 * 1024;
+// [spec:hfst:req:swift.compile-stack]
+/// See the native value. On iOS a compile is given 16 MiB, and every limit
+/// is the native one divided by 32.
+#[cfg(target_os = "ios")]
+pub const COMPILE_STACK_SIZE: usize = 16 * 1024 * 1024;
 
 // [spec:hfst:req:embed.no-panic]
 /// The deepest brackets nest: `[`, `(`, `[.` and the parentheses of a
@@ -43,12 +61,16 @@ pub const COMPILE_STACK_SIZE: usize = 512 * 1024 * 1024;
 /// 5.5 KiB in pmatch and 1.6 KiB in twolc, so 4000 levels take 37 MiB. On
 /// wasm32 it costs up to 1.9 KiB of V8's stack (XRE traps at 687 levels,
 /// pmatch at 527) and up to 5.2 KiB of the module's own.
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(not(any(target_arch = "wasm32", target_os = "ios")))]
 pub const MAX_NESTING_DEPTH: usize = 4000;
 // [spec:hfst:req:embed.no-panic]
 /// See the native value.
 #[cfg(target_arch = "wasm32")]
 pub const MAX_NESTING_DEPTH: usize = 100;
+// [spec:hfst:req:swift.compile-stack]
+/// See the native value.
+#[cfg(target_os = "ios")]
+pub const MAX_NESTING_DEPTH: usize = 125;
 
 // [spec:hfst:req:embed.no-panic]
 /// The deepest an evaluation descends: prefix and postfix operators such as
@@ -58,12 +80,16 @@ pub const MAX_NESTING_DEPTH: usize = 100;
 /// costs at most 1.9 KiB of stack (XRE; pmatch 1.2 KiB, twolc 1.5 KiB), so
 /// 100,000 levels take 190 MiB. On wasm32 it costs up to 0.45 KiB of V8's
 /// stack (XRE traps at 2187 levels) and up to 3.5 KiB of the module's.
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(not(any(target_arch = "wasm32", target_os = "ios")))]
 pub const MAX_EXPRESSION_DEPTH: usize = 100_000;
 // [spec:hfst:req:embed.no-panic]
 /// See the native value.
 #[cfg(target_arch = "wasm32")]
 pub const MAX_EXPRESSION_DEPTH: usize = 500;
+// [spec:hfst:req:swift.compile-stack]
+/// See the native value.
+#[cfg(target_os = "ios")]
+pub const MAX_EXPRESSION_DEPTH: usize = 3000;
 
 // [spec:hfst:req:embed.no-panic]
 /// The deepest tree a parser may build. XRE evaluates a chain of operators,
@@ -71,24 +97,32 @@ pub const MAX_EXPRESSION_DEPTH: usize = 500;
 /// where its evaluation is not, and only its drop recurses down it: natively
 /// at 46 bytes of stack a level, so 1,000,000 levels take 46 MiB, and on
 /// wasm32 at 95 bytes of V8's stack (traps at 10,351 levels).
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(not(any(target_arch = "wasm32", target_os = "ios")))]
 pub const MAX_TREE_DEPTH: usize = 1_000_000;
 // [spec:hfst:req:embed.no-panic]
 /// See the native value.
 #[cfg(target_arch = "wasm32")]
 pub const MAX_TREE_DEPTH: usize = 3000;
+// [spec:hfst:req:swift.compile-stack]
+/// See the native value.
+#[cfg(target_os = "ios")]
+pub const MAX_TREE_DEPTH: usize = 30_000;
 
 // [spec:hfst:req:embed.no-panic]
 /// The longest path, in arcs, of an acyclic transducer the tropical backend
 /// minimizes: its minimizer finds each state's height by recursing along the
 /// path. Natively an arc costs 128 bytes of stack, so 500,000 take 61 MiB;
 /// on wasm32 it costs 0.18 KiB of V8's stack (traps at 5615 arcs).
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(not(any(target_arch = "wasm32", target_os = "ios")))]
 pub const MAX_PATH_LENGTH: usize = 500_000;
 // [spec:hfst:req:embed.no-panic]
 /// See the native value.
 #[cfg(target_arch = "wasm32")]
 pub const MAX_PATH_LENGTH: usize = 1000;
+// [spec:hfst:req:swift.compile-stack]
+/// See the native value.
+#[cfg(target_os = "ios")]
+pub const MAX_PATH_LENGTH: usize = 15_000;
 
 // [spec:hfst:req:embed.no-panic]
 /// Run `run` on the stack a compile is given: natively on a thread of

@@ -62,21 +62,23 @@ errors, `String.Index` ranges, `URL`s and the unified log.
 > code `HFST` reaches calls them. A check MUST build an iOS binary that
 > links only `HFST` and one that links both, and report each one's size.
 
-> [spec:hfst:req:swift.linking]
+> [spec:hfst:req:swift.linking+1]
 > An app MUST be able to link `HFST` and `HFSTCompile` beside other Rust
 > static libraries built by the same toolchain, such as `divvun.cg3`'s and
-> divvunspell's. The static library is an ordinary archive: where two Rust
-> libraries carry the same symbol, from the same build of the standard
-> library or of a shared crate, the linker takes one and loads no second
-> copy. Force-loading every member, as `-all_load` does, makes those copies
-> clash for any two Rust static libraries, so an app MUST NOT force-load
-> them. The package MUST name its static library `libhfst_swift.a`, its
-> clang module `HFSTFFI` and its Swift modules `HFST`, `HFSTCompile`,
-> `HFSTGlue` and `HFSTCompileGlue`, and keep its headers and module map in
-> the XCFramework's `Headers/HFSTFFI/`, since Xcode copies every static
-> XCFramework's library and headers into one directory. A test MUST link
-> both products with a second Rust static library and run on the iOS
-> simulator.
+> divvunspell's, whether or not they were built with LTO and whether or not
+> the app force-loads them. Each Rust static library carries the standard
+> library and the crates it shares with others, and two of them define some
+> of the same symbols. So the static library MUST be one object, built with
+> fat LTO and prelinked, whose only global symbols are the UniFFI C
+> interface, `_uniffi_hfst_swift_*` and `_ffi_hfst_swift_*`. It MUST keep
+> MH_SUBSECTIONS_VIA_SYMBOLS, so the app's linker can still drop each
+> function the app does not reach. The package MUST name its static library
+> `libhfst_swift.a`, its clang module `HFSTFFI` and its Swift modules
+> `HFST`, `HFSTCompile`, `HFSTGlue` and `HFSTCompileGlue`, and keep its
+> headers and module map in the XCFramework's `Headers/HFSTFFI/`, since
+> Xcode copies every static XCFramework's library and headers into one
+> directory. A test MUST link both products with a second Rust static
+> library, built with LTO, and run on the iOS simulator.
 
 ## API conventions
 
@@ -118,7 +120,7 @@ errors, `String.Index` ranges, `URL`s and the unified log.
 > each other. An operation whose operand is the transducer it changes, as
 > in `t.compose(t)`, MUST read it as it was before the change.
 
-> [spec:hfst:req:swift.logging]
+> [spec:hfst:req:swift.logging+1]
 > The library's `tracing` events MUST reach the unified log, through
 > `os_log` under the subsystem `no.divvun.hfst` with the event's target as
 > the category, at the type of the event's level: error for an error, a
@@ -127,10 +129,12 @@ errors, `String.Index` ranges, `URL`s and the unified log.
 > as an `HFSTLogEvent` with its level, target and message.
 > `HFSTLogging.level` sets the least level that is logged, `.warning` by
 > default, and an event below it MUST NOT be formatted. The names carry the
-> package's prefix, since swift-log is a module called `Logging`. Each call MUST log through a dispatcher of its own
-> for its length, carried into the thread a compile runs on, and never
-> through a global default, which another Rust library in the same process
-> may set or share.
+> package's prefix, since swift-log is a module called `Logging`. The
+> library's dispatcher MUST be its global default, which hfst-embed carries
+> into the thread a compile runs on. The prelink keeps this `tracing` the
+> library's own, so no other Rust library in the process can set or share
+> that default, and a handler may call into the library, which a
+> dispatcher set for each call would refuse.
 
 ## Loading and lookup
 
@@ -179,15 +183,15 @@ errors, `String.Index` ranges, `URL`s and the unified log.
 
 ## Compiling, transforming and writing
 
-> [spec:hfst:req:swift.compile-product]
+> [spec:hfst:req:swift.compile-product+1]
 > `HFSTCompile` MUST re-export `HFST`, so one `import HFSTCompile` gives
-> both. Its `Transducer` and `Tokeniser` take the place of `HFST`'s under
-> that import, as Swift resolves a name to the declaration of the module
-> that re-exports the other: `HFSTCompile.Transducer` holds any type the
-> library reads, and `HFSTCompile.Tokeniser` adds `pmatch`. `HFST`'s are
-> still there as `HFST.Transducer` and `HFST.Tokeniser`. A transducer
-> crosses between the two as the `Data` one side writes and the other
-> reads.
+> both. Its `Transducer`, which holds any type the library reads, MUST take
+> the place of `HFST`'s under that import, as Swift resolves a name to the
+> declaration of the module that re-exports the other; `HFST`'s is still
+> there as `HFST.Transducer`, and a transducer crosses between the two as
+> the `Data` one writes and the other reads. Every other type is `HFST`'s:
+> `HFSTCompile` adds `pmatch` to `HFST`'s `Tokeniser`, and its glue returns
+> `HFST`'s errors, diagnostics, lookup results and tokenisers.
 
 > [spec:hfst:req:swift.transducer]
 > `HFSTCompile.Transducer` MUST hold a transducer of any type through

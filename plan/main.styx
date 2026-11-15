@@ -10154,6 +10154,28 @@ children (
                     )
                 }
                 deps (swift-package.runtime)
+                log (
+                    {
+                        at 2026-11-15T14:40:52.848015Z
+                        author "brendan@necessary.nu"
+                        kind @status
+                        text "Todo → Doing (nplan start)"
+                    }
+
+                    {
+                        at 2026-11-15T15:18:02.755839Z
+                        author "brendan@necessary.nu"
+                        kind @decision
+                        text "Linking revised (swift.linking+1, swift.logging+1, decision updated): the plain archive is replaced by fat LTO (profile swift-release, codegen-units 1) plus a prelink of each slice. The cg3 agent showed, and I reproduced with a C main on the iOS 26.5 simulator, that a plain archive beside a fat-LTO Rust staticlib (divvunspell's release profile) fails with 2 duplicate symbols (_rust_eh_personality, std::panicking::EMPTY_PANIC) in either order; my earlier 'LTO probe passes' was wrong because the probe's crate-type was [staticlib, lib], so LTO never ran, and the Swift test link hid the clash only because it passes -dead_strip. The prelink: ld -r -exported_symbols_list (C ABI) then ld -r -keep_private_externs -unexported_symbols_list (C ABI) so the interface is private external and a wrapping dynamic framework exports nothing (the cg3 agent's second finding). compiler-rt's outline-atomics members (100 per arm64 slice) lack MH_SUBSECTIONS_VIA_SYMBOLS; each holds one external function, so the build sets the flag on them and prelinks everything; multi-function members without it would stay beside the object. Evidence: prelinked object keeps SUBSECTIONS_VIA_SYMBOLS, no external symbol, only _uniffi_hfst_swift_*/_ffi_hfst_swift_* private externs; links beside a plain and an LTO probe in either order, with and without -all_load. LTO+prelink shrank the XCFramework from 215 MB to 52 MB. Logging moved to one global dispatcher (private after the prelink), since per-call with_default panics when a handler calls back into the library."
+                    }
+
+                    {
+                        at 2026-11-15T15:18:02.990924Z
+                        author "brendan@necessary.nu"
+                        kind @note
+                        text "iOS compile stack: hfst::depth gets target_os = \"ios\" values, COMPILE_STACK_SIZE 16 MiB and limits nesting 125, expression 3000, tree 30,000, path 15,000. crates/hfst/tests/depth_limits.rs passes 11 of 11 on the iOS 26.5 simulator (cargo test --target aarch64-apple-ios-sim with xcrun simctl spawn as runner) and natively; one test built functions 200 brackets deep, past iOS's 125, so its depth is now min(MAX_NESTING_DEPTH / 2, 200), unchanged natively. Interpretations: (1) swift.compile-product+1: HFSTCompile extends HFST's Tokeniser with pmatch instead of declaring a second one, because UniFFI lets the compile crate use the runtime crate's Tokeniser, LookupResult and GlueError; uniffi-bindgen-swift writes the compile glue as if both were one module, so build.sh adds `import HFSTGlue` to HFSTCompileGlue.swift. (2) A diagnostic whose own source is a piece of the caller's string, as regexp2fst gives one expression's line, is placed where that piece first occurs, so range and utf8Range index the caller's string; Python and JS give spans relative to the piece. A lexc missing-lexicon warning carries no source, so its range is nil. (3) Compilers that read no file take no files parameter. (4) XfstResult.written and definitions are dictionaries, without the script's order."
+                    }
+                )
             }
 
             {

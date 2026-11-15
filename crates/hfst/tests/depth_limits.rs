@@ -140,7 +140,8 @@ fn function_calls_count_towards_the_limit() {
     // Each function calls the one before inside brackets, so none calls
     // itself and each is shallow, but the calls nest deeper than evaluation
     // may go.
-    let depth = 200;
+    // Each function nests within the bracket limit, which on iOS is 125.
+    let depth = (MAX_NESTING_DEPTH / 2).min(200);
     let calls = MAX_EXPRESSION_DEPTH / depth + 1;
     let mut script = String::from("define f0(x) x ;\n");
     for i in 1..=calls {

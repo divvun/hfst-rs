@@ -15,11 +15,14 @@ let package = Package(
         // HFST reaches HFSTGlue alone, so an app linking it reaches none of
         // the compile glue, and its linker drops the compilers.
         .library(name: "HFST", targets: ["HFST"]),
+        .library(name: "HFSTCompile", targets: ["HFSTCompile"]),
     ],
     targets: [
         .binaryTarget(name: "HFSTFFI", path: "HFSTFFI.xcframework"),
         .target(name: "HFSTGlue", dependencies: ["HFSTFFI"]),
         .target(name: "HFST", dependencies: ["HFSTGlue"]),
+        .target(name: "HFSTCompileGlue", dependencies: ["HFSTFFI", "HFSTGlue"]),
+        .target(name: "HFSTCompile", dependencies: ["HFST", "HFSTGlue", "HFSTCompileGlue"]),
     ]
 )
 
@@ -27,6 +30,6 @@ let package = Package(
 // archive a version is published as.
 if FileManager.default.fileExists(atPath: Context.packageDirectory + "/Tests") {
     package.targets += [
-        .testTarget(name: "HFSTTests", dependencies: ["HFST"]),
+        .testTarget(name: "HFSTTests", dependencies: ["HFST", "HFSTCompile"]),
     ]
 }

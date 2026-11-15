@@ -1,6 +1,6 @@
 ---
 id [dec:hfst:swift-package]
-epitome "divvun.hfst is a SwiftPM package from pahkat's registry: a UniFFI binding over crates/hfst-embed with two products, HFST for what @divvun/hfst's main entry offers and HFSTCompile for what @divvun/hfst/compile and divvun-hfst offer beyond it, over one Rust static library that holds both and that the linker dead-strips, so an app that only looks words up carries no compiler and links beside other Rust static libraries."
+epitome "divvun.hfst is a SwiftPM package from pahkat's registry: a UniFFI binding over crates/hfst-embed with two products, HFST for what @divvun/hfst's main entry offers and HFSTCompile for what @divvun/hfst/compile and divvun-hfst offer beyond it, over one Rust static library that holds both, built with fat LTO and prelinked so its only global symbols are its C interface: it links beside any other Rust static library, and the linker still dead-strips it, so an app that only looks words up carries no compiler."
 state @decided
 category @existence
 scope {
@@ -40,8 +40,12 @@ edges {
 }
 alternatives (
     {
-        option "Prelink each slice's static library into one object whose only global symbols are UniFFI's C functions, with `ld -r -exported_symbols_list`, so no Rust symbol can meet another library's."
-        rejected_because "Measured: it links beside a second Rust library even under `-all_load`, but `ld -r` drops MH_SUBSECTIONS_VIA_SYMBOLS from the object it writes, so the linker can no longer drop what an app does not call. A release iOS binary that only looks words up grew from 0.61 MB to 29.4 MB, the compilers included. rustc's own `lto = true` does not hide the symbols either: a static library built with it still exports its Rust symbols."
+        option "An ordinary static library, as cargo builds it without LTO."
+        rejected_because "Measured with a C program on the iOS simulator: it links beside another plain Rust static library, since the linker loads no second copy of a member, but beside one built with fat LTO, as divvunspell's release profile builds it, the link fails on two duplicate symbols, `_rust_eh_personality` and `std::panicking::EMPTY_PANIC`, in either order; Xcode's `-dead_strip` hides that, but an app may turn it off. Force-loading fails with 2200 duplicates. Two such libraries also share every crate they build alike, `tracing-core`'s global dispatcher among them."
+    }
+    {
+        option "Prelink the ordinary static library, without LTO, so only its C interface is global."
+        rejected_because "Measured: the archive holds C and assembly members without MH_SUBSECTIONS_VIA_SYMBOLS, so the prelinked object loses it and the linker can no longer drop what an app does not call. A release iOS binary that only looks words up grew from 0.61 MB to 29.4 MB, the compilers included. With fat LTO the archive is one Rust object and compiler-rt's helpers; the outline atomics helpers among those lack the flag too, but each is one function, which is all the flag promises, so the build gives it to them."
     }
     {
         option "Ship dynamic frameworks."
@@ -61,15 +65,15 @@ alternatives (
     }
     {
         option "Let `HFSTCompile` stand apart from `HFST`, so a caller imports both."
-        rejected_because "Measured: a caller importing both modules finds `Transducer` and `Tokeniser` ambiguous. Re-exported, `HFSTCompile`'s take their place, as `divvun-hfst`'s one module has one `Transducer` of any type."
+        rejected_because "Measured: a caller importing both modules finds `Transducer` ambiguous. Re-exported, `HFSTCompile`'s takes its place, as `divvun-hfst`'s one module has one `Transducer` of any type. Every other type is `HFST`'s: the compile glue uses the runtime glue's error, lookup results and tokeniser, so `HFSTCompile` extends `HFST`'s `Tokeniser` with `pmatch` rather than declaring a second one."
     }
     {
         option "Make UniFFI's generated API the public one."
         rejected_because "Its names are the glue's, such as `readOptimisedTransducer(bytes:)`; its errors are a generated enum, its options records with no defaults, and its converters public. A thin Swift layer gives initializers, `throws(HFSTError)`, `String.Index` ranges, `URL`s and option structs with the tools' defaults, and imports the generated modules internally."
     }
     {
-        option "Install one global `tracing` subscriber that sends every event to Swift."
-        rejected_because "Two Rust static libraries built with the same `tracing-core` share its symbols, so they would share one global dispatcher: the second library could not set its own, and its events would be logged as hfst's. A dispatcher set for the length of each call, and carried into the compile thread as hfst-python's is, keeps each library's events its own."
+        option "Set the library's dispatcher for the length of each call, as hfst-python does, rather than as the global default."
+        rejected_because "A handler that calls back into the library would panic: `tracing` refuses to set a scoped default while it dispatches an event on the same thread. The prelink keeps the library's `tracing` its own, so its global default is one no other library can set or share."
     }
     {
         option "Run compiles on iOS on the 512 MiB thread they run on natively."
@@ -84,9 +88,10 @@ consequences {
     accepted (
         "crates/hfst-swift-runtime and crates/hfst-swift-compile are the UniFFI glue of the two products, and crates/hfst-swift is the static library that holds both, `libhfst_swift.a`. The runtime crate carries the package's version."
         "uniffi-bindgen-swift writes one clang module, HFSTFFI, for both crates' headers, and the Swift of each crate, which the targets HFSTGlue and HFSTCompileGlue hold."
-        "An app must not force-load the package's static library beside another Rust static library: `-all_load` loads both copies of the standard library and the link fails."
+        "The static library is built with the swift-release profile, fat LTO in one codegen unit, and swift/build.sh prelinks each slice into one object and checks that it keeps MH_SUBSECTIONS_VIA_SYMBOLS and has no global symbol but the C interface. Measured beside a probe library built with LTO and one built without, in either order, with and without `-all_load`, it links; LTO also shrank the runtime's archive from 55 MB to 7.3 MB a slice."
+        "uniffi-bindgen-swift reads the library before the prelink, which makes UniFFI's metadata symbols local. It writes the compile glue as if both crates' Swift were one module, so swift/build.sh adds `import HFSTGlue` to it."
         "hfst::depth has a third set of limits, for iOS, beside the native and wasm32 ones, and hfst-embed's compile thread is 16 MiB there."
-        "Each XCFramework slice is a whole Rust static library, about 70 MB before an app's linker strips it."
+        "The library's tracing dispatcher is the global default, set when the Swift layer first sets its sink."
     )
     deferred (
         "Building the archive in CI on a macOS agent and publishing it to pahkat on a `swift/v<version>` tag."
@@ -117,13 +122,16 @@ the app's linker decide: everything `HFST` reaches stays, and the rest, the
 compilers above all, is dropped. One Rust build holds both products, so the
 library is built once and the two products cannot disagree about it.
 
-The main risk was linking. Measured with a second Rust static library
-sharing the standard library, uniffi and tracing with this one, an ordinary
-static library links and runs beside it on macOS and the iOS simulator,
-with or without LTO in the other library and with `-ObjC`. Only
-force-loading fails, and it fails for any two Rust static libraries. The
-alternative that survives force-loading costs the dead-stripping that keeps
-the compilers out of an app.
+The main risk was linking. Every Rust static library carries the standard
+library, and one built with fat LTO, as divvunspell's is, defines some of
+its symbols where a plain one does too, so a plain archive links beside
+another plain one but not beside an LTO'd one. Built with fat LTO and
+prelinked into one object whose only global symbols are its C interface,
+the library meets nothing of another's: measured beside an LTO'd and a
+plain library, in either order and force-loaded, it links, and since the
+object keeps MH_SUBSECTIONS_VIA_SYMBOLS the linker still drops the
+compilers from an app that does not call them. The cg3 package, built
+alongside this one, takes the same approach, so an app can link both.
 
 The surface keeps `divvun-hfst`'s decisions: transducers change in place,
 `copy()` gives an independent one, compilers return one transducer or the

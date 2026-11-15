@@ -2,7 +2,7 @@ import Foundation
 import os
 internal import HFSTGlue
 
-// [spec:hfst:req:swift.logging]
+// [spec:hfst:req:swift.logging+1]
 /// A level of the library's log events, least severe first.
 public enum HFSTLogLevel: Int, Sendable, Hashable, Comparable, CaseIterable {
     case trace, debug, info, warning, error
@@ -42,7 +42,7 @@ public enum HFSTLogLevel: Int, Sendable, Hashable, Comparable, CaseIterable {
     }
 }
 
-// [spec:hfst:req:swift.logging]
+// [spec:hfst:req:swift.logging+1]
 /// One event the library logged.
 public struct HFSTLogEvent: Sendable, Hashable {
     public let level: HFSTLogLevel
@@ -53,7 +53,7 @@ public struct HFSTLogEvent: Sendable, Hashable {
     public let message: String
 }
 
-// [spec:hfst:req:swift.logging]
+// [spec:hfst:req:swift.logging+1]
 /// Where the library's log events go. Each goes to the unified log, under
 /// the subsystem `no.divvun.hfst` with its target as the category, and to
 /// the handler, when one is set. Messages are logged as private data, which
