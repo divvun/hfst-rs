@@ -59,8 +59,10 @@ quality {
     // platform's checks, and no Rust ratio can count those tests. The package
     // it builds into, python/divvun_hfst, is tested by the same pytest suite
     // in python/tests, which a directory-scoped ratio cannot see; tests
-    // beside it would ship in the wheel.
-    exempt-paths ("crates/hfst-python/**" "python/divvun_hfst/**")
+    // beside it would ship in the wheel. The Swift package's UniFFI glue is
+    // tested the same way, through Swift in swift/Tests against the
+    // XCFramework swift/build.sh makes, which no Rust ratio can count.
+    exempt-paths ("crates/hfst-python/**" "python/divvun_hfst/**" "crates/hfst-swift/**" "crates/hfst-swift-runtime/**" "crates/hfst-swift-compile/**")
 }
 
 commit {

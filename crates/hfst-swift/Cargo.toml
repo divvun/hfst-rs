@@ -1,0 +1,26 @@
+[package]
+name = "hfst-swift"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "The static library of divvun.hfst, Divvun HFST for Swift, holding the glue of both its products"
+# Only the XCFramework swift/build.sh makes of it reaches users.
+publish = false
+
+# One static library holds the UniFFI glue of both Swift products, so an app
+# links one Rust build, whose linker drops what the app does not call.
+[lib]
+crate-type = ["staticlib"]
+
+[dependencies]
+hfst-swift-runtime = { path = "../hfst-swift-runtime" }
+
+# uniffi-bindgen-swift, which writes the Swift and the headers of every
+# UniFFI crate in the library. A dev-dependency, so the library itself never
+# carries the command line.
+[dev-dependencies]
+uniffi = { version = "0.32", features = ["cli"] }
+
+[lints]
+workspace = true

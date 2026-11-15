@@ -1,0 +1,22 @@
+[package]
+name = "hfst-swift-runtime"
+# The version of divvun.hfst, the Swift package, which is versioned on its
+# own and released from a `swift/v<version>` tag; the library it binds keeps
+# the workspace version.
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "UniFFI glue behind the HFST product of divvun.hfst, Divvun HFST for Swift"
+# The glue reaches users only through the Swift package under swift/, whose
+# XCFramework crates/hfst-swift builds, so it is never published.
+publish = false
+
+[dependencies]
+hfst = { workspace = true }
+hfst-embed = { workspace = true }
+tracing = "0.1.44"
+uniffi = "0.32"
+
+[lints]
+workspace = true

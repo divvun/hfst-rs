@@ -1,0 +1,5 @@
+[bindings.swift]
+module_name = "HFSTGlue"
+ffi_module_name = "HFSTFFI"
+ffi_module_filename = "HFSTGlueFFI"
+generate_immutable_records = true

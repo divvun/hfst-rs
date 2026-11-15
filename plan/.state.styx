@@ -1336,7 +1336,40 @@ impl_evidence (
     ), rule_versions_seen (
         {id xfst-cmd.replace-context-symbol, version 0}
     )}
-    {id swift-package.runtime}
+    {id swift-package.runtime, covered_rules (
+        swift.dhfst
+        swift.errors
+        swift.linking
+        swift.load
+        swift.logging
+        swift.lookup
+        swift.names
+        swift.package
+        swift.runtime-product
+        swift.threads
+        swift.tokenise
+        swift.version
+    ), covered_claims (
+        {impl_name swift-impl, rule swift.dhfst}
+        {impl_name swift-impl, rule swift.errors}
+        {impl_name swift-impl, rule swift.load}
+        {impl_name swift-impl, rule swift.logging}
+        {impl_name swift-impl, rule swift.lookup}
+        {impl_name swift-impl, rule swift.names}
+        {impl_name swift-impl, rule swift.package}
+        {impl_name swift-impl, rule swift.runtime-product}
+        {impl_name swift-impl, rule swift.threads}
+        {impl_name swift-impl, rule swift.tokenise}
+        {impl_name swift-impl, rule swift.version}
+        {impl_name target-impl, rule swift.dhfst}
+        {impl_name target-impl, rule swift.errors}
+        {impl_name target-impl, rule swift.linking}
+        {impl_name target-impl, rule swift.load}
+        {impl_name target-impl, rule swift.logging}
+        {impl_name target-impl, rule swift.lookup}
+        {impl_name target-impl, rule swift.tokenise}
+        {impl_name target-impl, rule swift.version}
+    )}
     {id table-copy-elimination, covered_rules (
         table-residency.single-copy-load
         table-residency.untrusted-size-fields
