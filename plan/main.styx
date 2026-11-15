@@ -10041,4 +10041,50 @@ children (
         }
         deps (path-extraction-memory)
     }
+
+    {
+        id swift-package
+        title "Divvun HFST for Swift: the divvun.hfst package in pahkat's SwiftPM registry, a UniFFI binding over hfst-embed with two products, HFST, what @divvun/hfst's main entry offers, and HFSTCompile, what @divvun/hfst/compile and divvun-hfst offer beyond it, in one XCFramework for macOS, iOS and the iOS simulator [docs/spec/swift.md]"
+        kind @feat
+        children (
+            {
+                id swift-package.spec
+                title "State the Swift package in the spec and the AKM: docs/spec/swift.md with rules for the package and its version, the two products, loading, lookup, tokenising, DHFST, compiling, operations, writers, errors and diagnostics, threads, the compile stack on iOS, logging, linking beside other Rust libraries, the XCFramework and archive, and parity; the swift-package decision, the Swift package element, and nspec reading swift/ as the swift-impl block"
+                kind @docs
+            }
+
+            {
+                id swift-package.runtime
+                title "Add the UniFFI binding of hfst-embed's read-only surface and the HFST product over it, equal to @divvun/hfst's main entry: readTransducers, readTransducer, readOptimisedTransducer, readTokeniser and readDhfst from Data, both lookups, tokenise with String.Index ranges and format, DHFST acceptors and error models, HFSTError with the npm codes, Sendable final classes, and tracing events sent to os.Logger and an optional handler"
+                deps (swift-package.spec)
+            }
+
+            {
+                id swift-package.compile
+                title "Add the HFSTCompile product, equal to @divvun/hfst/compile: the compilers, with files from a dictionary or a @Sendable closure and diagnostics spanning the caller's string, readTransducers over every type, a Transducer of any type with each operation in place, query and writer, writeThfst(to:), the module-level reports and packBhfst, a lock per transducer taken in a fixed order, and a compile stack and depth limits of its own on iOS"
+                deps (swift-package.runtime)
+            }
+
+            {
+                id swift-package.build
+                title "Build the XCFramework and the source archive: a script beside js/build.mjs that builds the Rust library for macOS arm64 and x86_64 as one fat slice, iOS arm64 and the arm64 iOS simulator, runs uniffi-bindgen, makes the XCFramework with xcodebuild -create-xcframework, and assembles the zip swift package archive-source makes with the package-metadata.json pahkat's swift.package accepts"
+                kind @build
+                deps (swift-package.runtime)
+            }
+
+            {
+                id swift-package.parity
+                title "Show the package gives the other packages' results: a Swift test suite run with swift test on macOS and xcodebuild test on the iOS simulator over DIVVUN_HFST_FIXTURES, the main entry's parity cases and compile-parity.json's tool cases, a link test of both products beside a second Rust static library, and the linked sizes of an app with HFST alone and with both products"
+                kind @test
+                deps (swift-package.compile swift-package.build)
+            }
+
+            {
+                id swift-package.release
+                title "Release divvun.hfst 0.1.0 to pahkat's Swift registry from a swift/v0.1.0 tag: a CI step on a macOS agent that builds and tests the archive, and a publish step that runs pahkat attest and pahkat upload with CI's swift:divvun identity token"
+                kind @chore
+                deps (swift-package.parity)
+            }
+        )
+    }
 )
