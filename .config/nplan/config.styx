@@ -35,7 +35,7 @@ platforms (
     // not run by a shell, so swift/check.sh holds the steps.
     {
         platform "swift"
-        files (crates/hfst-swift/** crates/hfst-swift-runtime/** crates/hfst-swift-compile/** crates/hfst-embed/** swift/Package.swift swift/build.sh swift/check.sh swift/Sources/HFST/** swift/Sources/HFSTCompile/** swift/Tests/** js/test/*fixtures.mjs)
+        files (crates/hfst-swift/** crates/hfst-swift-runtime/** crates/hfst-swift-compile/** crates/hfst-embed/** swift/Package.swift swift/build.sh swift/check.sh swift/link-probe/src/** swift/link-probe/Cargo.toml swift/link-probe/Cargo.lock swift/link-probe/uniffi.toml swift/Sources/HFST/** swift/Sources/HFSTCompile/** swift/Tests/** js/test/*fixtures.mjs)
         checks {
             test {
                 cmd "swift/check.sh"
@@ -76,8 +76,9 @@ quality {
     // in python/tests, which a directory-scoped ratio cannot see; tests
     // beside it would ship in the wheel. The Swift package's UniFFI glue is
     // tested the same way, through Swift in swift/Tests against the
-    // XCFramework swift/build.sh makes, which no Rust ratio can count.
-    exempt-paths ("crates/hfst-python/**" "python/divvun_hfst/**" "crates/hfst-swift/**" "crates/hfst-swift-runtime/**" "crates/hfst-swift-compile/**")
+    // XCFramework swift/build.sh makes, which no Rust ratio can count. So is
+    // swift/link-probe, the second library of the Swift linking test.
+    exempt-paths ("crates/hfst-python/**" "python/divvun_hfst/**" "crates/hfst-swift/**" "crates/hfst-swift-runtime/**" "crates/hfst-swift-compile/**" "swift/link-probe/**")
 }
 
 commit {

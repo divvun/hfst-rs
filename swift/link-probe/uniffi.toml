@@ -1,0 +1,4 @@
+[bindings.swift]
+module_name = "LinkProbe"
+ffi_module_name = "LinkProbeFFI"
+ffi_module_filename = "LinkProbeFFI"

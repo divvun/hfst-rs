@@ -28,7 +28,11 @@ public enum Dhfst: Sendable {
     /// The DHFST file at `url`, as `init(data:)` reads its bytes. A file that
     /// cannot be read throws what `Data(contentsOf:)` throws.
     public init(contentsOf url: URL) throws {
-        try self.init(data: Data(contentsOf: url, options: .mappedIfSafe))
+        // Two statements, not one `try`: an initialiser that mixes untyped and
+        // typed throws in one expression crashes Swift 6.4's optimiser when it
+        // inlines it into an app's release build.
+        let data = try Data(contentsOf: url, options: .mappedIfSafe)
+        try self.init(data: data)
     }
 }
 

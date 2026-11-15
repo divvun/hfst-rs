@@ -1749,4 +1749,5 @@ impl_evidence (
         {impl_name target-impl, rule swift.transducer}
         {impl_name target-impl, rule swift.writers}
     )}
+    {id swift-package.parity}
 )

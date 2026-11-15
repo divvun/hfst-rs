@@ -1,5 +1,6 @@
 import Foundation
 import HFST
+import LinkProbe
 import Testing
 
 /// The events a test's calls log, kept while the handler is set.
@@ -38,7 +39,7 @@ private func logged(at level: HFSTLogLevel?, _ body: () throws -> Void) rethrows
 
 /// A transducer whose alphabet holds `@odd1@`, which divvun-fst warns it
 /// does not know. `+Event` has as many bytes, so the tables still read.
-private func unhandledSymbol() throws -> Data {
+func unhandledSymbol() throws -> Data {
     let data = try Fixtures.data("identity.optimized-lookup-weighted.hfst")
     return data.replacing(Data("\0+Event\0".utf8), with: Data("\0@odd1@\0".utf8))
 }
@@ -62,6 +63,13 @@ extension Data {
 
 // The handler and the level are the process's, so these run one at a time.
 @Suite(.serialized) struct LoggingTests {
+    // [spec:hfst:req:swift.linking+1/test]
+    @Test func anotherRustLibrarysEventsDoNotReachTheHandler() throws {
+        let events = logged(at: .trace) { _ = LinkProbe.wordCounts(text: "c") }
+        #expect(events.under("hfst_link_probe").isEmpty)
+        #expect(LinkProbe.targetsSeen() == ["hfst_link_probe"])
+    }
+
     // [spec:hfst:req:swift.logging+1/test]
     @Test func hfstEventsReachTheHandler() throws {
         let tokeniser = try modifierTag()

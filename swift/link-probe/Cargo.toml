@@ -1,0 +1,25 @@
+# A Rust static library unrelated to hfst, built on its own with the same
+# toolchain and the same uniffi and tracing, as another package's library is,
+# such as cg3's. The linking test links it into one binary beside HFST and
+# HFSTCompile, where any std, uniffi or tracing symbol both define would
+# clash. It is built with LTO and not prelinked, so its symbols stay global.
+[package]
+name = "hfst-link-probe"
+version = "0.1.0"
+edition = "2024"
+license = "LGPL-3.0-or-later"
+publish = false
+
+[lib]
+crate-type = ["staticlib"]
+
+[dependencies]
+uniffi = { version = "0.32", default-features = false }
+tracing = "0.1"
+
+# Its own workspace, apart from hfst's, as another package's build is.
+[workspace]
+
+[profile.release]
+lto = "fat"
+codegen-units = 1

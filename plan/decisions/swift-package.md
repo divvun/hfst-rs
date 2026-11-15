@@ -92,6 +92,8 @@ consequences {
         "uniffi-bindgen-swift reads the library before the prelink, which makes UniFFI's metadata symbols local. It writes the compile glue as if both crates' Swift were one module, so swift/build.sh adds `import HFSTGlue` to it."
         "hfst::depth has a third set of limits, for iOS, beside the native and wasm32 ones, and hfst-embed's compile thread is 16 MiB there."
         "The library's tracing dispatcher is the global default, set when the Swift layer first sets its sink."
+        "swift/build.sh --archive builds an app from the unpacked archive in release and fails when what uses only HFST holds compiler code. Measured, stripped: an iOS device framework using all of HFST is 1.29 MB, and one using HFSTCompile too 9.09 MB; macOS programs 1.37 MB and 9.30 MB. The archive is 18.6 MB and its XCFramework 54 MB."
+        "Swift 6.4's optimiser crashes on an initialiser that mixes untyped and typed throws in one expression once it inlines it into an app's release build, so each `contentsOf:` reader reads its file in a statement of its own. The test suite builds in debug and cannot see this; the archive's app, built in release, does."
     )
     deferred (
         "Building the archive in CI on a macOS agent and publishing it to pahkat on a `swift/v<version>` tag."

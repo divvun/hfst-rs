@@ -27,9 +27,12 @@ let package = Package(
 )
 
 // The tests and what they link are in the repository and not in the
-// archive a version is published as.
+// archive a version is published as. LinkProbe is the linking test's second
+// Rust library, which swift/build.sh builds from swift/link-probe on its own.
 if FileManager.default.fileExists(atPath: Context.packageDirectory + "/Tests") {
     package.targets += [
-        .testTarget(name: "HFSTTests", dependencies: ["HFST", "HFSTCompile"]),
+        .binaryTarget(name: "LinkProbeFFI", path: "LinkProbeFFI.xcframework"),
+        .target(name: "LinkProbe", dependencies: ["LinkProbeFFI"], path: "Tests/LinkProbe"),
+        .testTarget(name: "HFSTTests", dependencies: ["HFST", "HFSTCompile", "LinkProbe"]),
     ]
 }

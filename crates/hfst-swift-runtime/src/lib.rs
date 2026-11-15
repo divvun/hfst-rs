@@ -9,6 +9,14 @@
 
 uniffi::setup_scaffolding!();
 
+// [spec:hfst:req:swift.parity]
+// Every reader and every call reaches hfst-embed, the code @divvun/hfst runs
+// too, with the caller's arguments turned into its types and its results
+// turned back, and nothing else between: the results are the library's.
+// swift/Tests/HFSTTests/ParityTests.swift checks them against the native
+// library's on the npm package's parity fixtures, on macOS and on the iOS
+// simulator.
+
 pub mod args;
 mod dhfst;
 pub mod error;

@@ -34,10 +34,13 @@
 /python/.mypy_cache/
 /python/uv.lock
 
-# What swift/build.sh makes: the XCFramework, the Swift UniFFI generates and
-# the release archive, and what SwiftPM builds under swift/.
+# What swift/build.sh makes: the XCFrameworks of the package and of the
+# linking test's second library, the Swift UniFFI generates and the release
+# archive, and what SwiftPM builds under swift/.
 /swift/HFSTFFI.xcframework/
 /swift/Sources/HFSTGlue/
 /swift/Sources/HFSTCompileGlue/
 /swift/.build/
 /swift/.swiftpm/
+/swift/LinkProbeFFI.xcframework/
+/swift/Tests/LinkProbe/
