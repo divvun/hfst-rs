@@ -1,29 +1,20 @@
 platforms (
-    {
-        platform "c++"
-        files (src/**/*.c src/**/*.cc src/**/*.cpp src/**/*.cxx src/**/*.h src/**/*.hpp include/**/*.h include/**/*.hpp)
-        checks {
-            format {
-                cmd "find src include -name '*.c' -o -name '*.cc' -o -name '*.cpp' -o -name '*.h' -o -name '*.hpp' | xargs clang-format --dry-run --Werror"
-                fix "find src include -name '*.c' -o -name '*.cc' -o -name '*.cpp' -o -name '*.h' -o -name '*.hpp' | xargs clang-format -i"
-            }
-        }
-    }
-
     // The binding is tested through Python, against the extension maturin
     // builds into python/.venv, as pip would install it. The tests read the
     // npm package's fixtures, which node js/test/fixtures.mjs builds, so the
     // fixture builders are inputs too. The type check runs mypy in its own
     // uvx environment: a uv sync there would uninstall the editable build.
+    // A check's command is not run by a shell, so python/check.sh holds the
+    // steps.
     {
         platform "python"
-        files (crates/hfst-python/** crates/hfst-embed/** python/pyproject.toml python/COPYING python/COPYING.LESSER python/divvun_hfst/** python/tests/** js/test/*fixtures.mjs)
+        files (crates/hfst-python/** crates/hfst-embed/** python/pyproject.toml python/COPYING python/COPYING.LESSER python/check.sh python/divvun_hfst/** python/tests/** js/test/*fixtures.mjs)
         checks {
             test {
-                cmd "cd python && uv sync --quiet --no-install-project && uv run --no-sync maturin develop --uv --quiet && uv run --no-sync pytest -q"
+                cmd "python/check.sh test"
             }
             typecheck {
-                cmd "cd python && uvx --quiet --with 'pytest>=8' --from 'mypy>=1.13' mypy"
+                cmd "python/check.sh typecheck"
             }
         }
     }
@@ -56,13 +47,14 @@ platforms (
 
     // The globs stop short of js/hfst/pkg and js/hfst/dist, which hold build
     // output. deno check needs no build: js/deno.json stands a hand-declared
-    // module in for the generated glue.
+    // module in for the generated glue. js/check.sh holds the step, for the
+    // same reason as python/check.sh.
     {
         platform "typescript"
-        files (js/hfst/*.ts js/test/**/*.ts)
+        files (js/check.sh js/hfst/*.ts js/test/**/*.ts)
         checks {
             typecheck {
-                cmd "cd js && deno check"
+                cmd "js/check.sh"
             }
         }
     }
